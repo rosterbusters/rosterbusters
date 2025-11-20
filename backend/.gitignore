@@ -6,5 +6,5 @@ app.egg-info
 htmlcov
 .cache
 .venv
-#google_oauth_credentials.json
-#*.json
+google_oauth_credentials.json
+*.json
