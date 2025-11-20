@@ -27,8 +27,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
+    "@esbuild/win32-x64": "^0.25.12",
     "@hey-api/openapi-ts": "0.73.0",
     "@playwright/test": "1.56.1",
+    "@rollup/rollup-win32-x64-msvc": "^4.53.3",
+    "@swc/core-win32-x64-msvc": "^1.15.2",
     "@tanstack/router-devtools": "^1.131.42",
     "@tanstack/router-plugin": "^1.133.15",
     "@types/node": "^24.10.0",
