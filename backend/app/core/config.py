@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import secrets
 import warnings
 from typing import Annotated, Any, Literal
@@ -39,11 +41,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_OAUTH_ALLOWED_DOMAINS: str = "sach.com.sg"
+    BACKEND_HOST: str = "http://localhost:8000"
     FRONTEND_HOST: str = "http://localhost:5173"
-    
-    class Config:
-        case_sensitive = True
-        env_file = ".env"
 
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
@@ -125,3 +124,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore
+json_path = Path(__file__).parent.parent.parent / "google_oauth_credentials.json"
+if json_path.exists():
+    with open(json_path, 'r') as f:
+        creds = json.load(f)
+        settings.GOOGLE_CLIENT_ID = creds['web']['client_id']
+        settings.GOOGLE_CLIENT_SECRET = creds['web']['client_secret']

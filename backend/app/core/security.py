@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import secrets
+import string
+
 import jwt
 from passlib.context import CryptContext
 
@@ -25,3 +28,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+
+def generate_random_password() -> str:
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(secrets.choice(alphabet) for _ in range(12))

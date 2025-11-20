@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from authlib.integrations.starlette_client import OAuth
-from sqlmodel import Session
+from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core import security
@@ -17,23 +17,20 @@ from app import crud
 
 router = APIRouter()
 
-# Initialize OAuth
 oauth = OAuth()
 oauth.register(
     name='google',
     client_id=settings.GOOGLE_CLIENT_ID,
     client_secret=settings.GOOGLE_CLIENT_SECRET,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={
-        'scope': 'openid email profile'
-    }
+    client_kwargs={'scope': 'openid email profile'}
 )
 
 
 @router.get("/login/google")
 async def login_google(request: Request):
     """Initiate Google OAuth login"""
-    redirect_uri = f"{settings.FRONTEND_HOST}/auth/callback"
+    redirect_uri = f"{settings.BACKEND_HOST}/api/v1/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -67,7 +64,8 @@ async def auth_google_callback(
                 )
         
         # Check if user exists
-        user = session.query(User).filter(User.email == email).first()
+        statement = select(User).where(User.email == email)
+        user = session.exec(statement).first()
         
         if not user:
             # Create new user
@@ -89,13 +87,14 @@ async def auth_google_callback(
         )
         
         # Redirect to frontend with token
-        redirect_url = f"{settings.FRONTEND_HOST}/auth/success?token={access_token}"
+        redirect_url = f"{settings.FRONTEND_HOST}/auth/callback?token={access_token}"
         return RedirectResponse(url=redirect_url)
         
     except Exception as e:
         # Redirect to frontend with error
         error_url = f"{settings.FRONTEND_HOST}/login?error={str(e)}"
         return RedirectResponse(url=error_url)
+
 
 @router.post("/login/access-token")
 def login_access_token(

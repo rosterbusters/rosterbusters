@@ -27,7 +27,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
-    "@esbuild/win32-x64": "^0.25.12",
     "@hey-api/openapi-ts": "0.73.0",
     "@playwright/test": "1.56.1",
     "@rollup/rollup-win32-x64-msvc": "^4.53.3",
