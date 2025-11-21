@@ -4,10 +4,12 @@ WORKDIR /app
 
 COPY package.json ./
 
-RUN npm install --omit=optional
+# Clean install without lock file to avoid optional dependency bug
+RUN rm -rf node_modules package-lock.json && \
+    npm install --force
 
 COPY . .
 
 EXPOSE 5173
 
-CMD ["sh", "-c", "npm install && npm run dev -- --host"]
+CMD ["npm", "run", "dev", "--", "--host"]

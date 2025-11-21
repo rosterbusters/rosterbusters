@@ -33,6 +33,8 @@ COPY ./scripts /app/scripts
 
 COPY ./pyproject.toml ./uv.lock ./alembic.ini /app/
 
+COPY ./google_oauth_credentials.json /app/
+
 COPY ./app /app/app
 COPY ./tests /app/tests
 
