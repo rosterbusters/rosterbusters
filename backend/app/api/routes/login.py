@@ -30,11 +30,11 @@ oauth.register(
 @router.get("/login/google")
 async def login_google(request: Request):
     """Initiate Google OAuth login"""
-    redirect_uri = f"{settings.BACKEND_HOST}/api/v1/auth/google/callback"
+    redirect_uri = request.url_for('auth_google') #callback endpoint
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-@router.get("/auth/google/callback")
+@router.get("/auth/google/callback", name="auth_google")
 async def auth_google_callback(
     request: Request,
     session: SessionDep,

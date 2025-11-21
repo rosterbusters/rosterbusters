@@ -124,9 +124,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore
-json_path = Path(__file__).parent.parent.parent / "google_oauth_credentials.json"
-if json_path.exists():
-    with open(json_path, 'r') as f:
-        creds = json.load(f)
-        settings.GOOGLE_CLIENT_ID = creds['web']['client_id']
-        settings.GOOGLE_CLIENT_SECRET = creds['web']['client_secret']
