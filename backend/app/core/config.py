@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # Google OAuth Settings
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_OAUTH_ALLOWED_DOMAINS: str = "sach.com.sg"
+    GOOGLE_OAUTH_ALLOWED_DOMAINS: str = "sach.com.sg,gmail.com"
     BACKEND_HOST: str = "http://localhost:8000"
     FRONTEND_HOST: str = "http://localhost:5173"
 

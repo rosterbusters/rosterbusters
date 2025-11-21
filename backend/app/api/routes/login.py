@@ -30,11 +30,11 @@ oauth.register(
 @router.get("/login/google")
 async def login_google(request: Request):
     """Initiate Google OAuth login"""
-    redirect_uri = request.url_for('auth_google') #callback endpoint
+    redirect_uri = f"{settings.BACKEND_HOST}/api/v1/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-@router.get("/auth/google/callback", name="auth_google")
+@router.get("/auth/google/callback")
 async def auth_google_callback(
     request: Request,
     session: SessionDep,
@@ -57,6 +57,9 @@ async def auth_google_callback(
         if settings.GOOGLE_OAUTH_ALLOWED_DOMAINS:
             email_domain = email.split('@')[1]
             allowed_domains = settings.GOOGLE_OAUTH_ALLOWED_DOMAINS.split(',')
+            print(f"DEBUG: email_domain = {email_domain}")
+            print(f"DEBUG: allowed_domains = {allowed_domains}")
+            print(f"DEBUG: GOOGLE_OAUTH_ALLOWED_DOMAINS = {settings.GOOGLE_OAUTH_ALLOWED_DOMAINS}")
             if email_domain not in allowed_domains:
                 raise HTTPException(
                     status_code=403, 
