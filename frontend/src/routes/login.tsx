@@ -1,7 +1,7 @@
-import { Box, Container, Flex, Heading, Image, Text, VStack, Separator } from "@chakra-ui/react"
+import { Box, Container, Flex, Heading, Image, Text, VStack, Separator, IconButton } from "@chakra-ui/react"
 import { createFileRoute, Link as RouterLink, redirect } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
-import { FiLock, FiMail } from "react-icons/fi"
+import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
 import { useState } from "react"
 
@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { Input } from "@chakra-ui/react"
 import { InputGroup } from "@/components/ui/input-group"
-import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 import { emailPattern, passwordRules } from "../utils"
 
@@ -27,7 +26,7 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { loginMutation, error, resetError } = useAuth()
-  const [showTraditionalLogin, setShowTraditionalLogin] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   
   const {
     register,
@@ -45,25 +44,30 @@ function Login() {
   const onSubmit: SubmitHandler<AccessToken> = async (data) => {
     if (isSubmitting) return
     resetError()
-
     try {
       await loginMutation.mutateAsync(data)
     } catch {
-      // error is handled by useAuth hook
+      // error handling
     }
   }
 
   const handleGoogleLogin = () => {
-    // Redirect to Google OAuth endpoint
     window.location.href = `${import.meta.env.VITE_API_URL}/api/v1/login/google`
   }
 
+  const togglePasswordVisibility = () => setShowPassword(!showPassword)
+
   return (
-    <Flex h="100vh" w="100vw" overflow="hidden">
-      {/* Left side - Hospital Image */}
+    <Flex 
+      h="100vh" 
+      w="100vw" 
+      direction={{ base: "column", lg: "row" }}
+      overflow="hidden"
+      bg="white"
+    >
+      {/* Visual Side */}
       <Box 
-        flex="1" 
-        display={{ base: "none", lg: "block" }}
+        flex={{ base: "0 0 50%", lg: "1" }} 
         position="relative"
         overflow="hidden"
       >
@@ -73,184 +77,155 @@ function Login() {
           objectFit="cover"
           w="100%"
           h="100%"
+          objectPosition="center" 
+        />
+        {/* Gradient Overlay */}
+        <Box 
+          position="absolute" 
+          bottom="0" 
+          left="0" 
+          right="0" 
+          h="32" 
+          bgGradient="to-t" 
+          gradientFrom="blackAlpha.700" 
+          gradientTo="transparent" 
         />
       </Box>
 
-      {/* Right side - Login Form */}
+      {/* Functional Side - Form Overlay */}
       <Flex
         flex="1"
-        align="center"
-        justify="center"
+        direction="column"
         bg="white"
-        p={8}
+        mt={{ base: "-10vh", lg: "0" }} 
+        roundedTop="none"
+        position="relative"
+        zIndex="2"
+        align="center"
+        justify={{ base: "start", lg: "center" }}
+        pt={{ base: 6, lg: 0 }}
+        pb={4}
       >
-        <Container maxW="md" w="100%">
-          <VStack gap={8} align="stretch">
+        <Container maxW="md" w="100%" px={6}>
+          <VStack gap={3} align="stretch">
+            
             {/* Header */}
-            <VStack gap={3} textAlign="center">
+            <VStack gap={0} align="start" mb={1}>
               <Heading 
                 as="h1" 
-                size="2xl" 
-                fontWeight="bold"
-                color="teal.600"
+                size="lg"
+                fontWeight="700"
+                color="teal.700"
               >
                 Sign In
               </Heading>
-              <Text color="gray.600" fontSize="md">
-                Welcome back! Login with your SACH work email for access.
+              <Text color="gray.500" fontSize="sm">
+                Login with your <Text as="span" fontWeight="700" color="teal.600">SACH</Text> email.
               </Text>
             </VStack>
 
-            {/* Google Sign In Button */}
+            {/* Google Button */}
             <Button
               onClick={handleGoogleLogin}
-              size="lg"
+              size="md"
               variant="outline"
               borderColor="gray.300"
-              bg="white"
+              color="gray.700"
               _hover={{ bg: "gray.50" }}
+              w="100%"
               fontWeight="medium"
-              fontSize="md"
-              h="12"
             >
-              <Flex align="center" gap={3}>
-                <FcGoogle size={24} />
+              <Flex align="center" gap={2}>
+                <FcGoogle size={20} />
                 <Text as="span">Sign In With Google</Text>
               </Flex>
             </Button>
 
-            {/* Separator with "OR" */}
-            {!showTraditionalLogin && (
-              <>
-                <Flex align="center" gap={4}>
-                  <Separator />
-                  <Text fontSize="sm" color="gray.500" whiteSpace="nowrap">
-                    or sign in with email
-                  </Text>
-                  <Separator />
-                </Flex>
+            {/* Separator */}
+            <Flex align="center" width="100%" gap={3}>
+              <Separator flex="1" borderColor="gray.200" />
+              <Text fontSize="xs" color="gray.400" fontWeight="medium">OR</Text>
+              <Separator flex="1" borderColor="gray.200" />
+            </Flex>
+
+            {/* Login Form */}
+            <Box as="form" onSubmit={handleSubmit(onSubmit)}>
+              <VStack gap={3} align="stretch"> 
+                {/* Email */}
+                <Field invalid={!!errors.username} errorText={errors.username?.message}>
+                  <InputGroup startElement={<FiMail color="gray" />} w="100%">
+                    <Input
+                      {...register("username", { required: "Required", pattern: emailPattern })}
+                      placeholder="Email Address"
+                      type="email"
+                      size="md"
+                      variant="subtle"
+                      bg="gray.50"
+                    />
+                  </InputGroup>
+                </Field>
+
+                {/* Password */}
+                <Field invalid={!!errors.password} errorText={errors.password?.message}>
+                  <InputGroup 
+                    startElement={<FiLock color="gray" />}
+                    endElement={
+                      <IconButton
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        onClick={togglePasswordVisibility}
+                        variant="ghost"
+                        size="sm"
+                        color="gray.400"
+                      >
+                        {showPassword ? <FiEyeOff /> : <FiEye />}
+                      </IconButton>
+                    }
+                    w="100%"
+                  >
+                    <Input
+                      {...register("password", passwordRules())}
+                      placeholder="Password"
+                      type={showPassword ? "text" : "password"}
+                      size="md"
+                      variant="subtle"
+                      bg="gray.50"
+                    />
+                  </InputGroup>
+                </Field>
+
+                {error && (
+                  <Text color="red.500" fontSize="xs" textAlign="center">{error}</Text>
+                )}
 
                 <Button
-                  onClick={() => setShowTraditionalLogin(true)}
-                  variant="ghost"
-                  colorScheme="teal"
+                  type="submit"
                   size="md"
+                  w="100%"
+                  loading={isSubmitting}
+                  bg="teal.600"
+                  _hover={{ bg: "teal.700" }}
+                  color="white"
+                  mt={1}
                 >
-                  Use Email & Password
+                  Log In
                 </Button>
-              </>
-            )}
 
-            {/* Traditional Login Form - Collapsible */}
-            {showTraditionalLogin && (
-              <>
-                <Flex align="center" gap={4}>
-                  <Separator />
-                  <Text fontSize="sm" color="gray.500" whiteSpace="nowrap">
-                    OR
-                  </Text>
-                  <Separator />
+                <Flex justify="center" pt={1}>
+                  <RouterLink 
+                    to="/recover-password" 
+                    style={{ 
+                      color: "var(--chakra-colors-teal-600)", 
+                      fontSize: "13px", 
+                      fontWeight: 600,
+                      textDecoration: "none"
+                    }}
+                  >
+                    Forgot Password?
+                  </RouterLink>
                 </Flex>
+              </VStack>
+            </Box>
 
-                <Box 
-                  as="form" 
-                  onSubmit={handleSubmit(onSubmit)}
-                >
-                  <VStack gap={4} align="stretch">
-                    {/* Email Field */}
-                    <Field
-                      invalid={!!errors.username}
-                      errorText={errors.username?.message}
-                      w="100%"
-                    >
-                      <InputGroup 
-                        startElement={<FiMail />}
-                        w="100%">
-                        <Input
-                          {...register("username", {
-                            required: "Email is required",
-                            pattern: emailPattern,
-                          })}
-                          placeholder="Email"
-                          type="email"
-                          size="lg"
-                          w="100%"
-                        />
-                      </InputGroup>
-                    </Field>
-
-                    {/* Password Field */}
-                    <Field
-                      invalid={!!errors.password}
-                      errorText={errors.password?.message}
-                      w="100%"
-                    >
-                      <InputGroup 
-                        startElement={<FiLock />}
-                        w="100%"
-                      >
-                        <PasswordInput
-                          {...register("password", passwordRules())}
-                          placeholder="Password"
-                          size="lg"
-                          type="password"
-                          errors={errors}
-                          w="100%"
-                        />
-                      </InputGroup>
-                    </Field>
-
-                    {/* Error Message */}
-                    {error && (
-                      <Text color="red.500" fontSize="sm">
-                        {error}
-                      </Text>
-                    )}
-
-                    {/* Forgot Password Link */}
-                    <Flex justify="flex-end">
-                      <RouterLink 
-                        to="/recover-password" 
-                        style={{ 
-                          color: "var(--chakra-colors-teal-600)",
-                          fontSize: "14px",
-                          textDecoration: "none"
-                        }}
-                      >
-                        Forgot Password?
-                      </RouterLink>
-                    </Flex>
-
-                    {/* Submit Button */}
-                    <Button
-                      type="submit"
-                      colorScheme="teal"
-                      size="lg"
-                      w="100%"
-                      loading={isSubmitting}
-                      loadingText="Logging in..."
-                    >
-                      Log In
-                    </Button>
-                  </VStack>
-                </Box>
-              </>
-            )}
-
-            {/* Sign Up Link */}
-            <Text textAlign="center" fontSize="sm" color="gray.600">
-              Don't have an account?{" "}
-              <RouterLink 
-                to="/signup" 
-                style={{ 
-                  color: "var(--chakra-colors-teal-600)",
-                  fontWeight: "600",
-                  textDecoration: "none"
-                }}
-              >
-                Sign Up
-              </RouterLink>
-            </Text>
           </VStack>
         </Container>
       </Flex>
