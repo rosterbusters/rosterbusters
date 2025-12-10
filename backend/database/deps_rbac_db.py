@@ -6,7 +6,7 @@ from sqlmodel import Session, select, create_engine
 from pydantic import ValidationError
 import os
 
-from .models_rbac import RBACUser, UserRole, Role, Permission, RolePermission
+from .models_rbac_db import RBACUser, UserRole, Role, Permission, RolePermission
 
 # Database setup
 DATABASE_URL = os.getenv("DATABASE_URL") or f"postgresql://{os.getenv('POSTGRES_USER', 'postgres')}:{os.getenv('POSTGRES_PASSWORD', 'changethis')}@localhost:{os.getenv('POSTGRES_PORT', '5432')}/nurse_rostering"
@@ -130,7 +130,7 @@ def user_can_access_ward(session: Session, user_id: int, ward_id: int) -> bool:
     # Check if user (nurse) is assigned to this ward
     user = session.get(RBACUser, user_id)
     if user and user.NurseID:
-        from .models_rbac import Nurse
+        from .models_rbac_db import Nurse
         nurse = session.get(Nurse, user.NurseID)
         if nurse and nurse.WardID == ward_id:
             return True

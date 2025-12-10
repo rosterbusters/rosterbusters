@@ -1,7 +1,7 @@
 """
 Database models and utilities for SACH Rostering System with RBAC
 """
-from .deps_rbac import (
+from .deps_rbac_db import (
     get_session,
     get_current_user,
     get_user_roles,

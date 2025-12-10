@@ -48,6 +48,22 @@ async def auth_google_callback(
             raise HTTPException(status_code=400, detail="Could not get user info from Google")
         
         email = user_info.get('email')
+        print(f"\n=== DEBUG START ===")
+        print(f"1. Google Email: {repr(email)}")
+        
+        # Ask the DB: 'Who do you have?'
+        all_users = session.exec(select(User)).all()
+        print(f"2. Total users visible to App: {len(all_users)}")
+        for u in all_users:
+            print(f"   - DB User: {repr(u.email)} | Active: {u.is_active}")
+            if u.email == email:
+                print("   *** MATCH FOUND IN LOOP! ***")
+                
+        # Perform the actual lookup
+        user = session.exec(select(User).where(User.email == email)).first()
+        print(f"3. User lookup result: {user}")
+        print(f"=== DEBUG END ===\n")
+        
         if not email:
             raise HTTPException(status_code=400, detail="Email not provided by Google")
         
@@ -76,8 +92,7 @@ async def auth_google_callback(
             session.add(user)
             session.commit()
             session.refresh(user)
-        
-        # NEW: Check/create RBAC user for rostering system
+
         from app.models_rbac import RBACUser, Nurse, NurseManager, Role, UserRole
         
         rbac_statement = select(RBACUser).where(RBACUser.email == email)
@@ -85,18 +100,18 @@ async def auth_google_callback(
         
         if not rbac_user:
             # Check if email matches nurse/manager
-            nurse = session.exec(select(Nurse).where(Nurse.email == email)).first()
-            manager = session.exec(select(NurseManager).where(NurseManager.email == email)).first()
+            nurse = session.exec(select(Nurse).where(Nurse.Email == email)).first()
+            manager = session.exec(select(NurseManager).where(NurseManager.Email == email)).first()
             
             if nurse or manager:
                 rbac_user = RBACUser(
                     username=email.split('@')[0],
                     email=email,
-                    password_hash=get_password_hash(security.generate_random_password()),
-                    nurse_id=nurse.nurse_id if nurse else None,
-                    manager_id=manager.manager_id if manager else None,
-                    is_active=True,
-                    created_at=datetime.now(timezone.utc) #change to datetime.now(datetime.utc) for python 3.11 onwards
+                    passwordhash=get_password_hash(security.generate_random_password()), # FIX: passwordhash
+                    nurseid=nurse.NurseID if nurse else None,       # FIX: nurseid, NurseID
+                    managerid=manager.ManagerID if manager else None, # FIX: managerid, ManagerID
+                    isactive=True,                                  # FIX: isactive
+                    createdat=datetime.now(timezone.utc) #change to datetime.now(datetime.utc) for python 3.11 onwards
                 )
                 session.add(rbac_user)
                 session.commit()
@@ -106,12 +121,12 @@ async def auth_google_callback(
                 if nurse:
                     role = session.exec(select(Role).where(Role.role_name == "Nurse")).first()
                     if role:
-                        session.add(UserRole(user_id=rbac_user.user_id, role_id=role.role_id, is_active=True))
+                        session.add(UserRole(UserID=rbac_user.userid, RoleID=role.RoleID, is_active=True))
                 
                 if manager:
                     role = session.exec(select(Role).where(Role.role_name == "NurseManager")).first()
                     if role:
-                        session.add(UserRole(user_id=rbac_user.user_id, role_id=role.role_id, is_active=True))
+                        session.add(UserRole(UserID=rbac_user.userid, RoleID=role.RoleID, is_active=True))
                 
                 session.commit()
         

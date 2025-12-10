@@ -3,7 +3,7 @@ Initialize database with sample data for testing RBAC system
 Run: python -m backend.database.init_db
 """
 from sqlmodel import SQLModel
-from backend.database.deps_rbac import engine
+from backend.database.deps_rbac_db import engine
 from sqlmodel import Session, create_engine, select
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -16,7 +16,7 @@ load_dotenv()
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.models_rbac import (
+from backend.database.models_rbac_db import (
     Ward, Nurse, NurseManager, RosterPeriod,
     RBACUser, Role, UserRole
 )
@@ -168,7 +168,7 @@ def init_sample_data():
             AssignedAt=datetime.now(timezone.utc)
         )
         session.add(manager_user_role)
-        print("✓ Manager: sarah.lim@sach.com.sg / manager123")
+        print("✓ Manager: sarah.lim@sach.org.sg / manager123")
         
         # 8. Create Nurse Users (first 2)
         for i, nurse in enumerate(created_nurses[:2]):

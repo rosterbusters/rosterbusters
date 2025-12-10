@@ -62,7 +62,7 @@ function Login() {
       h="100vh" 
       w="100vw" 
       direction={{ base: "column", lg: "row" }}
-      overflow="hidden"
+      overflowY={{ base: "auto", lg: "hidden" }}
       bg="white"
     >
       {/* Visual Side */}
@@ -210,6 +210,7 @@ function Login() {
                   Log In
                 </Button>
 
+                {/* Forgot Password Link */}
                 <Flex justify="center" pt={1}>
                   <RouterLink 
                     to="/recover-password" 
@@ -221,6 +222,24 @@ function Login() {
                     }}
                   >
                     Forgot Password?
+                  </RouterLink>
+                </Flex>
+
+                {/* Sign Up */}
+                <Flex justify="center" align="center" gap={2} pt={2}>
+                  <Text fontSize="sm" color="gray.500">
+                    Don't have an account?
+                  </Text>
+                  <RouterLink 
+                    to="/signup" 
+                    style={{ 
+                      color: "var(--chakra-colors-teal-600)", 
+                      fontSize: "13px", 
+                      fontWeight: 600,
+                      textDecoration: "none"
+                    }}
+                  >
+                    Sign Up
                   </RouterLink>
                 </Flex>
               </VStack>
