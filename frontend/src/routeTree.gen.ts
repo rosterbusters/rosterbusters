@@ -14,6 +14,8 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
+import { Route as WardStaffIndexRouteImport } from './routes/wardStaff/index'
+import { Route as NurseManagerIndexRouteImport } from './routes/nurseManager/index'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
@@ -42,6 +44,16 @@ const LoginRoute = LoginRouteImport.update({
 } as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WardStaffIndexRoute = WardStaffIndexRouteImport.update({
+  id: '/wardStaff/',
+  path: '/wardStaff/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NurseManagerIndexRoute = NurseManagerIndexRouteImport.update({
+  id: '/nurseManager/',
+  path: '/nurseManager/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutIndexRoute = LayoutIndexRouteImport.update({
@@ -80,6 +92,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof LayoutSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/': typeof LayoutIndexRoute
+  '/nurseManager': typeof NurseManagerIndexRoute
+  '/wardStaff': typeof WardStaffIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -91,6 +105,8 @@ export interface FileRoutesByTo {
   '/settings': typeof LayoutSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/': typeof LayoutIndexRoute
+  '/nurseManager': typeof NurseManagerIndexRoute
+  '/wardStaff': typeof WardStaffIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -104,6 +120,8 @@ export interface FileRoutesById {
   '/_layout/settings': typeof LayoutSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/_layout/': typeof LayoutIndexRoute
+  '/nurseManager/': typeof NurseManagerIndexRoute
+  '/wardStaff/': typeof WardStaffIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,6 +135,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/auth/callback'
     | '/'
+    | '/nurseManager'
+    | '/wardStaff'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -128,6 +148,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/auth/callback'
     | '/'
+    | '/nurseManager'
+    | '/wardStaff'
   id:
     | '__root__'
     | '/_layout'
@@ -140,6 +162,8 @@ export interface FileRouteTypes {
     | '/_layout/settings'
     | '/auth/callback'
     | '/_layout/'
+    | '/nurseManager/'
+    | '/wardStaff/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -149,6 +173,8 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  NurseManagerIndexRoute: typeof NurseManagerIndexRoute
+  WardStaffIndexRoute: typeof WardStaffIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -186,6 +212,20 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: ''
       preLoaderRoute: typeof LayoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/wardStaff/': {
+      id: '/wardStaff/'
+      path: '/wardStaff'
+      fullPath: '/wardStaff'
+      preLoaderRoute: typeof WardStaffIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nurseManager/': {
+      id: '/nurseManager/'
+      path: '/nurseManager'
+      fullPath: '/nurseManager'
+      preLoaderRoute: typeof NurseManagerIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout/': {
@@ -250,6 +290,8 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  NurseManagerIndexRoute: NurseManagerIndexRoute,
+  WardStaffIndexRoute: WardStaffIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
