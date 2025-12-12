@@ -1,3 +1,9 @@
+# Setup
+1. Place .env file in root directory
+2. Place google_auth_credentials.json into the backend/
+3. docker-compose up
+```
+```
 # Full Stack FastAPI Template
 
 <a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3ATest" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test/badge.svg" alt="Test"></a>
