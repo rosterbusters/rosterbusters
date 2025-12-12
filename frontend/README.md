@@ -1,3 +1,9 @@
+# Set Up Guide
+1. Set up .env file in root folder
+2. Set up google_oauth_credential.json in backend folder
+3. Run `docker-compose up`
+
+
 # FastAPI Project - Frontend
 
 The frontend is built with [Vite](https://vitejs.dev/), [React](https://reactjs.org/), [TypeScript](https://www.typescriptlang.org/), [TanStack Query](https://tanstack.com/query), [TanStack Router](https://tanstack.com/router) and [Chakra UI](https://chakra-ui.com/).
