@@ -3,6 +3,10 @@
 2. Set up google_oauth_credential.json in backend folder
 3. Run `docker-compose up`
 
+# Tanstack router
+1. npm run dev/npm run watch-routes
+2. this will create the routes automatically when creating new pages in routes
+
 
 # FastAPI Project - Frontend
 
