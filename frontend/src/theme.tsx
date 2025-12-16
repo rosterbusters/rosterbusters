@@ -24,6 +24,9 @@ export const system = createSystem(defaultConfig, {
     semanticTokens: {
       colors: {
       danger:{value:'rose-700'},
+      success:{value:'lime-600'},
+      faintforeground:{value:'neutral-400'},
+      menuactive:{value:'#DDE8EA'},
       brand:{
         solid:{value:'cyan-600'},
         fg:{value:'#737373'}
