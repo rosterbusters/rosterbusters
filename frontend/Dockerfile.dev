@@ -1,20 +1,15 @@
 # Use Node for development
-FROM node:20
+FROM node:25
 
-# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json first (for caching npm install)
 COPY package*.json ./
 
-# Install dependencies (including dev dependencies like concurrently)
-RUN npm install
+RUN rm -rf node_modules package-lock.json && \
+    npm install --force
 
-# Copy all source code
 COPY . .
 
-# Expose Vite dev server port
 EXPOSE 5173
 
-# Default command: run watch-routes + Vite dev server concurrently
-CMD ["npx", "concurrently", "npm run watch-routes", "vite --host"]
+CMD ["npm", "run", "dev", "--", "--host"]

@@ -100,17 +100,17 @@ async def auth_google_callback(
         
         if not rbac_user:
             # Check if email matches nurse/manager
-            nurse = session.exec(select(Nurse).where(Nurse.Email == email)).first()
-            manager = session.exec(select(NurseManager).where(NurseManager.Email == email)).first()
+            nurse = session.exec(select(Nurse).where(Nurse.email == email)).first()
+            manager = session.exec(select(NurseManager).where(NurseManager.email == email)).first()
             
             if nurse or manager:
                 rbac_user = RBACUser(
                     username=email.split('@')[0],
                     email=email,
-                    passwordhash=get_password_hash(security.generate_random_password()), # FIX: passwordhash
-                    nurseid=nurse.NurseID if nurse else None,       # FIX: nurseid, NurseID
-                    managerid=manager.ManagerID if manager else None, # FIX: managerid, ManagerID
-                    isactive=True,                                  # FIX: isactive
+                    passwordhash=get_password_hash(security.generate_random_password()),
+                    nurseid=nurse.nurseid if nurse else None,
+                    managerid=manager.managerid if manager else None,
+                    isactive=True,
                     createdat=datetime.now(timezone.utc) #change to datetime.now(datetime.utc) for python 3.11 onwards
                 )
                 session.add(rbac_user)
@@ -119,14 +119,14 @@ async def auth_google_callback(
                 
                 # Assign role
                 if nurse:
-                    role = session.exec(select(Role).where(Role.role_name == "Nurse")).first()
+                    role = session.exec(select(Role).where(Role.rolename == "Nurse")).first()
                     if role:
-                        session.add(UserRole(UserID=rbac_user.userid, RoleID=role.RoleID, is_active=True))
+                        session.add(UserRole(userid=rbac_user.userid, roleid=role.roleid, isactive=True))
                 
                 if manager:
-                    role = session.exec(select(Role).where(Role.role_name == "NurseManager")).first()
+                    role = session.exec(select(Role).where(Role.rolename == "NurseManager")).first()
                     if role:
-                        session.add(UserRole(UserID=rbac_user.userid, RoleID=role.RoleID, is_active=True))
+                        session.add(UserRole(userid=rbac_user.userid, roleid=role.roleid, isactive=True))
                 
                 session.commit()
         

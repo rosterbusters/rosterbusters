@@ -18,40 +18,41 @@ class RBACUser(SQLModel, table=True):
     createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column("createdat", DateTime(timezone=True)))
 
 class Nurse(SQLModel, table=True):
-    __tablename__ = "Nurse"
-    
-    NurseID: Optional[int] = Field(default=None, primary_key=True)
-    Name: str = Field(max_length=100)
-    Designation: str = Field(max_length=50)
-    Email: str = Field(max_length=100)
-    ContactNumber: str = Field(max_length=20)
-    WardID: int
-    EmploymentType: str = Field(max_length=20)
-    IsActive: bool = Field(default=True)
+    __tablename__ = "nurse"
+    nurseid: int | None = Field(default=None, primary_key=True) 
+    name: str
+    designation: str
+    email: str
+    contactnumber: str
+    wardid: int | None
+    employmenttype: str
+    isactive: bool
 
 class NurseManager(SQLModel, table=True):
-    __tablename__ = "NurseManager"
+    __tablename__ = "nursemanager"
     
-    ManagerID: Optional[int] = Field(default=None, primary_key=True)
-    Name: str = Field(max_length=100)
-    Email: str = Field(max_length=100)
-    ContactNumber: str = Field(max_length=20)
-    IsActive: bool = Field(default=True)
+    managerid: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=100)
+    email: str = Field(max_length=100)
+    contactnumber: str = Field(max_length=20)
+    isactive: bool = Field(default=True)
+    createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column("createdat", DateTime(timezone=True)))
 
 class Role(SQLModel, table=True):
-    __tablename__ = "Role"
+    __tablename__ = "role"
     
-    RoleID: Optional[int] = Field(default=None, primary_key=True)
-    RoleName: str = Field(max_length=50)
-    DisplayName: str = Field(max_length=100)
-    IsActive: bool = Field(default=True)
+    roleid: Optional[int] = Field(default=None, primary_key=True)
+    rolename: str = Field(max_length=50)
+    displayname: str = Field(max_length=100)
+    isactive: bool = Field(default=True)
+    createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column("createdat", DateTime(timezone=True)))
 
 class UserRole(SQLModel, table=True):
-    __tablename__ = "UserRole"
+    __tablename__ = "userrole"
     
-    UserRoleID: Optional[int] = Field(default=None, primary_key=True)
-    UserID: int
-    RoleID: int
-    WardID: Optional[int] = None
-    IsActive: bool = Field(default=True)
-    AssignedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    userroleid: Optional[int] = Field(default=None, primary_key=True)
+    userid: int
+    roleid: int
+    wardid: Optional[int] = None
+    isactive: bool = Field(default=True)
+    assignedat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

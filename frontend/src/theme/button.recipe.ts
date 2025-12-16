@@ -6,10 +6,24 @@ export const buttonRecipe = defineRecipe({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    colorPalette: "teal",
+    colorPalette: "primary",
   },
   variants: {
     variant: {
+      solid:{
+        bg:"primary",
+        color:'white',
+        _hover: {
+          bg: "gray.100",
+        },
+      },
+      outline:{
+        bg:"white",
+        color:'primary',
+        _hover: {
+          bg: "gray.100",
+        },
+      },
       ghost: {
         bg: "transparent",
         _hover: {

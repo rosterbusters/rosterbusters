@@ -23,6 +23,7 @@ dependencies = [
     "sentry-sdk[fastapi]<2.0.0,>=1.40.6",
     "pyjwt<3.0.0,>=2.8.0",
     "itsdangerous<3.0.0,>=2.1.2",
+    "psycopg2-binary (>=2.9.11,<3.0.0)",
 ]
 
 [tool.uv]

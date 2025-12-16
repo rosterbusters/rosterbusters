@@ -17,10 +17,37 @@ export const system = createSystem(defaultConfig, {
     },
   },
   theme: {
-    tokens: {
+    breakpoints:{
+      mobile:'0px',
+      desktop:'640px'
+    },
+    semanticTokens: {
       colors: {
+      danger:{value:'rose-700'},
+      brand:{
+        solid:{value:'cyan-600'},
+        fg:{value:'#737373'}
+      },
+      primary: { value: '#155E75' },
+      secondary: { value: '#FFFFFF' },
+      background: { value: '#FFFFFF' },
+      foreground: { value: '#737373' },
+        shiftcodes:{
+          day:{value:'cyan.600'},
+          am:{value:'cyan.500'},
+          night:{value:'cyan.900'},
+          pm:{value:'cyan.700'},
+          do:{value:'neutral.400'},
+          al:{value:'slate.400'}
+        },
+        requestcodes:{
+          shiftreq:{value:'cyan.600'},
+          leavereq:{value:'blue.500'},
+          roster:{value:'cyan.600'},
+          probation:{value:'yellow.500'}
+        },
         ui: {
-          main: { value: "#009688" },
+          main: { value: "#155E75" },
         },
       },
     },

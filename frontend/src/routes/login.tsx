@@ -1,10 +1,9 @@
 import { Box, Container, Flex, Heading, Image, Text, VStack, Separator, IconButton } from "@chakra-ui/react"
-import { createFileRoute, Link as RouterLink, redirect } from "@tanstack/react-router"
-import { type SubmitHandler, useForm } from "react-hook-form"
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router"
 import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
-import { useState } from "react"
-
+import { useState } from "react"; 
+import { useForm, SubmitHandler } from 'react-hook-form';
 import type { Body_login_login_access_token as AccessToken } from "@/client"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
@@ -17,9 +16,9 @@ export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
     if (isLoggedIn()) {
-      throw redirect({
-        to: "/",
-      })
+      // throw redirect({
+      //   to: "/",
+      // })
     }
   },
 })
@@ -199,12 +198,10 @@ function Login() {
 
                 <Button
                   type="submit"
+                  variant='solid'
                   size="md"
                   w="100%"
                   loading={isSubmitting}
-                  bg="teal.600"
-                  _hover={{ bg: "teal.700" }}
-                  color="white"
                   mt={1}
                 >
                   Log In
@@ -233,7 +230,6 @@ function Login() {
                   <RouterLink 
                     to="/signup" 
                     style={{ 
-                      color: "var(--chakra-colors-teal-600)", 
                       fontSize: "13px", 
                       fontWeight: 600,
                       textDecoration: "none"
