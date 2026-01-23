@@ -1,7 +1,7 @@
 
 .rbc-header, .rbc-toolbar-label{
     font-family: "Poppins", sans-serif;
-    font-weight: 400;
+    font-weight: 500;
     color:#737373;
 }
 .rbc-event-content{
@@ -58,7 +58,7 @@
 
 
 $out-of-range-color: lighten(#333, 40%);
-$out-of-range-bg-color: lighten(#333, 70%);
+$out-of-range-bg-color: #F5F5F5;
 
 $calendar-border: #E5E5E5;
 $cell-border: #E5E5E5;
