@@ -48,7 +48,7 @@ export default function NotificationBanner() {
         <Table.Body>
           {Notifications.map((item) => (
             <Table.Row lineHeight={"36px"} key={item.notificationid}>
-              <Table.Cell lineHeight={"36px"}><Badge variant={item.notificationtype}>{notificationTypeLabels[item.notificationtype]}</Badge></Table.Cell>
+              <Table.Cell lineHeight={"36px"}><Badge width="fit-content" variant={item.notificationtype}>{notificationTypeLabels[item.notificationtype]}</Badge></Table.Cell>
               <Table.Cell color="foreground">{item.description}</Table.Cell>
               <Table.Cell color="foreground" fontWeight={"semibold"}>{item.date}</Table.Cell>
             </Table.Row>
