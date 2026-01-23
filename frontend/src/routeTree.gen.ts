@@ -97,6 +97,7 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof LayoutIndexRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -146,6 +147,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -238,21 +240,21 @@ declare module '@tanstack/react-router' {
     '/_layout': {
       id: '/_layout'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/wardStaff/': {
       id: '/wardStaff/'
       path: '/wardStaff'
-      fullPath: '/wardStaff'
+      fullPath: '/wardStaff/'
       preLoaderRoute: typeof WardStaffIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/nurseManager/': {
       id: '/nurseManager/'
       path: '/nurseManager'
-      fullPath: '/nurseManager'
+      fullPath: '/nurseManager/'
       preLoaderRoute: typeof NurseManagerIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -262,6 +264,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
+    }
+    '/wardStaff/staffrosterschedule': {
+      id: '/wardStaff/staffrosterschedule'
+      path: '/wardStaff/staffrosterschedule'
+      fullPath: '/wardStaff/staffrosterschedule'
+      preLoaderRoute: typeof WardStaffStaffrosterscheduleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/wardStaff/leaveandshiftrequest': {
+      id: '/wardStaff/leaveandshiftrequest'
+      path: '/wardStaff/leaveandshiftrequest'
+      fullPath: '/wardStaff/leaveandshiftrequest'
+      preLoaderRoute: typeof WardStaffLeaveandshiftrequestRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/wardStaff/staffrosterschedule': {
       id: '/wardStaff/staffrosterschedule'
