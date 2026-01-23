@@ -108,9 +108,8 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/wardStaff/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
   '/wardStaff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
-  '/': typeof LayoutIndexRoute
-  '/nurseManager': typeof NurseManagerIndexRoute
-  '/wardStaff': typeof WardStaffIndexRoute
+  '/nurseManager/': typeof NurseManagerIndexRoute
+  '/wardStaff/': typeof WardStaffIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -158,9 +157,8 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/wardStaff/leaveandshiftrequest'
     | '/wardStaff/staffrosterschedule'
-    | '/'
-    | '/nurseManager'
-    | '/wardStaff'
+    | '/nurseManager/'
+    | '/wardStaff/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -264,20 +262,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
-    }
-    '/wardStaff/staffrosterschedule': {
-      id: '/wardStaff/staffrosterschedule'
-      path: '/wardStaff/staffrosterschedule'
-      fullPath: '/wardStaff/staffrosterschedule'
-      preLoaderRoute: typeof WardStaffStaffrosterscheduleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/wardStaff/leaveandshiftrequest': {
-      id: '/wardStaff/leaveandshiftrequest'
-      path: '/wardStaff/leaveandshiftrequest'
-      fullPath: '/wardStaff/leaveandshiftrequest'
-      preLoaderRoute: typeof WardStaffLeaveandshiftrequestRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/wardStaff/staffrosterschedule': {
       id: '/wardStaff/staffrosterschedule'
