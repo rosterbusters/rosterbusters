@@ -17,3 +17,6 @@ CLAUDE.md
 .idea/dataSources/f770aca0-75c2-45ea-93b3-9d4bc43e037d/storage_v2/_src_/database/postgres.edMnLQ/schema/information_schema.FNRwLQ.meta
 .idea/dataSources/f770aca0-75c2-45ea-93b3-9d4bc43e037d/storage_v2/_src_/database/postgres.edMnLQ/schema/pg_catalog.0S1ZNQ.meta
 .idea/dataSources/f770aca0-75c2-45ea-93b3-9d4bc43e037d/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta
+
+CLAUDE.md
+.claude/settings.local.json
