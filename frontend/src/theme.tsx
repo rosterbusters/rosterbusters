@@ -1,8 +1,10 @@
 import { createSystem, defaultConfig } from "@chakra-ui/react";
 import { buttonRecipe } from "./theme/button.recipe";
 import { badgeRecipe } from "./theme/badge.recipe";
+import { tableRecipe } from "./theme/table.recipe";
 
 export const system = createSystem(defaultConfig, {
+  preflight: false,
   globalCss: {
     html: {
       fontSize: "16px",
@@ -61,6 +63,9 @@ export const system = createSystem(defaultConfig, {
     recipes: {
       button: buttonRecipe,
       badge: badgeRecipe,
+    },
+    slotRecipes: {
+      table: tableRecipe,
     },
   },
 });
