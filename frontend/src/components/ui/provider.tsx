@@ -5,7 +5,6 @@ import { type PropsWithChildren } from "react"
 import { system } from "../../theme"
 import { ColorModeProvider } from "./color-mode"
 import { Toaster } from "./toaster"
-
 export function CustomProvider(props: PropsWithChildren) {
   return (
     <ChakraProvider value={system}>
