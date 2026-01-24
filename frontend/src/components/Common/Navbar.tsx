@@ -46,13 +46,13 @@ function Navbar() {
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
   const navPillBaseStyles =
-    "inline-flex h-8 items-center justify-center gap-0 rounded-lg px-6 text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2";
+    "inline-flex h-8 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2";
   const navPillActiveStyles = "bg-[#DDE8EA] !text-[#4B8798]";
   const navPillInactiveStyles =
     "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50";
   // Utility pill for non-clickable elements (like staff name display)
   const utilityPillStyles =
-    "inline-flex h-10 w-30 items-center gap-2 rounded-xl px-6 text-sm font-medium tracking-[0.07px]";
+    "cursor-pointer inline-flex h-10 items-center gap-2 rounded-xl px-6 text-sm font-medium tracking-[0.07px]";
 
   return (
     <nav
@@ -94,12 +94,8 @@ function Navbar() {
                         : navPillInactiveStyles,
                     )}
                   >
-                    <div className="flex w-10 items-center justify-center shrink-0">
                       <Home className="h-4 w-4 text-[#4B8798]" />
-                    </div>
-                    <div className="flex items-center pl-2 pr-6 w-15">
-                      <span>Home</span>
-                    </div>
+                    <span>Home</span>
                   </Link>
                 </NavigationMenuLink>
               </NavigationMenuItem>
@@ -116,12 +112,8 @@ function Navbar() {
                         : navPillInactiveStyles,
                     )}
                   >
-                    <div className="flex w-10 items-center justify-center shrink-0">
                       <Table className="h-4 w-4 text-[#4B8798]" />
-                    </div>
-                    <div className="flex items-center pl-2 pr-6 w-40">
-                      <span>Staff Roster Schedule</span>
-                    </div>
+                    <span>Staff Roster Schedule</span>
                   </Link>
                 </NavigationMenuLink>
               </NavigationMenuItem>
@@ -140,12 +132,8 @@ function Navbar() {
                     "data-[state=open]:!bg-[#DDE8EA]/50",
                   )}
                 >
-                  <div className="flex w-10 items-center justify-center shrink-0">
                     <NotebookPen className="h-4 w-4 text-[#4B8798]" />
-                  </div>
-                  <div className="flex items-center pl-2 !pr-2">
                     <span>Leave and Shift Request </span>
-                  </div>
                 </NavigationMenuTrigger>
                 <NavigationMenuContent className="left-0 w-full min-w-full translate-y-1 rounded-md border border-[#E6E6E6] bg-white p-1 shadow-md">
                   <ul className="flex flex-col gap-0.5">
@@ -197,12 +185,8 @@ function Navbar() {
                         : navPillInactiveStyles,
                     )}
                   >
-                    <div className="flex w-10 items-center justify-center shrink-0">
                       <Settings className="h-4 w-4 text-[#4B8798]" />
-                    </div>
-                    <span className="flex items-center pl-2 pr-6 w-20">
                       Settings
-                    </span>
                   </Link>
                 </NavigationMenuLink>
               </NavigationMenuItem>
