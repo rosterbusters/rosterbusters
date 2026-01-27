@@ -21,6 +21,7 @@ import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as WardStaffStaffrosterscheduleRouteImport } from './routes/_wardStaff/staffrosterschedule'
 import { Route as WardStaffShiftRequestRouteImport } from './routes/_wardStaff/shift-request'
 import { Route as WardStaffSettingsRouteImport } from './routes/_wardStaff/settings'
+import { Route as WardStaffRequestApplicationRouteImport } from './routes/_wardStaff/request-application'
 import { Route as WardStaffLeaveandshiftrequestRouteImport } from './routes/_wardStaff/leaveandshiftrequest'
 import { Route as WardStaffLeaveRequestRouteImport } from './routes/_wardStaff/leave-request'
 import { Route as WardStaffHomeRouteImport } from './routes/_wardStaff/home'
@@ -86,6 +87,12 @@ const WardStaffSettingsRoute = WardStaffSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => WardStaffRoute,
 } as any)
+const WardStaffRequestApplicationRoute =
+  WardStaffRequestApplicationRouteImport.update({
+    id: '/request-application',
+    path: '/request-application',
+    getParentRoute: () => WardStaffRoute,
+  } as any)
 const WardStaffLeaveandshiftrequestRoute =
   WardStaffLeaveandshiftrequestRouteImport.update({
     id: '/leaveandshiftrequest',
@@ -124,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/home': typeof WardStaffHomeRoute
   '/leave-request': typeof WardStaffLeaveRequestRoute
   '/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
+  '/request-application': typeof WardStaffRequestApplicationRoute
   '/settings': typeof WardStaffSettingsRoute
   '/shift-request': typeof WardStaffShiftRequestRoute
   '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
@@ -141,6 +149,7 @@ export interface FileRoutesByTo {
   '/home': typeof WardStaffHomeRoute
   '/leave-request': typeof WardStaffLeaveRequestRoute
   '/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
+  '/request-application': typeof WardStaffRequestApplicationRoute
   '/settings': typeof WardStaffSettingsRoute
   '/shift-request': typeof WardStaffShiftRequestRoute
   '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
@@ -160,6 +169,7 @@ export interface FileRoutesById {
   '/_wardStaff/home': typeof WardStaffHomeRoute
   '/_wardStaff/leave-request': typeof WardStaffLeaveRequestRoute
   '/_wardStaff/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
+  '/_wardStaff/request-application': typeof WardStaffRequestApplicationRoute
   '/_wardStaff/settings': typeof WardStaffSettingsRoute
   '/_wardStaff/shift-request': typeof WardStaffShiftRequestRoute
   '/_wardStaff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
@@ -180,6 +190,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/leave-request'
     | '/leaveandshiftrequest'
+    | '/request-application'
     | '/settings'
     | '/shift-request'
     | '/staffrosterschedule'
@@ -197,6 +208,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/leave-request'
     | '/leaveandshiftrequest'
+    | '/request-application'
     | '/settings'
     | '/shift-request'
     | '/staffrosterschedule'
@@ -215,6 +227,7 @@ export interface FileRouteTypes {
     | '/_wardStaff/home'
     | '/_wardStaff/leave-request'
     | '/_wardStaff/leaveandshiftrequest'
+    | '/_wardStaff/request-application'
     | '/_wardStaff/settings'
     | '/_wardStaff/shift-request'
     | '/_wardStaff/staffrosterschedule'
@@ -320,6 +333,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WardStaffSettingsRouteImport
       parentRoute: typeof WardStaffRoute
     }
+    '/_wardStaff/request-application': {
+      id: '/_wardStaff/request-application'
+      path: '/request-application'
+      fullPath: '/request-application'
+      preLoaderRoute: typeof WardStaffRequestApplicationRouteImport
+      parentRoute: typeof WardStaffRoute
+    }
     '/_wardStaff/leaveandshiftrequest': {
       id: '/_wardStaff/leaveandshiftrequest'
       path: '/leaveandshiftrequest'
@@ -375,6 +395,7 @@ interface WardStaffRouteChildren {
   WardStaffHomeRoute: typeof WardStaffHomeRoute
   WardStaffLeaveRequestRoute: typeof WardStaffLeaveRequestRoute
   WardStaffLeaveandshiftrequestRoute: typeof WardStaffLeaveandshiftrequestRoute
+  WardStaffRequestApplicationRoute: typeof WardStaffRequestApplicationRoute
   WardStaffSettingsRoute: typeof WardStaffSettingsRoute
   WardStaffShiftRequestRoute: typeof WardStaffShiftRequestRoute
   WardStaffStaffrosterscheduleRoute: typeof WardStaffStaffrosterscheduleRoute
@@ -385,6 +406,7 @@ const WardStaffRouteChildren: WardStaffRouteChildren = {
   WardStaffHomeRoute: WardStaffHomeRoute,
   WardStaffLeaveRequestRoute: WardStaffLeaveRequestRoute,
   WardStaffLeaveandshiftrequestRoute: WardStaffLeaveandshiftrequestRoute,
+  WardStaffRequestApplicationRoute: WardStaffRequestApplicationRoute,
   WardStaffSettingsRoute: WardStaffSettingsRoute,
   WardStaffShiftRequestRoute: WardStaffShiftRequestRoute,
   WardStaffStaffrosterscheduleRoute: WardStaffStaffrosterscheduleRoute,

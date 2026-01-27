@@ -20,6 +20,7 @@ export const buttonRecipe = defineRecipe({
       outline:{
         bg:"white",
         color:'primary',
+        fontWeight:'normal',
         _hover: {
           bg: "gray.100",
         },
