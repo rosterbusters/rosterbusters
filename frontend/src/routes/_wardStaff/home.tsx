@@ -36,7 +36,7 @@ function HomePage() {
           bgColor={"white"}
           rounded={"lg"}
           p={7}
-          height={{ base: "600px", md: "900px" }}
+          minH={{ base: "600px", md: "900px" }}
           overflowX="auto"
         >
           <Box minW="400px" h="100%" minHeight={"560px"}>
