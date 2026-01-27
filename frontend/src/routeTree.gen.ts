@@ -121,7 +121,6 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof WardStaffIndexRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -136,10 +135,10 @@ export interface FileRoutesByFullPath {
   '/shift-request': typeof WardStaffShiftRequestRoute
   '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/nurseManager/': typeof NurseManagerIndexRoute
+  '/': typeof WardStaffIndexRoute
+  '/nurseManager': typeof NurseManagerIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof WardStaffIndexRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -154,6 +153,7 @@ export interface FileRoutesByTo {
   '/shift-request': typeof WardStaffShiftRequestRoute
   '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/': typeof WardStaffIndexRoute
   '/nurseManager': typeof NurseManagerIndexRoute
 }
 export interface FileRoutesById {
@@ -180,7 +180,6 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -195,10 +194,10 @@ export interface FileRouteTypes {
     | '/shift-request'
     | '/staffrosterschedule'
     | '/auth/callback'
-    | '/nurseManager/'
+    | '/'
+    | '/nurseManager'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -213,6 +212,7 @@ export interface FileRouteTypes {
     | '/shift-request'
     | '/staffrosterschedule'
     | '/auth/callback'
+    | '/'
     | '/nurseManager'
   id:
     | '__root__'
@@ -280,21 +280,21 @@ declare module '@tanstack/react-router' {
     '/_wardStaff': {
       id: '/_wardStaff'
       path: ''
-      fullPath: '/'
+      fullPath: ''
       preLoaderRoute: typeof WardStaffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
       id: '/_layout'
       path: ''
-      fullPath: '/'
+      fullPath: ''
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/nurseManager/': {
       id: '/nurseManager/'
       path: '/nurseManager'
-      fullPath: '/nurseManager/'
+      fullPath: '/nurseManager'
       preLoaderRoute: typeof NurseManagerIndexRouteImport
       parentRoute: typeof rootRouteImport
     }

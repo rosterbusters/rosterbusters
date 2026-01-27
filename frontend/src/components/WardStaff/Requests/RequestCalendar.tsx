@@ -1,6 +1,8 @@
-import { Calendar, momentLocalizer, View, Views } from 'react-big-calendar'
+import { Calendar, momentLocalizer, View } from 'react-big-calendar'
 import moment from 'moment'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import CustomWeekView from './CustomRequestView'
+import { Box } from '@chakra-ui/react'
 
 const localizer = momentLocalizer(moment);
 
@@ -27,24 +29,35 @@ const events = [
 
 
 export default function RequestCalendar() {
-  const [view, setView] = useState<View>(Views.MONTH);
   const [date, setDate] = useState(new Date());
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
-  const onView = useCallback((newView: View) => setView(newView), []);
+
+  const { views, defaultView } = useMemo(() => {
+  const customViews = {
+    fortnight: CustomWeekView,
+    week: false,                
+    day: false,
+  };
+
+  return {
+    views: customViews,
+    defaultView: "fortnight" as View,
+  };
+}, []);
 
   return (
-    <div style={{ height: '100%' }}>
+    <Box h="100%" w="100%" borderWidth={"1px"} p={3} borderColor={"border"} borderRadius={10}>
       <Calendar
         localizer={localizer}
         startAccessor="start"
         endAccessor="end"
         events={events}
-        view={view}
+        view={defaultView}
+        views={views}
         date={date}
         onNavigate={onNavigate}
-        onView={onView}
       />
-    </div>
+    </Box>
   )
 }

@@ -5,9 +5,17 @@ import { tableRecipe } from "./theme/table.recipe";
 
 export const system = createSystem(defaultConfig, {
   preflight: false,
+  
   globalCss: {
+    
     html: {
       fontSize: "16px",
+      fontFamily: "Poppins, sans-serif",
+    },
+    h1:{
+      fontFamily: "Poppins, sans-serif",
+    },
+    h2:{
       fontFamily: "Poppins, sans-serif",
     },
     body: {

@@ -8,9 +8,11 @@ import {
   Flex,
   Text,
   ButtonGroup,
+  GridItem,
+  Grid,
+  Badge,
   Button,
 } from "@chakra-ui/react";
-import { Calendar } from "@/components/ui/calendar"
 import RequestCalendar from "@/components/WardStaff/Requests/RequestCalendar";
 
 export const Route = createFileRoute("/_wardStaff/request-application")({
@@ -23,29 +25,48 @@ function handleShiftClicked() {
 function handleLeaveClicked() {
   alert("Leave Requests Clicked");
 }
-export function CalendarBasic() {
-  return <Calendar mode="single" className="rounded-lg border" />
-}
-
 
 function RouteComponent() {
   return (
     <Flex
-      h="100vh"
+      minH="100vh"
       w="100vw"
+      height={"100%"}
       direction={{ base: "column" }}
-      overflowY={{ base: "auto", lg: "hidden" }}
       bgColor={"background2"}
       p={5}
     >
-      <VStack gap={6} justifyItems="center" w={"full"} bgColor={"white"} rounded={"lg"} p={7} >
-          <Heading color="primary">Leave and Shift Request Application</Heading>
-          <HStack>
-            <Button variant={"outline"} onClick={handleShiftClicked}>Shift Requests</Button>
-            <Button variant={"outline"} onClick={handleLeaveClicked}>Leave Requests</Button>
+      <VStack
+        gap={4}
+        justifyItems="center"
+        w={"full"}
+        height={"100%"}
+        bgColor={"white"}
+        rounded={"lg"}
+        p={7}
+      >
+        <Heading color="primary">Leave and Shift Request Application</Heading>
+        <HStack>
+          <Button variant={"outline"} onClick={handleShiftClicked}>
+            Shift Requests
+          </Button>
+          <Button variant={"outline"} onClick={handleLeaveClicked}>
+            Leave Requests
+          </Button>
+        </HStack>
+        <Grid templateColumns="1fr auto 1fr" w="full">
+          <GridItem />
+          <Text color="foreground" fontWeight="light" justifySelf="center">
+            Click on a date to create/edit shift request.
+          </Text>
+          <HStack justifySelf="end">
+            <Text color="foreground" fontWeight="light">
+              Assignable:
+            </Text>
+            <Badge variant="requests">Requests: 1</Badge>
           </HStack>
-          <Text color="foreground" fontWeight={"light"}>Click on a date to create/edit shift request.</Text>
-          <RequestCalendar />
+        </Grid>
+        <RequestCalendar />
       </VStack>
     </Flex>
   );

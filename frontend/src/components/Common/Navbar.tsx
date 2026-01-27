@@ -140,10 +140,10 @@ function Navbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/leave-request"
+                          to="/request-application"
                           className={cn(
                             "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/leave-request")
+                            isActive("/request-application")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
