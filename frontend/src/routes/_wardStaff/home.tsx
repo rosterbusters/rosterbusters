@@ -1,22 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Calendar, momentLocalizer } from "react-big-calendar";
-import moment from "moment";
 import {
   Box,
-  HStack,
-  VStack,
-  Text,
-  Heading,
-  Table,
   Flex,
-  Grid,
-  GridItem,
   Stack,
 } from "@chakra-ui/react";
 import StaffCalendar from "../../components/WardStaff/HomePage/StaffCalendar";
 import NotificationBanner from "../../components/WardStaff/HomePage/NotificationBanner";
 import StatusBanner from "@/components/WardStaff/HomePage/StatusBanner";
-import { BoxIcon } from "lucide-react";
 
 export const Route = createFileRoute("/_wardStaff/home")({
   component: HomePage,
@@ -32,7 +22,7 @@ function HomePage() {
       bgColor={"background2"}
       p={5}
     >
-        <Stack direction={{ mobile: "column", desktop: "row" }} gap={6} w={"full"}>
+        <Stack direction={{ base: "column", md: "row" }} gap={6} w={"full"}>
           
             <StatusBanner />
 
@@ -46,10 +36,10 @@ function HomePage() {
           bgColor={"white"}
           rounded={"lg"}
           p={7}
-          height={{ mobile: "600px", desktop: "900px" }}
+          height={{ base: "600px", md: "900px" }}
           overflowX="auto"
         >
-          <Box minW="400px"h="100%">
+          <Box minW="400px" h="100%" minHeight={"560px"}>
             <StaffCalendar />
           </Box>
         </Box>

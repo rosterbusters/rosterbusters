@@ -22,10 +22,10 @@ export const system = createSystem(defaultConfig, {
     },
   },
   theme: {
-    breakpoints: {
-      mobile: "0px",
-      desktop: "640px",
-    },
+    // breakpoints: {
+    //   mobile: "0px",
+    //   desktop: "640px",
+    // },
     semanticTokens: {
       colors: {
         danger: { value: "rose-700" },
