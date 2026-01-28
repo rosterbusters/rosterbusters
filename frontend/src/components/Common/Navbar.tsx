@@ -64,7 +64,7 @@ function Navbar() {
       {/* ============================================ */}
       <div className="hidden md:flex h-16 items-center justify-between">
         {/* LEFT ZONE: Brand */}
-        <div className="flex items-center justify-center shrink-0">
+        <div className="flex items-center justify-center shrink-0 px-6">
           <Link to="/home" className="flex items-center">
             <img
               src="/assets/images/sach-navbarlogo.png"
@@ -78,7 +78,7 @@ function Navbar() {
         </div>
 
         {/* MIDDLE ZONE: Primary Navigation - Desktop horizontal row */}
-        <div className="flex flex-2 justify-start pl-2">
+        <div className="flex flex-2 justify-start">
           <NavigationMenu viewport={false}>
             <NavigationMenuList className="gap-4">
               {/* Home */}

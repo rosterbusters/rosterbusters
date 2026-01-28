@@ -27,7 +27,7 @@ function HomePage() {
         <Stack
       bgColor={"white"}
       p={12}
-      width="50%"
+      width={{base:"100%",md:"50%"}}
       rounded={"lg"}
       
       alignItems={"start"}
@@ -41,7 +41,7 @@ function HomePage() {
           bgColor={"white"}
           p={4}
           rounded={"lg"}
-          width="50%"
+          width={{base:"100%",md:"50%"}}
           
         >
           <NotificationBanner />
