@@ -62,7 +62,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
 
   return (
     <>
-      <VStack width={"full"} gap={0}>
+      <VStack width={"full"} gap={0} minW={"820px"} >
         <Grid width={"full"} templateColumns="repeat(7, 1fr)" borderColor="border" borderWidth={"1px"}>
           {currRange.slice(0, 7).map((day, i) => (
             <GridItem
@@ -85,6 +85,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
             return (
               
               <GridItem
+              
                 key={i}
                 bg="white"
                 textAlign={"start"}

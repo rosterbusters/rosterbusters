@@ -2,7 +2,7 @@ import { Navigate,Calendar, momentLocalizer, View,ToolbarProps } from 'react-big
 import moment from 'moment'
 import { useState, useCallback, useMemo, ComponentType } from 'react'
 import CustomWeekView from './CustomRequestView'
-import { Box,Grid } from '@chakra-ui/react'
+import { Box,Grid,Span } from '@chakra-ui/react'
 import cx from "clsx"
 
 const localizer = momentLocalizer(moment);
@@ -25,15 +25,15 @@ export const CustomToolbar: ComponentType<ToolbarProps> = ({
   views,
 }: ToolbarProps) => {
   return (
-    <Grid templateColumns={"repeat(3, 1fr)"} className={ cx("rbc-toolbar") }>
-      <span className={ cx("rbc-btn-group") } style={{ justifySelf: 'start' }}>
+    <Grid templateColumns={{base: "1fr", md:"repeat(3, 1fr)"}} className={ cx("rbc-toolbar") } gap={{base:"2", md:"0"}}>
+      <Span className={ cx("rbc-btn-group") } justifySelf={{base:"center",md:"start"}}>
         <button onClick={ () => onNavigate(Navigate.PREVIOUS) }>{ localizer.messages.previous }</button>
-      </span>
+      </Span>
 
-      <span className={ cx("rbc-toolbar-label")}>{ label }</span>
- <span className={ cx("rbc-btn-group") } style={{ justifySelf: 'end' }}>
+      <Span className={ cx("rbc-toolbar-label")}>{ label }</Span>
+      <Span justifySelf={{base:"center",md:"end"}} className={ cx("rbc-btn-group") }>
         <button onClick={ () => onNavigate(Navigate.NEXT) }>{ localizer.messages.next }</button>
-      </span>
+      </Span>
     </Grid>
   )
 }
@@ -94,7 +94,7 @@ export default function RequestCalendar() {
 
 
   return (
-    <Box h="100%" w="100%" borderWidth={"1px"} p={3} borderColor={"border"} borderRadius={10}>
+    <Box h="100%" overflowX={"auto"} borderWidth={"1px"} p={3} borderColor={"border"} borderRadius={10}>
       <Calendar
         localizer={localizer}
         startAccessor="start"
