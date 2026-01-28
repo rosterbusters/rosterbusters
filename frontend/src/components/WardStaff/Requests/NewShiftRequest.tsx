@@ -8,8 +8,9 @@ import {
   Badge,
   Stack,
   Span,
+  VStack,
 } from "@chakra-ui/react";
-import { Tooltip } from "@/components/ui/tooltip"
+import { Tooltip } from "@/components/ui/tooltip";
 import { AssignableStatus } from "./AssignableStatus";
 import { shiftCollection } from "@/models/Shift";
 
@@ -32,7 +33,8 @@ export const NewShiftRequest = ({
   selectedDate,
 }: NewShiftRequestProps) => {
   return (
-    <Dialog.Root open={isOpen} onOpenChange={(e) => !e.open && onClose()}>
+    <Dialog.Root placement={"center"}
+            motionPreset="slide-in-bottom" open={isOpen} onOpenChange={(e) => !e.open && onClose()}>
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
@@ -44,36 +46,37 @@ export const NewShiftRequest = ({
               </Dialog.Title>
             </Dialog.Header>
             <Dialog.Body>
-              <AssignableStatus />
-              <Select.Root collection={shiftCollection} size="sm">
-                <Select.Label>Requested Shift Type</Select.Label>
-                <Select.Control>
-                  <Select.Trigger>
-                    <Select.ValueText placeholder="Select Shift Type" />
-                  </Select.Trigger>
-                  <Select.IndicatorGroup>
-                    <Select.Indicator />
-                  </Select.IndicatorGroup>
-                </Select.Control>
-                <Portal>
-                  <Select.Positioner>
-                    <Select.Content>
-                      {shiftCollection.items.map((code) => (
-                        <Select.Item item={code.value} key={code.value}>
-                         <Tooltip content={code.description}>
-                            <Badge variant={`${code.value}Shift` as any}>
-                              {code.value}
-                            </Badge>
+              <VStack alignItems={"start"} gap={4}>
+                <AssignableStatus />
+                <Select.Root collection={shiftCollection} size="sm">
+                  <Select.Label>Requested Shift Type</Select.Label>
+                  <Select.Control>
+                    <Select.Trigger>
+                      <Select.ValueText placeholder="Select Shift Type" />
+                    </Select.Trigger>
+                    <Select.IndicatorGroup>
+                      <Select.Indicator />
+                    </Select.IndicatorGroup>
+                  </Select.Control>
+                  <Portal>
+                    <Select.Positioner>
+                      <Select.Content>
+                        {shiftCollection.items.map((code) => (
+                          <Select.Item item={code.value} key={code.value}>
+                            <Tooltip content={code.description}>
+                              <Badge variant={`${code.value}Shift` as any}>
+                                {code.value}
+                              </Badge>
                             </Tooltip>
-                     
-                          <Select.ItemIndicator />
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Positioner>
-                </Portal>
-              </Select.Root>
-   
+
+                            <Select.ItemIndicator />
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select.Positioner>
+                  </Portal>
+                </Select.Root>
+              </VStack>
             </Dialog.Body>
             <Dialog.Footer>
               <Button variant="outline" onClick={onClose}>
