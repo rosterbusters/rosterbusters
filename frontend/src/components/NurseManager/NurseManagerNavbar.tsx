@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   Home,
-  Table,
+  CalendarDays,
   NotebookPen,
   Settings,
   User,
+  Users,
   Menu,
   X,
   ChevronDown,
@@ -23,13 +24,13 @@ import {
 import { cn } from "@/lib/utils";
 import NotificationDropdown from "@/components/Common/NotificationDropdown";
 
-function Navbar() {
+function NurseManagerNavbar() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
 
   // TODO: Replace with actual backend data
-  const userName = "Staff Name";
+  const userName = "Manager Name";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
@@ -41,7 +42,7 @@ function Navbar() {
     return paths.some((path) => location.pathname === path);
   };
 
-  const leaveShiftPaths = ["/leave-request", "/shift-request"];
+  const leaveShiftPaths = ["/nurse-manager/leave-overview", "/nurse-manager/shift-overview"];
   const isLeaveShiftActive = isSectionActive(leaveShiftPaths);
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
@@ -65,7 +66,7 @@ function Navbar() {
       <div className="hidden md:flex h-16 items-center justify-between">
         {/* LEFT ZONE: Brand */}
         <div className="flex items-center justify-center shrink-0 w-35">
-          <Link to="/home" className="flex items-center">
+          <Link to="/nurse-manager" className="flex items-center">
             <img
               src="/assets/images/sach-navbarlogo.png"
               alt="SACH Logo"
@@ -86,39 +87,39 @@ function Navbar() {
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
                   <Link
-                    to="/home"
+                    to="/nurse-manager/home"
                     className={cn(
                       navPillBaseStyles,
-                      isActive("/home")
+                      isActive("/nurse-manager/home")
                         ? navPillActiveStyles
                         : navPillInactiveStyles,
                     )}
                   >
-                      <Home className="h-4 w-4 text-[#4B8798]" />
+                    <Home className="h-4 w-4 text-[#4B8798]" />
                     <span>Home</span>
                   </Link>
                 </NavigationMenuLink>
               </NavigationMenuItem>
 
-              {/* Staff Roster Schedule */}
+              {/* Roster Planning */}
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
                   <Link
-                    to="/staffrosterschedule"
+                    to="/nurse-manager/roster-planning"
                     className={cn(
                       navPillBaseStyles,
-                      isActive("/staffrosterschedule")
+                      isActive("/nurse-manager/roster-planning")
                         ? navPillActiveStyles
                         : navPillInactiveStyles,
                     )}
                   >
-                      <Table className="h-4 w-4 text-[#4B8798]" />
-                    <span>Staff Roster Schedule</span>
+                    <CalendarDays className="h-4 w-4 text-[#4B8798]" />
+                    <span>Roster Planning</span>
                   </Link>
                 </NavigationMenuLink>
               </NavigationMenuItem>
 
-              {/* Leave and Shift Request - DROPDOWN */}
+              {/* Leave and Shift Overview - DROPDOWN */}
               <NavigationMenuItem className="relative">
                 <NavigationMenuTrigger
                   className={cn(
@@ -132,18 +133,18 @@ function Navbar() {
                     "data-[state=open]:!bg-[#DDE8EA]/50",
                   )}
                 >
-                    <NotebookPen className="h-4 w-4 text-[#4B8798]" />
-                    <span>Leave and Shift Request </span>
+                  <NotebookPen className="h-4 w-4 text-[#4B8798]" />
+                  <span>Leave and Shift Overview</span>
                 </NavigationMenuTrigger>
                 <NavigationMenuContent className="left-0 w-full min-w-full translate-y-1 rounded-md border border-[#E6E6E6] bg-white p-1 shadow-md">
                   <ul className="flex flex-col gap-0.5">
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/leave-request"
+                          to="/nurse-manager/leave-overview"
                           className={cn(
                             "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/leave-request")
+                            isActive("/nurse-manager/leave-overview")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
@@ -156,10 +157,10 @@ function Navbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/shift-request"
+                          to="/nurse-manager/shift-overview"
                           className={cn(
                             "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/shift-request")
+                            isActive("/nurse-manager/shift-overview")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
@@ -173,20 +174,38 @@ function Navbar() {
                 </NavigationMenuContent>
               </NavigationMenuItem>
 
-              {/* Settings */}
+              {/* Ward Staff Directory */}
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
                   <Link
-                    to="/settings"
+                    to="/nurse-manager/ward-staff-directory"
                     className={cn(
                       navPillBaseStyles,
-                      isActive("/settings")
+                      isActive("/nurse-manager/ward-staff-directory")
                         ? navPillActiveStyles
                         : navPillInactiveStyles,
                     )}
                   >
-                      <Settings className="h-4 w-4 text-[#4B8798]" />
-                      Settings
+                    <Users className="h-4 w-4 text-[#4B8798]" />
+                    <span>Ward Staff Directory</span>
+                  </Link>
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+
+              {/* Settings */}
+              <NavigationMenuItem>
+                <NavigationMenuLink asChild>
+                  <Link
+                    to="/nurse-manager/settings"
+                    className={cn(
+                      navPillBaseStyles,
+                      isActive("/nurse-manager/settings")
+                        ? navPillActiveStyles
+                        : navPillInactiveStyles,
+                    )}
+                  >
+                    <Settings className="h-4 w-4 text-[#4B8798]" />
+                    Settings
                   </Link>
                 </NavigationMenuLink>
               </NavigationMenuItem>
@@ -231,7 +250,7 @@ function Navbar() {
 
         {/* Center: Hospital Logo */}
         <div className="absolute left-1/2 -translate-x-1/2">
-          <Link to="/home" className="flex items-center">
+          <Link to="/nurse-manager" className="flex items-center">
             <img
               src="/assets/images/sach-navbarlogo.png"
               alt="SACH Logo"
@@ -267,15 +286,14 @@ function Navbar() {
             <nav className="flex flex-col gap-1">
               {/* Home */}
               <Link
-                to="/home"
+                to="/nurse-manager/home"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center"
               >
                 <span
                   className={cn(
-                    // roomier pill
                     "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                    isActive("/home")
+                    isActive("/nurse-manager/home")
                       ? "bg-[#DCECEF] text-[#4B8798]"
                       : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                   )}
@@ -285,26 +303,26 @@ function Navbar() {
                 </span>
               </Link>
 
-              {/* Staff Roster Schedule */}
+              {/* Roster Planning */}
               <Link
-                to="/staffrosterschedule"
+                to="/nurse-manager/roster-planning"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center"
               >
                 <span
                   className={cn(
                     "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                    isActive("/staffrosterschedule")
+                    isActive("/nurse-manager/roster-planning")
                       ? "bg-[#DCECEF] text-[#4B8798]"
                       : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                   )}
                 >
-                  <Table className="h-4 w-4 text-[#4B8798]" />
-                  Staff Roster Schedule
+                  <CalendarDays className="h-4 w-4 text-[#4B8798]" />
+                  Roster Planning
                 </span>
               </Link>
 
-              {/* Leave and Shift Request - EXPANDABLE */}
+              {/* Leave and Shift Overview - EXPANDABLE */}
               <div className="flex flex-col">
                 <button
                   onClick={() => setLeaveShiftExpanded(!leaveShiftExpanded)}
@@ -319,7 +337,7 @@ function Navbar() {
                     )}
                   >
                     <NotebookPen className="h-4 w-4 text-[#4B8798]" />
-                    Leave and Shift Request
+                    Leave and Shift Overview
                   </span>
                   <ChevronDown
                     className={cn(
@@ -331,15 +349,15 @@ function Navbar() {
 
                 {/* Submenu Items - indented */}
                 {leaveShiftExpanded && (
-                  <div className="ml-8 mt-2 flex flex-col gap-1.5 pl-4 border-2 border-[#E6E6E6]">
+                  <div className="ml-8 mt-2 flex flex-col gap-1.5 pl-4 border-l-2 border-[#E6E6E6]">
                     <Link
-                      to="/leave-request"
+                      to="/nurse-manager/leave-overview"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
                         className={cn(
                           "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                          isActive("/leave-request")
+                          isActive("/nurse-manager/leave-overview")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
                         )}
@@ -349,13 +367,13 @@ function Navbar() {
                       </span>
                     </Link>
                     <Link
-                      to="/shift-request"
+                      to="/nurse-manager/shift-overview"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
                         className={cn(
                           "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                          isActive("/shift-request")
+                          isActive("/nurse-manager/shift-overview")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
                         )}
@@ -368,16 +386,35 @@ function Navbar() {
                 )}
               </div>
 
-              {/* Settings */}
+              {/* Ward Staff Directory */}
               <Link
-                to="/settings"
+                to="/nurse-manager/ward-staff-directory"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center"
               >
                 <span
                   className={cn(
                     "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                    isActive("/settings")
+                    isActive("/nurse-manager/ward-staff-directory")
+                      ? "bg-[#DCECEF] text-[#4B8798]"
+                      : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
+                  )}
+                >
+                  <Users className="h-4 w-4 text-[#4B8798]" />
+                  Ward Staff Directory
+                </span>
+              </Link>
+
+              {/* Settings */}
+              <Link
+                to="/nurse-manager/settings"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center"
+              >
+                <span
+                  className={cn(
+                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                    isActive("/nurse-manager/settings")
                       ? "bg-[#DCECEF] text-[#4B8798]"
                       : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                   )}
@@ -394,4 +431,4 @@ function Navbar() {
   );
 }
 
-export default Navbar;
+export default NurseManagerNavbar;

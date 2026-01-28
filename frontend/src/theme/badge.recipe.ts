@@ -10,6 +10,9 @@ export const badgeRecipe = defineRecipe({
     variant: {
       shiftRequest:{bgColor:"cyan.600", color:"white"},
       roster:{bgColor:"cyan.500", color:"white"},
+      probation:{bgColor:"amber.600", color:"white"},
+      leave:{bgColor:"cyan.600", color:"white"},
+      system:{bgColor:"gray.500", color:"white"},
     },
   },
 })
