@@ -18,18 +18,41 @@ const events = [
   {
     start: moment().hour(10).minute(0).toDate(),
     end: moment().hour(11).minute(0).toDate(),
-    title: "A: 7:00AM-3:30PM",
+    title: "A",
   },
   {
     start: moment().hour(14).minute(0).toDate(),
     end: moment().hour(15).minute(30).toDate(),
-    title: "N: 8:30PM-7:30AM",
+    title: "N",
   },
+  {
+    start: moment().hour(14).minute(0).toDate(),
+    end: moment().hour(15).minute(30).toDate(),
+    title: "P",
+  },
+  {
+    start: moment().hour(14).minute(0).toDate(),
+    end: moment().hour(15).minute(30).toDate(),
+    title: "AL",
+  },
+  {
+    start: moment().subtract(1,"day").hour(14).minute(0).toDate(),
+    end: moment().subtract(1,"day").hour(15).minute(30).toDate(),
+    title: "D",
+  },
+  {
+    start: moment().add(2,"day").hour(14).minute(0).toDate(),
+    end: moment().add(2,"day").hour(15).minute(30).toDate(),
+    title: "DO",
+  },
+  
 ];
 
 
 export default function RequestCalendar() {
-  const [date, setDate] = useState(new Date());
+  const [date, setDate] = useState(() =>
+    moment().startOf('week').add(1, 'day').toDate()
+    );
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
@@ -56,6 +79,7 @@ export default function RequestCalendar() {
         view={defaultView}
         views={views}
         date={date}
+        showAllEvents
         onNavigate={onNavigate}
       />
     </Box>

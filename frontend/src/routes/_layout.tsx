@@ -17,7 +17,7 @@ function Layout() {
   return (
     <div>
       {/* Main content area - no navbar for admin routes */}
-      <main>
+      <main >
         <Outlet />
       </main>
     </div>

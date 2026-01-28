@@ -13,6 +13,8 @@ import {
   Badge,
   Button,
 } from "@chakra-ui/react";
+import { useState } from "react";
+import { AssignableStatus } from "@/components/WardStaff/Requests/AssignableStatus";
 import RequestCalendar from "@/components/WardStaff/Requests/RequestCalendar";
 
 export const Route = createFileRoute("/_wardStaff/request-application")({
@@ -27,6 +29,8 @@ function handleLeaveClicked() {
 }
 
 function RouteComponent() {
+  const [shiftReqApplicationOpen,setshiftReqApplicationOpen]=useState(false);
+  
   return (
     <Flex
       minH="100vh"
@@ -44,9 +48,10 @@ function RouteComponent() {
         bgColor={"white"}
         rounded={"lg"}
         p={7}
+        textAlign={"center"}
       >
-        <Heading color="primary">Leave and Shift Request Application</Heading>
-        <HStack>
+        <Text color="primary" fontWeight="semibold" fontSize={"lg"}>Leave and Shift Request Application</Text>
+        <HStack gap={0}>
           <Button variant={"outline"} onClick={handleShiftClicked}>
             Shift Requests
           </Button>
@@ -54,19 +59,18 @@ function RouteComponent() {
             Leave Requests
           </Button>
         </HStack>
-        <Grid templateColumns="1fr auto 1fr" w="full">
+        <Grid templateColumns={{base:'1fr', md:"1fr auto 1fr"}} w="full" gap={{base:2, md:0}}>
           <GridItem />
           <Text color="foreground" fontWeight="light" justifySelf="center">
             Click on a date to create/edit shift request.
           </Text>
           <HStack justifySelf="end">
-            <Text color="foreground" fontWeight="light">
-              Assignable:
-            </Text>
-            <Badge variant="requests">Requests: 1</Badge>
+            <AssignableStatus/>
           </HStack>
         </Grid>
-        <RequestCalendar />
+        <Box h="100%" w="100%">
+        <RequestCalendar/>
+        </Box>
       </VStack>
     </Flex>
   );

@@ -50,9 +50,9 @@ export const system = createSystem(defaultConfig, {
         background2: { value: "#E2E8F0" },
         foreground: { value: "#737373" },
         shiftcodes: {
-          day: { value: "cyan.600" },
+          day: { value: "#06B6D4" },
           am: { value: "cyan.500" },
-          night: { value: "cyan.900" },
+          night: { value: "#164E63" },
           pm: { value: "cyan.700" },
           do: { value: "neutral.400" },
           al: { value: "slate.400" },

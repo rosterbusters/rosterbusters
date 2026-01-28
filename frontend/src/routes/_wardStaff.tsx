@@ -16,12 +16,12 @@ export const Route = createFileRoute("/_wardStaff")({
 
 function WardStaffLayout() {
   return (
-    <div className="flex flex-col h-screen">
+    <div>
       {/* Navbar only - NO sidebar for wardStaff routes */}
       <Navbar />
 
       {/* Main content area */}
-      <main className="flex-1 overflow-auto">
+      <main>
         <Outlet />
       </main>
     </div>
