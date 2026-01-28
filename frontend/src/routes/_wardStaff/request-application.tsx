@@ -52,10 +52,10 @@ function RouteComponent() {
       >
         <Text color="primary" fontWeight="semibold" fontSize={"lg"}>Leave and Shift Request Application</Text>
         <HStack gap={0}>
-          <Button variant={"outline"} onClick={handleShiftClicked}>
+          <Button disabled variant={"outline"} onClick={handleShiftClicked} roundedTopLeft="full" roundedBottomLeft="full">
             Shift Requests
           </Button>
-          <Button variant={"outline"} onClick={handleLeaveClicked}>
+          <Button variant={"outline"} onClick={handleLeaveClicked} roundedBottomRight="full" roundedTopRight="full">
             Leave Requests
           </Button>
         </HStack>
