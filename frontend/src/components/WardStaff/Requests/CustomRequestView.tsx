@@ -62,14 +62,15 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
 
   return (
     <>
-      <VStack width={"full"} gap={0} minW={"820px"} >
-        <Grid width={"full"} templateColumns="repeat(7, 1fr)" borderColor="border" borderWidth={"1px"}>
+      <VStack overflowX={"auto"} gap={0} alignItems="stretch" >
+        <Grid width={"full"} minW={"820px"} templateColumns="repeat(7, 1fr)" borderColor="border" borderWidth={"1px"}>
           {currRange.slice(0, 7).map((day, i) => (
             <GridItem
               key={i}
               bg="white"
               color="#404040"
               p={2}
+            
               h="32px"
               fontWeight="medium"
             >
@@ -78,7 +79,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
           ))}
         </Grid>
         
-        <Grid width={"full"} templateColumns="repeat(7, 1fr)" templateRows="repeat(2, 1fr)">
+        <Grid width={"full"} minW={"820px"} templateColumns="repeat(7, 1fr)" templateRows="repeat(2, 1fr)">
           {currRange.map((day, i) => {
             const eventsForDay = getEventsForDay(day, events);
 

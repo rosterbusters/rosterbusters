@@ -25,7 +25,7 @@ export const CustomToolbar: ComponentType<ToolbarProps> = ({
   views,
 }: ToolbarProps) => {
   return (
-    <Grid templateColumns={{base: "1fr", md:"repeat(3, 1fr)"}} className={ cx("rbc-toolbar") } gap={{base:"2", md:"0"}}>
+    <Grid templateColumns={{base: "1fr", md:"repeat(3, 1fr)"}} className={ cx("rbc-toolbar") } gap={{base:"2", md:"0"}} position={{base:"sticky", md:"relative"}}>
       <Span className={ cx("rbc-btn-group") } justifySelf={{base:"center",md:"start"}}>
         <button onClick={ () => onNavigate(Navigate.PREVIOUS) }>{ localizer.messages.previous }</button>
       </Span>
@@ -94,7 +94,7 @@ export default function RequestCalendar() {
 
 
   return (
-    <Box h="100%" overflowX={"auto"} borderWidth={"1px"} p={3} borderColor={"border"} borderRadius={10}>
+    <Box h="100%"  borderWidth={"1px"} p={3} borderColor={"border"} borderRadius={10}>
       <Calendar
         localizer={localizer}
         startAccessor="start"
