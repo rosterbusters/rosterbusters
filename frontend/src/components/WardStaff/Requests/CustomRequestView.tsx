@@ -11,6 +11,7 @@ interface CustomWeekViewProps {
 
   [key: string]: unknown;
 }
+import moment from "moment";
 
 interface CustomWeekViewComponent {
   (props: CustomWeekViewProps): JSX.Element;
@@ -57,6 +58,8 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     setIsOpen(true); 
   };
 
+  
+
   return (
     <>
       <VStack width={"full"} gap={0}>
@@ -92,6 +95,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                 cursor={"pointer"}
                 borderColor="border"
                 borderWidth="1px"
+                bgColor={moment(day).isSame(moment(), 'day') ? "menuactive" : "white"}
               >
                 {localizer.format(day, "D")} 
                 <Box mt={2}>
