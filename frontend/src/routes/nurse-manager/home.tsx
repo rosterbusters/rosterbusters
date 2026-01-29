@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Flex, Box } from "@chakra-ui/react";
+import { Flex, Box, Stack } from "@chakra-ui/react";
 import moment from "moment";
 
 import {
@@ -17,6 +17,8 @@ import {
   type ShiftCode,
   type RosterRow,
 } from "@/components/NurseManager/RosterTable";
+import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
+import NotificationBanner from "@/components/NurseManager/HomePage/NotificationBanner";
 
 export const Route = createFileRoute("/nurse-manager/home")({
   component: NurseManagerHome,
@@ -231,6 +233,34 @@ function NurseManagerHome() {
       bgColor="background2"
       p={5}
     >
+      {/* Bento Status & Notification Banners */}
+      <Stack
+        direction={{ base: "column", md: "row" }}
+        gap={6}
+        w="full"
+      >
+        <Stack
+          bgColor="white"
+          p={12}
+          width={{ base: "100%", md: "50%" }}
+          rounded="lg"
+          alignItems="start"
+          justifyContent="center"
+        >
+          <StatusBanner />
+        </Stack>
+
+        <Stack
+          justifyContent="center"
+          bgColor="white"
+          p={4}
+          rounded="lg"
+          width={{ base: "100%", md: "50%" }}
+        >
+          <NotificationBanner />
+        </Stack>
+      </Stack>
+
       {/* Header Section */}
       <Box bgColor="white" p={4} rounded="lg" width="100%">
         <RosterHeader

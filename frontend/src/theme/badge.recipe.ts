@@ -53,6 +53,7 @@ export const badgeRecipe = defineRecipe({
         borderWidth: "3px",
         color: "#94A3B8",
       },
+      probation: { bgColor: "#D97706", color: "white" },
     },
   },
 });
