@@ -15,9 +15,9 @@ export const Route = createFileRoute("/_layout")({
 
 function Layout() {
   return (
-    <div className="flex flex-col h-screen">
+    <div>
       {/* Main content area - no navbar for admin routes */}
-      <main className="flex-1 overflow-auto p-4 md:p-6">
+      <main >
         <Outlet />
       </main>
     </div>

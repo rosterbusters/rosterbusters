@@ -4,16 +4,24 @@ import { useState, useCallback } from 'react'
 
 const localizer = momentLocalizer(moment);
 
+interface Event {
+  title: string,
+  start: Date,
+  end: Date,
+  allDay?: boolean
+  resource?: any,
+}
+
 const events = [
   {
     start: moment().hour(10).minute(0).toDate(),
     end: moment().hour(11).minute(0).toDate(),
-    title: "A",
+    title: "A: 7:00AM-3:30PM",
   },
   {
     start: moment().hour(14).minute(0).toDate(),
     end: moment().hour(15).minute(30).toDate(),
-    title: "N",
+    title: "N: 8:30PM-7:30AM",
   },
 ];
 

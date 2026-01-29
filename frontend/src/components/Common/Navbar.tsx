@@ -46,13 +46,13 @@ function Navbar() {
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
   const navPillBaseStyles =
-    "inline-flex h-8 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2";
+    "px-1 inline-flex h-8 items-center justify-center gap-1 rounded-lg text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2";
   const navPillActiveStyles = "bg-[#DDE8EA] !text-[#4B8798]";
   const navPillInactiveStyles =
     "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50";
   // Utility pill for non-clickable elements (like staff name display)
   const utilityPillStyles =
-    "cursor-pointer inline-flex h-10 items-center gap-2 rounded-xl px-6 text-sm font-medium tracking-[0.07px]";
+    "cursor-pointer inline-flex h-10 items-center gap-1 rounded-xl px-6 text-sm font-medium tracking-[0.07px]";
 
   return (
     <nav
@@ -64,13 +64,12 @@ function Navbar() {
       {/* ============================================ */}
       <div className="hidden md:flex h-16 items-center justify-between">
         {/* LEFT ZONE: Brand */}
-        <div className="flex items-center justify-center shrink-0 w-35">
+        <div className="flex items-center justify-center shrink-0 px-6">
           <Link to="/home" className="flex items-center">
             <img
               src="/assets/images/sach-navbarlogo.png"
               alt="SACH Logo"
               className="h-9"
-              style={{ width: "120px" }}
               onError={(e) => {
                 e.currentTarget.src = "/assets/images/sach-navbarlogo.png";
               }}
@@ -79,9 +78,9 @@ function Navbar() {
         </div>
 
         {/* MIDDLE ZONE: Primary Navigation - Desktop horizontal row */}
-        <div className="flex flex-2 justify-start pl-6">
+        <div className="flex flex-2 justify-start">
           <NavigationMenu viewport={false}>
-            <NavigationMenuList className="gap-2">
+            <NavigationMenuList className="gap-4">
               {/* Home */}
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
@@ -140,10 +139,10 @@ function Navbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/leave-request"
+                          to="/request-application"
                           className={cn(
-                            "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/leave-request")
+                            "w-full inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                            isActive("/request-application")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
@@ -158,7 +157,7 @@ function Navbar() {
                         <Link
                           to="/shift-request"
                           className={cn(
-                            "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                            "w-full inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                             isActive("/shift-request")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
@@ -195,9 +194,14 @@ function Navbar() {
         </div>
 
         {/* RIGHT ZONE: Utilities */}
-        <div className="flex items-center gap-5 shrink-0">
-          {/* Notification Bell Dropdown */}
-          <NotificationDropdown />
+        <div className="flex items-center shrink-0">
+          {/* Notification Bell */}
+          <button
+            className="inline-flex items-center justify-center rounded-full transition-colors hover:bg-[#DDE8EA]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            aria-label="Notifications"
+          >
+            <Bell className="h-5 w-5 shrink-0 text-[#4B8798]" />
+          </button>
 
           {/* Staff Name Display */}
           <div className={cn(utilityPillStyles, "text-[#4A4A4A]")}>
@@ -210,7 +214,7 @@ function Navbar() {
       {/* ============================================ */}
       {/* MOBILE NAVIGATION (visible on mobile only)  */}
       {/* ============================================ */}
-      <div className="relative flex md:hidden h-14 items-center justify-between px-4">
+      <div className="relative flex md:hidden h-14 items-center justify-between">
         {/* Left: Hamburger Menu / Close Button */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -254,7 +258,7 @@ function Navbar() {
           <div className="h-full overflow-y-auto px-4 pt-4">
             {/* Staff Identity Header */}
             <div className="!px-2 pt-6 pb-5 mb-6 border-b border-[#E6E6E6]">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <User className="h-[18px] w-[18px] text-[#4B8798]" />
                 <span className="text-sm font-medium text-[#4A4A4A]">{`{${userName}}`}</span>
               </div>
@@ -264,7 +268,7 @@ function Navbar() {
             <div className="h-4" />
 
             {/* Navigation Menu Items */}
-            <nav className="flex flex-col gap-1">
+            <nav className="flex flex-col">
               {/* Home */}
               <Link
                 to="/home"
@@ -274,7 +278,7 @@ function Navbar() {
                 <span
                   className={cn(
                     // roomier pill
-                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                    "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                     isActive("/home")
                       ? "bg-[#DCECEF] text-[#4B8798]"
                       : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
@@ -293,7 +297,7 @@ function Navbar() {
               >
                 <span
                   className={cn(
-                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                    "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                     isActive("/staffrosterschedule")
                       ? "bg-[#DCECEF] text-[#4B8798]"
                       : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
@@ -312,7 +316,7 @@ function Navbar() {
                 >
                   <span
                     className={cn(
-                      "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                      "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                       isLeaveShiftActive
                         ? "bg-[#DCECEF] text-[#4B8798]"
                         : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
@@ -338,7 +342,7 @@ function Navbar() {
                     >
                       <span
                         className={cn(
-                          "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                          "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                           isActive("/leave-request")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
@@ -354,7 +358,7 @@ function Navbar() {
                     >
                       <span
                         className={cn(
-                          "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                          "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                           isActive("/shift-request")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
@@ -376,7 +380,7 @@ function Navbar() {
               >
                 <span
                   className={cn(
-                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                    "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                     isActive("/settings")
                       ? "bg-[#DCECEF] text-[#4B8798]"
                       : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
