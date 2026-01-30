@@ -8,11 +8,13 @@ import {
   Badge,
   Stack,
   Span,
+  Text,
   VStack,
 } from "@chakra-ui/react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { AssignableStatus } from "./AssignableStatus";
 import { shiftCollection } from "@/models/Shift";
+import { DatePickerDemo } from "@/components/Common/DatePicker";
 
 interface NewShiftRequestProps {
   isOpen: boolean;
@@ -33,8 +35,12 @@ export const NewShiftRequest = ({
   selectedDate,
 }: NewShiftRequestProps) => {
   return (
-    <Dialog.Root placement={"center"}
-            motionPreset="slide-in-bottom" open={isOpen} onOpenChange={(e) => !e.open && onClose()}>
+    <Dialog.Root
+      placement={"center"}
+      motionPreset="slide-in-bottom"
+      open={isOpen}
+      onOpenChange={(e) => !e.open && onClose()}
+    >
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
@@ -42,11 +48,11 @@ export const NewShiftRequest = ({
             <Dialog.Header>
               <Dialog.Title color={"primary"} fontWeight={"bold"}>
                 Create Shift Request
-                {selectedDate && ` - ${selectedDate.toLocaleDateString()}`}
+      
               </Dialog.Title>
             </Dialog.Header>
             <Dialog.Body>
-              <VStack alignItems={"start"} gap={4}>
+              <VStack alignItems={"start"} gap={4} maxWidth={"225px"}>
                 <AssignableStatus />
                 <Select.Root collection={shiftCollection} size="sm">
                   <Select.Label>Requested Shift Type</Select.Label>
@@ -76,6 +82,10 @@ export const NewShiftRequest = ({
                     </Select.Positioner>
                   </Portal>
                 </Select.Root>
+                <VStack alignItems={"start"}>
+                  <Text fontWeight={"medium"}> Date Requesting</Text>
+                  <DatePickerDemo selected={selectedDate ?? undefined} />
+                </VStack>
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
