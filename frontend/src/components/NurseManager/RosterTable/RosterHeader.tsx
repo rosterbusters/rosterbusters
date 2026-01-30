@@ -96,26 +96,36 @@ export function RosterHeader({
           {dateRangeText}
         </Text>
 
-        {/* Right Section: Ward Tabs */}
-        <HStack gap={1}>
-          {wards.map((ward) => (
-            <Button
-              key={ward.wardId}
-              size="sm"
-              variant={selectedWard?.wardId === ward.wardId ? "solid" : "outline"}
-              bg={selectedWard?.wardId === ward.wardId ? "#4B8798" : "transparent"}
-              color={selectedWard?.wardId === ward.wardId ? "white" : "#4A4A4A"}
-              borderColor="#E6E6E6"
-              _hover={{ 
-                bg: selectedWard?.wardId === ward.wardId ? "#3d6f7d" : "#F8FAFC" 
+        {/* Right Section: Ward Dropdown */}
+        <HStack gap={2}>
+          <Text fontSize="sm" color="#6B7280" fontWeight="medium">
+            Ward:
+          </Text>
+          <Box position="relative" minW="140px">
+            <select
+              value={selectedWard?.wardId || ""}
+              onChange={(e) => {
+                const ward = wards.find(w => w.wardId === Number(e.target.value));
+                if (ward) onWardChange(ward);
               }}
-              onClick={() => onWardChange(ward)}
-              borderRadius="md"
-              px={4}
+              style={{
+                width: "100%",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #E6E6E6",
+                fontSize: "14px",
+                color: "#4A4A4A",
+                backgroundColor: "white",
+                cursor: "pointer",
+              }}
             >
-              {ward.wardName}
-            </Button>
-          ))}
+              {wards.map((ward) => (
+                <option key={ward.wardId} value={ward.wardId}>
+                  {ward.wardName}
+                </option>
+              ))}
+            </select>
+          </Box>
         </HStack>
       </Flex>
 

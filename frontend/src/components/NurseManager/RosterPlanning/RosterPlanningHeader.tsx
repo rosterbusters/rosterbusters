@@ -97,26 +97,36 @@ export function RosterPlanningHeader({
           Staff Roster Schedule
         </Text>
 
-        {/* Right Section: Ward Tabs + Hamburger Menu */}
+        {/* Right Section: Ward Dropdown + Hamburger Menu */}
         <HStack gap={2}>
-          {wards.map((ward) => (
-            <Button
-              key={ward.wardId}
-              size="sm"
-              variant={selectedWard?.wardId === ward.wardId ? "solid" : "outline"}
-              bg={selectedWard?.wardId === ward.wardId ? "#4B8798" : "transparent"}
-              color={selectedWard?.wardId === ward.wardId ? "white" : "#4A4A4A"}
-              borderColor="#E6E6E6"
-              _hover={{ 
-                bg: selectedWard?.wardId === ward.wardId ? "#3d6f7d" : "#F8FAFC" 
+          <Text fontSize="sm" color="#6B7280" fontWeight="medium">
+            Ward:
+          </Text>
+          <Box position="relative" minW="140px">
+            <select
+              value={selectedWard?.wardId || ""}
+              onChange={(e) => {
+                const ward = wards.find(w => w.wardId === Number(e.target.value));
+                if (ward) onWardChange(ward);
               }}
-              onClick={() => onWardChange(ward)}
-              borderRadius="md"
-              px={4}
+              style={{
+                width: "100%",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #E6E6E6",
+                fontSize: "14px",
+                color: "#4A4A4A",
+                backgroundColor: "white",
+                cursor: "pointer",
+              }}
             >
-              {ward.wardName}
-            </Button>
-          ))}
+              {wards.map((ward) => (
+                <option key={ward.wardId} value={ward.wardId}>
+                  {ward.wardName}
+                </option>
+              ))}
+            </select>
+          </Box>
           
           {/* Hamburger Menu */}
           <MenuRoot>
@@ -160,12 +170,13 @@ export function RosterPlanningHeader({
         </HStack>
       </Flex>
 
-      {/* Bottom Row: Navigation Controls + Date Range + Filters */}
+      {/* Middle Row: Navigation Controls + Date Range + View Mode */}
       <Flex 
         justify="space-between" 
         align="center"
         flexWrap="wrap"
         gap={3}
+        mb={3}
       >
         {/* Left Section: Date Navigation */}
         <HStack gap={2}>
@@ -215,76 +226,75 @@ export function RosterPlanningHeader({
           {dateRangeText}
         </Text>
 
-        {/* Right Section: Roster Period + View Mode */}
-        <HStack gap={3}>
-          {/* Roster Period Dropdown */}
-          <HStack gap={2}>
-            <Text fontSize="sm" color="#6B7280" fontWeight="medium">
-              Roster Period:
-            </Text>
-            <Box position="relative" minW="180px">
-              <select
-                value={selectedPeriod?.periodId || ""}
-                onChange={(e) => {
-                  const period = periods.find(p => p.periodId === Number(e.target.value));
-                  if (period) onPeriodChange(period);
-                }}
-                style={{
-                  width: "100%",
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #E6E6E6",
-                  fontSize: "14px",
-                  color: "#4A4A4A",
-                  backgroundColor: "white",
-                  cursor: "pointer",
-                }}
-              >
-                {periods.map((period) => (
-                  <option key={period.periodId} value={period.periodId}>
-                    {period.name || `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
-                  </option>
-                ))}
-              </select>
-            </Box>
-          </HStack>
-
-          {/* View Mode Toggle */}
-          <HStack 
-            gap={0} 
-            borderRadius="lg" 
-            border="1px solid #E6E6E6" 
-            overflow="hidden"
+        {/* Right Section: View Mode Toggle */}
+        <HStack 
+          gap={0} 
+          borderRadius="lg" 
+          border="1px solid #E6E6E6" 
+          overflow="hidden"
+        >
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onViewModeChange("week")}
+            bg={viewMode === "week" ? "#4B8798" : "transparent"}
+            color={viewMode === "week" ? "white" : "#4A4A4A"}
+            _hover={{ 
+              bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC" 
+            }}
+            borderRadius={0}
+            px={4}
           >
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onViewModeChange("week")}
-              bg={viewMode === "week" ? "#4B8798" : "transparent"}
-              color={viewMode === "week" ? "white" : "#4A4A4A"}
-              _hover={{ 
-                bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC" 
+            Week
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onViewModeChange("twoWeeks")}
+            bg={viewMode === "twoWeeks" ? "#4B8798" : "transparent"}
+            color={viewMode === "twoWeeks" ? "white" : "#4A4A4A"}
+            _hover={{ 
+              bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC" 
+            }}
+            borderRadius={0}
+            px={4}
+          >
+            2 Weeks
+          </Button>
+        </HStack>
+      </Flex>
+
+      {/* Bottom Row: Roster Period Dropdown (Centered) */}
+      <Flex justify="center" align="center">
+        <HStack gap={2}>
+          <Text fontSize="sm" color="#6B7280" fontWeight="medium">
+            Roster Period:
+          </Text>
+          <Box position="relative" minW="180px">
+            <select
+              value={selectedPeriod?.periodId || ""}
+              onChange={(e) => {
+                const period = periods.find(p => p.periodId === Number(e.target.value));
+                if (period) onPeriodChange(period);
               }}
-              borderRadius={0}
-              px={4}
-            >
-              Week
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onViewModeChange("twoWeeks")}
-              bg={viewMode === "twoWeeks" ? "#4B8798" : "transparent"}
-              color={viewMode === "twoWeeks" ? "white" : "#4A4A4A"}
-              _hover={{ 
-                bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC" 
+              style={{
+                width: "100%",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #E6E6E6",
+                fontSize: "14px",
+                color: "#4A4A4A",
+                backgroundColor: "white",
+                cursor: "pointer",
               }}
-              borderRadius={0}
-              px={4}
             >
-              2 Weeks
-            </Button>
-          </HStack>
+              {periods.map((period) => (
+                <option key={period.periodId} value={period.periodId}>
+                  {period.name || `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
+                </option>
+              ))}
+            </select>
+          </Box>
         </HStack>
       </Flex>
     </Box>
