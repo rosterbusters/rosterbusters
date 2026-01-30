@@ -194,7 +194,7 @@ function Navbar() {
         </div>
 
         {/* RIGHT ZONE: Utilities */}
-        <div className="flex items-center gap-5 shrink-0">
+        <div className="flex items-center shrink-0">
           {/* Notification Bell Dropdown */}
           <NotificationDropdown />
 

@@ -50,7 +50,7 @@ function NotificationDropdown() {
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
-          className="inline-flex h-8 w-10 md:h-9 md:w-9 items-center justify-center rounded-lg md:rounded-full transition-colors hover:bg-[#DDE8EA]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="cursor-pointer inline-flex h-8 w-10 md:h-9 md:w-9 items-center justify-center rounded-lg md:rounded-full transition-colors hover:bg-[#DDE8EA]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           aria-label="Notifications"
         >
           <Bell className="h-5 w-5 shrink-0 text-[#4B8798]" />
@@ -58,7 +58,7 @@ function NotificationDropdown() {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-[480px] max-h-[250px] rounded-lg border border-[#E6E6E6] bg-white p-0 shadow-lg flex flex-col"
+        className="md:auto w-[360px] max-h-[250px] rounded-lg border border-[#E6E6E6] bg-white p-0 shadow-lg flex flex-col"
         sideOffset={8}
       >
         {/* Header - Fixed */}
