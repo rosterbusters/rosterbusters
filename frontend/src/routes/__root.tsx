@@ -1,5 +1,6 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router"
 import React, { Suspense } from "react"
+import { Agentation } from "agentation"
 
 import NotFound from "@/components/Common/NotFound"
 
@@ -28,6 +29,7 @@ export const Route = createRootRoute({
       <Suspense>
         <TanStackDevtools />
       </Suspense>
+      {process.env.NODE_ENV === "development" && <Agentation />}
     </>
   ),
   notFoundComponent: () => <NotFound />,

@@ -5,7 +5,6 @@ import {
   Table,
   NotebookPen,
   Settings,
-  Bell,
   User,
   Menu,
   X,
@@ -22,6 +21,7 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
+import NotificationDropdown from "./NotificationDropdown";
 
 function Navbar() {
   const location = useLocation();
@@ -195,13 +195,8 @@ function Navbar() {
 
         {/* RIGHT ZONE: Utilities */}
         <div className="flex items-center shrink-0">
-          {/* Notification Bell */}
-          <button
-            className="inline-flex items-center justify-center rounded-full transition-colors hover:bg-[#DDE8EA]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5 shrink-0 text-[#4B8798]" />
-          </button>
+          {/* Notification Bell Dropdown */}
+          <NotificationDropdown />
 
           {/* Staff Name Display */}
           <div className={cn(utilityPillStyles, "text-[#4A4A4A]")}>
@@ -248,13 +243,8 @@ function Navbar() {
           </Link>
         </div>
 
-        {/* Right: Notification Bell */}
-        <button
-          className="h-10 w-10 flex items-center justify-center hover:bg-[#DDE8EA]/50 rounded-lg transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5 text-[#4B8798]" />
-        </button>
+        {/* Right: Notification Bell Dropdown */}
+        <NotificationDropdown />
       </div>
 
       {/* Mobile Dropdown Panel (appears below navbar) - NO backdrop */}
