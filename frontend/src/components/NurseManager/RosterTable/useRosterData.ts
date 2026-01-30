@@ -213,6 +213,35 @@ export function useRosterPageData(wardId: number | null, periodId: number | null
   };
 }
 
+// Hook to publish a roster (change Draft entries to Confirmed)
+export function usePublishRoster() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      periodId,
+    }: {
+      wardId: number;
+      periodId: number;
+    }) => {
+      return fetchWithAuth(`/api/v1/roster/ward/${wardId}/publish?period_id=${periodId}`, {
+        method: "POST",
+      });
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate roster queries to refetch
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "ward", variables.wardId, variables.periodId],
+      });
+      // Also invalidate periods as PublishedAt may have changed
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "periods"],
+      });
+    },
+  });
+}
+
 // Hook for CSV export
 export function useRosterExport() {
   return {
@@ -257,5 +286,6 @@ export function useRosterExport() {
     },
   };
 }
+
 
 

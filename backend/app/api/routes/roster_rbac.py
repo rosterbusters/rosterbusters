@@ -117,6 +117,45 @@ def approve_roster(ward_id: int, period_id: int, session: SessionDep,
             "entries_approved": len(entries)}
 
 
+@router.post("/ward/{ward_id}/publish")
+def publish_roster(ward_id: int, period_id: int, session: SessionDep,
+                   current_user: Annotated[CurrentUser, Depends(require_permission("approve_roster"))]) -> dict:
+    """Publish roster - updates Draft entries to Confirmed and sets PublishedAt on period"""
+    if not user_can_access_ward(session, current_user.UserID, ward_id):
+        raise HTTPException(403, "Access denied to this ward")
+    
+    # Get the roster period
+    period = session.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(404, "Period not found")
+    
+    # Update all Draft entries to Confirmed
+    entries = session.exec(select(Roster).where(
+        Roster.WardID == ward_id, Roster.PeriodID == period_id, 
+        Roster.Status == "Draft"
+    )).all()
+    
+    for entry in entries:
+        entry.Status = "Confirmed"
+        entry.ApprovedBy = current_user.UserID
+        entry.ApprovedAt = datetime.now(timezone.utc)
+        session.add(entry)
+    
+    # Set PublishedAt on the RosterPeriod
+    period.PublishedAt = datetime.now(timezone.utc)
+    period.FinalizedBy = current_user.ManagerID if hasattr(current_user, 'ManagerID') else None
+    period.FinalizedAt = datetime.now(timezone.utc)
+    session.add(period)
+    
+    session.commit()
+    
+    return {
+        "message": f"Roster published for Ward {ward_id}",
+        "entries_published": len(entries),
+        "published_at": period.PublishedAt.isoformat()
+    }
+
+
 @router.post("/create")
 def create_roster_entry(ward_id: int, nurse_id: int, period_id: int,
                         shift_date: datetime, shift_code: str, session: SessionDep,
