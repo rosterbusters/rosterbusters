@@ -1,3 +1,12 @@
+"""
+Web authentication models.
+
+- User: Web application users (table: web_user)
+- Item: User-owned items
+- Token/TokenPayload: JWT authentication
+- Various request/response schemas
+"""
+
 import uuid
 
 from pydantic import EmailStr
@@ -40,7 +49,7 @@ class UpdatePassword(SQLModel):
 
 
 # Database model
-# MODIFIED: Changed table name to "web_user" to avoid conflict with "User" in models_rbac.py
+# MODIFIED: Changed table name to "web_user" to avoid conflict with "User" in rbac.py
 class User(UserBase, table=True):
     __tablename__ = "web_user"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
