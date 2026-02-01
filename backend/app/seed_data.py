@@ -8,6 +8,7 @@ Configure the numbers below to control how much data is generated.
 import logging
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 
 from faker import Faker
 from sqlmodel import Session, select
@@ -180,7 +181,7 @@ WARDS_DATA = [
 # ============================================================================
 
 
-def generate_managers_data(num_managers: int) -> list[dict[str, str]]:
+def generate_managers_data(num_managers: int) -> list[dict[str, Any]]:
     """Generate manager data using Faker."""
     managers = []
     for _ in range(num_managers):
@@ -194,7 +195,7 @@ def generate_managers_data(num_managers: int) -> list[dict[str, str]]:
     return managers
 
 
-def generate_nurses_data(num_wards: int, nurses_per_ward: int) -> list[dict[str, str | int]]:
+def generate_nurses_data(num_wards: int, nurses_per_ward: int) -> list[dict[str, Any]]:
     """Generate nurse data using Faker."""
     nurses = []
     for ward_idx in range(num_wards):
@@ -345,7 +346,7 @@ def seed_nurses(session: Session, wards: list[Ward]) -> list[Nurse]:
             logger.info(f"  Nurse '{nurse_data['name']}' already exists, skipping")
             nurses.append(existing)
         else:
-            ward = wards[nurse_data["ward_idx"]]
+            ward = wards[int(nurse_data["ward_idx"])]
             nurse = Nurse(
                 name=nurse_data["name"],
                 designation=nurse_data["designation"],

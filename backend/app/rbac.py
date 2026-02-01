@@ -10,7 +10,7 @@ def get_user_roles(session: Session, email: str) -> list[str]:
         return []
     
     # MODIFIED: Changed user_id to userid to match the model definition
-    statement = select(Role.rolename).join(UserRole, Role.roleid == UserRole.roleid).where(
+    statement = select(Role.rolename).join(UserRole, Role.roleid == UserRole.roleid).where(  # type: ignore[arg-type]
         UserRole.userid == rbac_user.userid,
         UserRole.isactive == True  # noqa: E712
     )
