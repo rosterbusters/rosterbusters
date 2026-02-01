@@ -27,7 +27,7 @@ jobs:
       - name: Copy test environment
         run: cp .env.test .env
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --group dev
         working-directory: backend
       - run: docker compose down -v --remove-orphans
       - run: docker compose up -d db mailcatcher
