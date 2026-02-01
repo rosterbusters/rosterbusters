@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -28,7 +28,7 @@ oauth.register(
 
 
 @router.get("/login/google")
-async def login_google(request: Request):
+async def login_google(request: Request) -> RedirectResponse:
     """Initiate Google OAuth login"""
     redirect_uri = f"{settings.BACKEND_HOST}/api/v1/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -38,7 +38,7 @@ async def login_google(request: Request):
 async def auth_google_callback(
     request: Request,
     session: SessionDep,
-):
+) -> RedirectResponse:
     """Handle Google OAuth callback"""
     try:
         token = await oauth.google.authorize_access_token(request)
@@ -145,7 +145,7 @@ async def auth_google_callback(
 @router.post("/login/access-token")
 def login_access_token(
     session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
-) -> dict:
+) -> dict[str, str]:
     """
     OAuth2 compatible token login, get an access token for future requests
     """

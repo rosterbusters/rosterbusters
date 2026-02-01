@@ -180,7 +180,7 @@ WARDS_DATA = [
 # ============================================================================
 
 
-def generate_managers_data(num_managers: int) -> list[dict]:
+def generate_managers_data(num_managers: int) -> list[dict[str, str]]:
     """Generate manager data using Faker."""
     managers = []
     for _ in range(num_managers):
@@ -194,7 +194,7 @@ def generate_managers_data(num_managers: int) -> list[dict]:
     return managers
 
 
-def generate_nurses_data(num_wards: int, nurses_per_ward: int) -> list[dict]:
+def generate_nurses_data(num_wards: int, nurses_per_ward: int) -> list[dict[str, str | int]]:
     """Generate nurse data using Faker."""
     nurses = []
     for ward_idx in range(num_wards):
@@ -975,7 +975,7 @@ def seed_notifications(
     return count
 
 
-def seed_all():
+def seed_all() -> None:
     """Run all seed functions."""
     logger.info("=" * 60)
     logger.info("Starting database seeding...")
@@ -1020,7 +1020,7 @@ def seed_all():
     logger.info("")
 
 
-def main():
+def main() -> None:
     seed_all()
 
 
