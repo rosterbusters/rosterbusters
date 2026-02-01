@@ -302,12 +302,12 @@ def seed_wards(session: Session) -> list[Ward]:
     return wards
 
 
-def seed_managers(session: Session, wards: list[Ward]) -> list[NurseManager]:
+def seed_managers(session: Session, _wards: list[Ward]) -> list[NurseManager]:
     """Seed nurse managers and return list of created NurseManager objects."""
     logger.info("Seeding nurse managers...")
     managers = []
 
-    for i, mgr_data in enumerate(MANAGERS_DATA):
+    for _i, mgr_data in enumerate(MANAGERS_DATA):
         existing = session.exec(
             select(NurseManager).where(NurseManager.email == mgr_data["email"])
         ).first()
