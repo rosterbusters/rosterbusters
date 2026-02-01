@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-from app.models_rbac import RBACUser, UserRole, Role
+from app.models import RBACUser, UserRole, Role
 
 def get_rbac_user_by_email(session: Session, email: str) -> RBACUser | None:
     return session.exec(select(RBACUser).where(RBACUser.email == email)).first()

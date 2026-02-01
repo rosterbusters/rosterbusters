@@ -24,10 +24,11 @@ dependencies = [
     "pyjwt<3.0.0,>=2.8.0",
     "itsdangerous<3.0.0,>=2.1.2",
     "psycopg2-binary (>=2.9.11,<3.0.0)",
+    "faker",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest<8.0.0,>=7.4.3",
     "mypy<2.0.0,>=1.8.0",
     "ruff<1.0.0,>=0.2.2",

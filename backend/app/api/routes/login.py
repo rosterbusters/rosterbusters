@@ -93,7 +93,7 @@ async def auth_google_callback(
             session.commit()
             session.refresh(user)
 
-        from app.models_rbac import RBACUser, Nurse, NurseManager, Role, UserRole
+        from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
         
         rbac_statement = select(RBACUser).where(RBACUser.email == email)
         rbac_user = session.exec(rbac_statement).first()
