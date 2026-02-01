@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-from app.models_rbac import RBACUser, UserRole, Role
+from app.models import RBACUser, UserRole, Role
 
 def get_rbac_user_by_email(session: Session, email: str) -> RBACUser | None:
     return session.exec(select(RBACUser).where(RBACUser.email == email)).first()
@@ -10,9 +10,9 @@ def get_user_roles(session: Session, email: str) -> list[str]:
         return []
     
     # MODIFIED: Changed user_id to userid to match the model definition
-    statement = select(Role.RoleName).join(UserRole, Role.RoleID == UserRole.RoleID).where(
-        UserRole.UserID == rbac_user.userid,
-        UserRole.IsActive == True
+    statement = select(Role.rolename).join(UserRole, Role.roleid == UserRole.roleid).where(  # type: ignore[arg-type]
+        UserRole.userid == rbac_user.userid,
+        UserRole.isactive == True  # noqa: E712
     )
     return list(session.exec(statement).all())
 
