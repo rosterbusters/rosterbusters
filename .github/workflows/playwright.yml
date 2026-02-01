@@ -73,6 +73,8 @@ jobs:
         VIRTUAL_ENV: backend/.venv
     - name: Copy test environment
       run: cp .env.test .env
+    - name: Create dummy Google OAuth credentials for CI
+      run: echo '{}' > backend/google_oauth_credentials.json
     - name: Create external network
       run: docker network create traefik-public || true
     - run: docker compose build
