@@ -30,6 +30,9 @@ jobs:
       - name: Auto-fix lint issues
         run: uv run ruff check app --fix
         working-directory: backend
+      - name: Auto-format code
+        run: uv run ruff format app
+        working-directory: backend
       - name: Run lint
         run: uv run bash scripts/lint.sh
         working-directory: backend
