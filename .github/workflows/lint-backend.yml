@@ -27,5 +27,9 @@ jobs:
       - name: Install dependencies
         run: uv sync
         working-directory: backend
-      - run: uv run bash scripts/lint.sh
+      - name: Auto-fix lint issues
+        run: uv run ruff check app --fix
+        working-directory: backend
+      - name: Run lint
+        run: uv run bash scripts/lint.sh
         working-directory: backend
