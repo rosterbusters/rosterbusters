@@ -68,11 +68,11 @@ jobs:
       working-directory: backend
     - run: npm ci
       working-directory: frontend
+    - name: Copy test environment
+      run: cp .env.test .env
     - run: uv run bash scripts/generate-client.sh
       env:
         VIRTUAL_ENV: backend/.venv
-    - name: Copy test environment
-      run: cp .env.test .env
     - name: Create dummy Google OAuth credentials for CI
       run: echo '{}' > backend/google_oauth_credentials.json
     - name: Create external network
