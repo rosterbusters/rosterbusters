@@ -3,7 +3,7 @@ name: Test Backend
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     types:
       - opened
@@ -24,6 +24,8 @@ jobs:
         with:
           version: "0.4.15"
           enable-cache: true
+      - name: Copy test environment
+        run: cp .env.test .env
       - run: docker compose down -v --remove-orphans
       - run: docker compose up -d db mailcatcher
       - name: Migrate DB
