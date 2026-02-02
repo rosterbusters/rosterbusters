@@ -12,17 +12,31 @@ jobs:
   auto-merge:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@v8
         with:
           script: |
             const pr = context.payload.pull_request;
 
             // Only run for Dependabot PRs targeting main
             if (pr.user.login === 'dependabot[bot]' && pr.base.ref === 'main') {
-              await github.rest.pulls.merge({
+              
+              // Get combined status for the head commit
+              const status = await github.rest.repos.getCombinedStatusForRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                pull_number: pr.number,
-                merge_method: 'squash'  // or 'merge', 'rebase'
+                ref: pr.head.sha
               });
+
+              // Check if all required status checks have passed
+              if (status.data.state === 'success') {
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  merge_method: 'squash'
+                });
+                console.log(`PR #${pr.number} merged!`);
+              } else {
+                console.log(`PR #${pr.number} cannot be merged: status checks not passing`);
+              }
             }
