@@ -1,0 +1,63 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Sync code & environment to EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          cd ~/rosterbusters || (mkdir -p ~/rosterbusters && cd ~/rosterbusters)
+          git init || true
+          git remote add origin https://github.com/rosterbusters/rosterbusters.git || true
+          git fetch origin
+          git reset --hard origin/main
+
+          mkdir -p backend
+          cat > backend/google_oauth_credentials.json <<EOL
+${{ secrets.GOOGLEOAUTHCREDENTIALS }}
+EOL
+
+          cat > .env <<EOL
+ENVIRONMENT=staging
+DOMAIN=${{ secrets.DOMAIN_STAGING }}
+STACK_NAME=${{ secrets.STACK_NAME_STAGING }}
+SECRET_KEY=${{ secrets.SECRET_KEY }}
+GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+GOOGLE_OAUTH_ALLOWED_DOMAINS=${{ secrets.GOOGLE_OAUTH_ALLOWED_DOMAINS }}
+USERS_OPEN_REGISTRATION=True
+FIRST_SUPERUSER=${{ secrets.FIRST_SUPERUSER }}
+FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+SMTP_HOST=${{ secrets.SMTP_HOST }}
+SMTP_USER=${{ secrets.SMTP_USER }}
+SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
+POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
+EOL
+          EOF
+
+      - name: Build & run Docker on EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          cd ~/rosterbusters
+          docker compose down
+          docker compose up -d --build
+          EOF
