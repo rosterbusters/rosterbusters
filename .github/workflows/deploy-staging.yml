@@ -3,7 +3,7 @@ name: Deploy to Staging
 on:
   push:
     branches:
-      - tania
+      - main
 
 jobs:
   deploy:
@@ -26,7 +26,7 @@ jobs:
           git init || true
           git remote add origin https://github.com/rosterbusters/rosterbusters.git || true
           git fetch origin
-          git reset --hard origin/tania
+          git reset --hard origin/main
 
           mkdir -p backend
           cat > backend/google_oauth_credentials.json <<EOL
