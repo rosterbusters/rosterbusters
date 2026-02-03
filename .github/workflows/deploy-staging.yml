@@ -61,6 +61,8 @@ jobs:
           EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
           SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
+          DOCKER_IMAGE_BACKEND=backend
+          DOCKER_IMAGE_FRONTEND=frontend
           EOF
 
       - name: Strip whitespace from .env
