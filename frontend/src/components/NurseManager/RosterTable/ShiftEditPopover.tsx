@@ -26,7 +26,7 @@ interface ShiftEditPopoverProps {
 }
 
 // Working shifts
-const WORKING_SHIFTS: ShiftCode[] = ['D', 'A', 'PM', 'N', 'N-12'];
+const WORKING_SHIFTS: ShiftCode[] = ['D', 'A', 'P', 'N', 'N-12'];
 // Non-working shifts
 const NON_WORKING_SHIFTS: ShiftCode[] = ['DO', 'AL', 'MC', 'URG'];
 
@@ -41,6 +41,15 @@ export function ShiftEditPopover({
 }: ShiftEditPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
+  // Track selected shift locally to show immediate feedback
+  const [selectedShift, setSelectedShift] = useState<ShiftCode | null>(currentShift?.shiftCode || null);
+
+  // Reset selected shift when popover opens with new data
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedShift(currentShift?.shiftCode || null);
+    }
+  }, [isOpen, currentShift?.shiftCode]);
 
   // Calculate position based on anchor element
   useEffect(() => {
@@ -107,8 +116,9 @@ export function ShiftEditPopover({
   if (!isOpen) return null;
 
   const handleShiftSelect = (shiftCode: ShiftCode) => {
-    onShiftChange(shiftCode);
-    onClose();
+    setSelectedShift(shiftCode);  // Update local state for immediate visual feedback
+    onShiftChange(shiftCode);     // Update parent/grid data
+    // Don't close - user must click X or outside to close
   };
 
   return (
@@ -160,17 +170,17 @@ export function ShiftEditPopover({
 
         {/* Content */}
         <Box p={3}>
-          {/* Current Shift Display */}
-          {currentShift && (
+          {/* Current/Selected Shift Display */}
+          {selectedShift && (
             <Flex align="center" gap={2} mb={3} pb={3} borderBottom="1px solid" borderColor="gray.100">
               <Text fontSize="xs" color="gray.500">Current:</Text>
               <ShiftBadge 
-                shiftCode={currentShift.shiftCode} 
+                shiftCode={selectedShift} 
                 isEditable={false} 
                 size="sm" 
               />
               <Text fontSize="xs" color="gray.600">
-                {SHIFT_CODE_MAP[currentShift.shiftCode]?.description}
+                {SHIFT_CODE_MAP[selectedShift]?.description}
               </Text>
             </Flex>
           )}
@@ -189,7 +199,7 @@ export function ShiftEditPopover({
                   borderRadius="md"
                   p={1}
                   border="2px solid"
-                  borderColor={currentShift?.shiftCode === code ? "#4B8798" : "transparent"}
+                  borderColor={selectedShift === code ? "#4B8798" : "transparent"}
                   _hover={{ borderColor: "#4B8798", bg: "gray.50" }}
                   transition="all 0.15s ease"
                 >
@@ -218,7 +228,7 @@ export function ShiftEditPopover({
                   borderRadius="md"
                   p={1}
                   border="2px solid"
-                  borderColor={currentShift?.shiftCode === code ? "#4B8798" : "transparent"}
+                  borderColor={selectedShift === code ? "#4B8798" : "transparent"}
                   _hover={{ borderColor: "#4B8798", bg: "gray.50" }}
                   transition="all 0.15s ease"
                 >

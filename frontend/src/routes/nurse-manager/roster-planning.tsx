@@ -45,13 +45,13 @@ function generateAlgorithmMockData(startDate: Date, viewMode: ViewMode): RosterR
 
   // Algorithm-generated shift patterns (slightly different from homepage)
   const shiftPatterns: ShiftCode[][] = [
-    ["A", "DO", "D", "PM", "D", "DO", "A"],
-    ["A", "DO", "D", "PM", "D", "DO", "A"],
-    ["D", "PM", "D", "DO", "PM", "D", "DO"],
-    ["A", "DO", "PM", "D", "DO", "PM", "A"],
-    ["D", "D", "PM", "D", "DO", "DO", "A"],
-    ["D", "PM", "D", "DO", "D", "DO", "A"],
-    ["A", "DO", "PM", "PM", "D", "DO", "A"],
+    ["A", "DO", "D", "P", "D", "DO", "A"],
+    ["A", "DO", "D", "P", "D", "DO", "A"],
+    ["D", "P", "D", "DO", "P", "D", "DO"],
+    ["A", "DO", "P", "D", "DO", "P", "A"],
+    ["D", "D", "P", "D", "DO", "DO", "A"],
+    ["D", "P", "D", "DO", "D", "DO", "A"],
+    ["A", "DO", "P", "P", "D", "DO", "A"],
   ];
 
   const days = viewMode === "week" ? 7 : 14;

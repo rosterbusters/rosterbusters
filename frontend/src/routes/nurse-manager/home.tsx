@@ -43,7 +43,7 @@ function generateMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
     ["A", "A", "A", "A", "A", "A", "A"],
     ["D", "DO", "DO", "DO", "D", "DO", "D"],
     ["DO", "DO", "DO", "DO", "DO", "DO", "DO"],
-    ["D", "PM", "D", "DO", "D", "PM", "D"],
+    ["D", "P", "D", "DO", "D", "P", "D"],
     ["N", "N", "DO", "DO", "N", "N", "DO"],
     ["A", "D", "D", "DO", "A", "D", "DO"],
   ];
@@ -98,14 +98,21 @@ function NurseManagerHome() {
     selectedPeriod?.periodId ?? null
   );
 
-  // Generate mock data if API data is not available
-  const rosterData = useMemo(() => {
+  // Local state for roster data (allows updates in mock mode)
+  const [localRosterData, setLocalRosterData] = useState<RosterRow[]>([]);
+
+  // Generate/update roster data when dependencies change
+  useEffect(() => {
     if (apiRows.length > 0) {
-      return apiRows;
+      setLocalRosterData(apiRows);
+    } else {
+      // Use mock data for demonstration
+      setLocalRosterData(generateMockData(currentStartDate, viewMode));
     }
-    // Use mock data for demonstration
-    return generateMockData(currentStartDate, viewMode);
   }, [apiRows, currentStartDate, viewMode]);
+
+  // Use local state as the roster data source
+  const rosterData = localRosterData;
 
   // Set default ward when wards are loaded
   useEffect(() => {
@@ -146,6 +153,7 @@ function NurseManagerHome() {
 
   const handleShiftChange = useCallback(
     (nurseId: number, date: string, newShiftCode: ShiftCode) => {
+      // Update API if connected
       if (selectedWard && selectedPeriod) {
         updateRoster.mutate({
           wardId: selectedWard.wardId,
@@ -155,7 +163,29 @@ function NurseManagerHome() {
           shiftCode: newShiftCode,
         });
       }
-      // For mock data, we could also update local state here
+      
+      // Update local state for immediate UI feedback
+      setLocalRosterData(prevData => 
+        prevData.map(row => {
+          if (row.nurseId === nurseId) {
+            return {
+              ...row,
+              shifts: {
+                ...row.shifts,
+                [date]: {
+                  ...(row.shifts[date] || {}),
+                  rosterId: row.shifts[date]?.rosterId || 0,
+                  nurseId,
+                  shiftDate: date,
+                  shiftCode: newShiftCode,
+                  status: "Confirmed" as const,
+                },
+              },
+            };
+          }
+          return row;
+        })
+      );
       console.log(`Shift changed: Nurse ${nurseId}, Date ${date}, New Shift: ${newShiftCode}`);
     },
     [selectedWard, selectedPeriod, updateRoster]

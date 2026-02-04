@@ -171,7 +171,7 @@ export function transformRosterData(
     // Calculate hours (simplified - in production this would be more accurate)
     let workedHours = 0;
     nurseRoster.forEach((shift) => {
-      if (["D", "PM", "N"].includes(shift.shiftCode)) workedHours += 8;
+      if (["D", "P", "N"].includes(shift.shiftCode)) workedHours += 8;
       else if (shift.shiftCode === "A") workedHours += 6;
       else if (["N-12"].includes(shift.shiftCode)) workedHours += 12;
     });

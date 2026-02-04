@@ -1,5 +1,5 @@
 // Shift code types matching the database ShiftCode table
-export type ShiftCode = 'D' | 'A' | 'N' | 'PM' | 'DO' | 'AL' | 'MC' | 'URG' | 'N-12';
+export type ShiftCode = 'D' | 'A' | 'N' | 'P' | 'DO' | 'AL' | 'MC' | 'URG' | 'N-12';
 
 export interface ShiftCodeInfo {
   code: ShiftCode;
@@ -16,7 +16,7 @@ export const SHIFT_CODE_MAP: Record<ShiftCode, ShiftCodeInfo> = {
   'A': { code: 'A', description: 'AM Shift', isWorking: true, defaultStart: '07:00', defaultEnd: '13:00', durationHours: 6 },
   'N': { code: 'N', description: 'Night Shift', isWorking: true, defaultStart: '21:00', defaultEnd: '07:00', durationHours: 10 },
   'N-12': { code: 'N-12', description: 'Night 12h', isWorking: true, defaultStart: '19:00', defaultEnd: '07:00', durationHours: 12 },
-  'PM': { code: 'PM', description: 'PM Shift', isWorking: true, defaultStart: '13:00', defaultEnd: '21:00', durationHours: 8 },
+  'P': { code: 'P', description: 'PM Shift', isWorking: true, defaultStart: '13:00', defaultEnd: '21:00', durationHours: 8 },
   'DO': { code: 'DO', description: 'Day Off', isWorking: false },
   'AL': { code: 'AL', description: 'Annual Leave', isWorking: false },
   'MC': { code: 'MC', description: 'Medical Certificate', isWorking: false },
@@ -29,7 +29,7 @@ export const SHIFT_COLOR_MAP: Record<ShiftCode, string> = {
   'A': '#06b6d4',    // cyan.500 - AM
   'N': '#164e63',    // cyan.900 - Night
   'N-12': '#164e63', // cyan.900 - Night 12h
-  'PM': '#0e7490',   // cyan.700 - PM
+  'P': '#0e7490',    // cyan.700 - PM
   'DO': '#a3a3a3',   // neutral.400 - Day Off
   'AL': '#94a3b8',   // slate.400 - Annual Leave
   'MC': '#fbbf24',   // amber.400 - Medical Certificate

@@ -375,7 +375,7 @@ export function RosterGrid({
                   handleShiftClick(row.nurseId, row.name, dateKey, shift, e)
                 }
               >
-                <ShiftBadge shiftCode={shift?.shiftCode || null} isEditable={true} />
+                <ShiftBadge shiftCode={shift?.shiftCode || null} isEditable={true} viewMode={viewMode} />
               </Box>
             </Flex>
           </Table.Cell>
