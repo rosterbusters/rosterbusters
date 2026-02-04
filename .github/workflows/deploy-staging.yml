@@ -3,7 +3,7 @@ name: Deploy to Staging
 on:
   push:
     branches:
-      - tania
+      - main
 
 jobs:
   deploy:
@@ -41,7 +41,7 @@ jobs:
             git remote add origin https://github.com/rosterbusters/rosterbusters.git
           fi
           git fetch origin
-          git reset --hard origin/tania
+          git reset --hard origin/main
           EOF
 
       - name: Create .env file on EC2
