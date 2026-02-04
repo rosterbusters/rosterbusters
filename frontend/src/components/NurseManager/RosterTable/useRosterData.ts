@@ -60,7 +60,7 @@ export function useRosterPeriods() {
       const periods: RosterPeriod[] = [];
       
       for (let i = -2; i <= 2; i++) {
-        const startDate = moment(today).add(i * 14, "days").startOf("week");
+        const startDate = moment(today).add(i * 14, "days").startOf("isoWeek");
         const endDate = moment(startDate).add(13, "days");
         periods.push({
           periodId: i + 3,
@@ -237,6 +237,109 @@ export function usePublishRoster() {
       // Also invalidate periods as PublishedAt may have changed
       queryClient.invalidateQueries({
         queryKey: ["roster", "periods"],
+      });
+    },
+  });
+}
+
+// Algorithm roster generation response type
+export interface AlgorithmRosterResponse {
+  wardId: number;
+  periodId: number;
+  generatedAt: string;
+  rosterData: RosterRow[];
+}
+
+// Hook to generate algorithm-based roster
+export function useGenerateAlgorithmRoster() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      periodId,
+      startDate,
+      viewMode,
+    }: {
+      wardId: number;
+      periodId: number;
+      startDate: Date;
+      viewMode: "week" | "twoWeeks";
+    }): Promise<AlgorithmRosterResponse> => {
+      // TODO: Replace with actual API call when backend is ready
+      // return fetchWithAuth(`/api/v1/roster/generate-algorithm`, {
+      //   method: "POST",
+      //   body: JSON.stringify({
+      //     ward_id: wardId,
+      //     period_id: periodId,
+      //     start_date: moment(startDate).format("YYYY-MM-DD"),
+      //     days: viewMode === "week" ? 7 : 14,
+      //   }),
+      // });
+
+      // Mock implementation - simulates algorithm generation with delay
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API delay
+      
+      const mockNurses = [
+        { id: 1, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 52, contracted: 42 } },
+        { id: 2, name: "Tonnie Marti", designation: "Senior Nursing Aide II", hours: { worked: 32, contracted: 42 } },
+        { id: 3, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 42, contracted: 42 } },
+        { id: 4, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 42, contracted: 42 } },
+        { id: 5, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 32, contracted: 42 } },
+        { id: 6, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 42, contracted: 42 } },
+        { id: 7, name: "Mary Susan", designation: "Senior Staff Nurse II", hours: { worked: 42, contracted: 42 } },
+      ];
+
+      // Algorithm-generated shift patterns
+      const shiftPatterns: ShiftCode[][] = [
+        ["A", "DO", "D", "P", "D", "DO", "A"],
+        ["A", "DO", "D", "P", "D", "DO", "A"],
+        ["D", "P", "D", "DO", "P", "D", "DO"],
+        ["A", "DO", "P", "D", "DO", "P", "A"],
+        ["D", "D", "P", "D", "DO", "DO", "A"],
+        ["D", "P", "D", "DO", "D", "DO", "A"],
+        ["A", "DO", "P", "P", "D", "DO", "A"],
+      ];
+
+      const days = viewMode === "week" ? 7 : 14;
+
+      const rosterData: RosterRow[] = mockNurses.map((nurse, nurseIndex) => {
+        const shifts: Record<string, ShiftAssignment> = {};
+        
+        for (let i = 0; i < days; i++) {
+          const date = moment(startDate).add(i, "days").format("YYYY-MM-DD");
+          const shiftCode = shiftPatterns[nurseIndex % shiftPatterns.length][i % 7];
+          shifts[date] = {
+            rosterId: nurseIndex * 100 + i,
+            nurseId: nurse.id,
+            shiftDate: date,
+            shiftCode,
+            status: "Pending",
+          };
+        }
+
+        return {
+          nurseId: nurse.id,
+          name: nurse.name,
+          designation: nurse.designation,
+          hours: nurse.hours,
+          shifts,
+          hasOvertime: nurse.hours.worked > nurse.hours.contracted,
+          hasWarning: nurse.hours.worked > nurse.hours.contracted * 1.1,
+        };
+      });
+
+      return {
+        wardId,
+        periodId,
+        generatedAt: new Date().toISOString(),
+        rosterData,
+      };
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate roster queries to refetch
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "ward", variables.wardId, variables.periodId],
       });
     },
   });

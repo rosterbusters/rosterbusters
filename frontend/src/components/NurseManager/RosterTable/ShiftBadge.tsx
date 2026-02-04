@@ -35,22 +35,26 @@ export function ShiftBadge({
   viewMode
 }: ShiftBadgeProps) {
   if (!shiftCode) {
+    // Empty shift - show "Select" placeholder
+    const isWeekView = viewMode === "week";
     return (
       <Box
-        w={size === "sm" ? "32px" : "48px"}
-        h={size === "sm" ? "24px" : "28px"}
+        w={isWeekView ? "140px" : size === "sm" ? "32px" : "60px"}
+        h={isWeekView ? "44px" : size === "sm" ? "24px" : "28px"}
         borderRadius="md"
         bg="gray.100"
+        border="1px dashed"
+        borderColor="gray.300"
         display="flex"
         alignItems="center"
         justifyContent="center"
         cursor={isEditable ? "pointer" : "default"}
         onClick={onClick}
-        _hover={isEditable ? { bg: "gray.200" } : undefined}
-        transition="background-color 0.15s ease"
+        _hover={isEditable ? { bg: "gray.200", borderColor: "#4B8798" } : undefined}
+        transition="all 0.15s ease"
       >
-        <Text fontSize={size === "sm" ? "xs" : "sm"} color="gray.400">
-          —
+        <Text fontSize={isWeekView ? "sm" : size === "sm" ? "xs" : "xs"} color="gray.400">
+          Select
         </Text>
       </Box>
     );

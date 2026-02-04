@@ -47,7 +47,7 @@ export function RosterHeader({
   const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
 
   const handleToday = () => {
-    const today = moment().startOf("week").toDate();
+    const today = moment().startOf("isoWeek").toDate();
     onDateChange(today);
   };
 

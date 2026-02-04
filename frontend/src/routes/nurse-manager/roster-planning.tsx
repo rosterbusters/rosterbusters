@@ -9,6 +9,7 @@ import {
   useRosterPeriods,
   usePublishRoster,
   useRosterExport,
+  useGenerateAlgorithmRoster,
   type Ward,
   type RosterPeriod,
   type ViewMode,
@@ -31,56 +32,28 @@ export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
 });
 
-// Generate mock algorithm-generated data for demonstration
-function generateAlgorithmMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
+// Generate empty roster data for manual editing mode (before algorithm generation)
+function generateEmptyRosterData(): RosterRow[] {
   const mockNurses = [
-    { id: 1, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 52, contracted: 42 } },
-    { id: 2, name: "Tonnie Marti", designation: "Senior Nursing Aide II", hours: { worked: 32, contracted: 42 } },
-    { id: 3, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 42, contracted: 42 } },
-    { id: 4, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 42, contracted: 42 } },
-    { id: 5, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 32, contracted: 42 } },
-    { id: 6, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 42, contracted: 42 } },
-    { id: 7, name: "Mary Susan", designation: "Senior Staff Nurse II", hours: { worked: 42, contracted: 42 } },
+    { id: 1, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 42 } },
+    { id: 2, name: "Tonnie Marti", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 42 } },
+    { id: 3, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 42 } },
+    { id: 4, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 42 } },
+    { id: 5, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 42 } },
+    { id: 6, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 42 } },
+    { id: 7, name: "Mary Susan", designation: "Senior Staff Nurse II", hours: { worked: 0, contracted: 42 } },
   ];
 
-  // Algorithm-generated shift patterns (slightly different from homepage)
-  const shiftPatterns: ShiftCode[][] = [
-    ["A", "DO", "D", "P", "D", "DO", "A"],
-    ["A", "DO", "D", "P", "D", "DO", "A"],
-    ["D", "P", "D", "DO", "P", "D", "DO"],
-    ["A", "DO", "P", "D", "DO", "P", "A"],
-    ["D", "D", "P", "D", "DO", "DO", "A"],
-    ["D", "P", "D", "DO", "D", "DO", "A"],
-    ["A", "DO", "P", "P", "D", "DO", "A"],
-  ];
-
-  const days = viewMode === "week" ? 7 : 14;
-
-  return mockNurses.map((nurse, nurseIndex) => {
-    const shifts: Record<string, { rosterId: number; nurseId: number; shiftDate: string; shiftCode: ShiftCode; status: "Pending" }> = {};
-    
-    for (let i = 0; i < days; i++) {
-      const date = moment(startDate).add(i, "days").format("YYYY-MM-DD");
-      const shiftCode = shiftPatterns[nurseIndex % shiftPatterns.length][i % 7];
-      shifts[date] = {
-        rosterId: nurseIndex * 100 + i,
-        nurseId: nurse.id,
-        shiftDate: date,
-        shiftCode,
-        status: "Pending", // Draft/Pending status for planning
-      };
-    }
-
-    return {
-      nurseId: nurse.id,
-      name: nurse.name,
-      designation: nurse.designation,
-      hours: nurse.hours,
-      shifts,
-      hasOvertime: nurse.hours.worked > nurse.hours.contracted,
-      hasWarning: nurse.hours.worked > nurse.hours.contracted * 1.1,
-    };
-  });
+  // Return roster rows with empty shifts (null values) - users can manually assign shifts
+  return mockNurses.map((nurse) => ({
+    nurseId: nurse.id,
+    name: nurse.name,
+    designation: nurse.designation,
+    hours: nurse.hours,
+    shifts: {}, // Empty shifts - will show "Select" placeholder
+    hasOvertime: false,
+    hasWarning: false,
+  }));
 }
 
 function RosterPlanningPage() {
@@ -88,19 +61,23 @@ function RosterPlanningPage() {
   
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
-    moment().startOf("week").toDate()
+    moment().startOf("isoWeek").toDate()
   );
   const [viewMode, setViewMode] = useState<ViewMode>("twoWeeks");
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
-  const [rosterData, setRosterData] = useState<RosterRow[]>([]);
+  const [rosterData, setRosterData] = useState<RosterRow[]>(() => generateEmptyRosterData());
+  
+  // Algorithm generation state
+  const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
 
   // Data hooks
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
   const { exportToCSV } = useRosterExport();
   const publishRoster = usePublishRoster();
+  const generateAlgorithmRoster = useGenerateAlgorithmRoster();
 
   // Generate mock wards if API wards are empty
   const displayWards = useMemo(() => {
@@ -119,23 +96,23 @@ function RosterPlanningPage() {
     return [
       {
         periodId: 1,
-        name: `${today.clone().subtract(14, 'days').startOf('week').format('MMM DD')} - ${today.clone().subtract(14, 'days').startOf('week').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().subtract(14, 'days').startOf('week').format('YYYY-MM-DD'),
-        endDate: today.clone().subtract(14, 'days').startOf('week').add(13, 'days').format('YYYY-MM-DD'),
+        name: `${today.clone().subtract(14, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().subtract(14, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().subtract(14, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().subtract(14, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
         status: 'Finalized' as const,
       },
       {
         periodId: 2,
-        name: `${today.clone().startOf('week').format('MMM DD')} - ${today.clone().startOf('week').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().startOf('week').format('YYYY-MM-DD'),
-        endDate: today.clone().startOf('week').add(13, 'days').format('YYYY-MM-DD'),
+        name: `${today.clone().startOf('isoWeek').format('MMM DD')} - ${today.clone().startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
         status: 'RequestOpen' as const,
       },
       {
         periodId: 3,
-        name: `${today.clone().add(14, 'days').startOf('week').format('MMM DD')} - ${today.clone().add(14, 'days').startOf('week').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().add(14, 'days').startOf('week').format('YYYY-MM-DD'),
-        endDate: today.clone().add(14, 'days').startOf('week').add(13, 'days').format('YYYY-MM-DD'),
+        name: `${today.clone().add(14, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().add(14, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
         status: 'RequestOpen' as const,
       },
     ];
@@ -155,13 +132,44 @@ function RosterPlanningPage() {
     }
   }, [displayPeriods, selectedPeriod]);
 
-  // Generate mock algorithm data when start date or view mode changes
+  // Reset to empty data when view mode changes (only if not algorithm generated)
   useEffect(() => {
-    const mockData = generateAlgorithmMockData(currentStartDate, viewMode);
-    setRosterData(mockData);
-  }, [currentStartDate, viewMode]);
+    if (!isAlgorithmGenerated) {
+      setRosterData(generateEmptyRosterData());
+    }
+  }, [viewMode, isAlgorithmGenerated]);
 
   // Handlers
+  
+  // Generate algorithm roster handler
+  const handleGenerateAlgorithm = useCallback(async () => {
+    if (!selectedWard || !selectedPeriod) {
+      showErrorToast("Please select a ward and period first");
+      return;
+    }
+
+    try {
+      const result = await generateAlgorithmRoster.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+        startDate: currentStartDate,
+        viewMode,
+      });
+      
+      setRosterData(result.rosterData);
+      setIsAlgorithmGenerated(true);
+      showSuccessToast("Algorithm roster generated successfully!");
+    } catch (error) {
+      console.error("Failed to generate algorithm roster:", error);
+      showErrorToast("Failed to generate roster. Please try again.");
+    }
+  }, [selectedWard, selectedPeriod, currentStartDate, viewMode, generateAlgorithmRoster, showSuccessToast, showErrorToast]);
+
+  // Clear roster and return to manual mode
+  const handleClearRoster = useCallback(() => {
+    setRosterData(generateEmptyRosterData());
+    setIsAlgorithmGenerated(false);
+  }, []);
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
   }, []);
@@ -255,13 +263,16 @@ function RosterPlanningPage() {
           selectedPeriod={selectedPeriod}
           wards={displayWards}
           periods={displayPeriods}
-          isAlgorithmGenerated={true}
+          isAlgorithmGenerated={isAlgorithmGenerated}
+          isGenerating={generateAlgorithmRoster.isPending}
           onDateChange={handleDateChange}
           onViewModeChange={handleViewModeChange}
           onWardChange={handleWardChange}
           onPeriodChange={handlePeriodChange}
           onPublishRoster={handlePublishClick}
           onDownloadRoster={handleDownloadRoster}
+          onGenerateAlgorithm={handleGenerateAlgorithm}
+          onClearRoster={handleClearRoster}
         />
       </Box>
 
@@ -279,7 +290,7 @@ function RosterPlanningPage() {
           viewMode={viewMode}
           currentStartDate={currentStartDate}
           onShiftChange={handleShiftChange}
-          isLoading={false}
+          isLoading={generateAlgorithmRoster.isPending}
         />
       </Box>
 

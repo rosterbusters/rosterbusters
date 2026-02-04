@@ -14,8 +14,12 @@ export {
   usePublishRoster,
   useRosterPageData,
   useRosterExport,
+  useGenerateAlgorithmRoster,
   transformRosterData,
 } from "./useRosterData";
+
+// Export API response types
+export type { AlgorithmRosterResponse } from "./useRosterData";
 
 // Export types
 export * from "./types";

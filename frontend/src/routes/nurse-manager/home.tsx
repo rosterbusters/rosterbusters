@@ -80,7 +80,7 @@ function generateMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
 function NurseManagerHome() {
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
-    moment().startOf("week").toDate()
+    moment().startOf("isoWeek").toDate()
   );
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
@@ -217,23 +217,23 @@ function NurseManagerHome() {
     return [
       {
         periodId: 1,
-        name: `${today.clone().subtract(14, 'days').startOf('week').format('MMM DD')} - ${today.clone().subtract(14, 'days').startOf('week').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().subtract(14, 'days').startOf('week').format('YYYY-MM-DD'),
-        endDate: today.clone().subtract(14, 'days').startOf('week').add(13, 'days').format('YYYY-MM-DD'),
+        name: `${today.clone().subtract(14, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().subtract(14, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().subtract(14, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().subtract(14, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
         status: 'Finalized' as const,
       },
       {
         periodId: 2,
-        name: `${today.clone().startOf('week').format('MMM DD')} - ${today.clone().startOf('week').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().startOf('week').format('YYYY-MM-DD'),
-        endDate: today.clone().startOf('week').add(13, 'days').format('YYYY-MM-DD'),
+        name: `${today.clone().startOf('isoWeek').format('MMM DD')} - ${today.clone().startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
         status: 'RequestOpen' as const,
       },
       {
         periodId: 3,
-        name: `${today.clone().add(14, 'days').startOf('week').format('MMM DD')} - ${today.clone().add(14, 'days').startOf('week').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().add(14, 'days').startOf('week').format('YYYY-MM-DD'),
-        endDate: today.clone().add(14, 'days').startOf('week').add(13, 'days').format('YYYY-MM-DD'),
+        name: `${today.clone().add(14, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().add(14, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
         status: 'RequestOpen' as const,
       },
     ];
