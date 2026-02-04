@@ -18,46 +18,75 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          cat >> ~/.ssh/config << 'EOF'
+          Host *
+            ServerAliveInterval 30
+            ServerAliveCountMax 10
+            TCPKeepAlive yes
+          EOF
+          chmod 600 ~/.ssh/config
 
-      - name: Sync code & environment to EC2
+      - name: Copy credentials to EC2
+        run: |
+          echo '${{ secrets.GOOGLEOAUTHCREDENTIALS }}' | ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ~/rosterbusters/backend && cat > ~/rosterbusters/backend/google_oauth_credentials.json"
+
+      - name: Sync code to EC2
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-          cd ~/rosterbusters || (mkdir -p ~/rosterbusters && cd ~/rosterbusters)
-          git init || true
-          git remote add origin https://github.com/rosterbusters/rosterbusters.git || true
+          set -e
+          mkdir -p ~/rosterbusters
+          cd ~/rosterbusters
+          if [ ! -d .git ]; then
+            git init
+            git remote add origin https://github.com/rosterbusters/rosterbusters.git
+          fi
           git fetch origin
           git reset --hard origin/main
-
-          mkdir -p backend
-          cat > backend/google_oauth_credentials.json <<EOL
-${{ secrets.GOOGLEOAUTHCREDENTIALS }}
-EOL
-
-          cat > .env <<EOL
-ENVIRONMENT=staging
-DOMAIN=${{ secrets.DOMAIN_STAGING }}
-STACK_NAME=${{ secrets.STACK_NAME_STAGING }}
-SECRET_KEY=${{ secrets.SECRET_KEY }}
-GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-GOOGLE_OAUTH_ALLOWED_DOMAINS=${{ secrets.GOOGLE_OAUTH_ALLOWED_DOMAINS }}
-USERS_OPEN_REGISTRATION=True
-FIRST_SUPERUSER=${{ secrets.FIRST_SUPERUSER }}
-FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
-SMTP_HOST=${{ secrets.SMTP_HOST }}
-SMTP_USER=${{ secrets.SMTP_USER }}
-SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
-EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
-POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-SENTRY_DSN=${{ secrets.SENTRY_DSN }}
-GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
-EOL
           EOF
+
+      - name: Create .env file on EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ~/rosterbusters/.env" << 'EOF'
+          ENVIRONMENT=staging
+          PROJECT_NAME=RosterBusters
+          FRONTEND_HOST=http://${{ secrets.EC2_HOST }}:5173
+          DOMAIN=${{ secrets.DOMAIN_STAGING }}
+          STACK_NAME=${{ secrets.STACK_NAME_STAGING }}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          POSTGRES_SERVER=db
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB=app
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_OAUTH_ALLOWED_DOMAINS=${{ secrets.GOOGLE_OAUTH_ALLOWED_DOMAINS }}
+          USERS_OPEN_REGISTRATION=True
+          FIRST_SUPERUSER=${{ secrets.FIRST_SUPERUSER }}
+          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
+          SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
+          DOCKER_IMAGE_BACKEND=backend
+          DOCKER_IMAGE_FRONTEND=frontend
+          BACKEND_CORS_ORIGINS=["http://${{ secrets.EC2_HOST }}:5173"]
+          ACCESS_TOKEN_EXPIRE_MINUTES=10080
+          ALGORITHM=HS256
+          POSTGRES_PORT=5432
+          EOF
+
+      - name: Strip whitespace from .env
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sed -i 's/^[[:space:]]*//' ~/rosterbusters/.env"
 
       - name: Build & run Docker on EC2
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          set -e
           cd ~/rosterbusters
           docker compose down
-          docker compose up -d --build
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose build
+          docker compose up -d
           EOF
