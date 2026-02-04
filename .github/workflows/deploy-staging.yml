@@ -28,10 +28,12 @@ jobs:
           git fetch origin
           git reset --hard origin/main
 
-          mkdir -p backend
+          mkdir -p backend certs
           cat > backend/google_oauth_credentials.json <<EOL
 ${{ secrets.GOOGLEOAUTHCREDENTIALS }}
 EOL
+
+          curl -o certs/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
           cat > .env <<EOL
 ENVIRONMENT=staging
@@ -48,7 +50,13 @@ SMTP_HOST=${{ secrets.SMTP_HOST }}
 SMTP_USER=${{ secrets.SMTP_USER }}
 SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
 EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
+POSTGRES_SERVER=${{ secrets.RDS_HOST }}
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
 POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+POSTGRES_DB=postgres
+POSTGRES_SSL_MODE=verify-full
+POSTGRES_SSL_CERT=/app/certs/global-bundle.pem
 SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
 EOL
