@@ -44,9 +44,15 @@ from app.models.roster import (
     NotificationQueue,
     Roster,
     RosterPeriod,
+    Ward,
+)
+
+# Shift models
+from app.models.shifts import (
     ShiftCode,
     ShiftRequest,
-    Ward,
+    ShiftRequestCreate,
+    ShiftRequestPublic,
 )
 
 __all__ = [
@@ -83,7 +89,10 @@ __all__ = [
     "NotificationQueue",
     "Roster",
     "RosterPeriod",
+    "Ward",
+    # Shifts
     "ShiftCode",
     "ShiftRequest",
-    "Ward",
+    "ShiftRequestCreate",
+    "ShiftRequestPublic",
 ]

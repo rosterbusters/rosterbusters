@@ -1,11 +1,11 @@
 import { Box, Container, Flex, Heading, Image, Text, VStack, Separator, IconButton } from "@chakra-ui/react"
-import { createFileRoute, Link as RouterLink } from "@tanstack/react-router"
+import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
 import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
 import { useState } from "react"; 
 import { useForm, SubmitHandler } from 'react-hook-form';
-import type { Body_login_login_access_token as AccessToken } from "@/client"
-import { Button } from "@/components/ui/button"
+import type { Body_login_access_token as AccessToken } from "@/client"
+import { Button } from "@chakra-ui/react";
 import { Field } from "@/components/ui/field"
 import { Input } from "@chakra-ui/react"
 import { InputGroup } from "@/components/ui/input-group"
@@ -16,9 +16,9 @@ export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
     if (isLoggedIn()) {
-      // throw redirect({
-      //   to: "/",
-      // })
+      throw redirect({
+        to: "/",
+      })
     }
   },
 })

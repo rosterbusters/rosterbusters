@@ -17,6 +17,7 @@ from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
+from app.models.web import User
 
 
 # ============================================================================
@@ -189,7 +190,7 @@ def generate_managers_data(num_managers: int) -> list[dict[str, Any]]:
         last = fake.last_name()
         managers.append({
             "name": f"{first} {last}",
-            "email": f"{first.lower()}.{last.lower()}@sach.com.sg",
+            "email": f"{first.lower()}.{last.lower()}@sach.org.sg",
             "contactnumber": fake.numerify("9#######"),
         })
     return managers
@@ -206,7 +207,7 @@ def generate_nurses_data(num_wards: int, nurses_per_ward: int) -> list[dict[str,
             nurses.append({
                 "name": f"{first} {last}",
                 "designation": designation,
-                "email": f"{first.lower()}.{last.lower()}@sach.com.sg",
+                "email": f"{first.lower()}.{last.lower()}@sach.org.sg",
                 "contactnumber": fake.numerify("9#######"),
                 "ward_idx": ward_idx,
             })
@@ -370,7 +371,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
     logger.info("Seeding admin user...")
 
     existing = session.exec(
-        select(RBACUser).where(RBACUser.email == "admin@sach.com.sg")
+        select(RBACUser).where(RBACUser.email == "admin@sach.org.sg")
     ).first()
 
     if existing:
@@ -379,8 +380,8 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
 
     admin = RBACUser(
         username="admin",
-        email="admin@sach.com.sg",
-        passwordhash=get_password_hash("admin123"),
+        email="admin@sach.org.sg",
+        passwordhash=get_password_hash("changethis"),
         isactive=True,
         createdat=datetime.now(timezone.utc),
     )
@@ -400,7 +401,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         session.add(user_role)
         session.commit()
 
-    logger.info("  Created admin user: admin@sach.com.sg / admin123")
+    logger.info("  Created admin user: admin@sach.org.sg / changethis")
     return admin
 
 
@@ -976,6 +977,47 @@ def seed_notifications(
     return count
 
 
+def seed_web_users(session: Session) -> int:
+    """Create web_user entries for all RBAC users so they can login.
+
+    This syncs RBACUser table with web_user table used for authentication.
+    Uses the same email and password hash from RBAC users.
+    """
+    logger.info("Seeding web users (for login)...")
+    count = 0
+
+    # Get all RBAC users
+    rbac_users = session.exec(select(RBACUser)).all()
+
+    for rbac_user in rbac_users:
+        # Check if web_user already exists with this email
+        existing = session.exec(
+            select(User).where(User.email == rbac_user.email)
+        ).first()
+
+        if existing:
+            logger.info(f"  Web user '{rbac_user.email}' already exists, skipping")
+            continue
+
+        # Determine if user should be superuser (Admin role)
+        is_superuser = rbac_user.email == "admin@sach.org.sg"
+
+        web_user = User(
+            email=rbac_user.email,
+            hashed_password=rbac_user.passwordhash,
+            is_active=rbac_user.isactive,
+            is_superuser=is_superuser,
+            full_name=rbac_user.username,
+        )
+        session.add(web_user)
+        count += 1
+        logger.info(f"  Created web user: {rbac_user.email}")
+
+    session.commit()
+    logger.info(f"  Created {count} web users")
+    return count
+
+
 def seed_all() -> None:
     """Run all seed functions."""
     logger.info("=" * 60)
@@ -990,10 +1032,13 @@ def seed_all() -> None:
         managers = seed_managers(session, wards)
         nurses = seed_nurses(session, wards)
 
-        # Create users
+        # Create RBAC users
         seed_admin_user(session, roles)
         seed_manager_users(session, managers, wards, roles)
         seed_nurse_users(session, nurses, roles)
+
+        # Create web_user entries for login
+        seed_web_users(session)
 
         # Seed roster data
         periods = seed_roster_periods(session)
@@ -1013,7 +1058,7 @@ def seed_all() -> None:
     logger.info("=" * 60)
     logger.info("")
     logger.info("Test Credentials:")
-    logger.info("  admin@sach.com.sg / admin123 (Admin)")
+    logger.info("  admin@sach.org.sg / changethis (Admin)")
     for mgr in MANAGERS_DATA:
         logger.info(f"  {mgr['email']} / manager123 (NurseManager)")
     for nurse in NURSES_DATA[:NUM_NURSE_USERS]:
