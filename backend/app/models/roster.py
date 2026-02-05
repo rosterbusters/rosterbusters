@@ -25,17 +25,6 @@ class Ward(SQLModel, table=True):
     isactive: bool = Field(default=True)
 
 
-class ShiftCode(SQLModel, table=True):
-    __tablename__ = "shiftcode"
-
-    shiftcode: str = Field(primary_key=True, max_length=10)
-    description: str = Field(max_length=100)
-    isworking: bool = Field(default=True)
-    defaultstart: Optional[time] = None
-    defaultend: Optional[time] = None
-    shiftdurationhours: Optional[Decimal] = None
-
-
 class RosterPeriod(SQLModel, table=True):
     __tablename__ = "rosterperiod"
 
@@ -90,25 +79,13 @@ class NotificationQueue(SQLModel, table=True):
     createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class ShiftRequest(SQLModel, table=True):
-    __tablename__ = "shiftrequest"
 
-    requestid: Optional[int] = Field(default=None, primary_key=True)
-    nurseid: int
+class RosterPeriodPublic(SQLModel):
     periodid: int
-    preferreddate: date
-    preferredshifttype: str = Field(max_length=10)  # References ShiftCode
-    requestnumber: int = Field(default=1)  # 1, 2, or 3
-    reason: Optional[str] = None
-    priority: int = Field(default=1)  # 1-5, higher = more important
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    # Approval workflow
-    status: str = Field(default="Pending", max_length=20)  # Pending/Approved/Rejected/Cancelled
-    reviewedby: Optional[int] = None
-    reviewedat: Optional[datetime] = None
-    rejectionreason: Optional[str] = None
-    notificationsent: bool = Field(default=False)
+    name: str
+    startdate: date
+    enddate: date
+    status: str
 
 
 class LeaveRequest(SQLModel, table=True):

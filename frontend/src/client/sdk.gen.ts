@@ -3,7 +3,55 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+
+export class DefaultService {
+    /**
+     * Login Google
+     * Initiate Google OAuth login
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static loginGoogle(): CancelablePromise<LoginGoogleResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/login/google'
+        });
+    }
+    
+    /**
+     * Auth Google Callback
+     * Handle Google OAuth callback
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static authGoogleCallback(): CancelablePromise<AuthGoogleCallbackResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/auth/google/callback'
+        });
+    }
+    
+    /**
+     * Login Access Token
+     * OAuth2 compatible token login, get an access token for future requests
+     * @param data The data for the request.
+     * @param data.formData
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static loginAccessToken(data: LoginAccessTokenData): CancelablePromise<LoginAccessTokenResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/login/access-token',
+            formData: data.formData,
+            mediaType: 'application/x-www-form-urlencoded',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
 
 export class ItemsService {
     /**
@@ -116,103 +164,6 @@ export class ItemsService {
     }
 }
 
-export class LoginService {
-    /**
-     * Login Access Token
-     * OAuth2 compatible token login, get an access token for future requests
-     * @param data The data for the request.
-     * @param data.formData
-     * @returns Token Successful Response
-     * @throws ApiError
-     */
-    public static loginAccessToken(data: LoginLoginAccessTokenData): CancelablePromise<LoginLoginAccessTokenResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/login/access-token',
-            formData: data.formData,
-            mediaType: 'application/x-www-form-urlencoded',
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-    
-    /**
-     * Test Token
-     * Test access token
-     * @returns UserPublic Successful Response
-     * @throws ApiError
-     */
-    public static testToken(): CancelablePromise<LoginTestTokenResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/login/test-token'
-        });
-    }
-    
-    /**
-     * Recover Password
-     * Password Recovery
-     * @param data The data for the request.
-     * @param data.email
-     * @returns Message Successful Response
-     * @throws ApiError
-     */
-    public static recoverPassword(data: LoginRecoverPasswordData): CancelablePromise<LoginRecoverPasswordResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/password-recovery/{email}',
-            path: {
-                email: data.email
-            },
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-    
-    /**
-     * Reset Password
-     * Reset password
-     * @param data The data for the request.
-     * @param data.requestBody
-     * @returns Message Successful Response
-     * @throws ApiError
-     */
-    public static resetPassword(data: LoginResetPasswordData): CancelablePromise<LoginResetPasswordResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/reset-password/',
-            body: data.requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-    
-    /**
-     * Recover Password Html Content
-     * HTML Content for Password Recovery
-     * @param data The data for the request.
-     * @param data.email
-     * @returns string Successful Response
-     * @throws ApiError
-     */
-    public static recoverPasswordHtmlContent(data: LoginRecoverPasswordHtmlContentData): CancelablePromise<LoginRecoverPasswordHtmlContentResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/password-recovery-html-content/{email}',
-            path: {
-                email: data.email
-            },
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-}
-
 export class PrivateService {
     /**
      * Create User
@@ -226,6 +177,74 @@ export class PrivateService {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/private/users/',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ShiftRequestsService {
+    /**
+     * Get Roster Periods
+     * Get all roster periods.
+     * @returns RosterPeriodPublic Successful Response
+     * @throws ApiError
+     */
+    public static getRosterPeriods(): CancelablePromise<ShiftRequestsGetRosterPeriodsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/shift-requests/periods'
+        });
+    }
+
+    /**
+     * Get Roster Period
+     * Get the roster period that contains the given date.
+     * @param data The data for the request.
+     * @param data.targetDate
+     * @returns RosterPeriodPublic Successful Response
+     * @throws ApiError
+     */
+    public static getRosterPeriod(data: ShiftRequestsGetRosterPeriodData): CancelablePromise<ShiftRequestsGetRosterPeriodResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/shift-requests/period',
+            query: {
+                target_date: data.targetDate
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Get User Shift Requests
+     * Get all shift requests for the current user.
+     * @returns ShiftRequestPublic Successful Response
+     * @throws ApiError
+     */
+    public static getUserShiftRequests(): CancelablePromise<ShiftRequestsGetUserShiftRequestsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/shift-requests/'
+        });
+    }
+
+    /**
+     * Create Shift Request
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ShiftRequestPublic Successful Response
+     * @throws ApiError
+     */
+    public static createShiftRequest(data: ShiftRequestsCreateShiftRequestData): CancelablePromise<ShiftRequestsCreateShiftRequestResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/shift-requests/',
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
