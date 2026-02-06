@@ -9,3 +9,4 @@ CLAUDE.md
 .claude/settings.local.json
 .tanstack
 .idea/
+certs/

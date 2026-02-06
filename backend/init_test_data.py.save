@@ -1,0 +1,57 @@
+import uuid
+from datetime import date, timedelta, datetime, time
+from sqlmodel import Session, select
+from app.core.db import engine
+from app.core.security import get_password_hash
+# Import models chính xác từ cấu trúc dự án của bạn
+from app.models.rbac import Nurse
+from app.models.web import User
+from app.models.roster import Ward, ShiftCode, Roster, RosterPeriod
+
+def init_test_data():
+    with Session(engine) as session:
+        print("🚀 Bắt đầu tạo dữ liệu test...")
+
+        # ---------------------------------------------------------
+        # 1. TẠO SHIFT CODES (Ca trực)
+        # ---------------------------------------------------------
+        print("--- Đang tạo Shift Codes ---")
+        shifts = [
+            ShiftCode(shiftcode="AM", description="Ca Sáng", defaultstart=time(7, 0), defaultend=time(15, 0), isworking=True),
+            ShiftCode(shiftcode="PM", description="Ca Chiều", defaultstart=time(14, 0), defaultend=time(22, 0), isworking=True),
+            ShiftCode(shiftcode="ND", description="Ca Đêm", defaultstart=time(21, 0), defaultend=time(7, 0), isworking=True),
+            ShiftCode(shiftcode="OFF", description="Ngày Nghỉ", isworking=False)
+        ]
+        
+        for shift in shifts:
+            existing = session.get(ShiftCode, shift.shiftcode)
+            if not existing:
+                session.add(shift)
+        session.commit()
+
+        # ---------------------------------------------------------
+        # 2. TẠO WARDS (Phòng ban)
+        # ---------------------------------------------------------
+        print("--- Đang tạo Wards ---")
+        ward_names = ["General Ward A", "ICU", "Emergency"]
+        wards = []
+        for name in ward_names:
+            ward = session.exec(select(Ward).where(Ward.wardname == name)).first()
+            if not ward:
+                ward = Ward(wardname=name, wardtype="Inpatient", location="Block A")
+                session.add(ward)
+                session.commit()
+                session.refresh(ward)
+            wards.append(ward)
+
+        # ---------------------------------------------------------
+        # 3. TẠO ROSTER PERIOD (Kỳ trực)
+        # ---------------------------------------------------------
+        # Tạo một kỳ trực bao phủ tháng hiện tại
+        print("--- Đang tạo Roster     nurseid=nurse.nurseid # LIÊN KẾT QUAN TRỌNG
+                )
+                session.add(user)
+                session.commit()
+                print(f"✅ Created User: {staff['email']} / Pass: password123")
+
+        # ------------------------------------------------------

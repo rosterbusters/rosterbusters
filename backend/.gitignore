@@ -8,3 +8,4 @@ htmlcov
 .venv
 google_oauth_credentials.json
 *.json
+certs

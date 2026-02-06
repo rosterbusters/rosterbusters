@@ -1,7 +1,6 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import { createFileRoute, Outlet } from "@tanstack/react-router"
 
 import Navbar from "@/components/Common/Navbar"
-import { isLoggedIn } from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/_wardStaff")({
   component: WardStaffLayout,

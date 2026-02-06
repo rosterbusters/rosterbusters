@@ -1,15 +1,13 @@
+import { VStack } from "@chakra-ui/react";
 import {
   Button,
   CloseButton,
   Dialog,
   Portal,
   Select,
-  createListCollection,
+  
   Badge,
-  Stack,
-  Span,
   Text,
-  VStack,
 } from "@chakra-ui/react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { AssignableStatus } from "./AssignableStatus";
@@ -21,14 +19,6 @@ interface NewShiftRequestProps {
   onClose: () => void;
   selectedDate?: Date | null;
 }
-const frameworks = createListCollection({
-  items: [
-    { label: "React.js", value: "react" },
-    { label: "Vue.js", value: "vue" },
-    { label: "Angular", value: "angular" },
-    { label: "Svelte", value: "svelte" },
-  ],
-});
 export const NewShiftRequest = ({
   isOpen,
   onClose,

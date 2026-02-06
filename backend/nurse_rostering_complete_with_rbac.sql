@@ -104,7 +104,7 @@ CREATE TABLE Ward (
   
   CONSTRAINT fk_ward_manager FOREIGN KEY (ManagerID) 
     REFERENCES NurseManager(ManagerID) ON DELETE SET NULL,
-  
+  n
   CONSTRAINT chk_ward_staffing_positive CHECK (
     Morning_RN_Required >= 0 AND Morning_StaffNurse_Required >= 0 AND
     Morning_HCA_Required >= 0 AND Night_RN_Required >= 0 AND

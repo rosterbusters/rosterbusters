@@ -1,6 +1,4 @@
 import { defineRecipe } from "@chakra-ui/react";
-import type { RecipeVariantProps } from "@chakra-ui/react";
-import { system } from "../theme";
 
 export const badgeRecipe = defineRecipe({
   base: {
