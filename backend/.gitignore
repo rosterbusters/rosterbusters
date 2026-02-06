@@ -9,3 +9,7 @@ htmlcov
 google_oauth_credentials.json
 *.json
 certs
+.env
+.env.local
+.env.prod
+.env.*.local

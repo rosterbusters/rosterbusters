@@ -34,3 +34,27 @@ After seeding, admin, manager, nurse accounts are available:
 
 Check the console output after seeding for the actual generated emails.
 
+## Development vs Production
+
+### Local Development (Current Setup)
+- Uses Docker PostgreSQL container
+- Database port exposed: `localhost:5432`
+- Direct port access to all services
+- No SSL/HTTPS
+
+### Production Deployment
+Uses separate `docker-compose.prod.yml` with:
+- AWS RDS PostgreSQL
+- Traefik reverse proxy with SSL
+- Domain-based routing
+- No exposed ports (everything via Traefik)
+
+To deploy to production:
+
+```bash
+# Copy production environment file
+cp .env.prod .env
+
+# Deploy with production overrides
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```

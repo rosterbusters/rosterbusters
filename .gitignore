@@ -10,3 +10,4 @@ CLAUDE.md
 .tanstack
 .idea/
 certs/
+.env.*
