@@ -5,7 +5,7 @@ import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiMail } from "react-icons/fi"
 
 import { type ApiError } from "@/client"
-import { Button } from "@/components/ui/button"
+import { Button } from "@chakra-ui/react"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"

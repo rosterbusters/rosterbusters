@@ -3,7 +3,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 import Navbar from "@/components/Common/Navbar"
 import { isLoggedIn } from "@/hooks/useAuth"
 
-export const Route = createFileRoute("/_wardStaff")({
+export const Route = createFileRoute("/ward-staff")({
   component: WardStaffLayout,
   // beforeLoad: async () => {
   //   if (!isLoggedIn()) {
