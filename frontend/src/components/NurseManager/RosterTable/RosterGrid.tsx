@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, DragEvent } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   Box,
   Flex,
@@ -7,7 +7,7 @@ import {
   Table,
   Icon,
 } from "@chakra-ui/react";
-import { AlertCircle, Clock, Filter, HelpCircle, ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
+import { AlertCircle, Clock, Filter, ChevronDown, ChevronRight } from "lucide-react";
 import moment from "moment";
 
 import { ShiftBadge } from "./ShiftBadge";
@@ -28,9 +28,6 @@ interface RosterGridProps {
   isLoading?: boolean;
 }
 
-// Groupable columns configuration
-type GroupableColumn = "name" | "designation" | "hours";
-
 // Generate day columns based on view mode and start date
 function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
   const days = viewMode === "week" ? 7 : 14;
@@ -49,20 +46,12 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
   return columns;
 }
 
-// Group data by a specific field
-function groupByField(data: RosterRow[], field: GroupableColumn): Map<string, RosterRow[]> {
+// Group data by designation (role)
+function groupByDesignation(data: RosterRow[]): Map<string, RosterRow[]> {
   const groups = new Map<string, RosterRow[]>();
 
   data.forEach((row) => {
-    let key: string;
-    if (field === "name") {
-      key = row.name;
-    } else if (field === "designation") {
-      key = row.designation;
-    } else {
-      // Group by contracted hours
-      key = `${row.hours.contracted} hrs contracted`;
-    }
+    const key = row.designation;
     const existing = groups.get(key) || [];
     existing.push(row);
     groups.set(key, existing);
@@ -95,11 +84,7 @@ export function RosterGrid({
     anchorEl: null,
   });
 
-  // Grouping state
-  const [groupByColumns, setGroupByColumns] = useState<GroupableColumn[]>(["designation"]);
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  // Collapsed groups state
+  // Collapsed groups state - all groups start expanded
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Generate day columns
@@ -108,50 +93,10 @@ export function RosterGrid({
     [currentStartDate, viewMode]
   );
 
-  // Group data based on groupByColumns
+  // Group data by designation (role) - always grouped
   const groupedData = useMemo(() => {
-    if (groupByColumns.length === 0) {
-      return null; // No grouping - flat list
-    }
-    return groupByField(data, groupByColumns[0]);
-  }, [data, groupByColumns]);
-
-  // Check if a column is currently used for grouping
-  const isColumnGrouped = (column: GroupableColumn) => groupByColumns.includes(column);
-
-  // Handle drag start
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, column: GroupableColumn) => {
-    e.dataTransfer.setData("text/plain", column);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  // Handle drag over on drop zone
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setIsDragOver(true);
-  };
-
-  // Handle drag leave
-  const handleDragLeave = () => {
-    setIsDragOver(false);
-  };
-
-  // Handle drop on grouping zone
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const column = e.dataTransfer.getData("text/plain") as GroupableColumn;
-    if (column && !groupByColumns.includes(column)) {
-      setGroupByColumns([column]);
-      setCollapsedGroups(new Set()); // Reset collapsed state
-    }
-  };
-
-  // Remove grouping
-  const removeGrouping = (column: GroupableColumn) => {
-    setGroupByColumns(groupByColumns.filter((c) => c !== column));
-  };
+    return groupByDesignation(data);
+  }, [data]);
 
   // Handle shift badge click
   const handleShiftClick = useCallback(
@@ -203,68 +148,26 @@ export function RosterGrid({
   }, []);
 
   // Column width calculation
-  const dayColumnWidth = viewMode === "week" ? "100px" : "80px";
+  const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
 
-  // Draggable column header component
-  const DraggableColumnHeader = ({ 
-    column, 
-    title, 
-    icon 
-  }: { 
-    column: GroupableColumn; 
-    title: string; 
-    icon?: React.ReactNode 
-  }) => {
-    if (isColumnGrouped(column)) return null;
-    
-    const columnWidth = column === "name" ? "160px" : column === "designation" ? "180px" : "100px";
-    
-    return (
-      <Table.ColumnHeader
-        w={columnWidth}
-        minW={columnWidth}
-        borderRight="1px solid"
-        borderColor="gray.200"
-        bg="gray.50"
-        cursor="grab"
-        draggable
-        onDragStart={(e) => handleDragStart(e, column)}
-        _hover={{ bg: "gray.100" }}
-        _active={{ cursor: "grabbing" }}
-      >
-        <HStack gap={1}>
-          <Icon as={GripVertical} boxSize={3} color="gray.400" />
-          <Text fontSize="sm" fontWeight="medium" color="gray.600">
-            {title}
-          </Text>
-          {icon}
-        </HStack>
-      </Table.ColumnHeader>
-    );
-  };
+  // Total columns: Name + Hours + Day columns
+  const totalCols = 2 + dayColumns.length;
 
-  // Render data rows (flat or grouped)
+  // Render grouped rows
   const renderRows = () => {
-    if (!groupedData) {
-      // Flat list - no grouping
-      return data.map((row) => renderDataRow(row));
-    }
-
-    // Grouped view - flatten all rows into a single array for consistent table structure
     const allRows: React.ReactNode[] = [];
-    
+
     Array.from(groupedData.entries()).forEach(([groupKey, rows]) => {
       const isCollapsed = collapsedGroups.has(groupKey);
-      const totalCols = dayColumns.length + (isColumnGrouped("name") ? 0 : 1) + (isColumnGrouped("designation") ? 0 : 1) + (isColumnGrouped("hours") ? 0 : 1);
 
       // Group Header Row
       allRows.push(
         <Table.Row
           key={`group-${groupKey}`}
-          bg="#f1f5f9"
+          bg="#f8fafc"
           cursor="pointer"
           onClick={() => toggleGroup(groupKey)}
-          _hover={{ bg: "#e2e8f0" }}
+          _hover={{ bg: "#f1f5f9" }}
         >
           <Table.Cell colSpan={totalCols} py={2} px={3} w="100%">
             <HStack gap={2}>
@@ -273,11 +176,8 @@ export function RosterGrid({
                 boxSize={4}
                 color="gray.500"
               />
-              <Text fontSize="sm" fontWeight="semibold" color="#4B8798">
+              <Text fontSize="sm" fontWeight="semibold" color="gray.700">
                 {groupKey}
-              </Text>
-              <Text fontSize="xs" color="gray.500">
-                ({rows.length})
               </Text>
             </HStack>
           </Table.Cell>
@@ -291,7 +191,7 @@ export function RosterGrid({
         });
       }
     });
-    
+
     return allRows;
   };
 
@@ -303,58 +203,53 @@ export function RosterGrid({
       borderBottom="1px solid"
       borderColor="gray.100"
     >
-      {/* Name Cell - only if not grouped by name */}
-      {!isColumnGrouped("name") && (
-        <Table.Cell
-          bg="white"
-          borderRight="1px solid"
-          borderColor="gray.200"
-          py={2}
-          px={3}
-        >
-          <HStack gap={2}>
-            {row.hasWarning && (
-              <Icon as={AlertCircle} boxSize={4} color="red.500" />
-            )}
-            <Text fontSize="sm" fontWeight="medium" color="gray.700">
-              {row.name}
-            </Text>
-          </HStack>
-        </Table.Cell>
-      )}
-
-      {/* Designation Cell - only if not grouped by designation */}
-      {!isColumnGrouped("designation") && (
-        <Table.Cell
-          bg="white"
-          borderRight="1px solid"
-          borderColor="gray.200"
-          py={2}
-          px={3}
-        >
-          <Text fontSize="sm" color="gray.600">
-            {row.designation}
+      {/* Name Cell with warning indicator */}
+      <Table.Cell
+        bg="white"
+        borderRight="1px solid"
+        borderColor="gray.200"
+        py={2}
+        px={3}
+        w="160px"
+        minW="160px"
+      >
+        <HStack gap={2}>
+          <Text fontSize="sm" fontWeight="medium" color="gray.700">
+            {row.name}
           </Text>
-        </Table.Cell>
-      )}
+          {row.hasWarning && (
+            <Icon as={AlertCircle} boxSize={4} color="orange.400" />
+          )}
+        </HStack>
+      </Table.Cell>
 
-      {/* Hours Cell - only if not grouped by hours */}
-      {!isColumnGrouped("hours") && (
-        <Table.Cell borderRight="1px solid" borderColor="gray.200" py={2} px={3}>
-          <HStack gap={1}>
-            {row.hasOvertime && (
-              <Icon as={Clock} boxSize={3} color="orange.500" />
-            )}
+      {/* Hours Cell - worked in red if over contracted */}
+      <Table.Cell
+        borderRight="1px solid"
+        borderColor="gray.200"
+        py={2}
+        px={3}
+        w="100px"
+        minW="100px"
+      >
+        <HStack gap={1}>
+          {row.hasOvertime && (
+            <Icon as={Clock} boxSize={3} color="orange.400" />
+          )}
+          <HStack gap={0}>
             <Text
               fontSize="sm"
-              color={row.hasOvertime ? "orange.600" : "gray.600"}
+              color={row.hasOvertime ? "red.500" : "gray.600"}
               fontWeight={row.hasOvertime ? "semibold" : "normal"}
             >
-              {row.hours.worked} / {row.hours.contracted}
+              {row.hours.worked}
+            </Text>
+            <Text fontSize="sm" color="gray.600">
+              &nbsp;/ {row.hours.contracted}
             </Text>
           </HStack>
-        </Table.Cell>
-      )}
+        </HStack>
+      </Table.Cell>
 
       {/* Shift Cells */}
       {dayColumns.map((col) => {
@@ -386,85 +281,48 @@ export function RosterGrid({
 
   return (
     <Box position="relative" w="100%">
-      {/* Grouping Drop Zone */}
-      <Box
-        p={3}
-        mb={2}
-        borderRadius="md"
-        border="2px dashed"
-        borderColor={isDragOver ? "#4B8798" : "gray.300"}
-        bg={isDragOver ? "cyan.50" : "gray.50"}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        transition="all 0.2s ease"
-      >
-        {groupByColumns.length === 0 ? (
-          <Text fontSize="sm" color="gray.500" textAlign="center">
-            Drag a column header and drop it here to group by that column
-          </Text>
-        ) : (
-          <HStack gap={2} flexWrap="wrap">
-            <Text fontSize="sm" color="gray.500">
-              Grouped by:
-            </Text>
-            {groupByColumns.map((col) => (
-              <HStack
-                key={col}
-                bg="white"
-                px={3}
-                py={1}
-                borderRadius="md"
-                border="1px solid"
-                borderColor="gray.200"
-                gap={2}
-              >
-                <Text fontSize="sm" fontWeight="medium" color="#4B8798">
-                  {col === "name" ? "Name" : col === "designation" ? "Designation" : "Hours"}
-                </Text>
-                <Icon
-                  as={X}
-                  boxSize={4}
-                  color="gray.400"
-                  cursor="pointer"
-                  _hover={{ color: "red.500" }}
-                  onClick={() => removeGrouping(col)}
-                />
-              </HStack>
-            ))}
-          </HStack>
-        )}
-      </Box>
-
       {/* Table Container */}
-      <Box overflow="auto" maxH="calc(100vh - 340px)" w="100%">
+      <Box overflow="auto" maxH="calc(100vh - 300px)" w="100%">
         <Table.Root size="sm" variant="outline" w="100%" style={{ tableLayout: "fixed" }}>
           <Table.Header>
             <Table.Row bg="gray.50">
-              {/* Name Column Header - Draggable */}
-              <DraggableColumnHeader
-                column="name"
-                title="Name"
-                icon={<Icon as={Filter} boxSize={3} color="gray.400" />}
-              />
+              {/* Name Column Header */}
+              <Table.ColumnHeader
+                w="160px"
+                minW="160px"
+                borderRight="1px solid"
+                borderColor="gray.200"
+                bg="gray.50"
+              >
+                <HStack gap={1}>
+                  <Text fontSize="sm" fontWeight="medium" color="gray.600">
+                    Name
+                  </Text>
+                  <Icon as={Filter} boxSize={3} color="gray.400" />
+                </HStack>
+              </Table.ColumnHeader>
 
-              {/* Designation Column Header - Draggable */}
-              <DraggableColumnHeader
-                column="designation"
-                title="Designation"
-              />
-
-              {/* Hours Column Header - Draggable */}
-              <DraggableColumnHeader
-                column="hours"
-                title="Hours"
-                icon={<Icon as={HelpCircle} boxSize={3} color="gray.400" />}
-              />
+              {/* Hours Column Header */}
+              <Table.ColumnHeader
+                w="100px"
+                minW="100px"
+                borderRight="1px solid"
+                borderColor="gray.200"
+                bg="gray.50"
+              >
+                <HStack gap={1}>
+                  <Icon as={Clock} boxSize={3} color="gray.400" />
+                  <Text fontSize="sm" fontWeight="medium" color="gray.600">
+                    Hours
+                  </Text>
+                </HStack>
+              </Table.ColumnHeader>
 
               {/* Day Column Headers */}
               {dayColumns.map((col) => (
                 <Table.ColumnHeader
                   key={col.field}
+                  w={dayColumnWidth}
                   minW={dayColumnWidth}
                   textAlign="center"
                   bg="gray.50"
@@ -474,7 +332,7 @@ export function RosterGrid({
                 >
                   <Box>
                     <Text fontSize="sm" fontWeight="medium" color="gray.700">
-                      {col.dayOfWeek}
+                      {col.title}
                     </Text>
                     <Text fontSize="xs" color="gray.500">
                       {moment(col.date).format("DD/MM/YYYY")}
