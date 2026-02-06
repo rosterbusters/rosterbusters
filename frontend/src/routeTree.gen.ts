@@ -12,11 +12,18 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
+import { Route as NurseManagerRouteImport } from './routes/nurse-manager'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as WardStaffRouteImport } from './routes/_wardStaff'
 import { Route as LayoutRouteImport } from './routes/_layout'
-import { Route as NurseManagerIndexRouteImport } from './routes/nurseManager/index'
+import { Route as NurseManagerIndexRouteImport } from './routes/nurse-manager/index'
 import { Route as WardStaffIndexRouteImport } from './routes/_wardStaff/index'
+import { Route as NurseManagerWardStaffDirectoryRouteImport } from './routes/nurse-manager/ward-staff-directory'
+import { Route as NurseManagerShiftOverviewRouteImport } from './routes/nurse-manager/shift-overview'
+import { Route as NurseManagerSettingsRouteImport } from './routes/nurse-manager/settings'
+import { Route as NurseManagerRosterPlanningRouteImport } from './routes/nurse-manager/roster-planning'
+import { Route as NurseManagerLeaveOverviewRouteImport } from './routes/nurse-manager/leave-overview'
+import { Route as NurseManagerHomeRouteImport } from './routes/nurse-manager/home'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as WardStaffStaffrosterscheduleRouteImport } from './routes/_wardStaff/staffrosterschedule'
 import { Route as WardStaffShiftRequestRouteImport } from './routes/_wardStaff/shift-request'
@@ -43,6 +50,11 @@ const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
   path: '/recover-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NurseManagerRoute = NurseManagerRouteImport.update({
+  id: '/nurse-manager',
+  path: '/nurse-manager',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -57,14 +69,48 @@ const LayoutRoute = LayoutRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const NurseManagerIndexRoute = NurseManagerIndexRouteImport.update({
-  id: '/nurseManager/',
-  path: '/nurseManager/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => NurseManagerRoute,
 } as any)
 const WardStaffIndexRoute = WardStaffIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => WardStaffRoute,
+} as any)
+const NurseManagerWardStaffDirectoryRoute =
+  NurseManagerWardStaffDirectoryRouteImport.update({
+    id: '/ward-staff-directory',
+    path: '/ward-staff-directory',
+    getParentRoute: () => NurseManagerRoute,
+  } as any)
+const NurseManagerShiftOverviewRoute =
+  NurseManagerShiftOverviewRouteImport.update({
+    id: '/shift-overview',
+    path: '/shift-overview',
+    getParentRoute: () => NurseManagerRoute,
+  } as any)
+const NurseManagerSettingsRoute = NurseManagerSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => NurseManagerRoute,
+} as any)
+const NurseManagerRosterPlanningRoute =
+  NurseManagerRosterPlanningRouteImport.update({
+    id: '/roster-planning',
+    path: '/roster-planning',
+    getParentRoute: () => NurseManagerRoute,
+  } as any)
+const NurseManagerLeaveOverviewRoute =
+  NurseManagerLeaveOverviewRouteImport.update({
+    id: '/leave-overview',
+    path: '/leave-overview',
+    getParentRoute: () => NurseManagerRoute,
+  } as any)
+const NurseManagerHomeRoute = NurseManagerHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => NurseManagerRoute,
 } as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
@@ -121,8 +167,8 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof WardStaffIndexRoute
   '/login': typeof LoginRoute
+  '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -136,10 +182,16 @@ export interface FileRoutesByFullPath {
   '/shift-request': typeof WardStaffShiftRequestRoute
   '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/nurseManager/': typeof NurseManagerIndexRoute
+  '/nurse-manager/home': typeof NurseManagerHomeRoute
+  '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
+  '/nurse-manager/roster-planning': typeof NurseManagerRosterPlanningRoute
+  '/nurse-manager/settings': typeof NurseManagerSettingsRoute
+  '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
+  '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
+  '/': typeof WardStaffIndexRoute
+  '/nurse-manager/': typeof NurseManagerIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof WardStaffIndexRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -154,13 +206,21 @@ export interface FileRoutesByTo {
   '/shift-request': typeof WardStaffShiftRequestRoute
   '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/nurseManager': typeof NurseManagerIndexRoute
+  '/nurse-manager/home': typeof NurseManagerHomeRoute
+  '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
+  '/nurse-manager/roster-planning': typeof NurseManagerRosterPlanningRoute
+  '/nurse-manager/settings': typeof NurseManagerSettingsRoute
+  '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
+  '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
+  '/': typeof WardStaffIndexRoute
+  '/nurse-manager': typeof NurseManagerIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
   '/_wardStaff': typeof WardStaffRouteWithChildren
   '/login': typeof LoginRoute
+  '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -174,14 +234,20 @@ export interface FileRoutesById {
   '/_wardStaff/shift-request': typeof WardStaffShiftRequestRoute
   '/_wardStaff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/nurse-manager/home': typeof NurseManagerHomeRoute
+  '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
+  '/nurse-manager/roster-planning': typeof NurseManagerRosterPlanningRoute
+  '/nurse-manager/settings': typeof NurseManagerSettingsRoute
+  '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
+  '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
   '/_wardStaff/': typeof WardStaffIndexRoute
-  '/nurseManager/': typeof NurseManagerIndexRoute
+  '/nurse-manager/': typeof NurseManagerIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
     | '/login'
+    | '/nurse-manager'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -195,10 +261,16 @@ export interface FileRouteTypes {
     | '/shift-request'
     | '/staffrosterschedule'
     | '/auth/callback'
-    | '/nurseManager/'
+    | '/nurse-manager/home'
+    | '/nurse-manager/leave-overview'
+    | '/nurse-manager/roster-planning'
+    | '/nurse-manager/settings'
+    | '/nurse-manager/shift-overview'
+    | '/nurse-manager/ward-staff-directory'
+    | '/'
+    | '/nurse-manager/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -213,12 +285,20 @@ export interface FileRouteTypes {
     | '/shift-request'
     | '/staffrosterschedule'
     | '/auth/callback'
-    | '/nurseManager'
+    | '/nurse-manager/home'
+    | '/nurse-manager/leave-overview'
+    | '/nurse-manager/roster-planning'
+    | '/nurse-manager/settings'
+    | '/nurse-manager/shift-overview'
+    | '/nurse-manager/ward-staff-directory'
+    | '/'
+    | '/nurse-manager'
   id:
     | '__root__'
     | '/_layout'
     | '/_wardStaff'
     | '/login'
+    | '/nurse-manager'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -232,19 +312,25 @@ export interface FileRouteTypes {
     | '/_wardStaff/shift-request'
     | '/_wardStaff/staffrosterschedule'
     | '/auth/callback'
+    | '/nurse-manager/home'
+    | '/nurse-manager/leave-overview'
+    | '/nurse-manager/roster-planning'
+    | '/nurse-manager/settings'
+    | '/nurse-manager/shift-overview'
+    | '/nurse-manager/ward-staff-directory'
     | '/_wardStaff/'
-    | '/nurseManager/'
+    | '/nurse-manager/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   WardStaffRoute: typeof WardStaffRouteWithChildren
   LoginRoute: typeof LoginRoute
+  NurseManagerRoute: typeof NurseManagerRouteWithChildren
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
-  NurseManagerIndexRoute: typeof NurseManagerIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -270,6 +356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecoverPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/nurse-manager': {
+      id: '/nurse-manager'
+      path: '/nurse-manager'
+      fullPath: '/nurse-manager'
+      preLoaderRoute: typeof NurseManagerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -280,23 +373,23 @@ declare module '@tanstack/react-router' {
     '/_wardStaff': {
       id: '/_wardStaff'
       path: ''
-      fullPath: '/'
+      fullPath: ''
       preLoaderRoute: typeof WardStaffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
       id: '/_layout'
       path: ''
-      fullPath: '/'
+      fullPath: ''
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/nurseManager/': {
-      id: '/nurseManager/'
-      path: '/nurseManager'
-      fullPath: '/nurseManager/'
+    '/nurse-manager/': {
+      id: '/nurse-manager/'
+      path: '/'
+      fullPath: '/nurse-manager/'
       preLoaderRoute: typeof NurseManagerIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof NurseManagerRoute
     }
     '/_wardStaff/': {
       id: '/_wardStaff/'
@@ -304,6 +397,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof WardStaffIndexRouteImport
       parentRoute: typeof WardStaffRoute
+    }
+    '/nurse-manager/ward-staff-directory': {
+      id: '/nurse-manager/ward-staff-directory'
+      path: '/ward-staff-directory'
+      fullPath: '/nurse-manager/ward-staff-directory'
+      preLoaderRoute: typeof NurseManagerWardStaffDirectoryRouteImport
+      parentRoute: typeof NurseManagerRoute
+    }
+    '/nurse-manager/shift-overview': {
+      id: '/nurse-manager/shift-overview'
+      path: '/shift-overview'
+      fullPath: '/nurse-manager/shift-overview'
+      preLoaderRoute: typeof NurseManagerShiftOverviewRouteImport
+      parentRoute: typeof NurseManagerRoute
+    }
+    '/nurse-manager/settings': {
+      id: '/nurse-manager/settings'
+      path: '/settings'
+      fullPath: '/nurse-manager/settings'
+      preLoaderRoute: typeof NurseManagerSettingsRouteImport
+      parentRoute: typeof NurseManagerRoute
+    }
+    '/nurse-manager/roster-planning': {
+      id: '/nurse-manager/roster-planning'
+      path: '/roster-planning'
+      fullPath: '/nurse-manager/roster-planning'
+      preLoaderRoute: typeof NurseManagerRosterPlanningRouteImport
+      parentRoute: typeof NurseManagerRoute
+    }
+    '/nurse-manager/leave-overview': {
+      id: '/nurse-manager/leave-overview'
+      path: '/leave-overview'
+      fullPath: '/nurse-manager/leave-overview'
+      preLoaderRoute: typeof NurseManagerLeaveOverviewRouteImport
+      parentRoute: typeof NurseManagerRoute
+    }
+    '/nurse-manager/home': {
+      id: '/nurse-manager/home'
+      path: '/home'
+      fullPath: '/nurse-manager/home'
+      preLoaderRoute: typeof NurseManagerHomeRouteImport
+      parentRoute: typeof NurseManagerRoute
     }
     '/auth/callback': {
       id: '/auth/callback'
@@ -417,15 +552,39 @@ const WardStaffRouteWithChildren = WardStaffRoute._addFileChildren(
   WardStaffRouteChildren,
 )
 
+interface NurseManagerRouteChildren {
+  NurseManagerHomeRoute: typeof NurseManagerHomeRoute
+  NurseManagerLeaveOverviewRoute: typeof NurseManagerLeaveOverviewRoute
+  NurseManagerRosterPlanningRoute: typeof NurseManagerRosterPlanningRoute
+  NurseManagerSettingsRoute: typeof NurseManagerSettingsRoute
+  NurseManagerShiftOverviewRoute: typeof NurseManagerShiftOverviewRoute
+  NurseManagerWardStaffDirectoryRoute: typeof NurseManagerWardStaffDirectoryRoute
+  NurseManagerIndexRoute: typeof NurseManagerIndexRoute
+}
+
+const NurseManagerRouteChildren: NurseManagerRouteChildren = {
+  NurseManagerHomeRoute: NurseManagerHomeRoute,
+  NurseManagerLeaveOverviewRoute: NurseManagerLeaveOverviewRoute,
+  NurseManagerRosterPlanningRoute: NurseManagerRosterPlanningRoute,
+  NurseManagerSettingsRoute: NurseManagerSettingsRoute,
+  NurseManagerShiftOverviewRoute: NurseManagerShiftOverviewRoute,
+  NurseManagerWardStaffDirectoryRoute: NurseManagerWardStaffDirectoryRoute,
+  NurseManagerIndexRoute: NurseManagerIndexRoute,
+}
+
+const NurseManagerRouteWithChildren = NurseManagerRoute._addFileChildren(
+  NurseManagerRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   WardStaffRoute: WardStaffRouteWithChildren,
   LoginRoute: LoginRoute,
+  NurseManagerRoute: NurseManagerRouteWithChildren,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   AuthCallbackRoute: AuthCallbackRoute,
-  NurseManagerIndexRoute: NurseManagerIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
