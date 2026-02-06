@@ -3,7 +3,7 @@ name: Playwright Tests
 on:
   push:
     branches:
-    - master
+    - main
   pull_request:
     types:
     - opened
@@ -62,15 +62,21 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
-        version: "0.4.15"
+        version: "0.5.14"
         enable-cache: true
     - run: uv sync
       working-directory: backend
     - run: npm ci
       working-directory: frontend
+    - name: Copy test environment
+      run: cp .env.test .env
     - run: uv run bash scripts/generate-client.sh
       env:
         VIRTUAL_ENV: backend/.venv
+    - name: Create dummy Google OAuth credentials for CI
+      run: echo '{}' > backend/google_oauth_credentials.json
+    - name: Create external network
+      run: docker network create traefik-public || true
     - run: docker compose build
     - run: docker compose down -v --remove-orphans
     - name: Run Playwright tests

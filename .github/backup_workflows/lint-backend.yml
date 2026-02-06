@@ -3,7 +3,7 @@ name: Lint Backend
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     types:
       - opened
@@ -22,7 +22,17 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "0.4.15"
+          version: "0.5.14"
           enable-cache: true
-      - run: uv run bash scripts/lint.sh
+      - name: Install dependencies
+        run: uv sync
+        working-directory: backend
+      - name: Auto-fix lint issues
+        run: uv run ruff check app --fix
+        working-directory: backend
+      - name: Auto-format code
+        run: uv run ruff format app
+        working-directory: backend
+      - name: Run lint
+        run: uv run bash scripts/lint.sh
         working-directory: backend

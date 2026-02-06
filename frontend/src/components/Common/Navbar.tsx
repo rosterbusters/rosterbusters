@@ -12,7 +12,9 @@ import {
   Pencil,
   NotepadText,
   Bell,
+  LogOut,
 } from "lucide-react";
+import useAuth from "@/hooks/useAuth";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -22,15 +24,21 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
-import NotificationDropdown from "@/components/Common/NotificationDropdown";
+import NotificationDropdown from "./NotificationDropdown";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 function Navbar() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
+  const { user, logout } = useAuth();
 
-  // TODO: Replace with actual backend data
-  const userName = "Staff Name";
+  const userName = user?.full_name || user?.email || "Staff Name";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
@@ -196,19 +204,28 @@ function Navbar() {
 
         {/* RIGHT ZONE: Utilities */}
         <div className="flex items-center shrink-0">
-          {/* Notification Bell */}
-          <button
-            className="inline-flex items-center justify-center rounded-full transition-colors hover:bg-[#DDE8EA]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5 shrink-0 text-[#4B8798]" />
-          </button>
+          {/* Notification Bell Dropdown */}
+          <NotificationDropdown />
 
-          {/* Staff Name Display */}
-          <div className={cn(utilityPillStyles, "text-[#4A4A4A]")}>
-            <User className="h-5 w-5 shrink-0 text-[#4B8798]" />
-            <span>{userName}</span>
-          </div>
+          {/* Staff Name Display with Logout Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={cn(utilityPillStyles, "text-[#4A4A4A] hover:bg-[#DDE8EA]/50")}>
+                <User className="h-5 w-5 shrink-0 text-[#4B8798]" />
+                <span>{userName}</span>
+                <ChevronDown className="h-4 w-4 text-[#4B8798]" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40 border-0">
+              <DropdownMenuItem
+                onClick={logout}
+                className="cursor-pointer bg-white border-width-0 text-red-600 focus:text-red-600"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -259,9 +276,21 @@ function Navbar() {
           <div className="h-full overflow-y-auto px-4 pt-4">
             {/* Staff Identity Header */}
             <div className="!px-2 pt-6 pb-5 mb-6 border-b border-[#E6E6E6]">
-              <div className="flex items-center gap-1">
-                <User className="h-[18px] w-[18px] text-[#4B8798]" />
-                <span className="text-sm font-medium text-[#4A4A4A]">{`{${userName}}`}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <User className="h-[18px] w-[18px] text-[#4B8798]" />
+                  <span className="text-sm font-medium text-[#4A4A4A]">{userName}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    logout();
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </button>
               </div>
             </div>
 

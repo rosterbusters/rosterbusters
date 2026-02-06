@@ -55,6 +55,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   );
   const handleDayClicked = (day: Date) => {
     setSelectedDay(day);
+    console.log(day)
     setIsOpen(true); 
   };
 

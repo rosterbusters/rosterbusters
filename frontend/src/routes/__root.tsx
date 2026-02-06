@@ -28,6 +28,7 @@ export const Route = createRootRoute({
       <Suspense>
         <TanStackDevtools />
       </Suspense>
+
     </>
   ),
   notFoundComponent: () => <NotFound />,
