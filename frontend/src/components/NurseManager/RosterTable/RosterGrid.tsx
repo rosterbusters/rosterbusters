@@ -281,8 +281,8 @@ export function RosterGrid({
 
   return (
     <Box position="relative" w="100%">
-      {/* Table Container */}
-      <Box overflow="auto" maxH="calc(100vh - 300px)" w="100%">
+      {/* Table Container - height controlled by parent for sticky summary support */}
+      <Box overflow="auto" w="100%">
         <Table.Root size="sm" variant="outline" w="100%" style={{ tableLayout: "fixed" }}>
           <Table.Header>
             <Table.Row bg="gray.50">

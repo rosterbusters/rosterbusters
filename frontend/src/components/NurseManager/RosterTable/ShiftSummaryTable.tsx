@@ -21,6 +21,8 @@ interface ShiftSummaryTableProps {
   viewMode: ViewMode;
   currentStartDate: Date;
   guidelines?: DailyStaffingGuideline;
+  /** Combined width of name + hours columns from RosterGrid (default: 260px) */
+  labelColumnWidth?: string;
 }
 
 // Generate day columns based on view mode and start date
@@ -108,6 +110,7 @@ export function ShiftSummaryTable({
   viewMode,
   currentStartDate,
   guidelines = MOCK_STAFFING_GUIDELINES,
+  labelColumnWidth: labelColWidthProp = "260px",
 }: ShiftSummaryTableProps) {
   // Generate day columns
   const dayColumns = useMemo(
@@ -121,9 +124,9 @@ export function ShiftSummaryTable({
     [data, dayColumns]
   );
 
-  // Column width calculation
-  const dayColumnWidth = viewMode === "week" ? "100px" : "80px";
-  const labelColumnWidth = "60px";
+  // Column width calculation - must match RosterGrid
+  const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
+  const labelColumnWidth = labelColWidthProp;
 
   // Calculate total for a specific shift type and date
   const getTotal = (dateKey: string, shiftType: SummaryShiftType): number => {
@@ -150,10 +153,10 @@ export function ShiftSummaryTable({
         bg={colors.bg}
         color={colors.color}
         borderRadius="md"
-        w="24px"
+        w="28px"
         h="24px"
         fontSize="xs"
-        fontWeight="semibold"
+        fontWeight="bold"
       >
         {count}
       </Flex>
@@ -162,45 +165,52 @@ export function ShiftSummaryTable({
 
   return (
     <Box
+      position="sticky"
+      bottom={0}
+      left={0}
+      right={0}
       bg="white"
       borderTop="2px solid"
-      borderColor="gray.200"
+      borderColor="cyan.600"
       boxShadow="0 -4px 6px -1px rgba(0, 0, 0, 0.1)"
-      overflowX="auto"
       w="100%"
       flexShrink={0}
+      zIndex={10}
     >
       <Table.Root size="sm" variant="outline" w="100%" style={{ tableLayout: "fixed" }}>
         {/* Header Row - Shift Type Labels (A, P, N) */}
         <Table.Header>
-          <Table.Row bg="gray.50">
-            {/* Empty cell for role label column */}
+          <Table.Row bg="white">
+            {/* Empty cell for role label column - spans Name + Hours columns */}
             <Table.ColumnHeader
               w={labelColumnWidth}
               minW={labelColumnWidth}
               borderRight="1px solid"
               borderColor="gray.200"
-              p={1}
+              p={2}
+              bg="white"
             />
 
             {/* Day columns with A, P, N sub-headers */}
             {dayColumns.map((col) => (
               <Table.ColumnHeader
                 key={col.field}
+                w={dayColumnWidth}
                 minW={dayColumnWidth}
                 textAlign="center"
                 borderRight="1px solid"
                 borderColor="gray.100"
-                p={1}
+                p={2}
+                bg="white"
               >
                 <Flex justify="space-around" gap={1}>
                   {SHIFT_TYPES.map((type) => (
                     <Text
                       key={type}
                       fontSize="xs"
-                      fontWeight="semibold"
-                      color="gray.600"
-                      w="24px"
+                      fontWeight="bold"
+                      color="gray.700"
+                      w="28px"
                       textAlign="center"
                     >
                       {type}
@@ -218,13 +228,14 @@ export function ShiftSummaryTable({
             <Table.Row key={role} bg="white">
               {/* Role Label */}
               <Table.Cell
-                fontWeight="semibold"
+                fontWeight="bold"
                 fontSize="sm"
                 color="gray.700"
                 borderRight="1px solid"
                 borderColor="gray.200"
-                p={1}
-                textAlign="center"
+                p={2}
+                textAlign="right"
+                pr={4}
               >
                 {role}
               </Table.Cell>
@@ -240,7 +251,7 @@ export function ShiftSummaryTable({
                     textAlign="center"
                     borderRight="1px solid"
                     borderColor="gray.50"
-                    p={1}
+                    p={2}
                   >
                     <Flex justify="space-around" gap={1}>
                       {SHIFT_TYPES.map((shiftType) => (
@@ -268,8 +279,9 @@ export function ShiftSummaryTable({
               color="gray.800"
               borderRight="1px solid"
               borderColor="gray.200"
-              p={1}
-              textAlign="center"
+              p={2}
+              textAlign="right"
+              pr={4}
             >
               Total
             </Table.Cell>
@@ -284,7 +296,7 @@ export function ShiftSummaryTable({
                   textAlign="center"
                   borderRight="1px solid"
                   borderColor="gray.50"
-                  p={1}
+                  p={2}
                 >
                   <Flex justify="space-around" gap={1}>
                     {SHIFT_TYPES.map((shiftType) => {
@@ -297,7 +309,7 @@ export function ShiftSummaryTable({
                           bg="#0891B2"
                           color="white"
                           borderRadius="md"
-                          w="24px"
+                          w="28px"
                           h="24px"
                           fontSize="xs"
                           fontWeight="bold"
