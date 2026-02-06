@@ -53,7 +53,7 @@ interface DayShiftCounts {
 // Calculate shift counts per day from roster data
 function calculateShiftCounts(
   data: RosterRow[],
-  dayColumns: DayColumn[]
+  dayColumns: DayColumn[],
 ): Map<string, DayShiftCounts> {
   const counts = new Map<string, DayShiftCounts>();
 
@@ -89,7 +89,7 @@ function calculateShiftCounts(
 // Get cell background color based on count vs minimum requirement
 function getCellColor(
   count: number,
-  minimum: number
+  minimum: number,
 ): { bg: string; color: string } {
   if (count < minimum) {
     return { bg: "#DC2626", color: "white" }; // Red - below minimum
@@ -115,13 +115,13 @@ export function ShiftSummaryTable({
   // Generate day columns
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate, viewMode),
-    [currentStartDate, viewMode]
+    [currentStartDate, viewMode],
   );
 
   // Calculate shift counts
   const shiftCounts = useMemo(
     () => calculateShiftCounts(data, dayColumns),
-    [data, dayColumns]
+    [data, dayColumns],
   );
 
   // Column width calculation - must match RosterGrid
@@ -132,7 +132,10 @@ export function ShiftSummaryTable({
   const getTotal = (dateKey: string, shiftType: SummaryShiftType): number => {
     const dayCounts = shiftCounts.get(dateKey);
     if (!dayCounts) return 0;
-    return STAFF_ROLES.reduce((sum, role) => sum + dayCounts[role][shiftType], 0);
+    return STAFF_ROLES.reduce(
+      (sum, role) => sum + dayCounts[role][shiftType],
+      0,
+    );
   };
 
   // Render a count cell with appropriate color
@@ -140,7 +143,7 @@ export function ShiftSummaryTable({
     count: number,
     role: StaffRole,
     shiftType: SummaryShiftType,
-    isTotal = false
+    isTotal = false,
   ) => {
     const colors = isTotal
       ? getTotalCellColor()
@@ -177,7 +180,12 @@ export function ShiftSummaryTable({
       flexShrink={0}
       zIndex={10}
     >
-      <Table.Root size="sm" variant="outline" w="100%" style={{ tableLayout: "fixed" }}>
+      <Table.Root
+        size="sm"
+        variant="outline"
+        w="100%"
+        style={{ tableLayout: "fixed" }}
+      >
         {/* Header Row - Shift Type Labels (A, P, N) */}
         <Table.Header>
           <Table.Row bg="white">
@@ -259,7 +267,7 @@ export function ShiftSummaryTable({
                           {renderCountCell(
                             dayCounts?.[role]?.[shiftType] ?? 0,
                             role,
-                            shiftType
+                            shiftType,
                           )}
                         </Box>
                       ))}
@@ -330,4 +338,3 @@ export function ShiftSummaryTable({
 }
 
 export default ShiftSummaryTable;
-
