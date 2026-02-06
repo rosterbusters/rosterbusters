@@ -74,7 +74,7 @@ function Navbar() {
       <div className="hidden md:flex h-16 items-center justify-between">
         {/* LEFT ZONE: Brand */}
         <div className="flex items-center justify-center shrink-0 px-6">
-          <Link to="/home" className="flex items-center">
+          <Link to="/ward-staff/home" className="flex items-center">
             <img
               src="/assets/images/sach-navbarlogo.png"
               alt="SACH Logo"
@@ -94,7 +94,7 @@ function Navbar() {
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
                   <Link
-                    to="/home"
+                    to="/ward-staff/home"
                     className={cn(
                       navPillBaseStyles,
                       isActive("/home")
@@ -112,7 +112,7 @@ function Navbar() {
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
                   <Link
-                    to="/staffrosterschedule"
+                    to="/ward-staff/staffrosterschedule"
                     className={cn(
                       navPillBaseStyles,
                       isActive("/staffrosterschedule")
@@ -148,7 +148,7 @@ function Navbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/request-application"
+                          to="/ward-staff/request-application"
                           className={cn(
                             "w-full inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                             isActive("/request-application")
@@ -164,7 +164,7 @@ function Navbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/shift-request"
+                          to="/ward-staff/shift-request"
                           className={cn(
                             "w-full inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
                             isActive("/shift-request")
@@ -185,7 +185,7 @@ function Navbar() {
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
                   <Link
-                    to="/settings"
+                    to="/ward-staff/settings"
                     className={cn(
                       navPillBaseStyles,
                       isActive("/settings")
@@ -253,7 +253,7 @@ function Navbar() {
 
         {/* Center: Hospital Logo */}
         <div className="absolute left-1/2 -translate-x-1/2">
-          <Link to="/home" className="flex items-center">
+          <Link to="/ward-staff/home" className="flex items-center">
             <img
               src="/assets/images/sach-navbarlogo.png"
               alt="SACH Logo"
@@ -301,7 +301,7 @@ function Navbar() {
             <nav className="flex flex-col">
               {/* Home */}
               <Link
-                to="/home"
+                to="/ward-staff/home"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center"
               >
@@ -321,7 +321,7 @@ function Navbar() {
 
               {/* Staff Roster Schedule */}
               <Link
-                to="/staffrosterschedule"
+                to="/ward-staff/staffrosterschedule"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center"
               >
@@ -367,7 +367,7 @@ function Navbar() {
                 {leaveShiftExpanded && (
                   <div className="ml-8 mt-2 flex flex-col gap-1.5 pl-4 border-2 border-[#E6E6E6]">
                     <Link
-                      to="/leave-request"
+                      to="/ward-staff/leave-request"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
@@ -383,7 +383,7 @@ function Navbar() {
                       </span>
                     </Link>
                     <Link
-                      to="/shift-request"
+                      to="/ward-staff/shift-request"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
@@ -404,7 +404,7 @@ function Navbar() {
 
               {/* Settings */}
               <Link
-                to="/settings"
+                to="/ward-staff/settings"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center"
               >
