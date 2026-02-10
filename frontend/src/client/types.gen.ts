@@ -126,6 +126,14 @@ export type ValidationError = {
     type: string;
 };
 
+export type Ward = {
+    wardid?: (number | null);
+    wardname: string;
+    wardtype?: (string | null);
+    location?: (string | null);
+    isactive?: boolean;
+};
+
 export type LoginGoogleResponse = (unknown);
 
 export type AuthGoogleCallbackResponse = (unknown);
@@ -179,6 +187,9 @@ export type PrivateCreateUserResponse = (UserPublic);
 export type ShiftRequestsGetRosterPeriodsResponse = (Array<RosterPeriodPublic>);
 
 export type ShiftRequestsGetRosterPeriodData = {
+    /**
+     * Date to find the roster period for
+     */
     targetDate: string;
 };
 
@@ -253,3 +264,5 @@ export type UtilsTestEmailData = {
 export type UtilsTestEmailResponse = (Message);
 
 export type UtilsHealthCheckResponse = (boolean);
+
+export type WardsGetWardsResponse = (Array<Ward>);

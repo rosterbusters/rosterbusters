@@ -90,3 +90,7 @@ jobs:
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose build
           docker compose up -d
           EOF
+      - name: Run Database Seeding Script
+        run: |
+          docker compose exec backend python app/seed_data.py
+          

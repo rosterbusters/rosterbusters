@@ -167,6 +167,7 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof WardStaffIndexRoute
   '/login': typeof LoginRoute
   '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
@@ -188,10 +189,10 @@ export interface FileRoutesByFullPath {
   '/nurse-manager/settings': typeof NurseManagerSettingsRoute
   '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
   '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
-  '/': typeof WardStaffIndexRoute
   '/nurse-manager/': typeof NurseManagerIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof WardStaffIndexRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -212,7 +213,6 @@ export interface FileRoutesByTo {
   '/nurse-manager/settings': typeof NurseManagerSettingsRoute
   '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
   '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
-  '/': typeof WardStaffIndexRoute
   '/nurse-manager': typeof NurseManagerIndexRoute
 }
 export interface FileRoutesById {
@@ -246,6 +246,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
     | '/login'
     | '/nurse-manager'
     | '/recover-password'
@@ -267,10 +268,10 @@ export interface FileRouteTypes {
     | '/nurse-manager/settings'
     | '/nurse-manager/shift-overview'
     | '/nurse-manager/ward-staff-directory'
-    | '/'
     | '/nurse-manager/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -291,7 +292,6 @@ export interface FileRouteTypes {
     | '/nurse-manager/settings'
     | '/nurse-manager/shift-overview'
     | '/nurse-manager/ward-staff-directory'
-    | '/'
     | '/nurse-manager'
   id:
     | '__root__'
@@ -373,14 +373,14 @@ declare module '@tanstack/react-router' {
     '/_wardStaff': {
       id: '/_wardStaff'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof WardStaffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
       id: '/_layout'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }

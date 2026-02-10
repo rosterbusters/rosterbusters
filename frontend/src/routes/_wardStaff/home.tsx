@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Box, Flex, Stack } from "@chakra-ui/react";
-import StaffCalendar from "../../components/WardStaff/HomePage/StaffCalendar";
-import NotificationBanner from "../../components/WardStaff/HomePage/NotificationBanner";
+import StaffCalendar from "@/components/WardStaff/HomePage/StaffCalendar";
+import NotificationBanner from "@/components/WardStaff/HomePage/NotificationBanner";
 import StatusBanner from "@/components/WardStaff/HomePage/StatusBanner";
 
 export const Route = createFileRoute("/_wardStaff/home")({
   component: HomePage,
 });
+
 function HomePage() {
   return (
     <Flex
@@ -15,48 +16,46 @@ function HomePage() {
       height="fit-content"
       direction={{ base: "column" }}
       gap={4}
-      bgColor={"background2"}
+      bgColor="background2"
       p={5}
     >
       <Stack
         direction={{ base: "column", md: "row" }}
         gap={6}
-        w={"full"}
+        w="full"
         height="100%"
       >
         <Stack
-      bgColor={"white"}
-      p={12}
-      width={{base:"100%",md:"50%"}}
-      rounded={"lg"}
-      
-      alignItems={"start"}
-      justifyContent={"center"}
-    >
-      <StatusBanner />
-    </Stack>
-        
+          bgColor="white"
+          p={12}
+          width={{ base: "100%", md: "50%" }}
+          rounded="lg"
+          alignItems="start"
+          justifyContent="center"
+        >
+          <StatusBanner />
+        </Stack>
+
         <Stack
           justifyContent="center"
-          bgColor={"white"}
+          bgColor="white"
           p={4}
-          rounded={"lg"}
-          width={{base:"100%",md:"50%"}}
-          
+          rounded="lg"
+          width={{ base: "100%", md: "50%" }}
         >
           <NotificationBanner />
         </Stack>
       </Stack>
 
       <Box
-        w={"full"}
-        bgColor={"white"}
-        rounded={"lg"}
+        w="full"
+        bgColor="white"
+        rounded="lg"
         p={7}
         h={{ base: "600px", md: "900px" }}
         overflowX="auto"
       >
-        <Box minW="400px" h="100%" minHeight={"560px"}>
+        <Box minW="400px" h="100%" minHeight="560px">
           <StaffCalendar />
         </Box>
       </Box>

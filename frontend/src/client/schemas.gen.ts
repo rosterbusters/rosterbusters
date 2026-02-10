@@ -219,6 +219,36 @@ export const PrivateUserCreateSchema = {
     title: 'PrivateUserCreate'
 } as const;
 
+export const RosterPeriodPublicSchema = {
+    properties: {
+        periodid: {
+            type: 'integer',
+            title: 'Periodid'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        startdate: {
+            type: 'string',
+            format: 'date',
+            title: 'Startdate'
+        },
+        enddate: {
+            type: 'string',
+            format: 'date',
+            title: 'Enddate'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        }
+    },
+    type: 'object',
+    required: ['periodid', 'name', 'startdate', 'enddate', 'status'],
+    title: 'RosterPeriodPublic'
+} as const;
+
 export const ShiftRequestCreateSchema = {
     properties: {
         periodid: {
@@ -582,4 +612,57 @@ export const ValidationErrorSchema = {
     type: 'object',
     required: ['loc', 'msg', 'type'],
     title: 'ValidationError'
+} as const;
+
+export const WardSchema = {
+    properties: {
+        wardid: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wardid'
+        },
+        wardname: {
+            type: 'string',
+            maxLength: 100,
+            title: 'Wardname'
+        },
+        wardtype: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wardtype'
+        },
+        location: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Location'
+        },
+        isactive: {
+            type: 'boolean',
+            title: 'Isactive',
+            default: true
+        }
+    },
+    type: 'object',
+    required: ['wardname'],
+    title: 'Ward'
 } as const;

@@ -59,7 +59,7 @@ export const system = createSystem(defaultConfig, {
         },
         requestcodes: {
           shiftreq: { value: "cyan.600" },
-          leavereq: { value: "blue.500" },
+          leavereq: { value: "teal.600" },
           roster: { value: "cyan.700" },
           probation: { value: "yellow.500" },
         },
