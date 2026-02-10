@@ -2,6 +2,54 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Roster Table Custom Styles */
+.roster-table-wrapper {
+  font-family: "Poppins", sans-serif;
+}
+
+.roster-table-wrapper table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.roster-table-wrapper th {
+  background-color: #f8fafc;
+  font-weight: 500;
+  color: #4a4a4a;
+  border-bottom: 1px solid #e7e7e7;
+}
+
+.roster-table-wrapper td {
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.roster-table-wrapper tr:hover td {
+  background-color: #fafafa;
+}
+
+/* Sticky column styles */
+.roster-table-wrapper .sticky-col {
+  position: sticky;
+  left: 0;
+  background-color: white;
+  z-index: 1;
+}
+
+.roster-table-wrapper thead .sticky-col {
+  z-index: 3;
+  background-color: #f8fafc;
+}
+
+/* Group row styles */
+.roster-table-wrapper .group-row {
+  background-color: #f1f5f9;
+}
+
+.roster-table-wrapper .group-row:hover {
+  background-color: #e2e8f0;
+}
+
 
 :root{
   --default-font-family:"Poppins", sans-serif;

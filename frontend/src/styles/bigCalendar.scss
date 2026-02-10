@@ -1,3 +1,4 @@
+@use "sass:color";
 
 .rbc-header, .rbc-toolbar-label{
     font-family: "Poppins", sans-serif;
@@ -60,7 +61,8 @@
 }
 
 
-$out-of-range-color: lighten(#333, 40%);
+// Use color.adjust instead of deprecated lighten/darken
+$out-of-range-color: color.adjust(#333, $lightness: 40%);
 $out-of-range-bg-color: #F5F5F5;
 
 $calendar-border: #E5E5E5;
@@ -76,7 +78,7 @@ $time-selection-bg-color: rgba(0, 0, 0, 0.5);
 $date-selection-bg-color: rgba(0, 0, 0, 0.1);
 
 $event-bg: #3174ad !default;
-$event-border: darken(#3174ad, 10%);
+$event-border: color.adjust(#3174ad, $lightness: -10%);
 $event-outline: #3b99fc;
 $event-color: white;
 $event-border-radius: 5px;
@@ -93,4 +95,7 @@ $rbc-css-prefix: rbc-i;
 
 $today-highlight-bg: #eaf6ff;
 
+// Note: The @import from react-big-calendar will still show warnings
+// because the library itself uses deprecated syntax. This cannot be
+// fixed without modifying node_modules.
 @import "react-big-calendar/lib/sass/styles";
