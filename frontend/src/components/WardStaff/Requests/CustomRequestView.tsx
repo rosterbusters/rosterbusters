@@ -44,6 +44,8 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   date,
   localizer,
   events,
+  startAccessor,
+  endAccessor,
 }: CustomWeekViewProps) {
   const [isOpen, setIsOpen] = useState(false); 
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -53,6 +55,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   );
   const handleDayClicked = (day: Date) => {
     setSelectedDay(day);
+    console.log(day)
     setIsOpen(true); 
   };
 

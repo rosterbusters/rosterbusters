@@ -4,7 +4,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock } from "react-icons/fi"
 
-import { type ApiError, LoginService, type NewPassword } from "@/client"
+import { type ApiError, type NewPassword } from "@/client"
 import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
 import { isLoggedIn } from "@/hooks/useAuth"
@@ -43,12 +43,9 @@ function ResetPassword() {
   const { showSuccessToast } = useCustomToast()
   const navigate = useNavigate()
 
-  const resetPassword = async (data: NewPassword) => {
-    const token = new URLSearchParams(window.location.search).get("token")
-    if (!token) return
-    await LoginService.resetPassword({
-      requestBody: { new_password: data.new_password, token: token },
-    })
+  const resetPassword = async (_data: NewPassword) => {
+    // TODO: Backend endpoint not implemented yet
+    throw new Error("Password reset not implemented")
   }
 
   const mutation = useMutation({
@@ -98,7 +95,7 @@ function ResetPassword() {
         {...register("confirm_password", confirmPasswordRules(getValues))}
         placeholder="Confirm Password"
       />
-      <Button variant="default" type="submit">
+      <Button variant="solid" type="submit">
         Reset Password
       </Button>
     </Container>

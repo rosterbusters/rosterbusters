@@ -3,9 +3,9 @@ import { useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 
 import {
-  type Body_login_login_access_token as AccessToken,
+  type Body_login_access_token as AccessToken,
   type ApiError,
-  LoginService,
+  DefaultService,
   type UserPublic,
   type UserRegister,
   UsersService,
@@ -42,7 +42,7 @@ const useAuth = () => {
   })
 
   const login = async (data: AccessToken) => {
-    const response = await LoginService.loginAccessToken({
+    const response = await DefaultService.loginAccessToken({
       formData: data,
     })
     localStorage.setItem("access_token", response.access_token)

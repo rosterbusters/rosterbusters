@@ -1,4 +1,6 @@
 import { defineRecipe } from "@chakra-ui/react";
+import type { RecipeVariantProps } from "@chakra-ui/react";
+import { system } from "../theme";
 
 export const badgeRecipe = defineRecipe({
   base: {
@@ -16,12 +18,20 @@ export const badgeRecipe = defineRecipe({
         borderWidth: "3px",
         color: "cyan.500",
       },
+      AShiftSolid: {
+        bgColor: "cyan.500",
+        color: "white",
+      },
       NShift: { bgColor: "#164E63", color: "white" },
       NShiftOutline: {
         bgColor: "white",
         borderColor: "#164E63",
         borderWidth: "3px",
         color: "#164E63",
+      },
+      NShiftSolid: {
+        bgColor: "#164E63",
+        color: "white",
       },
       DShift: { bgColor: "#0891B2", color: "white" },
       DShiftOutline: {
@@ -30,12 +40,20 @@ export const badgeRecipe = defineRecipe({
         borderWidth: "3px",
         color: "#0891B2",
       },
+      DShiftSolid: {
+        bgColor: "#0891B2",
+        color: "white",
+      },
       PShift: { bgColor: "#0E7490", color: "white" },
       PShiftOutline: {
         bgColor: "white",
         borderColor: "#0E7490",
         borderWidth: "3px",
         color: "#0E7490",
+      },
+      PShiftSolid: {
+        bgColor: "#0E7490",
+        color: "white",
       },
       DOShift: { bgColor: "#A3A3A3", color: "white" },
       DOShiftOutline: {
@@ -44,6 +62,10 @@ export const badgeRecipe = defineRecipe({
         borderWidth: "3px",
         color: "#A3A3A3",
       },
+      DOShiftSolid: {
+        bgColor: "#A3A3A3",
+        color: "white",
+      },
       ALShift: { bgColor: "#94A3B8", color: "white" },
       ALShiftOutline: {
         bgColor: "white",
@@ -51,6 +73,11 @@ export const badgeRecipe = defineRecipe({
         borderWidth: "3px",
         color: "#94A3B8",
       },
+      ALShiftSolid: {
+        bgColor: "#94A3B8",
+        color: "white",
+      },
+
     },
   },
 });

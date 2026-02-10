@@ -4,7 +4,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiMail } from "react-icons/fi"
 
-import { type ApiError, LoginService } from "@/client"
+import { type ApiError } from "@/client"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
@@ -32,14 +32,13 @@ function RecoverPassword() {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<FormData>()
   const { showSuccessToast } = useCustomToast()
 
-  const recoverPassword = async (data: FormData) => {
-    await LoginService.recoverPassword({
-      email: data.email,
-    })
+  const recoverPassword = async (_data: FormData) => {
+    // TODO: Backend endpoint not implemented yet
+    throw new Error("Password recovery not implemented")
   }
 
   const mutation = useMutation({
@@ -86,7 +85,7 @@ function RecoverPassword() {
           />
         </InputGroup>
       </Field>
-      <Button variant="default" type="submit" >
+      <Button variant="solid" type="submit" loading={isSubmitting}>
         Continue
       </Button>
     </Container>

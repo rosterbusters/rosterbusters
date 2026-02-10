@@ -1,43 +1,67 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Box, Heading, Text, VStack, SimpleGrid } from "@chakra-ui/react";
-// Đã sửa import thành Named Import (có ngoặc nhọn)
-import { StatusBanner } from "@/components/WardStaff/HomePage/StatusBanner";
-import { NotificationBanner } from "@/components/WardStaff/HomePage/NotificationBanner";
-import StaffCalendar from "@/components/WardStaff/HomePage/StaffCalendar";
-import useAuth from "@/hooks/useAuth";
+import { Box, Flex, Stack } from "@chakra-ui/react";
+import StaffCalendar from "../../components/WardStaff/HomePage/StaffCalendar";
+import NotificationBanner from "../../components/WardStaff/HomePage/NotificationBanner";
+import StatusBanner from "@/components/WardStaff/HomePage/StatusBanner";
 
 export const Route = createFileRoute("/_wardStaff/home")({
-  component: WardStaffHome,
+  component: HomePage,
 });
-
-function WardStaffHome() {
-  const { user } = useAuth();
-
+function HomePage() {
   return (
-    <Box p={4}>
-      {/* Header Chào mừng */}
-      <Box mb={6}>
-        <Heading size="lg" color="blue.700" mb={2}>
-          Welcome Back, {user?.full_name || "Nurse"}!
-        </Heading>
-        <Text color="gray.500">Here is your schedule overview.</Text>
-      </Box>
+    <Flex
+      w="full"
+      minH="100vh"
+      height="fit-content"
+      direction={{ base: "column" }}
+      gap={4}
+      bgColor={"background2"}
+      p={5}
+    >
+      <Stack
+        direction={{ base: "column", md: "row" }}
+        gap={6}
+        w={"full"}
+        height="100%"
+      >
+        <Stack
+      bgColor={"white"}
+      p={12}
+      width={{base:"100%",md:"50%"}}
+      rounded={"lg"}
+      
+      alignItems={"start"}
+      justifyContent={"center"}
+    >
+      <StatusBanner />
+    </Stack>
+        
+        <Stack
+          justifyContent="center"
+          bgColor={"white"}
+          p={4}
+          rounded={"lg"}
+          width={{base:"100%",md:"50%"}}
+          
+        >
+          <NotificationBanner />
+        </Stack>
+      </Stack>
 
-      {/* Grid Layout: Banner bên trái, Thông báo bên phải */}
-      <SimpleGrid columns={{ base: 1, lg: 2 }} gap={6} mb={8}>
-        <Box>
-           {/* Banner Ca Trực Mới */}
-           <StatusBanner />
+      <Box
+        w={"full"}
+        bgColor={"white"}
+        rounded={"lg"}
+        p={7}
+        h={{ base: "600px", md: "900px" }}
+        overflowX="auto"
+      >
+        <Box minW="400px" h="100%" minHeight={"560px"}>
+          <StaffCalendar />
         </Box>
-        <Box>
-           <NotificationBanner />
-        </Box>
-      </SimpleGrid>
-
-      {/* Lịch làm việc ở dưới cùng */}
-      <Box mt={8}>
-        <StaffCalendar />
       </Box>
-    </Box>
+    </Flex>
   );
 }
+
+export default HomePage;

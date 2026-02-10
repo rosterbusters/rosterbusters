@@ -6,7 +6,7 @@ export function AssignableStatus() {
       <Text color="foreground" fontWeight="light">
         Assignable:
       </Text>
-      <Badge variant="solid">Requests: 1</Badge>
+      <Badge variant="requests">Requests: 1</Badge>
       </HStack>
     </>
   );

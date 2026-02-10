@@ -4,6 +4,13 @@ import { useState, useCallback } from 'react'
 
 const localizer = momentLocalizer(moment);
 
+interface Event {
+  title: string,
+  start: Date,
+  end: Date,
+  allDay?: boolean
+  resource?: any,
+}
 
 const events = [
   {

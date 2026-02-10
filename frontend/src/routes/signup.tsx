@@ -37,7 +37,7 @@ function SignUp() {
     register,
     handleSubmit,
     getValues,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<UserRegisterForm>({
     mode: "onBlur",
     criteriaMode: "all",
@@ -115,7 +115,7 @@ function SignUp() {
           placeholder="Confirm Password"
           errors={errors}
         />
-        <Button variant="default" type="submit" >
+        <Button variant="solid" type="submit" loading={isSubmitting}>
           Sign Up
         </Button>
         <Text>

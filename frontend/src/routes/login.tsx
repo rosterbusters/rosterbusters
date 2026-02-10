@@ -1,11 +1,11 @@
 import { Box, Container, Flex, Heading, Image, Text, VStack, Separator, IconButton } from "@chakra-ui/react"
-import { createFileRoute, Link as RouterLink } from "@tanstack/react-router"
+import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
 import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
 import { useState } from "react"; 
 import { useForm, SubmitHandler } from 'react-hook-form';
-import type { Body_login_login_access_token as AccessToken } from "@/client"
-import { Button } from "@/components/ui/button"
+import type { Body_login_access_token as AccessToken } from "@/client"
+import { Button } from "@chakra-ui/react";
 import { Field } from "@/components/ui/field"
 import { Input } from "@chakra-ui/react"
 import { InputGroup } from "@/components/ui/input-group"
@@ -16,9 +16,9 @@ export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
     if (isLoggedIn()) {
-      // throw redirect({
-      //   to: "/",
-      // })
+      throw redirect({
+        to: "/",
+      })
     }
   },
 })
@@ -74,7 +74,7 @@ function Login() {
           src="/assets/images/sach-entrance.jpg"
           alt="St. Andrew's Community Hospital"
           objectFit="cover"
-          
+          w="100%"
           h="100%"
           objectPosition="center" 
         />
@@ -105,7 +105,7 @@ function Login() {
         pt={{ base: 6, lg: 0 }}
         pb={4}
       >
-        <Container maxW="md"  px={6}>
+        <Container maxW="md" w="100%" px={6}>
           <VStack gap={3} align="stretch">
             
             {/* Header */}
@@ -126,13 +126,13 @@ function Login() {
             {/* Google Button */}
             <Button
               onClick={handleGoogleLogin}
-              
+              size="md"
               variant="outline"
-              
+              borderColor="gray.300"
               color="gray.700"
-              
-              
-              
+              _hover={{ bg: "gray.50" }}
+              w="100%"
+              fontWeight="medium"
             >
               <Flex align="center" gap={2}>
                 <FcGoogle size={20} />
@@ -143,7 +143,7 @@ function Login() {
             {/* Separator */}
             <Flex align="center" width="100%" gap={3}>
               <Separator flex="1" borderColor="gray.200" />
-              <Text fontSize="xs" color="gray.400" >OR</Text>
+              <Text fontSize="xs" color="gray.400" fontWeight="medium">OR</Text>
               <Separator flex="1" borderColor="gray.200" />
             </Flex>
 
@@ -152,12 +152,12 @@ function Login() {
               <VStack gap={3} align="stretch"> 
                 {/* Email */}
                 <Field invalid={!!errors.username} errorText={errors.username?.message}>
-                  <InputGroup startElement={<FiMail color="gray" />} >
+                  <InputGroup startElement={<FiMail color="gray" />} w="100%">
                     <Input
                       {...register("username", { required: "Required", pattern: emailPattern })}
                       placeholder="Email Address"
                       type="email"
-                      
+                      size="md"
                       variant="subtle"
                       bg="gray.50"
                     />
@@ -179,13 +179,13 @@ function Login() {
                         {showPassword ? <FiEyeOff /> : <FiEye />}
                       </IconButton>
                     }
-                    
+                    w="100%"
                   >
                     <Input
                       {...register("password", passwordRules())}
                       placeholder="Password"
                       type={showPassword ? "text" : "password"}
-                      
+                      size="md"
                       variant="subtle"
                       bg="gray.50"
                     />
@@ -198,11 +198,11 @@ function Login() {
 
                 <Button
                   type="submit"
-                  variant='default'
-                  
-                  
-                  
-                  
+                  variant='solid'
+                  size="md"
+                  w="100%"
+                  loading={isSubmitting}
+                  mt={1}
                 >
                   Log In
                 </Button>
