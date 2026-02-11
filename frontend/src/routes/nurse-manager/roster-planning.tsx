@@ -309,6 +309,7 @@ function RosterPlanningPage() {
           data={rosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
+          isRosterGenerated={isAlgorithmGenerated}
         />
       </Box>
 

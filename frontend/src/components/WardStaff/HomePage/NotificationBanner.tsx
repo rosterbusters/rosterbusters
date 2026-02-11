@@ -1,6 +1,6 @@
 import NotificationBanner from "@/components/Common/NotificationBanner";
-import { wardStaffNotifications } from "@/types/notifications";
+import { notifications } from "@/types/notifications";
 
 export default function WardStaffNotificationBanner() {
-  return <NotificationBanner items={wardStaffNotifications} />;
+  return <NotificationBanner items={notifications} />;
 }

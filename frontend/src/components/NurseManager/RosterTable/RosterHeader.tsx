@@ -4,13 +4,15 @@ import {
   Text,
   Button,
   HStack,
-  Select,
-  createListCollection,
 } from "@chakra-ui/react";
-import { ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Download,
+} from "lucide-react";
 import moment from "moment";
-import { Ward } from "@/client";
-import type { RosterPeriod, ViewMode } from "./types";
+import type { Ward, RosterPeriod, ViewMode } from "./types";
 
 interface RosterHeaderProps {
   currentStartDate: Date;
@@ -41,25 +43,8 @@ export function RosterHeader({
   onExportCSV,
   onViewEditHistory,
 }: RosterHeaderProps) {
-  const endDate = moment(currentStartDate).add(
-    viewMode === "week" ? 6 : 13,
-    "days",
-  );
+  const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
   const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
-
-  const wardCollection = createListCollection({
-    items: wards,
-    itemToString: (ward) => ward.wardname,
-    itemToValue: (ward) => String(ward.wardid),
-  });
-
-  const periodCollection = createListCollection({
-    items: periods,
-    itemToString: (period) =>
-      period.name ||
-      `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`,
-    itemToValue: (period) => String(period.periodId),
-  });
 
   const handleToday = () => {
     const today = moment().startOf("isoWeek").toDate();
@@ -81,30 +66,31 @@ export function RosterHeader({
   return (
     <Box w="full">
       {/* Top Row: Edit History + Date Range + Ward Tabs */}
-      <Flex
-        justify="space-between"
-        align="center"
+      <Flex 
+        justify="space-between" 
+        align="center" 
         mb={4}
         flexWrap="wrap"
         gap={3}
       >
         {/* Left Section: Edit History Button */}
         <Button
-          variant="outlinegrey"
+          variant="outline"
           size="sm"
           onClick={onViewEditHistory}
-          
+          borderColor="#E6E6E6"
+          color="#4A4A4A"
           _hover={{ bg: "#F8FAFC" }}
         >
-          <Eye />
+          <Eye className="h-4 w-4 mr-2" />
           View Edit History
         </Button>
 
         {/* Center Section: Date Range Display */}
         <Text
-          fontSize="lg"
-          fontWeight="semibold"
-          color="brand.fg"
+          fontSize="xl"
+          fontWeight="bold"
+          color="#155E75"
           textAlign="center"
         >
           {dateRangeText}
@@ -115,42 +101,41 @@ export function RosterHeader({
           <Text fontSize="sm" color="#6B7280" fontWeight="medium">
             Ward:
           </Text>
-          <Select.Root
-            collection={wardCollection}
-            size="sm"
-            width="140px"
-            value={selectedWard ? [String(selectedWard.wardid)] : []}
-            onValueChange={(details) => {
-              const ward = wards.find(
-                (w) => String(w.wardid) === details.value[0],
-              );
-              if (ward) onWardChange(ward);
-            }}
-          >
-            <Select.HiddenSelect />
-            <Select.Control>
-              <Select.Trigger>
-                <Select.ValueText placeholder="Select Ward" />
-              </Select.Trigger>
-              <Select.IndicatorGroup>
-                <Select.Indicator />
-              </Select.IndicatorGroup>
-            </Select.Control>
-            <Select.Positioner>
-              <Select.Content>
-                {wardCollection.items.map((ward) => (
-                  <Select.Item key={ward.wardid} item={ward}>
-                    {ward.wardname}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Positioner>
-          </Select.Root>
+          <Box position="relative" minW="140px">
+            <select
+              value={selectedWard?.wardId || ""}
+              onChange={(e) => {
+                const ward = wards.find(w => w.wardId === Number(e.target.value));
+                if (ward) onWardChange(ward);
+              }}
+              style={{
+                width: "100%",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #E6E6E6",
+                fontSize: "14px",
+                color: "#4A4A4A",
+                backgroundColor: "white",
+                cursor: "pointer",
+              }}
+            >
+              {wards.map((ward) => (
+                <option key={ward.wardId} value={ward.wardId}>
+                  {ward.wardName}
+                </option>
+              ))}
+            </select>
+          </Box>
         </HStack>
       </Flex>
 
       {/* Bottom Row: Navigation Controls + Filters + Actions */}
-      <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
+      <Flex 
+        justify="space-between" 
+        align="center"
+        flexWrap="wrap"
+        gap={3}
+      >
         {/* Left Section: Date Navigation */}
         <HStack gap={2}>
           <Button
@@ -163,16 +148,13 @@ export function RosterHeader({
           >
             Today
           </Button>
-          <HStack gap={0}>
-            <Button
+          <Button
             size="sm"
             variant="outline"
             onClick={handleBack}
             borderColor="#E6E6E6"
             color="#4A4A4A"
             _hover={{ bg: "#F8FAFC" }}
-            roundedBottomLeft="full"
-            roundedTopLeft="full"
             p={2}
           >
             <ChevronLeft className="h-4 w-4" />
@@ -185,15 +167,11 @@ export function RosterHeader({
             borderColor="#E6E6E6"
             color="#4A4A4A"
             _hover={{ bg: "#F8FAFC" }}
-            roundedBottomRight="full"
-            roundedTopRight="full"
             p={2}
           >
             Next
             <ChevronRight className="h-4 w-4" />
           </Button>
-          </HStack>
-          
         </HStack>
 
         {/* Center Section: Roster Period Dropdown */}
@@ -201,47 +179,40 @@ export function RosterHeader({
           <Text fontSize="sm" color="#6B7280" fontWeight="medium">
             Roster Period:
           </Text>
-          <Select.Root
-            collection={periodCollection}
-            size="sm"
-            width="220px"
-            value={selectedPeriod ? [String(selectedPeriod.periodId)] : []}
-            onValueChange={(details) => {
-              const period = periods.find(
-                (p) => String(p.periodId) === details.value[0],
-              );
-              if (period) onPeriodChange(period);
-            }}
-          >
-            <Select.HiddenSelect />
-            <Select.Control>
-              <Select.Trigger>
-                <Select.ValueText placeholder="Select period" />
-              </Select.Trigger>
-              <Select.IndicatorGroup>
-                <Select.Indicator />
-              </Select.IndicatorGroup>
-            </Select.Control>
-            <Select.Positioner>
-              <Select.Content>
-                {periodCollection.items.map((period) => (
-                  <Select.Item key={period.periodId} item={period}>
-                    {period.name ||
-                      `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Positioner>
-          </Select.Root>
+          <Box position="relative" minW="180px">
+            <select
+              value={selectedPeriod?.periodId || ""}
+              onChange={(e) => {
+                const period = periods.find(p => p.periodId === Number(e.target.value));
+                if (period) onPeriodChange(period);
+              }}
+              style={{
+                width: "100%",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #E6E6E6",
+                fontSize: "14px",
+                color: "#4A4A4A",
+                backgroundColor: "white",
+                cursor: "pointer",
+              }}
+            >
+              {periods.map((period) => (
+                <option key={period.periodId} value={period.periodId}>
+                  {period.name || `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
+                </option>
+              ))}
+            </select>
+          </Box>
         </HStack>
 
         {/* Right Section: View Mode Toggle + Export */}
         <HStack gap={3}>
           {/* View Mode Toggle */}
-          <HStack
-            gap={0}
-            borderRadius="lg"
-            border="1px solid #E6E6E6"
+          <HStack 
+            gap={0} 
+            borderRadius="lg" 
+            border="1px solid #E6E6E6" 
             overflow="hidden"
           >
             <Button
@@ -250,8 +221,8 @@ export function RosterHeader({
               onClick={() => onViewModeChange("week")}
               bg={viewMode === "week" ? "#4B8798" : "transparent"}
               color={viewMode === "week" ? "white" : "#4A4A4A"}
-              _hover={{
-                bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC",
+              _hover={{ 
+                bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC" 
               }}
               borderRadius={0}
               px={4}
@@ -264,8 +235,8 @@ export function RosterHeader({
               onClick={() => onViewModeChange("twoWeeks")}
               bg={viewMode === "twoWeeks" ? "#4B8798" : "transparent"}
               color={viewMode === "twoWeeks" ? "white" : "#4A4A4A"}
-              _hover={{
-                bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC",
+              _hover={{ 
+                bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC" 
               }}
               borderRadius={0}
               px={4}
@@ -279,9 +250,11 @@ export function RosterHeader({
             size="sm"
             variant="outline"
             onClick={onExportCSV}
-            
+            borderColor="#4B8798"
+            color="#4B8798"
+            _hover={{ bg: "#E8F4F6" }}
           >
-            <Download/>
+            <Download className="h-4 w-4 mr-2" />
             Export to CSV
           </Button>
         </HStack>

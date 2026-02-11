@@ -8,8 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
-  nurseManagerNotifications,
-  wardStaffNotifications,
+  notifications,
   notificationTypeLabels,
   getNotificationRoute,
   type NotificationItem,
@@ -39,7 +38,6 @@ function NotificationDropdown() {
   const [open, setOpen] = useState(false);
 
   // Sort notifications by date (most recent first) - in a real app, this would be done by the backend
-  const notifications = [...nurseManagerNotifications, ...wardStaffNotifications];
   const sortedNotifications = [...notifications].reverse();
 
   const handleNotificationClick = (notification: NotificationItem) => {
