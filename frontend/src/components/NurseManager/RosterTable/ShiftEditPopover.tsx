@@ -6,13 +6,15 @@ import {
   Button,
   VStack,
   Portal,
+  HStack,
 } from "@chakra-ui/react";
-import { X } from "lucide-react";
+import { X, ChevronDown } from "lucide-react";
 import { ShiftBadge } from "./ShiftBadge";
-import { 
-  type ShiftCode, 
+import {
+  type ShiftCode,
   type ShiftAssignment,
   SHIFT_CODE_MAP,
+  SHIFT_COLOR_MAP,
 } from "./types";
 
 interface ShiftEditPopoverProps {
@@ -29,6 +31,122 @@ interface ShiftEditPopoverProps {
 const WORKING_SHIFTS: ShiftCode[] = ['D', 'A', 'P', 'N', 'N-12'];
 // Non-working shifts
 const NON_WORKING_SHIFTS: ShiftCode[] = ['DO', 'AL', 'MC', 'URG'];
+
+interface ShiftDropdownProps {
+  label: string;
+  options: ShiftCode[];
+  selectedShift: ShiftCode | null;
+  onSelect: (code: ShiftCode) => void;
+}
+
+function ShiftDropdown({ label, options, selectedShift, onSelect }: ShiftDropdownProps) {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  const selectedOption = options.find((code) => code === selectedShift);
+
+  return (
+    <Box>
+      <Text fontSize="xs" fontWeight="medium" color="gray.500" mb={1}>
+        {label}
+      </Text>
+      {/* Dropdown trigger */}
+      <Box
+        border="1px solid"
+        borderColor={isDropdownOpen ? "#4B8798" : "gray.200"}
+        borderRadius="md"
+        px={3}
+        py={2}
+        cursor="pointer"
+        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+        _hover={{ borderColor: "#4B8798" }}
+        transition="all 0.15s ease"
+        bg="white"
+      >
+        <Flex justify="space-between" align="center">
+          {selectedOption ? (
+            <HStack gap={2}>
+              <Box
+                bg={SHIFT_COLOR_MAP[selectedOption]}
+                color="white"
+                px={2}
+                py={0.5}
+                borderRadius="md"
+                fontSize="xs"
+                fontWeight="semibold"
+                minW="32px"
+                textAlign="center"
+              >
+                {selectedOption}
+              </Box>
+              <Text fontSize="sm" color="gray.700">
+                {SHIFT_CODE_MAP[selectedOption]?.description}
+              </Text>
+            </HStack>
+          ) : (
+            <Text fontSize="sm" color="gray.400">
+              Select {label.toLowerCase()}
+            </Text>
+          )}
+          <Box
+            transform={isDropdownOpen ? "rotate(180deg)" : "rotate(0deg)"}
+            transition="transform 0.15s ease"
+          >
+            <ChevronDown size={16} color="#9CA3AF" />
+          </Box>
+        </Flex>
+      </Box>
+
+      {/* Dropdown list */}
+      {isDropdownOpen && (
+        <Box
+          border="1px solid"
+          borderColor="gray.200"
+          borderRadius="md"
+          mt={1}
+          overflow="hidden"
+          bg="white"
+          boxShadow="sm"
+        >
+          {options.map((code) => (
+            <Flex
+              key={code}
+              align="center"
+              gap={2}
+              px={3}
+              py={2}
+              cursor="pointer"
+              bg={selectedShift === code ? "gray.50" : "white"}
+              _hover={{ bg: "gray.50" }}
+              transition="background 0.1s ease"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(code);
+                setIsDropdownOpen(false);
+              }}
+            >
+              <Box
+                bg={SHIFT_COLOR_MAP[code]}
+                color="white"
+                px={2}
+                py={0.5}
+                borderRadius="md"
+                fontSize="xs"
+                fontWeight="semibold"
+                minW="32px"
+                textAlign="center"
+              >
+                {code}
+              </Box>
+              <Text fontSize="sm" color="gray.700">
+                {SHIFT_CODE_MAP[code]?.description}
+              </Text>
+            </Flex>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 export function ShiftEditPopover({
   isOpen,
@@ -56,8 +174,8 @@ export function ShiftEditPopover({
     if (anchorEl && isOpen) {
       const rect = anchorEl.getBoundingClientRect();
       const popoverWidth = 280;
-      const popoverHeight = 320;
-      
+      const popoverHeight = 380;
+
       let left = rect.left + rect.width / 2 - popoverWidth / 2;
       let top = rect.bottom + 8;
 
@@ -78,7 +196,7 @@ export function ShiftEditPopover({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        popoverRef.current && 
+        popoverRef.current &&
         !popoverRef.current.contains(event.target as Node) &&
         anchorEl &&
         !anchorEl.contains(event.target as Node)
@@ -116,9 +234,8 @@ export function ShiftEditPopover({
   if (!isOpen) return null;
 
   const handleShiftSelect = (shiftCode: ShiftCode) => {
-    setSelectedShift(shiftCode);  // Update local state for immediate visual feedback
-    onShiftChange(shiftCode);     // Update parent/grid data
-    // Don't close - user must click X or outside to close
+    setSelectedShift(shiftCode);
+    onShiftChange(shiftCode);
   };
 
   return (
@@ -169,15 +286,15 @@ export function ShiftEditPopover({
         </Flex>
 
         {/* Content */}
-        <Box p={3}>
+        <VStack p={3} gap={3} align="stretch">
           {/* Current/Selected Shift Display */}
           {selectedShift && (
-            <Flex align="center" gap={2} mb={3} pb={3} borderBottom="1px solid" borderColor="gray.100">
+            <Flex align="center" gap={2} pb={3} borderBottom="1px solid" borderColor="gray.100">
               <Text fontSize="xs" color="gray.500">Current:</Text>
-              <ShiftBadge 
-                shiftCode={selectedShift} 
-                isEditable={false} 
-                size="sm" 
+              <ShiftBadge
+                shiftCode={selectedShift}
+                isEditable={false}
+                size="sm"
               />
               <Text fontSize="xs" color="gray.600">
                 {SHIFT_CODE_MAP[selectedShift]?.description}
@@ -185,68 +302,25 @@ export function ShiftEditPopover({
             </Flex>
           )}
 
-          {/* Working Shifts Section */}
-          <Box mb={3}>
-            <Text fontSize="xs" fontWeight="medium" color="gray.500" mb={2}>
-              Working Shifts
-            </Text>
-            <Flex flexWrap="wrap" gap={2}>
-              {WORKING_SHIFTS.map((code) => (
-                <Box
-                  key={code}
-                  onClick={() => handleShiftSelect(code)}
-                  cursor="pointer"
-                  borderRadius="md"
-                  p={1}
-                  border="2px solid"
-                  borderColor={selectedShift === code ? "#4B8798" : "transparent"}
-                  _hover={{ borderColor: "#4B8798", bg: "gray.50" }}
-                  transition="all 0.15s ease"
-                >
-                  <VStack gap={0}>
-                    <ShiftBadge shiftCode={code} isEditable={false} size="sm" />
-                    <Text fontSize="xs" color="gray.500" mt={1}>
-                      {SHIFT_CODE_MAP[code]?.description.split(" ")[0]}
-                    </Text>
-                  </VStack>
-                </Box>
-              ))}
-            </Flex>
-          </Box>
+          {/* Working Shifts Dropdown */}
+          <ShiftDropdown
+            label="Shift Type"
+            options={WORKING_SHIFTS}
+            selectedShift={WORKING_SHIFTS.includes(selectedShift!) ? selectedShift : null}
+            onSelect={handleShiftSelect}
+          />
 
-          {/* Non-Working Shifts Section */}
-          <Box>
-            <Text fontSize="xs" fontWeight="medium" color="gray.500" mb={2}>
-              Off / Leave
-            </Text>
-            <Flex flexWrap="wrap" gap={2}>
-              {NON_WORKING_SHIFTS.map((code) => (
-                <Box
-                  key={code}
-                  onClick={() => handleShiftSelect(code)}
-                  cursor="pointer"
-                  borderRadius="md"
-                  p={1}
-                  border="2px solid"
-                  borderColor={selectedShift === code ? "#4B8798" : "transparent"}
-                  _hover={{ borderColor: "#4B8798", bg: "gray.50" }}
-                  transition="all 0.15s ease"
-                >
-                  <VStack gap={0}>
-                    <ShiftBadge shiftCode={code} isEditable={false} size="sm" />
-                    <Text fontSize="xs" color="gray.500" mt={1}>
-                      {code}
-                    </Text>
-                  </VStack>
-                </Box>
-              ))}
-            </Flex>
-          </Box>
-        </Box>
+          {/* Non-Working Shifts Dropdown */}
+          <ShiftDropdown
+            label="Leave Type"
+            options={NON_WORKING_SHIFTS}
+            selectedShift={NON_WORKING_SHIFTS.includes(selectedShift!) ? selectedShift : null}
+            onSelect={handleShiftSelect}
+          />
+        </VStack>
       </Box>
     </Portal>
   );
 }
 
 export default ShiftEditPopover;
-
