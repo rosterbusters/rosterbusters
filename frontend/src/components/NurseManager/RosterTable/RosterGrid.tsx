@@ -4,11 +4,20 @@ import {
   Flex,
   Text,
   HStack,
+  Stack,
   Table,
   Icon,
+  Spinner,
 } from "@chakra-ui/react";
-import { AlertCircle, Clock, Filter, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  AlertCircle,
+  Clock,
+  Filter,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import moment from "moment";
+import { CircleQuestionMark } from "lucide-react";
 
 import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
@@ -19,12 +28,17 @@ import type {
   ViewMode,
   DayColumn,
 } from "./types";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface RosterGridProps {
   data: RosterRow[];
   viewMode: ViewMode;
   currentStartDate: Date;
-  onShiftChange: (nurseId: number, date: string, newShiftCode: ShiftCode) => void;
+  onShiftChange: (
+    nurseId: number,
+    date: string,
+    newShiftCode: ShiftCode,
+  ) => void;
   isLoading?: boolean;
 }
 
@@ -85,12 +99,14 @@ export function RosterGrid({
   });
 
   // Collapsed groups state - all groups start expanded
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Generate day columns
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate, viewMode),
-    [currentStartDate, viewMode]
+    [currentStartDate, viewMode],
   );
 
   // Group data by designation (role) - always grouped
@@ -105,7 +121,7 @@ export function RosterGrid({
       nurseName: string,
       date: string,
       shift: ShiftAssignment | null,
-      event: React.MouseEvent<HTMLDivElement>
+      event: React.MouseEvent<HTMLDivElement>,
     ) => {
       setPopoverState({
         isOpen: true,
@@ -116,7 +132,7 @@ export function RosterGrid({
         anchorEl: event.currentTarget,
       });
     },
-    []
+    [],
   );
 
   // Handle popover close
@@ -131,7 +147,7 @@ export function RosterGrid({
         onShiftChange(popoverState.nurseId, popoverState.date, newShiftCode);
       }
     },
-    [popoverState.nurseId, popoverState.date, onShiftChange]
+    [popoverState.nurseId, popoverState.date, onShiftChange],
   );
 
   // Toggle group collapse
@@ -174,14 +190,14 @@ export function RosterGrid({
               <Icon
                 as={isCollapsed ? ChevronRight : ChevronDown}
                 boxSize={4}
-                color="gray.500"
+                color="faintforeground"
               />
-              <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+              <Text fontSize="sm" color="foreground" fontWeight="medium">
                 {groupKey}
               </Text>
             </HStack>
           </Table.Cell>
-        </Table.Row>
+        </Table.Row>,
       );
 
       // Data Rows
@@ -199,6 +215,7 @@ export function RosterGrid({
   const renderDataRow = (row: RosterRow) => (
     <Table.Row
       key={row.nurseId}
+      color="foreground"
       _hover={{ bg: "gray.50" }}
       borderBottom="1px solid"
       borderColor="gray.100"
@@ -214,11 +231,11 @@ export function RosterGrid({
         minW="160px"
       >
         <HStack gap={2}>
-          <Text fontSize="sm" fontWeight="medium" color="gray.700">
+          <Text fontSize="sm" fontWeight="medium">
             {row.name}
           </Text>
           {row.hasWarning && (
-            <Icon as={AlertCircle} boxSize={4} color="orange.400" />
+            <Icon as={AlertCircle} boxSize={4} color="danger" />
           )}
         </HStack>
       </Table.Cell>
@@ -233,18 +250,24 @@ export function RosterGrid({
         minW="100px"
       >
         <HStack gap={1}>
-          {row.hasOvertime && (
-            <Icon as={Clock} boxSize={3} color="orange.400" />
-          )}
+          <Icon
+            as={Clock}
+            boxSize={3}
+            color={row.hasOvertime ? "danger" : "inherit"}
+          />
           <HStack gap={0}>
             <Text
               fontSize="sm"
-              color={row.hasOvertime ? "red.500" : "gray.600"}
-              fontWeight={row.hasOvertime ? "semibold" : "normal"}
+              color={row.hasOvertime ? "danger" : undefined}
+              fontWeight="medium"
             >
               {row.hours.worked}
             </Text>
-            <Text fontSize="sm" color="gray.600">
+            <Text
+              fontSize="sm"
+              fontWeight="medium"
+              color={row.hasOvertime ? "danger" : undefined}
+            >
               &nbsp;/ {row.hours.contracted}
             </Text>
           </HStack>
@@ -270,7 +293,11 @@ export function RosterGrid({
                   handleShiftClick(row.nurseId, row.name, dateKey, shift, e)
                 }
               >
-                <ShiftBadge shiftCode={shift?.shiftCode || null} isEditable={true} viewMode={viewMode} />
+                <ShiftBadge
+                  shiftCode={shift?.shiftCode || null}
+                  isEditable={true}
+                  viewMode={viewMode}
+                />
               </Box>
             </Flex>
           </Table.Cell>
@@ -283,22 +310,27 @@ export function RosterGrid({
     <Box position="relative" w="100%">
       {/* Table Container - height controlled by parent for sticky summary support */}
       <Box overflow="auto" w="100%">
-        <Table.Root size="sm" variant="outline" w="100%" style={{ tableLayout: "fixed" }}>
+        <Table.Root
+          zIndex="1"
+          size="sm"
+          variant="outline"
+          w="100%"
+          style={{ tableLayout: "fixed" }}
+        >
           <Table.Header>
-            <Table.Row bg="gray.50">
+            <Table.Row borderBottom="1px solid" bg="white" color="foreground">
               {/* Name Column Header */}
               <Table.ColumnHeader
                 w="160px"
                 minW="160px"
-                borderRight="1px solid"
-                borderColor="gray.200"
-                bg="gray.50"
+                color="faintforeground"
+                bg="white"
               >
-                <HStack gap={1}>
-                  <Text fontSize="sm" fontWeight="medium" color="gray.600">
+                <HStack gap={2}>
+                  <Text fontSize="sm" fontWeight="medium">
                     Name
                   </Text>
-                  <Icon as={Filter} boxSize={3} color="gray.400" />
+                  <Icon as={Filter} boxSize={4} />
                 </HStack>
               </Table.ColumnHeader>
 
@@ -306,15 +338,38 @@ export function RosterGrid({
               <Table.ColumnHeader
                 w="100px"
                 minW="100px"
-                borderRight="1px solid"
-                borderColor="gray.200"
-                bg="gray.50"
+                color="faintforeground"
+                bg="white"
               >
-                <HStack gap={1}>
-                  <Icon as={Clock} boxSize={3} color="gray.400" />
-                  <Text fontSize="sm" fontWeight="medium" color="gray.600">
+                <HStack gap={2}>
+                  <Text fontSize="sm" fontWeight="medium">
                     Hours
                   </Text>
+                  <Tooltip
+                    content={
+                      <Stack gap={1}>
+                        {[
+                          { color: "alert", text: "Under 42 hours" },
+                          { color: "danger", text: "Above 44 hours" },
+                        ].map((item) => (
+                          <HStack key={item.text} gap={2}>
+                            <Box borderRadius="full" w={2} h={2} bg={item.color} flexShrink={0} />
+                            <Text fontSize="xs">{item.text}</Text>
+                          </HStack>
+                        ))}
+                      </Stack>
+                    }
+                    lazyMount={true}
+                    contentProps={{
+                      css: {
+                        "--tooltip-bg": "white",
+                        "box-shadow": "0px 0px 4px rgba(0,0,0,0.1)",
+                        color: "black",
+                      },
+                    }}
+                  >
+                    <Icon as={CircleQuestionMark} boxSize={4} />
+                  </Tooltip>
                 </HStack>
               </Table.ColumnHeader>
 
@@ -325,17 +380,15 @@ export function RosterGrid({
                   w={dayColumnWidth}
                   minW={dayColumnWidth}
                   textAlign="center"
-                  bg="gray.50"
-                  borderRight="1px solid"
-                  borderColor="gray.100"
+                  color="faintforeground"
                   p={2}
                 >
                   <Box>
-                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
-                      {col.title}
+                    <Text fontSize="sm" fontWeight="medium">
+                      {col.dayOfWeek}
                     </Text>
-                    <Text fontSize="xs" color="gray.500">
-                      {moment(col.date).format("DD/MM/YYYY")}
+                    <Text fontSize="xs" fontWeight="normal">
+                      {moment(col.date).format("DD/MM")}
                     </Text>
                   </Box>
                 </Table.ColumnHeader>
@@ -353,7 +406,11 @@ export function RosterGrid({
         onClose={handlePopoverClose}
         currentShift={popoverState.currentShift}
         nurseName={popoverState.nurseName}
-        date={popoverState.date ? moment(popoverState.date).format("ddd, MMM DD") : ""}
+        date={
+          popoverState.date
+            ? moment(popoverState.date).format("ddd, MMM DD")
+            : ""
+        }
         onShiftChange={handleShiftChange}
         anchorEl={popoverState.anchorEl}
       />
@@ -371,7 +428,9 @@ export function RosterGrid({
           alignItems="center"
           justifyContent="center"
           zIndex={10}
+          flexDir={"column"}
         >
+          <Spinner color="primary" />
           <Text color="gray.500">Loading roster data...</Text>
         </Box>
       )}

@@ -4,6 +4,8 @@ import {
   Text,
   Button,
   HStack,
+  Select,
+  createListCollection,
 } from "@chakra-ui/react";
 import {
   ChevronLeft,
@@ -43,6 +45,13 @@ export function RosterHeader({
   onExportCSV,
   onViewEditHistory,
 }: RosterHeaderProps) {
+  const wardCollection = createListCollection({
+    items: wards.map((w) => ({
+      label: w.wardName,
+      value: String(w.wardId),
+    })),
+  });
+
   const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
   const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
 
@@ -101,41 +110,43 @@ export function RosterHeader({
           <Text fontSize="sm" color="#6B7280" fontWeight="medium">
             Ward:
           </Text>
-          <Box position="relative" minW="140px">
-            <select
-              value={selectedWard?.wardId || ""}
-              onChange={(e) => {
-                const ward = wards.find(w => w.wardId === Number(e.target.value));
-                if (ward) onWardChange(ward);
-              }}
-              style={{
-                width: "100%",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "1px solid #E6E6E6",
-                fontSize: "14px",
-                color: "#4A4A4A",
-                backgroundColor: "white",
-                cursor: "pointer",
-              }}
-            >
-              {wards.map((ward) => (
-                <option key={ward.wardId} value={ward.wardId}>
-                  {ward.wardName}
-                </option>
-              ))}
-            </select>
-          </Box>
+          <Select.Root
+            collection={wardCollection}
+            size="sm"
+            width="140px"
+            color="foreground"
+            value={selectedWard ? [String(selectedWard.wardId)] : []}
+            onValueChange={(details) => {
+              const ward = wards.find(
+                (w) => String(w.wardId) === details.value[0],
+              );
+              if (ward) onWardChange(ward);
+            }}
+          >
+            <Select.HiddenSelect />
+            <Select.Control>
+              <Select.Trigger>
+                <Select.ValueText placeholder="Select Ward" />
+              </Select.Trigger>
+              <Select.IndicatorGroup>
+                <Select.Indicator />
+              </Select.IndicatorGroup>
+            </Select.Control>
+            <Select.Positioner>
+              <Select.Content>
+                {wardCollection.items.map((item) => (
+                  <Select.Item key={item.value} item={item}>
+                    {item.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Positioner>
+          </Select.Root>
         </HStack>
       </Flex>
 
       {/* Bottom Row: Navigation Controls + Filters + Actions */}
-      <Flex 
-        justify="space-between" 
-        align="center"
-        flexWrap="wrap"
-        gap={3}
-      >
+      <Flex justify="space-between" align="center" flexWrap="wrap" gap={3} position="relative">
         {/* Left Section: Date Navigation */}
         <HStack gap={2}>
           <Button
@@ -143,7 +154,7 @@ export function RosterHeader({
             variant="outline"
             onClick={handleToday}
             borderColor="#E6E6E6"
-            color="#4A4A4A"
+            color="foreground"
             _hover={{ bg: "#F8FAFC" }}
           >
             Today
@@ -153,7 +164,7 @@ export function RosterHeader({
             variant="outline"
             onClick={handleBack}
             borderColor="#E6E6E6"
-            color="#4A4A4A"
+            color="foreground"
             _hover={{ bg: "#F8FAFC" }}
             p={2}
           >
@@ -165,7 +176,7 @@ export function RosterHeader({
             variant="outline"
             onClick={handleNext}
             borderColor="#E6E6E6"
-            color="#4A4A4A"
+            color="foreground"
             _hover={{ bg: "#F8FAFC" }}
             p={2}
           >
@@ -175,8 +186,8 @@ export function RosterHeader({
         </HStack>
 
         {/* Center Section: Roster Period Dropdown */}
-        <HStack gap={2}>
-          <Text fontSize="sm" color="#6B7280" fontWeight="medium">
+        <HStack gap={2} position="absolute" left="50%" top="50%" transform="translate(-50%, -50%)">
+          <Text fontSize="sm" color="foreground" fontWeight="medium">
             Roster Period:
           </Text>
           <Box position="relative" minW="180px">
@@ -217,12 +228,13 @@ export function RosterHeader({
           >
             <Button
               size="sm"
-              variant="ghost"
+              variant="outlinegrey"
+              fontWeight="normal"
               onClick={() => onViewModeChange("week")}
-              bg={viewMode === "week" ? "#4B8798" : "transparent"}
-              color={viewMode === "week" ? "white" : "#4A4A4A"}
-              _hover={{ 
-                bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC" 
+              bg={viewMode === "week" ? "menuactive" : "transparent"}
+              color={viewMode === "week" ? "primary" : "#4A4A4A"}
+              _hover={{
+                bg: viewMode === "week" ? "menuactive" : "#F8FAFC",
               }}
               borderRadius={0}
               px={4}
@@ -231,12 +243,13 @@ export function RosterHeader({
             </Button>
             <Button
               size="sm"
-              variant="ghost"
+              variant="outlinegrey"
+              fontWeight="normal"
               onClick={() => onViewModeChange("twoWeeks")}
-              bg={viewMode === "twoWeeks" ? "#4B8798" : "transparent"}
-              color={viewMode === "twoWeeks" ? "white" : "#4A4A4A"}
-              _hover={{ 
-                bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC" 
+              bg={viewMode === "twoWeeks" ? "primary" : "transparent"}
+              color={viewMode === "twoWeeks" ? "white" : "foreground"}
+              _hover={{
+                bg: viewMode === "twoWeeks" ? "menuactive" : "#F8FAFC",
               }}
               borderRadius={0}
               px={4}

@@ -256,19 +256,20 @@ function NurseManagerHome() {
 
   return (
     <Flex
-      h="100vh"
-      w="100vw"
+      w="full"
+      minH="100vh"
+      height="fit-content"
       direction="column"
       overflowY="auto"
       gap={4}
       bgColor="background2"
       p={5}
     >
-      {/* Bento Status & Notification Banners */}
       <Stack
         direction={{ base: "column", md: "row" }}
         gap={6}
         w="full"
+        height="100%"
       >
         <Stack
           bgColor="white"
@@ -293,7 +294,7 @@ function NurseManagerHome() {
       </Stack>
 
       {/* Header Section */}
-      <Box bgColor="white" p={4} rounded="lg" width="100%">
+      <Stack bgColor="white" p={4} rounded="lg" width="100%" gap={6}>
         <RosterHeader
           currentStartDate={currentStartDate}
           viewMode={viewMode}
@@ -308,43 +309,43 @@ function NurseManagerHome() {
           onExportCSV={handleExportCSV}
           onViewEditHistory={handleViewEditHistory}
         />
-      </Box>
-
-      {/* Roster Grid Section with Sticky Summary */}
-      <Box
-        w="full"
-        bgColor="white"
-        rounded="lg"
-        flex={1}
-        overflow="hidden"
-        display="flex"
-        flexDirection="column"
-        position="relative"
-      >
-        {/* Scrollable roster area */}
+        {/* Roster Grid Section with Sticky Summary */}
         <Box
+          w="full"
+          bgColor="white"
+          rounded="lg"
           flex={1}
-          overflow="auto"
-          p={4}
-          pb={0}
+          overflow="hidden"
+          display="flex"
+          flexDirection="column"
+          position="relative"
         >
-          <RosterGrid
+          {/* Scrollable roster area */}
+          <Box
+            flex={1}
+            overflow="auto"
+            p={4}
+            pb={0}
+          >
+            <RosterGrid
+              data={rosterData}
+              viewMode={viewMode}
+              currentStartDate={currentStartDate}
+              onShiftChange={handleShiftChange}
+              isLoading={wardsLoading || rosterLoading}
+            />
+          </Box>
+
+          {/* Sticky Summary Table at bottom */}
+          <ShiftSummaryTable
             data={rosterData}
             viewMode={viewMode}
             currentStartDate={currentStartDate}
-            onShiftChange={handleShiftChange}
-            isLoading={wardsLoading || rosterLoading}
           />
         </Box>
+      </Stack>
 
-        {/* Sticky Summary Table at bottom */}
-        <ShiftSummaryTable
-          data={rosterData}
-          viewMode={viewMode}
-          currentStartDate={currentStartDate}
-          isRosterGenerated={true}
-        />
-      </Box>
+      
     </Flex>
   );
 }
