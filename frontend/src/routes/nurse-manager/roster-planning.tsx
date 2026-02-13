@@ -5,6 +5,7 @@ import moment from "moment";
 
 import {
   RosterGrid,
+  ShiftSummaryTable,
   useWards,
   useRosterPeriods,
   usePublishRoster,
@@ -276,21 +277,39 @@ function RosterPlanningPage() {
         />
       </Box>
 
-      {/* Roster Grid Section */}
+      {/* Roster Grid Section with Sticky Summary */}
       <Box
         w="full"
         bgColor="white"
         rounded="lg"
-        p={4}
         flex={1}
         overflow="hidden"
+        display="flex"
+        flexDirection="column"
+        position="relative"
       >
-        <RosterGrid
+        {/* Scrollable roster area */}
+        <Box
+          flex={1}
+          overflow="auto"
+          p={4}
+          pb={0}
+        >
+          <RosterGrid
+            data={rosterData}
+            viewMode={viewMode}
+            currentStartDate={currentStartDate}
+            onShiftChange={handleShiftChange}
+            isLoading={generateAlgorithmRoster.isPending}
+          />
+        </Box>
+
+        {/* Sticky Summary Table at bottom */}
+        <ShiftSummaryTable
           data={rosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
-          onShiftChange={handleShiftChange}
-          isLoading={generateAlgorithmRoster.isPending}
+          isRosterGenerated={isAlgorithmGenerated}
         />
       </Box>
 

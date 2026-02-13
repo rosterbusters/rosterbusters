@@ -144,6 +144,28 @@ export interface WardStatisticsResponse {
   nurses: NurseInfo[];
 }
 
+// ============================================
+// Staffing Guidelines / Shift Summary Types
+// ============================================
+
+// Role categories for summary
+export type StaffRole = 'RN' | 'EN' | 'HCA';
+
+// Shift types for summary (A = AM/Day, P = PM, N = Night)
+export type SummaryShiftType = 'A' | 'P' | 'N';
+
+// Staffing requirements per shift type per role
+export interface ShiftRequirement {
+  minimum: number;
+  maximum?: number;
+}
+
+export interface DailyStaffingGuideline {
+  RN: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+  EN: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+  HCA: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+}
+
 
 
 

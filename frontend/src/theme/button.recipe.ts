@@ -26,6 +26,16 @@ export const buttonRecipe = defineRecipe({
           bg: "gray.100",
         },
       },
+      outlinegrey:{
+        bg:"white",
+        color:'foreground',
+        fontWeight:'normal',
+        borderWidth:"1px",
+        borderColor:"border",
+        _hover: {
+          bg: "gray.100",
+        },
+      },
       ghost: {
         bg: "transparent",
         _hover: {

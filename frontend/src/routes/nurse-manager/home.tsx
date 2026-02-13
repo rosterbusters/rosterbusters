@@ -6,12 +6,9 @@ import moment from "moment";
 import {
   RosterGrid,
   RosterHeader,
-  useWards,
   useRosterPeriods,
   useRosterPageData,
-  useUpdateRoster,
   useRosterExport,
-  type Ward,
   type RosterPeriod,
   type ViewMode,
   type ShiftCode,
@@ -19,6 +16,9 @@ import {
 } from "@/components/NurseManager/RosterTable";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
 import NotificationBanner from "@/components/NurseManager/HomePage/NotificationBanner";
+import { WardsService } from "@/client";
+import { useQuery } from "@tanstack/react-query";
+import { Ward } from "@/client/types.gen";
 
 export const Route = createFileRoute("/nurse-manager/home")({
   component: NurseManagerHome,
@@ -85,47 +85,37 @@ function NurseManagerHome() {
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
-
   // Data hooks
-  const { data: wards = [], isLoading: wardsLoading } = useWards();
   const { data: periods = [] } = useRosterPeriods();
   const { exportToCSV } = useRosterExport();
-  const updateRoster = useUpdateRoster();
 
-  // Use real API data when available, otherwise use mock data
   const { rows: apiRows, isLoading: rosterLoading } = useRosterPageData(
-    selectedWard?.wardId ?? null,
+    selectedWard?.wardid ?? null,
     selectedPeriod?.periodId ?? null
   );
+
+  const { data: wards = [], isLoading: wardsLoading } = useQuery<Ward[]>({
+    queryKey: ["wards"],
+    queryFn: WardsService.getWards,
+  });
 
   // Local state for roster data (allows updates in mock mode)
   const [localRosterData, setLocalRosterData] = useState<RosterRow[]>([]);
 
-  // Generate/update roster data when dependencies change
   useEffect(() => {
-    if (apiRows.length > 0) {
-      setLocalRosterData(apiRows);
-    } else {
-      // Use mock data for demonstration
-      setLocalRosterData(generateMockData(currentStartDate, viewMode));
-    }
+    // TODO: Re-enable API data when backend is ready
+    // if (apiRows.length > 0) {
+    //   setLocalRosterData(apiRows);
+    // } else {
+    //   setLocalRosterData(generateMockData(currentStartDate, viewMode));
+    // }
+    setLocalRosterData(generateMockData(currentStartDate, viewMode));
   }, [apiRows, currentStartDate, viewMode]);
-
-  // Use local state as the roster data source
-  const rosterData = localRosterData;
-
-  // Set default ward when wards are loaded
-  useEffect(() => {
-    if (wards.length > 0 && !selectedWard) {
-      setSelectedWard(wards[0]);
-    }
-  }, [wards, selectedWard]);
 
   // Set default period when periods are loaded
   useEffect(() => {
     if (periods.length > 0 && !selectedPeriod) {
-      // Select current period (index 2 is the middle one in our mock)
-      const currentPeriod = periods.find(p => 
+      const currentPeriod = periods.find(p =>
         moment().isBetween(moment(p.startDate), moment(p.endDate), 'day', '[]')
       ) || periods[Math.floor(periods.length / 2)];
       setSelectedPeriod(currentPeriod);
@@ -153,19 +143,7 @@ function NurseManagerHome() {
 
   const handleShiftChange = useCallback(
     (nurseId: number, date: string, newShiftCode: ShiftCode) => {
-      // Update API if connected
-      if (selectedWard && selectedPeriod) {
-        updateRoster.mutate({
-          wardId: selectedWard.wardId,
-          nurseId,
-          periodId: selectedPeriod.periodId,
-          shiftDate: date,
-          shiftCode: newShiftCode,
-        });
-      }
-      
-      // Update local state for immediate UI feedback
-      setLocalRosterData(prevData => 
+      setLocalRosterData(prevData =>
         prevData.map(row => {
           if (row.nurseId === nurseId) {
             return {
@@ -186,29 +164,17 @@ function NurseManagerHome() {
           return row;
         })
       );
-      console.log(`Shift changed: Nurse ${nurseId}, Date ${date}, New Shift: ${newShiftCode}`);
     },
-    [selectedWard, selectedPeriod, updateRoster]
+    []
   );
 
   const handleExportCSV = useCallback(() => {
-    exportToCSV(rosterData, currentStartDate, viewMode);
-  }, [rosterData, currentStartDate, viewMode, exportToCSV]);
+    exportToCSV(localRosterData, currentStartDate, viewMode);
+  }, [localRosterData, currentStartDate, viewMode, exportToCSV]);
 
   const handleViewEditHistory = useCallback(() => {
     // TODO: Implement edit history modal
-    console.log("View Edit History clicked");
   }, []);
-
-  // Generate mock wards if API wards are empty
-  const displayWards = useMemo(() => {
-    if (wards.length > 0) return wards;
-    return [
-      { wardId: 4, wardName: "Ward 4", wardType: "General", campus: "Main" },
-      { wardId: 5, wardName: "Ward 5", wardType: "General", campus: "Main" },
-      { wardId: 6, wardName: "Ward 6", wardType: "ICU", campus: "Main" },
-    ];
-  }, [wards]);
 
   // Generate mock periods if API periods are empty
   const displayPeriods = useMemo(() => {
@@ -241,10 +207,10 @@ function NurseManagerHome() {
 
   // Set default ward if not set
   useEffect(() => {
-    if (displayWards.length > 0 && !selectedWard) {
-      setSelectedWard(displayWards[0]);
+    if (wards.length > 0 && !selectedWard) {
+      setSelectedWard(wards[0]);
     }
-  }, [displayWards, selectedWard]);
+  }, [wards, selectedWard]);
 
   // Set default period if not set
   useEffect(() => {
@@ -255,19 +221,19 @@ function NurseManagerHome() {
 
   return (
     <Flex
-      h="100vh"
-      w="100vw"
+      w="full"
+      minH="100vh"
+      height="fit-content"
       direction="column"
-      overflowY="auto"
       gap={4}
       bgColor="background2"
       p={5}
     >
-      {/* Bento Status & Notification Banners */}
       <Stack
         direction={{ base: "column", md: "row" }}
         gap={6}
         w="full"
+        height="100%"
       >
         <Stack
           bgColor="white"
@@ -292,13 +258,13 @@ function NurseManagerHome() {
       </Stack>
 
       {/* Header Section */}
-      <Box bgColor="white" p={4} rounded="lg" width="100%">
+      <Stack bgColor="white" p={4} rounded="lg" width="100%" gap={6}>
         <RosterHeader
           currentStartDate={currentStartDate}
           viewMode={viewMode}
           selectedWard={selectedWard}
           selectedPeriod={selectedPeriod}
-          wards={displayWards}
+          wards={wards}
           periods={displayPeriods}
           onDateChange={handleDateChange}
           onViewModeChange={handleViewModeChange}
@@ -307,25 +273,14 @@ function NurseManagerHome() {
           onExportCSV={handleExportCSV}
           onViewEditHistory={handleViewEditHistory}
         />
-      </Box>
-
-      {/* Roster Grid Section */}
-      <Box
-        w="full"
-        bgColor="white"
-        rounded="lg"
-        p={4}
-        flex={1}
-        overflow="hidden"
-      >
         <RosterGrid
-          data={rosterData}
+          data={localRosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
           onShiftChange={handleShiftChange}
           isLoading={wardsLoading || rosterLoading}
         />
-      </Box>
+      </Stack>
     </Flex>
   );
 }

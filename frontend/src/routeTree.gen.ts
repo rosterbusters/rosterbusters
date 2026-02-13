@@ -14,6 +14,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as NurseManagerRouteImport } from './routes/nurse-manager'
+import { Route as NurseManagerRouteImport } from './routes/nurse-manager'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as WardStaffIndexRouteImport } from './routes/ward-staff/index'
@@ -250,7 +251,6 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
     | '/login'
     | '/nurse-manager'
     | '/recover-password'
@@ -277,7 +277,6 @@ export interface FileRouteTypes {
     | '/ward-staff/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -387,7 +386,7 @@ declare module '@tanstack/react-router' {
     '/_layout': {
       id: '/_layout'
       path: ''
-      fullPath: '/'
+      fullPath: ''
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -581,6 +580,30 @@ const WardStaffRouteChildren: WardStaffRouteChildren = {
 
 const WardStaffRouteWithChildren = WardStaffRoute._addFileChildren(
   WardStaffRouteChildren,
+)
+
+interface NurseManagerRouteChildren {
+  NurseManagerHomeRoute: typeof NurseManagerHomeRoute
+  NurseManagerLeaveOverviewRoute: typeof NurseManagerLeaveOverviewRoute
+  NurseManagerRosterPlanningRoute: typeof NurseManagerRosterPlanningRoute
+  NurseManagerSettingsRoute: typeof NurseManagerSettingsRoute
+  NurseManagerShiftOverviewRoute: typeof NurseManagerShiftOverviewRoute
+  NurseManagerWardStaffDirectoryRoute: typeof NurseManagerWardStaffDirectoryRoute
+  NurseManagerIndexRoute: typeof NurseManagerIndexRoute
+}
+
+const NurseManagerRouteChildren: NurseManagerRouteChildren = {
+  NurseManagerHomeRoute: NurseManagerHomeRoute,
+  NurseManagerLeaveOverviewRoute: NurseManagerLeaveOverviewRoute,
+  NurseManagerRosterPlanningRoute: NurseManagerRosterPlanningRoute,
+  NurseManagerSettingsRoute: NurseManagerSettingsRoute,
+  NurseManagerShiftOverviewRoute: NurseManagerShiftOverviewRoute,
+  NurseManagerWardStaffDirectoryRoute: NurseManagerWardStaffDirectoryRoute,
+  NurseManagerIndexRoute: NurseManagerIndexRoute,
+}
+
+const NurseManagerRouteWithChildren = NurseManagerRoute._addFileChildren(
+  NurseManagerRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {

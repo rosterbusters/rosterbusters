@@ -613,3 +613,56 @@ export const ValidationErrorSchema = {
     required: ['loc', 'msg', 'type'],
     title: 'ValidationError'
 } as const;
+
+export const WardSchema = {
+    properties: {
+        wardid: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wardid'
+        },
+        wardname: {
+            type: 'string',
+            maxLength: 100,
+            title: 'Wardname'
+        },
+        wardtype: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wardtype'
+        },
+        location: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Location'
+        },
+        isactive: {
+            type: 'boolean',
+            title: 'Isactive',
+            default: true
+        }
+    },
+    type: 'object',
+    required: ['wardname'],
+    title: 'Ward'
+} as const;

@@ -36,8 +36,9 @@ export const system = createSystem(defaultConfig, {
     // },
     semanticTokens: {
       colors: {
-        danger: { value: "rose-700" },
+        danger: { value: "#BE123C" },
         success: { value: "lime-600" },
+        alert:{value:"#EAB308"},
         faintforeground: { value: "neutral-400" },
         menuactive: { value: "#DDE8EA" },
         brand: {
@@ -59,7 +60,7 @@ export const system = createSystem(defaultConfig, {
         },
         requestcodes: {
           shiftreq: { value: "cyan.600" },
-          leavereq: { value: "blue.500" },
+          leavereq: { value: "teal.600" },
           roster: { value: "cyan.700" },
           probation: { value: "yellow.500" },
         },

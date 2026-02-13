@@ -3,6 +3,7 @@ export { RosterGrid } from "./RosterGrid";
 export { RosterHeader } from "./RosterHeader";
 export { ShiftBadge } from "./ShiftBadge";
 export { ShiftEditPopover } from "./ShiftEditPopover";
+export { ShiftSummaryTable } from "./ShiftSummaryTable";
 
 // Export hooks
 export {
@@ -23,4 +24,11 @@ export type { AlgorithmRosterResponse } from "./useRosterData";
 
 // Export types
 export * from "./types";
+
+// Export staffing guidelines utilities
+export {
+  MOCK_STAFFING_GUIDELINES,
+  mapDesignationToRole,
+  mapShiftCodeToSummaryType,
+} from "./staffingGuidelines";
 

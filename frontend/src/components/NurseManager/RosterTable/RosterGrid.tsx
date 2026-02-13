@@ -1,35 +1,57 @@
-import React, { useState, useMemo, useCallback, DragEvent } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   Box,
   Flex,
   Text,
   HStack,
+  Stack,
   Table,
   Icon,
+  Spinner,
 } from "@chakra-ui/react";
-import { AlertCircle, Clock, Filter, HelpCircle, ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
+import {
+  AlertCircle,
+  Clock,
+  Filter,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import moment from "moment";
+import { CircleQuestionMark } from "lucide-react";
 
 import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
+import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
+import { MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
 import type {
   RosterRow,
   ShiftAssignment,
   ShiftCode,
   ViewMode,
   DayColumn,
+  DailyStaffingGuideline,
+  SummaryShiftType,
+  StaffRole,
 } from "./types";
+import { Tooltip } from "@/components/ui/tooltip";
+
+const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
+const STAFF_ROLES: StaffRole[] = ["RN", "EN", "HCA"];
 
 interface RosterGridProps {
   data: RosterRow[];
   viewMode: ViewMode;
   currentStartDate: Date;
-  onShiftChange: (nurseId: number, date: string, newShiftCode: ShiftCode) => void;
+  onShiftChange: (
+    nurseId: number,
+    date: string,
+    newShiftCode: ShiftCode,
+  ) => void;
   isLoading?: boolean;
+  guidelines?: DailyStaffingGuideline;
+  isRosterGenerated?: boolean;
+  showSummary?: boolean;
 }
-
-// Groupable columns configuration
-type GroupableColumn = "name" | "designation" | "hours";
 
 // Generate day columns based on view mode and start date
 function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
@@ -49,20 +71,12 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
   return columns;
 }
 
-// Group data by a specific field
-function groupByField(data: RosterRow[], field: GroupableColumn): Map<string, RosterRow[]> {
+// Group data by designation (role)
+function groupByDesignation(data: RosterRow[]): Map<string, RosterRow[]> {
   const groups = new Map<string, RosterRow[]>();
 
   data.forEach((row) => {
-    let key: string;
-    if (field === "name") {
-      key = row.name;
-    } else if (field === "designation") {
-      key = row.designation;
-    } else {
-      // Group by contracted hours
-      key = `${row.hours.contracted} hrs contracted`;
-    }
+    const key = row.designation;
     const existing = groups.get(key) || [];
     existing.push(row);
     groups.set(key, existing);
@@ -77,6 +91,9 @@ export function RosterGrid({
   currentStartDate,
   onShiftChange,
   isLoading = false,
+  guidelines = MOCK_STAFFING_GUIDELINES,
+  isRosterGenerated = false,
+  showSummary = true,
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -95,63 +112,21 @@ export function RosterGrid({
     anchorEl: null,
   });
 
-  // Grouping state
-  const [groupByColumns, setGroupByColumns] = useState<GroupableColumn[]>(["designation"]);
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  // Collapsed groups state
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Collapsed groups state - all groups start expanded
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Generate day columns
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate, viewMode),
-    [currentStartDate, viewMode]
+    [currentStartDate, viewMode],
   );
 
-  // Group data based on groupByColumns
+  // Group data by designation (role) - always grouped
   const groupedData = useMemo(() => {
-    if (groupByColumns.length === 0) {
-      return null; // No grouping - flat list
-    }
-    return groupByField(data, groupByColumns[0]);
-  }, [data, groupByColumns]);
-
-  // Check if a column is currently used for grouping
-  const isColumnGrouped = (column: GroupableColumn) => groupByColumns.includes(column);
-
-  // Handle drag start
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, column: GroupableColumn) => {
-    e.dataTransfer.setData("text/plain", column);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  // Handle drag over on drop zone
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setIsDragOver(true);
-  };
-
-  // Handle drag leave
-  const handleDragLeave = () => {
-    setIsDragOver(false);
-  };
-
-  // Handle drop on grouping zone
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const column = e.dataTransfer.getData("text/plain") as GroupableColumn;
-    if (column && !groupByColumns.includes(column)) {
-      setGroupByColumns([column]);
-      setCollapsedGroups(new Set()); // Reset collapsed state
-    }
-  };
-
-  // Remove grouping
-  const removeGrouping = (column: GroupableColumn) => {
-    setGroupByColumns(groupByColumns.filter((c) => c !== column));
-  };
+    return groupByDesignation(data);
+  }, [data]);
 
   // Handle shift badge click
   const handleShiftClick = useCallback(
@@ -160,7 +135,7 @@ export function RosterGrid({
       nurseName: string,
       date: string,
       shift: ShiftAssignment | null,
-      event: React.MouseEvent<HTMLDivElement>
+      event: React.MouseEvent<HTMLDivElement>,
     ) => {
       setPopoverState({
         isOpen: true,
@@ -171,7 +146,7 @@ export function RosterGrid({
         anchorEl: event.currentTarget,
       });
     },
-    []
+    [],
   );
 
   // Handle popover close
@@ -186,7 +161,7 @@ export function RosterGrid({
         onShiftChange(popoverState.nurseId, popoverState.date, newShiftCode);
       }
     },
-    [popoverState.nurseId, popoverState.date, onShiftChange]
+    [popoverState.nurseId, popoverState.date, onShiftChange],
   );
 
   // Toggle group collapse
@@ -203,85 +178,233 @@ export function RosterGrid({
   }, []);
 
   // Column width calculation
-  const dayColumnWidth = viewMode === "week" ? "100px" : "80px";
+  const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
 
-  // Draggable column header component
-  const DraggableColumnHeader = ({ 
-    column, 
-    title, 
-    icon 
-  }: { 
-    column: GroupableColumn; 
-    title: string; 
-    icon?: React.ReactNode 
-  }) => {
-    if (isColumnGrouped(column)) return null;
-    
-    const columnWidth = column === "name" ? "160px" : column === "designation" ? "180px" : "100px";
-    
-    return (
-      <Table.ColumnHeader
-        w={columnWidth}
-        minW={columnWidth}
-        borderRight="1px solid"
-        borderColor="gray.200"
-        bg="gray.50"
-        cursor="grab"
-        draggable
-        onDragStart={(e) => handleDragStart(e, column)}
-        _hover={{ bg: "gray.100" }}
-        _active={{ cursor: "grabbing" }}
+  // Total columns: Name + Hours + Day columns
+  const totalCols = 2 + dayColumns.length;
+
+  // Calculate shift counts for summary
+  const shiftCounts = useMemo(
+    () => calculateShiftCounts(data, dayColumns),
+    [data, dayColumns],
+  );
+
+  // Calculate total for a specific shift type and date
+  const getTotal = useCallback(
+    (dateKey: string, shiftType: SummaryShiftType): number => {
+      const dayCounts = shiftCounts.get(dateKey);
+      if (!dayCounts) return 0;
+      return STAFF_ROLES.reduce(
+        (sum, role) => sum + dayCounts[role][shiftType],
+        0,
+      );
+    },
+    [shiftCounts],
+  );
+
+  // Render the embedded summary rows
+  const renderSummaryRows = () => {
+    const summaryRows: React.ReactNode[] = [];
+
+    // Summary Header Row (A, P, N labels)
+    summaryRows.push(
+      <Table.Row
+        key="summary-header"
+        bg="white"
+        borderTop="2px solid"
+        borderColor="#7EC8D9"
       >
-        <HStack gap={1}>
-          <Icon as={GripVertical} boxSize={3} color="gray.400" />
-          <Text fontSize="sm" fontWeight="medium" color="gray.600">
-            {title}
-          </Text>
-          {icon}
-        </HStack>
-      </Table.ColumnHeader>
+        <Table.Cell
+          colSpan={2}
+          borderRight="1px solid"
+          borderColor="gray.200"
+          p={1}
+          bg="white"
+        />
+        {dayColumns.map((col) => (
+          <Table.Cell
+            key={col.field}
+            textAlign="center"
+            borderRight="1px solid"
+            borderColor="gray.100"
+            p={0}
+            bg="white"
+          >
+            <Flex justify="space-around">
+              {SHIFT_TYPES.map((type) => (
+                <Text
+                  key={type}
+                  fontSize="xs"
+                  fontWeight="semibold"
+                  color="#4B8798"
+                  flex={1}
+                  textAlign="center"
+                  py={1}
+                >
+                  {type}
+                </Text>
+              ))}
+            </Flex>
+          </Table.Cell>
+        ))}
+      </Table.Row>,
     );
+
+    // Role Rows (RN, EN, HCA)
+    STAFF_ROLES.forEach((role) => {
+      summaryRows.push(
+        <Table.Row
+          key={`summary-${role}`}
+          bg="white"
+        >
+          <Table.Cell
+            colSpan={2}
+            fontWeight="semibold"
+            fontSize="xs"
+            color="#4B8798"
+            borderRight="1px solid"
+            borderColor="gray.200"
+            py={1}
+            px={2}
+            textAlign="right"
+            bg="white"
+          >
+            {role}
+          </Table.Cell>
+          {dayColumns.map((col) => {
+            const dateKey = moment(col.date).format("YYYY-MM-DD");
+            const dayCounts = shiftCounts.get(dateKey);
+
+            return (
+              <Table.Cell
+                key={col.field}
+                textAlign="center"
+                borderRight="1px solid"
+                borderColor="gray.100"
+                p={0}
+              >
+                <Flex>
+                  {SHIFT_TYPES.map((shiftType) => {
+                    const count = dayCounts?.[role]?.[shiftType] ?? 0;
+                    const style = getCellStyle(
+                      count,
+                      guidelines[role][shiftType].minimum,
+                      isRosterGenerated,
+                    );
+
+                    return (
+                      <Flex
+                        key={shiftType}
+                        justify="center"
+                        align="center"
+                        bg={style.bg}
+                        color={style.color}
+                        flex={1}
+                        py={1}
+                        fontSize="xs"
+                        fontWeight="semibold"
+                      >
+                        {count}
+                      </Flex>
+                    );
+                  })}
+                </Flex>
+              </Table.Cell>
+            );
+          })}
+        </Table.Row>,
+      );
+    });
+
+    // Total Row
+    summaryRows.push(
+      <Table.Row
+        key="summary-total"
+        bg="#ADD8E6"
+      >
+        <Table.Cell
+          colSpan={2}
+          fontWeight="bold"
+          fontSize="xs"
+          color="#4B8798"
+          borderRight="1px solid"
+          borderColor="rgba(255,255,255,0.3)"
+          py={1}
+          px={2}
+          textAlign="right"
+          bg="#ADD8E6"
+        >
+          Total
+        </Table.Cell>
+        {dayColumns.map((col) => {
+          const dateKey = moment(col.date).format("YYYY-MM-DD");
+
+          return (
+            <Table.Cell
+              key={col.field}
+              textAlign="center"
+              borderRight="1px solid"
+              borderColor="rgba(255,255,255,0.3)"
+              p={0}
+              bg="#ADD8E6"
+            >
+              <Flex>
+                {SHIFT_TYPES.map((shiftType) => {
+                  const total = getTotal(dateKey, shiftType);
+                  return (
+                    <Flex
+                      key={shiftType}
+                      justify="center"
+                      align="center"
+                      flex={1}
+                      py={1}
+                      fontSize="xs"
+                      fontWeight="bold"
+                      color="#4B8798"
+                    >
+                      {total}
+                    </Flex>
+                  );
+                })}
+              </Flex>
+            </Table.Cell>
+          );
+        })}
+      </Table.Row>,
+    );
+
+    return summaryRows;
   };
 
-  // Render data rows (flat or grouped)
+  // Render grouped rows
   const renderRows = () => {
-    if (!groupedData) {
-      // Flat list - no grouping
-      return data.map((row) => renderDataRow(row));
-    }
-
-    // Grouped view - flatten all rows into a single array for consistent table structure
     const allRows: React.ReactNode[] = [];
-    
+
     Array.from(groupedData.entries()).forEach(([groupKey, rows]) => {
       const isCollapsed = collapsedGroups.has(groupKey);
-      const totalCols = dayColumns.length + (isColumnGrouped("name") ? 0 : 1) + (isColumnGrouped("designation") ? 0 : 1) + (isColumnGrouped("hours") ? 0 : 1);
 
       // Group Header Row
       allRows.push(
         <Table.Row
           key={`group-${groupKey}`}
-          bg="#f1f5f9"
+          bg="#f8fafc"
           cursor="pointer"
           onClick={() => toggleGroup(groupKey)}
-          _hover={{ bg: "#e2e8f0" }}
+          _hover={{ bg: "#f1f5f9" }}
         >
           <Table.Cell colSpan={totalCols} py={2} px={3} w="100%">
             <HStack gap={2}>
               <Icon
                 as={isCollapsed ? ChevronRight : ChevronDown}
                 boxSize={4}
-                color="gray.500"
+                color="faintforeground"
               />
-              <Text fontSize="sm" fontWeight="semibold" color="#4B8798">
+              <Text fontSize="sm" color="foreground" fontWeight="medium">
                 {groupKey}
-              </Text>
-              <Text fontSize="xs" color="gray.500">
-                ({rows.length})
               </Text>
             </HStack>
           </Table.Cell>
-        </Table.Row>
+        </Table.Row>,
       );
 
       // Data Rows
@@ -291,7 +414,12 @@ export function RosterGrid({
         });
       }
     });
-    
+
+    // Insert summary rows at the bottom of the grid
+    if (showSummary) {
+      allRows.push(...renderSummaryRows());
+    }
+
     return allRows;
   };
 
@@ -299,62 +427,64 @@ export function RosterGrid({
   const renderDataRow = (row: RosterRow) => (
     <Table.Row
       key={row.nurseId}
+      color="foreground"
       _hover={{ bg: "gray.50" }}
       borderBottom="1px solid"
       borderColor="gray.100"
     >
-      {/* Name Cell - only if not grouped by name */}
-      {!isColumnGrouped("name") && (
-        <Table.Cell
-          bg="white"
-          borderRight="1px solid"
-          borderColor="gray.200"
-          py={2}
-          px={3}
-        >
-          <HStack gap={2}>
-            {row.hasWarning && (
-              <Icon as={AlertCircle} boxSize={4} color="red.500" />
-            )}
-            <Text fontSize="sm" fontWeight="medium" color="gray.700">
-              {row.name}
-            </Text>
-          </HStack>
-        </Table.Cell>
-      )}
-
-      {/* Designation Cell - only if not grouped by designation */}
-      {!isColumnGrouped("designation") && (
-        <Table.Cell
-          bg="white"
-          borderRight="1px solid"
-          borderColor="gray.200"
-          py={2}
-          px={3}
-        >
-          <Text fontSize="sm" color="gray.600">
-            {row.designation}
+      {/* Name Cell with warning indicator */}
+      <Table.Cell
+        bg="white"
+        borderRight="1px solid"
+        borderColor="gray.200"
+        py={2}
+        px={3}
+        w="160px"
+        minW="160px"
+      >
+        <HStack gap={2}>
+          <Text fontSize="sm" fontWeight="medium">
+            {row.name}
           </Text>
-        </Table.Cell>
-      )}
+          {row.hasWarning && (
+            <Icon as={AlertCircle} boxSize={4} color="danger" />
+          )}
+        </HStack>
+      </Table.Cell>
 
-      {/* Hours Cell - only if not grouped by hours */}
-      {!isColumnGrouped("hours") && (
-        <Table.Cell borderRight="1px solid" borderColor="gray.200" py={2} px={3}>
-          <HStack gap={1}>
-            {row.hasOvertime && (
-              <Icon as={Clock} boxSize={3} color="orange.500" />
-            )}
+      {/* Hours Cell - worked in red if over contracted */}
+      <Table.Cell
+        borderRight="1px solid"
+        borderColor="gray.200"
+        py={2}
+        px={3}
+        w="100px"
+        minW="100px"
+      >
+        <HStack gap={1}>
+          <Icon
+            as={Clock}
+            boxSize={3}
+            color={row.hasOvertime ? "danger" : "inherit"}
+          />
+          <HStack gap={0}>
             <Text
               fontSize="sm"
-              color={row.hasOvertime ? "orange.600" : "gray.600"}
-              fontWeight={row.hasOvertime ? "semibold" : "normal"}
+              color={row.hasOvertime ? "danger" : undefined}
+              fontWeight="medium"
             >
-              {row.hours.worked} / {row.hours.contracted}
+              {row.hours.worked}
+            </Text>
+            <Text
+              fontSize="sm"
+              fontWeight="medium"
+              color={row.hasOvertime ? "danger" : undefined}
+            >
+              &nbsp;/ {row.hours.contracted}
             </Text>
           </HStack>
-        </Table.Cell>
-      )}
+        </HStack>
+      </Table.Cell>
 
       {/* Shift Cells */}
       {dayColumns.map((col) => {
@@ -375,7 +505,11 @@ export function RosterGrid({
                   handleShiftClick(row.nurseId, row.name, dateKey, shift, e)
                 }
               >
-                <ShiftBadge shiftCode={shift?.shiftCode || null} isEditable={true} viewMode={viewMode} />
+                <ShiftBadge
+                  shiftCode={shift?.shiftCode || null}
+                  isEditable={true}
+                  viewMode={viewMode}
+                />
               </Box>
             </Flex>
           </Table.Cell>
@@ -386,98 +520,87 @@ export function RosterGrid({
 
   return (
     <Box position="relative" w="100%">
-      {/* Grouping Drop Zone */}
-      <Box
-        p={3}
-        mb={2}
-        borderRadius="md"
-        border="2px dashed"
-        borderColor={isDragOver ? "#4B8798" : "gray.300"}
-        bg={isDragOver ? "cyan.50" : "gray.50"}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        transition="all 0.2s ease"
-      >
-        {groupByColumns.length === 0 ? (
-          <Text fontSize="sm" color="gray.500" textAlign="center">
-            Drag a column header and drop it here to group by that column
-          </Text>
-        ) : (
-          <HStack gap={2} flexWrap="wrap">
-            <Text fontSize="sm" color="gray.500">
-              Grouped by:
-            </Text>
-            {groupByColumns.map((col) => (
-              <HStack
-                key={col}
-                bg="white"
-                px={3}
-                py={1}
-                borderRadius="md"
-                border="1px solid"
-                borderColor="gray.200"
-                gap={2}
-              >
-                <Text fontSize="sm" fontWeight="medium" color="#4B8798">
-                  {col === "name" ? "Name" : col === "designation" ? "Designation" : "Hours"}
-                </Text>
-                <Icon
-                  as={X}
-                  boxSize={4}
-                  color="gray.400"
-                  cursor="pointer"
-                  _hover={{ color: "red.500" }}
-                  onClick={() => removeGrouping(col)}
-                />
-              </HStack>
-            ))}
-          </HStack>
-        )}
-      </Box>
-
       {/* Table Container */}
-      <Box overflow="auto" maxH="calc(100vh - 340px)" w="100%">
-        <Table.Root size="sm" variant="outline" w="100%" style={{ tableLayout: "fixed" }}>
+      <Box overflow="auto" w="100%">
+        <Table.Root
+          zIndex="1"
+          size="sm"
+          variant="outline"
+          w="100%"
+          style={{ tableLayout: "fixed" }}
+        >
           <Table.Header>
-            <Table.Row bg="gray.50">
-              {/* Name Column Header - Draggable */}
-              <DraggableColumnHeader
-                column="name"
-                title="Name"
-                icon={<Icon as={Filter} boxSize={3} color="gray.400" />}
-              />
+            <Table.Row borderBottom="1px solid" bg="white" color="foreground">
+              {/* Name Column Header */}
+              <Table.ColumnHeader
+                w="160px"
+                minW="160px"
+                color="faintforeground"
+                bg="white"
+              >
+                <HStack gap={2}>
+                  <Text fontSize="sm" fontWeight="medium">
+                    Name
+                  </Text>
+                  <Icon as={Filter} boxSize={4} />
+                </HStack>
+              </Table.ColumnHeader>
 
-              {/* Designation Column Header - Draggable */}
-              <DraggableColumnHeader
-                column="designation"
-                title="Designation"
-              />
-
-              {/* Hours Column Header - Draggable */}
-              <DraggableColumnHeader
-                column="hours"
-                title="Hours"
-                icon={<Icon as={HelpCircle} boxSize={3} color="gray.400" />}
-              />
+              {/* Hours Column Header */}
+              <Table.ColumnHeader
+                w="100px"
+                minW="100px"
+                color="faintforeground"
+                bg="white"
+              >
+                <HStack gap={2}>
+                  <Text fontSize="sm" fontWeight="medium">
+                    Hours
+                  </Text>
+                  <Tooltip
+                    content={
+                      <Stack gap={1}>
+                        {[
+                          { color: "alert", text: "Under 42 hours" },
+                          { color: "danger", text: "Above 44 hours" },
+                        ].map((item) => (
+                          <HStack key={item.text} gap={2}>
+                            <Box borderRadius="full" w={2} h={2} bg={item.color} flexShrink={0} />
+                            <Text fontSize="xs">{item.text}</Text>
+                          </HStack>
+                        ))}
+                      </Stack>
+                    }
+                    lazyMount={true}
+                    contentProps={{
+                      css: {
+                        "--tooltip-bg": "white",
+                        "box-shadow": "0px 0px 4px rgba(0,0,0,0.1)",
+                        color: "black",
+                      },
+                    }}
+                  >
+                    <Icon as={CircleQuestionMark} boxSize={4} />
+                  </Tooltip>
+                </HStack>
+              </Table.ColumnHeader>
 
               {/* Day Column Headers */}
               {dayColumns.map((col) => (
                 <Table.ColumnHeader
                   key={col.field}
+                  w={dayColumnWidth}
                   minW={dayColumnWidth}
                   textAlign="center"
-                  bg="gray.50"
-                  borderRight="1px solid"
-                  borderColor="gray.100"
+                  color="faintforeground"
                   p={2}
                 >
                   <Box>
-                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                    <Text fontSize="sm" fontWeight="medium">
                       {col.dayOfWeek}
                     </Text>
-                    <Text fontSize="xs" color="gray.500">
-                      {moment(col.date).format("DD/MM/YYYY")}
+                    <Text fontSize="xs" fontWeight="normal">
+                      {moment(col.date).format("DD/MM")}
                     </Text>
                   </Box>
                 </Table.ColumnHeader>
@@ -495,7 +618,11 @@ export function RosterGrid({
         onClose={handlePopoverClose}
         currentShift={popoverState.currentShift}
         nurseName={popoverState.nurseName}
-        date={popoverState.date ? moment(popoverState.date).format("ddd, MMM DD") : ""}
+        date={
+          popoverState.date
+            ? moment(popoverState.date).format("ddd, MMM DD")
+            : ""
+        }
         onShiftChange={handleShiftChange}
         anchorEl={popoverState.anchorEl}
       />
@@ -513,7 +640,9 @@ export function RosterGrid({
           alignItems="center"
           justifyContent="center"
           zIndex={10}
+          flexDir={"column"}
         >
+          <Spinner color="primary" />
           <Text color="gray.500">Loading roster data...</Text>
         </Box>
       )}

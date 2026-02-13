@@ -3,7 +3,8 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByNurseData, ShiftRequestsGetShiftRequestsByNurseResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+
+import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByNurseData, ShiftRequestsGetShiftRequestsByNurseResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse } from './types.gen';
 
 export class DefaultService {
     /**
@@ -200,10 +201,12 @@ export class ShiftRequestsService {
         });
     }
     
+    
     /**
      * Get Roster Period
      * Get the roster period that contains the given date.
      * @param data The data for the request.
+     * @param data.targetDate Date to find the roster period for
      * @param data.targetDate Date to find the roster period for
      * @returns RosterPeriodPublic Successful Response
      * @throws ApiError
@@ -221,6 +224,7 @@ export class ShiftRequestsService {
         });
     }
     
+    
     /**
      * Get User Shift Requests
      * Get all shift requests for the current user.
@@ -233,6 +237,7 @@ export class ShiftRequestsService {
             url: '/api/v1/shift-requests/'
         });
     }
+    
     
     /**
      * Create Shift Request
@@ -524,6 +529,20 @@ export class UtilsService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/utils/health-check/'
+        });
+    }
+}
+
+export class WardsService {
+    /**
+     * Get Wards
+     * @returns Ward Successful Response
+     * @throws ApiError
+     */
+    public static getWards(): CancelablePromise<WardsGetWardsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/wards/'
         });
     }
 }
