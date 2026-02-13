@@ -145,6 +145,27 @@ export interface WardStatisticsResponse {
 }
 
 // ============================================
+// Edit History Types
+// ============================================
+
+export type EditHistoryChangeType = 'shift_change' | 'comment';
+
+export interface EditHistoryEntry {
+  id: number;
+  modifiedDate: string;        // ISO datetime string
+  changeType: EditHistoryChangeType;
+  // For shift changes
+  previousShiftCode?: ShiftCode;
+  newShiftCode?: ShiftCode;
+  // For comments
+  comment?: string;
+  // Context
+  shiftDate: string;           // The date of the shift that was modified
+  nurseName: string;
+  modifiedBy: string;
+}
+
+// ============================================
 // Staffing Guidelines / Shift Summary Types
 // ============================================
 

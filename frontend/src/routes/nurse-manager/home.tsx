@@ -7,6 +7,7 @@ import {
   RosterGrid,
   RosterHeader,
   ShiftSummaryTable,
+  EditHistoryDialog,
   useWards,
   useRosterPeriods,
   useRosterPageData,
@@ -17,6 +18,7 @@ import {
   type ViewMode,
   type ShiftCode,
   type RosterRow,
+  type EditHistoryEntry,
 } from "@/components/NurseManager/RosterTable";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
 import NotificationBanner from "@/components/NurseManager/HomePage/NotificationBanner";
@@ -78,6 +80,68 @@ function generateMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
   });
 }
 
+// Mock edit history data for demonstration
+const MOCK_EDIT_HISTORY: EditHistoryEntry[] = [
+  {
+    id: 1,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "shift_change",
+    previousShiftCode: "A",
+    newShiftCode: "P",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Mary Susan",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 2,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "shift_change",
+    previousShiftCode: "A",
+    newShiftCode: "P",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Tonnie Marti",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 3,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "comment",
+    comment: "hduehud",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Mary Lamb",
+    modifiedBy: "Tonnie Marti",
+  },
+  {
+    id: 4,
+    modifiedDate: "2025-10-03T09:30:00",
+    changeType: "shift_change",
+    previousShiftCode: "D",
+    newShiftCode: "N",
+    shiftDate: "2025-10-03T09:30:00",
+    nurseName: "Sarah Johnson",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 5,
+    modifiedDate: "2025-10-03T08:15:00",
+    changeType: "shift_change",
+    previousShiftCode: "DO",
+    newShiftCode: "A",
+    shiftDate: "2025-10-03T08:15:00",
+    nurseName: "Emily Chen",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 6,
+    modifiedDate: "2025-10-02T16:45:00",
+    changeType: "comment",
+    comment: "Nurse requested swap due to family emergency",
+    shiftDate: "2025-10-02T16:45:00",
+    nurseName: "David Wong",
+    modifiedBy: "Grace",
+  },
+];
+
 function NurseManagerHome() {
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
@@ -86,6 +150,7 @@ function NurseManagerHome() {
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
+  const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
 
   // Data hooks
   const { data: wards = [], isLoading: wardsLoading } = useWards();
@@ -197,8 +262,7 @@ function NurseManagerHome() {
   }, [rosterData, currentStartDate, viewMode, exportToCSV]);
 
   const handleViewEditHistory = useCallback(() => {
-    // TODO: Implement edit history modal
-    console.log("View Edit History clicked");
+    setIsEditHistoryOpen(true);
   }, []);
 
   // Generate mock wards if API wards are empty
@@ -345,7 +409,12 @@ function NurseManagerHome() {
         </Box>
       </Stack>
 
-      
+      {/* Edit History Dialog */}
+      <EditHistoryDialog
+        isOpen={isEditHistoryOpen}
+        onClose={() => setIsEditHistoryOpen(false)}
+        entries={MOCK_EDIT_HISTORY}
+      />
     </Flex>
   );
 }
