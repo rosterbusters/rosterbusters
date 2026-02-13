@@ -31,28 +31,35 @@ TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
 # Function to retrieve the current user from the token
-def get_current_user(session: SessionDep, token: TokenDep) -> User:
+def get_current_user(
+    session: SessionDep, token: str = Depends(reusable_oauth2)
+) -> User:
     try:
-        # Decode the token
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
         )
         token_data = TokenPayload(**payload)
     except (InvalidTokenError, ValidationError):
-        # Catch errors if the token is expired, has an invalid signature, or incorrect format
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
     
-    # Find user in the database
-    user = session.get(User, token_data.sub)
+    # Query RBACUser table instead of User table
+    from app.models.rbac import RBACUser
+    from sqlmodel import select
+    
+    user = session.exec(
+        select(RBACUser).where(RBACUser.userid == token_data.sub)
+    ).first()
+    
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not user.is_active:
+    
+    if not user.isactive:
         raise HTTPException(status_code=400, detail="Inactive user")
+    
     return user
-
 
 # Dependency to inject the current user into routes
 CurrentUser = Annotated[User, Depends(get_current_user)]

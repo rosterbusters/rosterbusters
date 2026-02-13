@@ -151,7 +151,6 @@ async def auth_google_callback(
         error_url = f"{settings.FRONTEND_HOST}/login?error={str(e)}"
         return RedirectResponse(url=error_url)
 
-
 @router.post("/login/access-token")
 def login_access_token(
     session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
@@ -159,15 +158,27 @@ def login_access_token(
     """
     OAuth2 compatible token login, get an access token for future requests
     """
-    user = crud.authenticate(
-        session=session, email=form_data.username, password=form_data.password
-    )
+    from app.models.rbac import RBACUser
+    from app.core.security import verify_password
+    from sqlmodel import select
+    
+    # Query the User table using RBACUser model
+    user = session.exec(
+        select(RBACUser).where(RBACUser.username == form_data.username)
+    ).first()
+    
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
-    elif not user.is_active:
+    
+    # Verify password against user.passwordhash
+    if not verify_password(form_data.password, user.passwordhash):
+        raise HTTPException(status_code=400, detail="Incorrect email or password")
+    
+    if not user.isactive:
         raise HTTPException(status_code=400, detail="Inactive user")
+    
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(
-        user.id, expires_delta=access_token_expires
+        user.userid, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
