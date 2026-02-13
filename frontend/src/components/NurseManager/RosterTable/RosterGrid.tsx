@@ -21,14 +21,22 @@ import { CircleQuestionMark } from "lucide-react";
 
 import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
+import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
+import { MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
 import type {
   RosterRow,
   ShiftAssignment,
   ShiftCode,
   ViewMode,
   DayColumn,
+  DailyStaffingGuideline,
+  SummaryShiftType,
+  StaffRole,
 } from "./types";
 import { Tooltip } from "@/components/ui/tooltip";
+
+const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
+const STAFF_ROLES: StaffRole[] = ["RN", "EN", "HCA"];
 
 interface RosterGridProps {
   data: RosterRow[];
@@ -40,6 +48,9 @@ interface RosterGridProps {
     newShiftCode: ShiftCode,
   ) => void;
   isLoading?: boolean;
+  guidelines?: DailyStaffingGuideline;
+  isRosterGenerated?: boolean;
+  showSummary?: boolean;
 }
 
 // Generate day columns based on view mode and start date
@@ -80,6 +91,9 @@ export function RosterGrid({
   currentStartDate,
   onShiftChange,
   isLoading = false,
+  guidelines = MOCK_STAFFING_GUIDELINES,
+  isRosterGenerated = false,
+  showSummary = true,
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -169,6 +183,199 @@ export function RosterGrid({
   // Total columns: Name + Hours + Day columns
   const totalCols = 2 + dayColumns.length;
 
+  // Calculate shift counts for summary
+  const shiftCounts = useMemo(
+    () => calculateShiftCounts(data, dayColumns),
+    [data, dayColumns],
+  );
+
+  // Calculate total for a specific shift type and date
+  const getTotal = useCallback(
+    (dateKey: string, shiftType: SummaryShiftType): number => {
+      const dayCounts = shiftCounts.get(dateKey);
+      if (!dayCounts) return 0;
+      return STAFF_ROLES.reduce(
+        (sum, role) => sum + dayCounts[role][shiftType],
+        0,
+      );
+    },
+    [shiftCounts],
+  );
+
+  // Render the embedded summary rows
+  const renderSummaryRows = () => {
+    const summaryRows: React.ReactNode[] = [];
+
+    // Summary Header Row (A, P, N labels)
+    summaryRows.push(
+      <Table.Row
+        key="summary-header"
+        bg="white"
+        borderTop="2px solid"
+        borderColor="#7EC8D9"
+      >
+        <Table.Cell
+          colSpan={2}
+          borderRight="1px solid"
+          borderColor="gray.200"
+          p={1}
+          bg="white"
+        />
+        {dayColumns.map((col) => (
+          <Table.Cell
+            key={col.field}
+            textAlign="center"
+            borderRight="1px solid"
+            borderColor="gray.100"
+            p={0}
+            bg="white"
+          >
+            <Flex justify="space-around">
+              {SHIFT_TYPES.map((type) => (
+                <Text
+                  key={type}
+                  fontSize="xs"
+                  fontWeight="semibold"
+                  color="#4B8798"
+                  flex={1}
+                  textAlign="center"
+                  py={1}
+                >
+                  {type}
+                </Text>
+              ))}
+            </Flex>
+          </Table.Cell>
+        ))}
+      </Table.Row>,
+    );
+
+    // Role Rows (RN, EN, HCA)
+    STAFF_ROLES.forEach((role) => {
+      summaryRows.push(
+        <Table.Row
+          key={`summary-${role}`}
+          bg="white"
+        >
+          <Table.Cell
+            colSpan={2}
+            fontWeight="semibold"
+            fontSize="xs"
+            color="#4B8798"
+            borderRight="1px solid"
+            borderColor="gray.200"
+            py={1}
+            px={2}
+            textAlign="right"
+            bg="white"
+          >
+            {role}
+          </Table.Cell>
+          {dayColumns.map((col) => {
+            const dateKey = moment(col.date).format("YYYY-MM-DD");
+            const dayCounts = shiftCounts.get(dateKey);
+
+            return (
+              <Table.Cell
+                key={col.field}
+                textAlign="center"
+                borderRight="1px solid"
+                borderColor="gray.100"
+                p={0}
+              >
+                <Flex>
+                  {SHIFT_TYPES.map((shiftType) => {
+                    const count = dayCounts?.[role]?.[shiftType] ?? 0;
+                    const style = getCellStyle(
+                      count,
+                      guidelines[role][shiftType].minimum,
+                      isRosterGenerated,
+                    );
+
+                    return (
+                      <Flex
+                        key={shiftType}
+                        justify="center"
+                        align="center"
+                        bg={style.bg}
+                        color={style.color}
+                        flex={1}
+                        py={1}
+                        fontSize="xs"
+                        fontWeight="semibold"
+                      >
+                        {count}
+                      </Flex>
+                    );
+                  })}
+                </Flex>
+              </Table.Cell>
+            );
+          })}
+        </Table.Row>,
+      );
+    });
+
+    // Total Row
+    summaryRows.push(
+      <Table.Row
+        key="summary-total"
+        bg="#ADD8E6"
+      >
+        <Table.Cell
+          colSpan={2}
+          fontWeight="bold"
+          fontSize="xs"
+          color="#4B8798"
+          borderRight="1px solid"
+          borderColor="rgba(255,255,255,0.3)"
+          py={1}
+          px={2}
+          textAlign="right"
+          bg="#ADD8E6"
+        >
+          Total
+        </Table.Cell>
+        {dayColumns.map((col) => {
+          const dateKey = moment(col.date).format("YYYY-MM-DD");
+
+          return (
+            <Table.Cell
+              key={col.field}
+              textAlign="center"
+              borderRight="1px solid"
+              borderColor="rgba(255,255,255,0.3)"
+              p={0}
+              bg="#ADD8E6"
+            >
+              <Flex>
+                {SHIFT_TYPES.map((shiftType) => {
+                  const total = getTotal(dateKey, shiftType);
+                  return (
+                    <Flex
+                      key={shiftType}
+                      justify="center"
+                      align="center"
+                      flex={1}
+                      py={1}
+                      fontSize="xs"
+                      fontWeight="bold"
+                      color="#4B8798"
+                    >
+                      {total}
+                    </Flex>
+                  );
+                })}
+              </Flex>
+            </Table.Cell>
+          );
+        })}
+      </Table.Row>,
+    );
+
+    return summaryRows;
+  };
+
   // Render grouped rows
   const renderRows = () => {
     const allRows: React.ReactNode[] = [];
@@ -207,6 +414,11 @@ export function RosterGrid({
         });
       }
     });
+
+    // Insert summary rows at the bottom of the grid
+    if (showSummary) {
+      allRows.push(...renderSummaryRows());
+    }
 
     return allRows;
   };
@@ -308,7 +520,7 @@ export function RosterGrid({
 
   return (
     <Box position="relative" w="100%">
-      {/* Table Container - height controlled by parent for sticky summary support */}
+      {/* Table Container */}
       <Box overflow="auto" w="100%">
         <Table.Root
           zIndex="1"
