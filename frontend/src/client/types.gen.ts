@@ -179,6 +179,9 @@ export type PrivateCreateUserResponse = (UserPublic);
 export type ShiftRequestsGetRosterPeriodsResponse = (Array<RosterPeriodPublic>);
 
 export type ShiftRequestsGetRosterPeriodData = {
+    /**
+     * Date to find the roster period for
+     */
     targetDate: string;
 };
 
@@ -191,6 +194,18 @@ export type ShiftRequestsCreateShiftRequestData = {
 };
 
 export type ShiftRequestsCreateShiftRequestResponse = (ShiftRequestPublic);
+
+export type ShiftRequestsGetShiftRequestsByNurseData = {
+    nurseId: number;
+};
+
+export type ShiftRequestsGetShiftRequestsByNurseResponse = (Array<ShiftRequestPublic>);
+
+export type ShiftRequestsGetShiftRequestsByWardData = {
+    wardId: number;
+};
+
+export type ShiftRequestsGetShiftRequestsByWardResponse = (Array<ShiftRequestPublic>);
 
 export type UsersReadUsersData = {
     limit?: number;

@@ -219,6 +219,36 @@ export const PrivateUserCreateSchema = {
     title: 'PrivateUserCreate'
 } as const;
 
+export const RosterPeriodPublicSchema = {
+    properties: {
+        periodid: {
+            type: 'integer',
+            title: 'Periodid'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        startdate: {
+            type: 'string',
+            format: 'date',
+            title: 'Startdate'
+        },
+        enddate: {
+            type: 'string',
+            format: 'date',
+            title: 'Enddate'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        }
+    },
+    type: 'object',
+    required: ['periodid', 'name', 'startdate', 'enddate', 'status'],
+    title: 'RosterPeriodPublic'
+} as const;
+
 export const ShiftRequestCreateSchema = {
     properties: {
         periodid: {
