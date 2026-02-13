@@ -1,6 +1,9 @@
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowUpRight } from "lucide-react";
 import { Stack, Table, Badge } from "@chakra-ui/react";
 import {
   notificationTypeLabels,
+  getNotificationRoute,
   type NotificationItem,
 } from "@/types/notifications";
 
@@ -11,6 +14,7 @@ interface NotificationBannerProps {
 export default function NotificationBanner({
   items,
 }: NotificationBannerProps) {
+  const navigate = useNavigate();
   return (
     <Stack width="full" gap="5">
       <Table.ScrollArea maxHeight="216px">
@@ -30,7 +34,18 @@ export default function NotificationBanner({
                     {notificationTypeLabels[item.notificationtype]}
                   </Badge>
                 </Table.Cell>
-                <Table.Cell color="foreground">{item.description}</Table.Cell>
+                <Table.Cell color="foreground">
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    {item.description}
+                    <button
+                      onClick={() => navigate({ to: getNotificationRoute(item.notificationtype) })}
+                      aria-label={`Navigate to ${notificationTypeLabels[item.notificationtype]}`}
+                      style={{ display: "inline-flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                    >
+                      <ArrowUpRight size={16} color="#4B8798" />
+                    </button>
+                  </span>
+                </Table.Cell>
                 <Table.Cell color="foreground" fontWeight="semibold">
                   {item.date}
                 </Table.Cell>
