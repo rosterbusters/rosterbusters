@@ -9,15 +9,23 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WardStaffRouteImport } from './routes/ward-staff'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as NurseManagerRouteImport } from './routes/nurse-manager'
+import { Route as NurseManagerRouteImport } from './routes/nurse-manager'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as WardStaffRouteImport } from './routes/_wardStaff'
 import { Route as LayoutRouteImport } from './routes/_layout'
+import { Route as WardStaffIndexRouteImport } from './routes/ward-staff/index'
 import { Route as NurseManagerIndexRouteImport } from './routes/nurse-manager/index'
-import { Route as WardStaffIndexRouteImport } from './routes/_wardStaff/index'
+import { Route as WardStaffStaffrosterscheduleRouteImport } from './routes/ward-staff/staffrosterschedule'
+import { Route as WardStaffShiftRequestRouteImport } from './routes/ward-staff/shift-request'
+import { Route as WardStaffSettingsRouteImport } from './routes/ward-staff/settings'
+import { Route as WardStaffRequestApplicationRouteImport } from './routes/ward-staff/request-application'
+import { Route as WardStaffLeaveandshiftrequestRouteImport } from './routes/ward-staff/leaveandshiftrequest'
+import { Route as WardStaffLeaveRequestRouteImport } from './routes/ward-staff/leave-request'
+import { Route as WardStaffHomeRouteImport } from './routes/ward-staff/home'
 import { Route as NurseManagerWardStaffDirectoryRouteImport } from './routes/nurse-manager/ward-staff-directory'
 import { Route as NurseManagerShiftOverviewRouteImport } from './routes/nurse-manager/shift-overview'
 import { Route as NurseManagerSettingsRouteImport } from './routes/nurse-manager/settings'
@@ -25,16 +33,14 @@ import { Route as NurseManagerRosterPlanningRouteImport } from './routes/nurse-m
 import { Route as NurseManagerLeaveOverviewRouteImport } from './routes/nurse-manager/leave-overview'
 import { Route as NurseManagerHomeRouteImport } from './routes/nurse-manager/home'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
-import { Route as WardStaffStaffrosterscheduleRouteImport } from './routes/_wardStaff/staffrosterschedule'
-import { Route as WardStaffShiftRequestRouteImport } from './routes/_wardStaff/shift-request'
-import { Route as WardStaffSettingsRouteImport } from './routes/_wardStaff/settings'
-import { Route as WardStaffRequestApplicationRouteImport } from './routes/_wardStaff/request-application'
-import { Route as WardStaffLeaveandshiftrequestRouteImport } from './routes/_wardStaff/leaveandshiftrequest'
-import { Route as WardStaffLeaveRequestRouteImport } from './routes/_wardStaff/leave-request'
-import { Route as WardStaffHomeRouteImport } from './routes/_wardStaff/home'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 
+const WardStaffRoute = WardStaffRouteImport.update({
+  id: '/ward-staff',
+  path: '/ward-staff',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -60,22 +66,56 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WardStaffRoute = WardStaffRouteImport.update({
-  id: '/_wardStaff',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
+} as any)
+const WardStaffIndexRoute = WardStaffIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WardStaffRoute,
 } as any)
 const NurseManagerIndexRoute = NurseManagerIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => NurseManagerRoute,
 } as any)
-const WardStaffIndexRoute = WardStaffIndexRouteImport.update({
-  id: '/',
-  path: '/',
+const WardStaffStaffrosterscheduleRoute =
+  WardStaffStaffrosterscheduleRouteImport.update({
+    id: '/staffrosterschedule',
+    path: '/staffrosterschedule',
+    getParentRoute: () => WardStaffRoute,
+  } as any)
+const WardStaffShiftRequestRoute = WardStaffShiftRequestRouteImport.update({
+  id: '/shift-request',
+  path: '/shift-request',
+  getParentRoute: () => WardStaffRoute,
+} as any)
+const WardStaffSettingsRoute = WardStaffSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => WardStaffRoute,
+} as any)
+const WardStaffRequestApplicationRoute =
+  WardStaffRequestApplicationRouteImport.update({
+    id: '/request-application',
+    path: '/request-application',
+    getParentRoute: () => WardStaffRoute,
+  } as any)
+const WardStaffLeaveandshiftrequestRoute =
+  WardStaffLeaveandshiftrequestRouteImport.update({
+    id: '/leaveandshiftrequest',
+    path: '/leaveandshiftrequest',
+    getParentRoute: () => WardStaffRoute,
+  } as any)
+const WardStaffLeaveRequestRoute = WardStaffLeaveRequestRouteImport.update({
+  id: '/leave-request',
+  path: '/leave-request',
+  getParentRoute: () => WardStaffRoute,
+} as any)
+const WardStaffHomeRoute = WardStaffHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => WardStaffRoute,
 } as any)
 const NurseManagerWardStaffDirectoryRoute =
@@ -117,44 +157,6 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WardStaffStaffrosterscheduleRoute =
-  WardStaffStaffrosterscheduleRouteImport.update({
-    id: '/staffrosterschedule',
-    path: '/staffrosterschedule',
-    getParentRoute: () => WardStaffRoute,
-  } as any)
-const WardStaffShiftRequestRoute = WardStaffShiftRequestRouteImport.update({
-  id: '/shift-request',
-  path: '/shift-request',
-  getParentRoute: () => WardStaffRoute,
-} as any)
-const WardStaffSettingsRoute = WardStaffSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => WardStaffRoute,
-} as any)
-const WardStaffRequestApplicationRoute =
-  WardStaffRequestApplicationRouteImport.update({
-    id: '/request-application',
-    path: '/request-application',
-    getParentRoute: () => WardStaffRoute,
-  } as any)
-const WardStaffLeaveandshiftrequestRoute =
-  WardStaffLeaveandshiftrequestRouteImport.update({
-    id: '/leaveandshiftrequest',
-    path: '/leaveandshiftrequest',
-    getParentRoute: () => WardStaffRoute,
-  } as any)
-const WardStaffLeaveRequestRoute = WardStaffLeaveRequestRouteImport.update({
-  id: '/leave-request',
-  path: '/leave-request',
-  getParentRoute: () => WardStaffRoute,
-} as any)
-const WardStaffHomeRoute = WardStaffHomeRouteImport.update({
-  id: '/home',
-  path: '/home',
-  getParentRoute: () => WardStaffRoute,
-} as any)
 const LayoutItemsRoute = LayoutItemsRouteImport.update({
   id: '/items',
   path: '/items',
@@ -167,20 +169,15 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof LayoutRouteWithChildren
   '/login': typeof LoginRoute
   '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/ward-staff': typeof WardStaffRouteWithChildren
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
-  '/home': typeof WardStaffHomeRoute
-  '/leave-request': typeof WardStaffLeaveRequestRoute
-  '/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
-  '/request-application': typeof WardStaffRequestApplicationRoute
-  '/settings': typeof WardStaffSettingsRoute
-  '/shift-request': typeof WardStaffShiftRequestRoute
-  '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/nurse-manager/home': typeof NurseManagerHomeRoute
   '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
@@ -188,23 +185,24 @@ export interface FileRoutesByFullPath {
   '/nurse-manager/settings': typeof NurseManagerSettingsRoute
   '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
   '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
-  '/': typeof WardStaffIndexRoute
+  '/ward-staff/home': typeof WardStaffHomeRoute
+  '/ward-staff/leave-request': typeof WardStaffLeaveRequestRoute
+  '/ward-staff/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
+  '/ward-staff/request-application': typeof WardStaffRequestApplicationRoute
+  '/ward-staff/settings': typeof WardStaffSettingsRoute
+  '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
+  '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/nurse-manager/': typeof NurseManagerIndexRoute
+  '/ward-staff/': typeof WardStaffIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof LayoutRouteWithChildren
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
-  '/home': typeof WardStaffHomeRoute
-  '/leave-request': typeof WardStaffLeaveRequestRoute
-  '/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
-  '/request-application': typeof WardStaffRequestApplicationRoute
-  '/settings': typeof WardStaffSettingsRoute
-  '/shift-request': typeof WardStaffShiftRequestRoute
-  '/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/nurse-manager/home': typeof NurseManagerHomeRoute
   '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
@@ -212,27 +210,27 @@ export interface FileRoutesByTo {
   '/nurse-manager/settings': typeof NurseManagerSettingsRoute
   '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
   '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
-  '/': typeof WardStaffIndexRoute
+  '/ward-staff/home': typeof WardStaffHomeRoute
+  '/ward-staff/leave-request': typeof WardStaffLeaveRequestRoute
+  '/ward-staff/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
+  '/ward-staff/request-application': typeof WardStaffRequestApplicationRoute
+  '/ward-staff/settings': typeof WardStaffSettingsRoute
+  '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
+  '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/nurse-manager': typeof NurseManagerIndexRoute
+  '/ward-staff': typeof WardStaffIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
-  '/_wardStaff': typeof WardStaffRouteWithChildren
   '/login': typeof LoginRoute
   '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/ward-staff': typeof WardStaffRouteWithChildren
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/items': typeof LayoutItemsRoute
-  '/_wardStaff/home': typeof WardStaffHomeRoute
-  '/_wardStaff/leave-request': typeof WardStaffLeaveRequestRoute
-  '/_wardStaff/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
-  '/_wardStaff/request-application': typeof WardStaffRequestApplicationRoute
-  '/_wardStaff/settings': typeof WardStaffSettingsRoute
-  '/_wardStaff/shift-request': typeof WardStaffShiftRequestRoute
-  '/_wardStaff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/nurse-manager/home': typeof NurseManagerHomeRoute
   '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
@@ -240,8 +238,15 @@ export interface FileRoutesById {
   '/nurse-manager/settings': typeof NurseManagerSettingsRoute
   '/nurse-manager/shift-overview': typeof NurseManagerShiftOverviewRoute
   '/nurse-manager/ward-staff-directory': typeof NurseManagerWardStaffDirectoryRoute
-  '/_wardStaff/': typeof WardStaffIndexRoute
+  '/ward-staff/home': typeof WardStaffHomeRoute
+  '/ward-staff/leave-request': typeof WardStaffLeaveRequestRoute
+  '/ward-staff/leaveandshiftrequest': typeof WardStaffLeaveandshiftrequestRoute
+  '/ward-staff/request-application': typeof WardStaffRequestApplicationRoute
+  '/ward-staff/settings': typeof WardStaffSettingsRoute
+  '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
+  '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/nurse-manager/': typeof NurseManagerIndexRoute
+  '/ward-staff/': typeof WardStaffIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -251,15 +256,9 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/ward-staff'
     | '/admin'
     | '/items'
-    | '/home'
-    | '/leave-request'
-    | '/leaveandshiftrequest'
-    | '/request-application'
-    | '/settings'
-    | '/shift-request'
-    | '/staffrosterschedule'
     | '/auth/callback'
     | '/nurse-manager/home'
     | '/nurse-manager/leave-overview'
@@ -267,8 +266,15 @@ export interface FileRouteTypes {
     | '/nurse-manager/settings'
     | '/nurse-manager/shift-overview'
     | '/nurse-manager/ward-staff-directory'
-    | '/'
+    | '/ward-staff/home'
+    | '/ward-staff/leave-request'
+    | '/ward-staff/leaveandshiftrequest'
+    | '/ward-staff/request-application'
+    | '/ward-staff/settings'
+    | '/ward-staff/shift-request'
+    | '/ward-staff/staffrosterschedule'
     | '/nurse-manager/'
+    | '/ward-staff/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -277,13 +283,6 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin'
     | '/items'
-    | '/home'
-    | '/leave-request'
-    | '/leaveandshiftrequest'
-    | '/request-application'
-    | '/settings'
-    | '/shift-request'
-    | '/staffrosterschedule'
     | '/auth/callback'
     | '/nurse-manager/home'
     | '/nurse-manager/leave-overview'
@@ -291,26 +290,26 @@ export interface FileRouteTypes {
     | '/nurse-manager/settings'
     | '/nurse-manager/shift-overview'
     | '/nurse-manager/ward-staff-directory'
-    | '/'
+    | '/ward-staff/home'
+    | '/ward-staff/leave-request'
+    | '/ward-staff/leaveandshiftrequest'
+    | '/ward-staff/request-application'
+    | '/ward-staff/settings'
+    | '/ward-staff/shift-request'
+    | '/ward-staff/staffrosterschedule'
     | '/nurse-manager'
+    | '/ward-staff'
   id:
     | '__root__'
     | '/_layout'
-    | '/_wardStaff'
     | '/login'
     | '/nurse-manager'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/ward-staff'
     | '/_layout/admin'
     | '/_layout/items'
-    | '/_wardStaff/home'
-    | '/_wardStaff/leave-request'
-    | '/_wardStaff/leaveandshiftrequest'
-    | '/_wardStaff/request-application'
-    | '/_wardStaff/settings'
-    | '/_wardStaff/shift-request'
-    | '/_wardStaff/staffrosterschedule'
     | '/auth/callback'
     | '/nurse-manager/home'
     | '/nurse-manager/leave-overview'
@@ -318,23 +317,37 @@ export interface FileRouteTypes {
     | '/nurse-manager/settings'
     | '/nurse-manager/shift-overview'
     | '/nurse-manager/ward-staff-directory'
-    | '/_wardStaff/'
+    | '/ward-staff/home'
+    | '/ward-staff/leave-request'
+    | '/ward-staff/leaveandshiftrequest'
+    | '/ward-staff/request-application'
+    | '/ward-staff/settings'
+    | '/ward-staff/shift-request'
+    | '/ward-staff/staffrosterschedule'
     | '/nurse-manager/'
+    | '/ward-staff/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
-  WardStaffRoute: typeof WardStaffRouteWithChildren
   LoginRoute: typeof LoginRoute
   NurseManagerRoute: typeof NurseManagerRouteWithChildren
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  WardStaffRoute: typeof WardStaffRouteWithChildren
   AuthCallbackRoute: typeof AuthCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/ward-staff': {
+      id: '/ward-staff'
+      path: '/ward-staff'
+      fullPath: '/ward-staff'
+      preLoaderRoute: typeof WardStaffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -370,19 +383,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_wardStaff': {
-      id: '/_wardStaff'
-      path: ''
-      fullPath: ''
-      preLoaderRoute: typeof WardStaffRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_layout': {
       id: '/_layout'
       path: ''
       fullPath: ''
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/ward-staff/': {
+      id: '/ward-staff/'
+      path: '/'
+      fullPath: '/ward-staff/'
+      preLoaderRoute: typeof WardStaffIndexRouteImport
+      parentRoute: typeof WardStaffRoute
     }
     '/nurse-manager/': {
       id: '/nurse-manager/'
@@ -391,11 +404,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NurseManagerIndexRouteImport
       parentRoute: typeof NurseManagerRoute
     }
-    '/_wardStaff/': {
-      id: '/_wardStaff/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof WardStaffIndexRouteImport
+    '/ward-staff/staffrosterschedule': {
+      id: '/ward-staff/staffrosterschedule'
+      path: '/staffrosterschedule'
+      fullPath: '/ward-staff/staffrosterschedule'
+      preLoaderRoute: typeof WardStaffStaffrosterscheduleRouteImport
+      parentRoute: typeof WardStaffRoute
+    }
+    '/ward-staff/shift-request': {
+      id: '/ward-staff/shift-request'
+      path: '/shift-request'
+      fullPath: '/ward-staff/shift-request'
+      preLoaderRoute: typeof WardStaffShiftRequestRouteImport
+      parentRoute: typeof WardStaffRoute
+    }
+    '/ward-staff/settings': {
+      id: '/ward-staff/settings'
+      path: '/settings'
+      fullPath: '/ward-staff/settings'
+      preLoaderRoute: typeof WardStaffSettingsRouteImport
+      parentRoute: typeof WardStaffRoute
+    }
+    '/ward-staff/request-application': {
+      id: '/ward-staff/request-application'
+      path: '/request-application'
+      fullPath: '/ward-staff/request-application'
+      preLoaderRoute: typeof WardStaffRequestApplicationRouteImport
+      parentRoute: typeof WardStaffRoute
+    }
+    '/ward-staff/leaveandshiftrequest': {
+      id: '/ward-staff/leaveandshiftrequest'
+      path: '/leaveandshiftrequest'
+      fullPath: '/ward-staff/leaveandshiftrequest'
+      preLoaderRoute: typeof WardStaffLeaveandshiftrequestRouteImport
+      parentRoute: typeof WardStaffRoute
+    }
+    '/ward-staff/leave-request': {
+      id: '/ward-staff/leave-request'
+      path: '/leave-request'
+      fullPath: '/ward-staff/leave-request'
+      preLoaderRoute: typeof WardStaffLeaveRequestRouteImport
+      parentRoute: typeof WardStaffRoute
+    }
+    '/ward-staff/home': {
+      id: '/ward-staff/home'
+      path: '/home'
+      fullPath: '/ward-staff/home'
+      preLoaderRoute: typeof WardStaffHomeRouteImport
       parentRoute: typeof WardStaffRoute
     }
     '/nurse-manager/ward-staff-directory': {
@@ -447,55 +502,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_wardStaff/staffrosterschedule': {
-      id: '/_wardStaff/staffrosterschedule'
-      path: '/staffrosterschedule'
-      fullPath: '/staffrosterschedule'
-      preLoaderRoute: typeof WardStaffStaffrosterscheduleRouteImport
-      parentRoute: typeof WardStaffRoute
-    }
-    '/_wardStaff/shift-request': {
-      id: '/_wardStaff/shift-request'
-      path: '/shift-request'
-      fullPath: '/shift-request'
-      preLoaderRoute: typeof WardStaffShiftRequestRouteImport
-      parentRoute: typeof WardStaffRoute
-    }
-    '/_wardStaff/settings': {
-      id: '/_wardStaff/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof WardStaffSettingsRouteImport
-      parentRoute: typeof WardStaffRoute
-    }
-    '/_wardStaff/request-application': {
-      id: '/_wardStaff/request-application'
-      path: '/request-application'
-      fullPath: '/request-application'
-      preLoaderRoute: typeof WardStaffRequestApplicationRouteImport
-      parentRoute: typeof WardStaffRoute
-    }
-    '/_wardStaff/leaveandshiftrequest': {
-      id: '/_wardStaff/leaveandshiftrequest'
-      path: '/leaveandshiftrequest'
-      fullPath: '/leaveandshiftrequest'
-      preLoaderRoute: typeof WardStaffLeaveandshiftrequestRouteImport
-      parentRoute: typeof WardStaffRoute
-    }
-    '/_wardStaff/leave-request': {
-      id: '/_wardStaff/leave-request'
-      path: '/leave-request'
-      fullPath: '/leave-request'
-      preLoaderRoute: typeof WardStaffLeaveRequestRouteImport
-      parentRoute: typeof WardStaffRoute
-    }
-    '/_wardStaff/home': {
-      id: '/_wardStaff/home'
-      path: '/home'
-      fullPath: '/home'
-      preLoaderRoute: typeof WardStaffHomeRouteImport
-      parentRoute: typeof WardStaffRoute
-    }
     '/_layout/items': {
       id: '/_layout/items'
       path: '/items'
@@ -525,6 +531,30 @@ const LayoutRouteChildren: LayoutRouteChildren = {
 
 const LayoutRouteWithChildren =
   LayoutRoute._addFileChildren(LayoutRouteChildren)
+
+interface NurseManagerRouteChildren {
+  NurseManagerHomeRoute: typeof NurseManagerHomeRoute
+  NurseManagerLeaveOverviewRoute: typeof NurseManagerLeaveOverviewRoute
+  NurseManagerRosterPlanningRoute: typeof NurseManagerRosterPlanningRoute
+  NurseManagerSettingsRoute: typeof NurseManagerSettingsRoute
+  NurseManagerShiftOverviewRoute: typeof NurseManagerShiftOverviewRoute
+  NurseManagerWardStaffDirectoryRoute: typeof NurseManagerWardStaffDirectoryRoute
+  NurseManagerIndexRoute: typeof NurseManagerIndexRoute
+}
+
+const NurseManagerRouteChildren: NurseManagerRouteChildren = {
+  NurseManagerHomeRoute: NurseManagerHomeRoute,
+  NurseManagerLeaveOverviewRoute: NurseManagerLeaveOverviewRoute,
+  NurseManagerRosterPlanningRoute: NurseManagerRosterPlanningRoute,
+  NurseManagerSettingsRoute: NurseManagerSettingsRoute,
+  NurseManagerShiftOverviewRoute: NurseManagerShiftOverviewRoute,
+  NurseManagerWardStaffDirectoryRoute: NurseManagerWardStaffDirectoryRoute,
+  NurseManagerIndexRoute: NurseManagerIndexRoute,
+}
+
+const NurseManagerRouteWithChildren = NurseManagerRoute._addFileChildren(
+  NurseManagerRouteChildren,
+)
 
 interface WardStaffRouteChildren {
   WardStaffHomeRoute: typeof WardStaffHomeRoute
@@ -578,12 +608,12 @@ const NurseManagerRouteWithChildren = NurseManagerRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
-  WardStaffRoute: WardStaffRouteWithChildren,
   LoginRoute: LoginRoute,
   NurseManagerRoute: NurseManagerRouteWithChildren,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  WardStaffRoute: WardStaffRouteWithChildren,
   AuthCallbackRoute: AuthCallbackRoute,
 }
 export const routeTree = rootRouteImport

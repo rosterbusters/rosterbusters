@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 
-export const Route = createFileRoute("/_wardStaff/leave-request")({
+export const Route = createFileRoute("/ward-staff/leave-request")({
   component: LeaveRequest,
 })
 

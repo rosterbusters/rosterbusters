@@ -78,6 +78,7 @@ export const badgeRecipe = defineRecipe({
         color: "white",
       },
 
+      probation: { bgColor: "#D97706", color: "white" },
     },
   },
 });

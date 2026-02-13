@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep
+from app.models.rbac import Nurse
 from app.models.roster import RosterPeriod, RosterPeriodPublic
 from app.models.shifts import ShiftRequest, ShiftRequestCreate, ShiftRequestPublic
 from app.rbac import get_rbac_user_by_email
@@ -68,4 +69,30 @@ def get_user_shift_requests(
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
     statement = select(ShiftRequest).where(ShiftRequest.nurseid == rbac_user.nurseid)
+    return list(session.exec(statement).all())
+
+
+@router.get("/nurse/{nurse_id}", response_model=list[ShiftRequestPublic])
+def get_shift_requests_by_nurse(
+    session: SessionDep,
+    current_user: CurrentUser,
+    nurse_id: int,
+) -> Any:
+    """Get all shift requests for a specific nurse."""
+    statement = select(ShiftRequest).where(ShiftRequest.nurseid == nurse_id)
+    return list(session.exec(statement).all())
+
+
+@router.get("/ward/{ward_id}", response_model=list[ShiftRequestPublic])
+def get_shift_requests_by_ward(
+    session: SessionDep,
+    current_user: CurrentUser,
+    ward_id: int,
+) -> Any:
+    """Get all shift requests for nurses in a specific ward."""
+    statement = (
+        select(ShiftRequest)
+        .join(Nurse, ShiftRequest.nurseid == Nurse.nurseid)
+        .where(Nurse.wardid == ward_id)
+    )
     return list(session.exec(statement).all())

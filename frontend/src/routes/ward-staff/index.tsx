@@ -1,10 +1,10 @@
 import { createFileRoute, redirect } from "@tanstack/react-router"
 
-export const Route = createFileRoute("/_wardStaff/")({
+export const Route = createFileRoute("/ward-staff/")({
   beforeLoad: async () => {
     // Redirect root path to /home for ward staff
     throw redirect({
-      to: "/home",
+      to: "/ward-staff/home",
     })
   },
 })
