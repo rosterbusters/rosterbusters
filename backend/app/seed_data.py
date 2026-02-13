@@ -574,6 +574,7 @@ def seed_roster_entries(
     - Populates starttime/endtime from shift code defaults
     - Mix of Auto and Manual assignments
     - assignedby is set for Manual assignments (manager ID)
+    - First 3 nurses get varied shift patterns for next 7 days from today
     """
     logger.info("Seeding roster entries...")
 
@@ -588,7 +589,41 @@ def seed_roster_entries(
     shift_codes_db = session.exec(select(ShiftCode)).all()
     shift_lookup = {sc.shiftcode: sc for sc in shift_codes_db}
 
-    for nurse in nurses:
+    # Today's date
+    today = date.today()
+
+    # Define shift patterns for first 3 nurses (7 days from today)
+    first_three_patterns = [
+        [  # Nurse 1
+            ('A', 'Confirmed'),
+            ('A', 'Confirmed'),
+            ('P', 'Confirmed'),
+            ('DO', 'Confirmed'),
+            ('N', 'Pending'),
+            ('N', 'Confirmed'),
+            ('DO', 'Confirmed'),
+        ],
+        [  # Nurse 2
+            ('P', 'Confirmed'),
+            ('P', 'Confirmed'),
+            ('DO', 'Confirmed'),
+            ('A', 'Confirmed'),
+            ('A', 'Confirmed'),
+            ('P', 'Pending'),
+            ('DO', 'Confirmed'),
+        ],
+        [  # Nurse 3
+            ('N', 'Confirmed'),
+            ('N', 'Confirmed'),
+            ('DO', 'Confirmed'),
+            ('DO', 'Confirmed'),
+            ('P', 'Confirmed'),
+            ('P', 'Confirmed'),
+            ('A', 'Pending'),
+        ],
+    ]
+
+    for nurse_idx, nurse in enumerate(nurses):
         ward = next((w for w in wards if w.wardid == nurse.wardid), None)
         if not ward:
             continue
@@ -596,63 +631,117 @@ def seed_roster_entries(
         # Find manager for this ward (if any)
         ward_manager = managers[wards.index(ward)] if ward in wards and wards.index(ward) < len(managers) else None
 
-        # Generate 14 days of shifts
-        start_date = current_period.startdate
+        # Special handling for first 3 nurses - use today + 7 days
+        if nurse_idx < 3:
+            start_date = today
+            num_days = 7
+            pattern = first_three_patterns[nurse_idx]
+            
+            for day_offset in range(num_days):
+                shift_date = start_date + timedelta(days=day_offset)
+                shift_code, status = pattern[day_offset]
 
-        for day_offset in range(14):
-            shift_date = start_date + timedelta(days=day_offset)
+                # Delete existing entries first to avoid conflicts
+                existing = session.exec(
+                    select(Roster).where(
+                        Roster.nurseid == nurse.nurseid,
+                        Roster.shiftdate == shift_date
+                    )
+                ).first()
+                if existing:
+                    session.delete(existing)
+                    session.commit()
 
-            # Check if roster entry exists
-            existing = session.exec(
-                select(Roster).where(
-                    Roster.nurseid == nurse.nurseid,
-                    Roster.periodid == current_period.periodid,
-                    Roster.shiftdate == shift_date,
+                # Get shift code details
+                sc = shift_lookup.get(shift_code)
+                if not sc:
+                    continue
+
+                start_time = sc.defaultstart if sc else None
+                end_time = sc.defaultend if sc else None
+
+                # Mix of Auto (70%) and Manual (30%) assignments for Confirmed shifts
+                is_manual = status == 'Confirmed' and fake.random_int(min=1, max=10) <= 3
+                assignment_method = "Manual" if is_manual else "Auto"
+                assigned_by = ward_manager.managerid if is_manual and ward_manager else None
+
+                roster = Roster(
+                    nurseid=nurse.nurseid,
+                    wardid=ward.wardid,
+                    periodid=current_period.periodid,
+                    shiftdate=shift_date,
+                    shiftcode=shift_code,
+                    starttime=start_time,
+                    endtime=end_time,
+                    status=status,
+                    assignmentmethod=assignment_method,
+                    assignedby=assigned_by,
                 )
-            ).first()
+                session.add(roster)
+                count += 1
 
-            if existing:
-                continue
+            session.commit()
+            logger.info(f"  Created 7 roster entries for Nurse {nurse_idx + 1}: {nurse.name} (from {today})")
 
-            # Simple rotation: D, D, N, N, DO, DO, D pattern
-            shift_idx = day_offset % 7
-            if shift_idx < 2:
-                shift_code = "D"
-            elif shift_idx < 4:
-                shift_code = "N"
-            elif shift_idx < 6:
-                shift_code = "DO"
-            else:
-                shift_code = "D"
+        else:
+            # Original logic for remaining nurses - use period dates
+            start_date = current_period.startdate
 
-            # Get start/end times from shift code
-            sc = shift_lookup.get(shift_code)
-            start_time = sc.defaultstart if sc else None
-            end_time = sc.defaultend if sc else None
+            for day_offset in range(14):
+                shift_date = start_date + timedelta(days=day_offset)
 
-            # Mix of Auto (70%) and Manual (30%) assignments
-            is_manual = fake.random_int(min=1, max=10) <= 3
-            assignment_method = "Manual" if is_manual else "Auto"
-            assigned_by = ward_manager.managerid if is_manual and ward_manager else None
+                # Check if roster entry exists
+                existing = session.exec(
+                    select(Roster).where(
+                        Roster.nurseid == nurse.nurseid,
+                        Roster.periodid == current_period.periodid,
+                        Roster.shiftdate == shift_date,
+                    )
+                ).first()
 
-            roster = Roster(
-                nurseid=nurse.nurseid,
-                wardid=ward.wardid,
-                periodid=current_period.periodid,
-                shiftdate=shift_date,
-                shiftcode=shift_code,
-                starttime=start_time,
-                endtime=end_time,
-                status="Confirmed",
-                assignmentmethod=assignment_method,
-                assignedby=assigned_by,
-            )
-            session.add(roster)
-            count += 1
+                if existing:
+                    continue
 
-        session.commit()
+                # Simple rotation: D, D, N, N, DO, DO, D pattern
+                shift_idx = day_offset % 7
+                if shift_idx < 2:
+                    shift_code = "D"
+                elif shift_idx < 4:
+                    shift_code = "N"
+                elif shift_idx < 6:
+                    shift_code = "DO"
+                else:
+                    shift_code = "D"
 
-    logger.info(f"  Created {count} roster entries")
+                # Get start/end times from shift code
+                sc = shift_lookup.get(shift_code)
+                start_time = sc.defaultstart if sc else None
+                end_time = sc.defaultend if sc else None
+
+                # Mix of Auto (70%) and Manual (30%) assignments
+                is_manual = fake.random_int(min=1, max=10) <= 3
+                assignment_method = "Manual" if is_manual else "Auto"
+                assigned_by = ward_manager.managerid if is_manual and ward_manager else None
+
+                roster = Roster(
+                    nurseid=nurse.nurseid,
+                    wardid=ward.wardid,
+                    periodid=current_period.periodid,
+                    shiftdate=shift_date,
+                    shiftcode=shift_code,
+                    starttime=start_time,
+                    endtime=end_time,
+                    status="Confirmed",
+                    assignmentmethod=assignment_method,
+                    assignedby=assigned_by,
+                )
+                session.add(roster)
+                count += 1
+
+            session.commit()
+
+    logger.info(f"  Created {count} total roster entries")
+    logger.info(f"  First 3 nurses have shifts from {today.strftime('%Y-%m-%d')}")
     return count
 
 

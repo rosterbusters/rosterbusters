@@ -15,6 +15,7 @@ from app.core.security import get_password_hash, verify_password
 from app.models import (
     Item,
     Message,
+    RBACUserPublic,
     UpdatePassword,
     User,
     UserCreate,
@@ -117,10 +118,10 @@ def update_password_me(
     return Message(message="Password updated successfully")
 
 
-@router.get("/me", response_model=UserPublic)
+@router.get("/me", response_model=RBACUserPublic)
 def read_user_me(current_user: CurrentUser) -> Any:
     """
-    Get current user.
+    Get current user (using RBAC authentication).
     """
     return current_user
 
