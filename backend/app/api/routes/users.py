@@ -18,6 +18,7 @@ from app.models import (
     Nurse,
     NurseManager,
     RBACUser,
+    RBACUserPublic,
     UpdatePassword,
     User,
     UserCreate,
@@ -121,10 +122,10 @@ def update_password_me(
     return Message(message="Password updated successfully")
 
 
-@router.get("/me", response_model=UserPublic)
+@router.get("/me", response_model=RBACUserPublic)
 def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
-    Get current user.
+    Get current user (using RBAC authentication).
     """
     rbac_user = session.exec(
         select(RBACUser).where(RBACUser.email == current_user.email)

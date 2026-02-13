@@ -35,6 +35,7 @@ from app.models.rbac import (
     NurseManager,
     NursePublic,
     RBACUser,
+    RBACUserPublic,
     Role,
     UserRole,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "NurseManager",
     "NursePublic",
     "RBACUser",
+    "RBACUserPublic",
     "Role",
     "UserRole",
     # Roster
