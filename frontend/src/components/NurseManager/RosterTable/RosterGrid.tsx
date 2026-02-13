@@ -39,6 +39,11 @@ interface RosterGridProps {
     date: string,
     newShiftCode: ShiftCode,
   ) => void;
+  onCommentChange?: (
+    nurseId: number,
+    date: string,
+    comment: string,
+  ) => void;
   isLoading?: boolean;
 }
 
@@ -79,6 +84,7 @@ export function RosterGrid({
   viewMode,
   currentStartDate,
   onShiftChange,
+  onCommentChange,
   isLoading = false,
 }: RosterGridProps) {
   // Popover state
@@ -148,6 +154,16 @@ export function RosterGrid({
       }
     },
     [popoverState.nurseId, popoverState.date, onShiftChange],
+  );
+
+  // Handle comment change from popover
+  const handleCommentChange = useCallback(
+    (comment: string) => {
+      if (popoverState.nurseId !== null && onCommentChange) {
+        onCommentChange(popoverState.nurseId, popoverState.date, comment);
+      }
+    },
+    [popoverState.nurseId, popoverState.date, onCommentChange],
   );
 
   // Toggle group collapse
@@ -297,6 +313,7 @@ export function RosterGrid({
                   shiftCode={shift?.shiftCode || null}
                   isEditable={true}
                   viewMode={viewMode}
+                  comment={shift?.comment}
                 />
               </Box>
             </Flex>
@@ -412,6 +429,7 @@ export function RosterGrid({
             : ""
         }
         onShiftChange={handleShiftChange}
+        onCommentChange={handleCommentChange}
         anchorEl={popoverState.anchorEl}
       />
 
