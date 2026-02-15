@@ -1,77 +1,111 @@
-// Notification types for the application
-
-export type NotificationType = "roster" | "leave" | "shift" | "system" | "probation";
+// Unified notification types - works for both API and hardcoded data
 
 export interface NotificationItem {
-  notificationid: number;
-  notificationtype: NotificationType;
-  description: string;
-  createdAt: string;
-  read: boolean;
+  notificationid: number
+  notificationtype: string
+  subject?: string  // Optional for backward compatibility
+  description?: string  // Optional for backward compatibility
+  messagebody?: string  // From API
+  priority?: string  // From API
+  status?: string  // From API
+  createdat?: string  // From API
+  date?: string  // For hardcoded data
+  sentat?: string | null
+  readat?: string | null
+  relatedentitytype?: string | null
+  relatedentityid?: number | null
 }
 
-// Labels for notification types (used in badges)
-export const notificationTypeLabels: Record<NotificationType, string> = {
-  roster: "Roster",
-  leave: "Leave",
-  shift: "Shift Request",
-  system: "System",
-  probation: "Probation",
-};
+export interface NotificationsListResponse {
+  notifications: NotificationItem[]
+  total: number
+  unread_count: number
+}
 
-// Route mapping for notification types
-export function getNotificationRoute(type: NotificationType): string {
-  switch (type) {
-    case "roster":
-      return "/nurse-manager/home";
-    case "leave":
-      return "/nurse-manager/leave-overview";
-    case "shift":
-      return "/nurse-manager/shift-overview";
-    case "probation":
-      return "/nurse-manager/ward-staff-directory";
-    case "system":
-    default:
-      return "/nurse-manager/home";
+export interface NotificationStatsResponse {
+  total: number
+  unread: number
+  by_type: Record<string, number>
+  recent: NotificationItem[]
+}
+
+export type NotificationType = "roster" | "shiftRequest" | "leaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder"
+
+export const notificationTypeLabels: Record<string, string> = {
+  roster: "Roster",
+  shiftRequest: "Shift Request",
+  leaveRequest: "Leave Request",
+  ShiftUpdate: "Roster",
+  SwapRequest: "Shift Swap",
+  LeaveApproval: "Leave Status",
+  LeaveReminder: "Leave Reminder",
+  RosterRelease: "Roster Release",
+  ShiftRequest: "Shift Request"
+}
+
+export const notificationTypeBadgeVariant: Record<string, string> = {
+  roster: "blue",
+  shiftRequest: "yellow",
+  leaveRequest: "green",
+  ShiftUpdate: "blue",
+  SwapRequest: "purple",
+  LeaveApproval: "green",
+  LeaveReminder: "orange",
+  RosterRelease: "cyan",
+  ShiftRequest: "yellow"
+}
+
+export const priorityBadgeVariant: Record<string, string> = {
+  Urgent: "red",
+  Normal: "blue",
+  Low: "gray"
+}
+
+// Helper to format notification date
+export function formatNotificationDate(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60)
+  
+  if (diffInHours < 1) {
+    const diffInMinutes = Math.floor(diffInHours * 60)
+    return diffInMinutes <= 1 ? "Just now" : `${diffInMinutes}m ago`
+  } else if (diffInHours < 24) {
+    return `${Math.floor(diffInHours)}h ago`
+  } else if (diffInHours < 48) {
+    return "Yesterday"
+  } else {
+    return date.toLocaleDateString('en-SG', { 
+      day: 'numeric', 
+      month: 'short',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    })
   }
 }
 
-// Mock notifications data - replace with API calls in production
-export const notifications: NotificationItem[] = [
-  {
-    notificationid: 1,
-    notificationtype: "roster",
-    description: "Start Planning 10 Nov - 21 Nov Roster",
-    createdAt: "2026-01-28T10:00:00Z",
-    read: false,
-  },
-  {
-    notificationid: 2,
-    notificationtype: "probation",
-    description: "Mary Lamb: Probation ending in 2 days",
-    createdAt: "2026-01-28T09:30:00Z",
-    read: false,
-  },
-  {
-    notificationid: 3,
-    notificationtype: "roster",
-    description: "18–20 Dec Roster released.",
-    createdAt: "2026-01-28T08:15:00Z",
-    read: true,
-  },
-  {
-    notificationid: 4,
-    notificationtype: "roster",
-    description: "31 Dec Shift Request was approved.",
-    createdAt: "2026-01-27T16:00:00Z",
-    read: true,
-  },
-  {
-    notificationid: 5,
-    notificationtype: "shift",
-    description: "Shift Request Period is Now Open",
-    createdAt: "2026-01-27T14:00:00Z",
-    read: true,
-  },
-];
+// Helper to get route from notification type
+export const getNotificationRoute = (type: string): string => {
+  const routeMap: Record<string, string> = {
+    roster: "/staffrosterschedule",
+    shiftRequest: "/shift-request",
+    leaveRequest: "/request-application",
+    ShiftUpdate: "/staffrosterschedule",
+    SwapRequest: "/shift-request",
+    LeaveApproval: "/request-application",
+    LeaveReminder: "/request-application",
+  }
+  return routeMap[type] || "/home"
+}
 
+// Hardcoded data for dropdown (until migrated to API)
+export const nurseManagerNotifications: NotificationItem[] = [
+  { notificationid: 1, notificationtype: "roster", description: "Start Planning 10 Nov - 21 Nov Roster", date: "1/11/2001" },
+  { notificationid: 2, notificationtype: "leaveRequest", description: "Tony Quek : Leave Request for 31 Dec", date: "1/11/2001" },
+  { notificationid: 3, notificationtype: "roster", description: "Upload 18–20 Dec  Roster to Times HRIS", date: "1/11/2001" },
+]
+
+export const wardStaffNotifications: NotificationItem[] = [
+  { notificationid: 1, notificationtype: "roster", description: "31 Dec Shift Request was approved.", date: "1/11/2001" },
+  { notificationid: 2, notificationtype: "roster", description: "18–20 Dec Roster released.", date: "1/11/2001" },
+  { notificationid: 3, notificationtype: "shiftRequest", description: "Shift Request Period is Now Open", date: "1/11/2001" },
+]

@@ -58,6 +58,14 @@ from app.models.shifts import (
     ShiftRequestPublic,
 )
 
+# Notification models
+from app.models.notification_models import (
+       NotificationResponse,
+       NotificationsListResponse,
+       MarkNotificationReadRequest,
+       NotificationStatsResponse
+   )
+
 __all__ = [
     # SQLModel base
     "SQLModel",
@@ -101,4 +109,9 @@ __all__ = [
     "ShiftRequest",
     "ShiftRequestCreate",
     "ShiftRequestPublic",
+    # Notifications
+    "NotificationResponse",
+    "NotificationsListResponse",
+    "MarkNotificationReadRequest",
+    "NotificationStatsResponse"
 ]

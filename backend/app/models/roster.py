@@ -123,7 +123,6 @@ class NotificationQueue(SQLModel, table=True):
     readat: Optional[datetime] = None
     failurereason: Optional[str] = None
     retrycount: int = Field(default=0)
-
     createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
