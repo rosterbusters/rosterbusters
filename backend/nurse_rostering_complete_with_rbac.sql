@@ -101,10 +101,34 @@ CREATE TABLE Ward (
   
   IsActive BOOLEAN DEFAULT TRUE,
   CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  
-  CONSTRAINT fk_ward_manager FOREIGN KEY (ManagerID) 
+
+  -- Staffing requirements - AM shift
+  am_total INTEGER,
+  am_rn INTEGER,
+  am_en_na_min INTEGER,
+  am_en_na_max INTEGER,
+  am_hca_min INTEGER,
+  am_hca_max INTEGER,
+
+  -- Staffing requirements - PM shift
+  pm_total INTEGER,
+  pm_rn INTEGER,
+  pm_en_na_min INTEGER,
+  pm_en_na_max INTEGER,
+  pm_hca_min INTEGER,
+  pm_hca_max INTEGER,
+
+  -- Staffing requirements - ND (Night) shift
+  nd_total INTEGER,
+  nd_rn INTEGER,
+  nd_en_na_min INTEGER,
+  nd_en_na_max INTEGER,
+  nd_hca_min INTEGER,
+  nd_hca_max INTEGER,
+
+  CONSTRAINT fk_ward_manager FOREIGN KEY (ManagerID)
     REFERENCES NurseManager(ManagerID) ON DELETE SET NULL,
-  
+
   CONSTRAINT chk_ward_staffing_positive CHECK (
     Morning_RN_Required >= 0 AND Morning_StaffNurse_Required >= 0 AND
     Morning_HCA_Required >= 0 AND Night_RN_Required >= 0 AND
