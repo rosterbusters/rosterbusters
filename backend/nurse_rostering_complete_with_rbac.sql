@@ -344,7 +344,7 @@ CREATE TABLE LeaveRequest (
     REFERENCES NurseManager(ManagerID) ON DELETE SET NULL,
   
   CONSTRAINT chk_leavereq_dates CHECK (StartDate <= EndDate),
-  CONSTRAINT chk_leavereq_type CHECK (LeaveType IN ('AL', 'MC', 'URG', 'UPL', 'CL'))
+  CONSTRAINT chk_leavereq_type CHECK (LeaveType IN ('AL', 'MC', 'URG', 'UPL', 'CL', 'CCL', 'FCL', 'BDL', 'ML', 'EML', 'Mar', 'SPL'))
 );
 
 CREATE INDEX idx_leavereq_nurse ON LeaveRequest(NurseID);
