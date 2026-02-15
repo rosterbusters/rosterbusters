@@ -2,13 +2,12 @@
 Database seeding script for RBAC data.
 Run: docker compose exec backend python app/seed_data.py
 
-Uses Faker to generate realistic test data.
-Configure the numbers below to control how much data is generated.
+Uses hardcoded mock data for managers and nurses to guarantee consistency
+across all tables (nurse, nursemanager, RBACUser, web_user, userrole).
 """
 import logging
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Any
 
 from faker import Faker
 from sqlmodel import Session, select
@@ -23,14 +22,11 @@ from app.models.web import User
 # ============================================================================
 # CONFIGURATION - Adjust these to control seed data volume
 # ============================================================================
-# NUM_WARDS is determined by WARDS_DATA (static list of real wards)
-NUM_MANAGERS = 10  # 1 per ward (10 wards total)
-NURSES_PER_WARD = 7  # Typical staffing: 2 RN, 3 EN/NA, 2 HCA per ward
 NUM_NURSE_USERS = 5  # How many nurses get login accounts (for testing)
 SEED = 42  # For reproducible fake data (set to None for random each time)
 
 # ============================================================================
-# Initialize Faker
+# Initialize Faker (still used for roster/shift/leave/notification seeding)
 # ============================================================================
 fake = Faker()
 if SEED is not None:
@@ -44,9 +40,9 @@ logger = logging.getLogger(__name__)
 # Static data (doesn't need Faker)
 # ============================================================================
 ROLES_DATA = [
-    {"rolename": "Admin", "displayname": "Administrator"},
-    {"rolename": "NurseManager", "displayname": "Nurse Manager"},
-    {"rolename": "Nurse", "displayname": "Ward Staff Nurse"},
+    {"rolename": "Nurse", "displayname": "Ward Staff Nurse"},           # roleid=1
+    {"rolename": "NurseManager", "displayname": "Nurse Manager"},       # roleid=2
+    {"rolename": "Admin", "displayname": "Administrator"},              # roleid=3
 ]
 
 SHIFT_CODES_DATA = [
@@ -231,46 +227,107 @@ WARDS_DATA = [
 
 
 # ============================================================================
-# Faker-based data generators
+# Hardcoded manager & nurse data (1 manager per ward, 7 nurses per ward)
 # ============================================================================
+NUM_WARDS = len(WARDS_DATA)
 
+MANAGERS_DATA = [
+    {"name": "Lim Wei Ling",     "email": "lim.weiling@sach.org.sg",      "contactnumber": "91234501"},
+    {"name": "Tan Siew Bee",     "email": "tan.siewbee@sach.org.sg",      "contactnumber": "91234502"},
+    {"name": "Ng Ai Hua",        "email": "ng.aihua@sach.org.sg",         "contactnumber": "91234503"},
+    {"name": "Wong Mei Fong",    "email": "wong.meifong@sach.org.sg",     "contactnumber": "91234504"},
+    {"name": "Chua Shu Min",     "email": "chua.shumin@sach.org.sg",      "contactnumber": "91234505"},
+    {"name": "Koh Pei Shan",     "email": "koh.peishan@sach.org.sg",      "contactnumber": "91234506"},
+    {"name": "Lee Hui Ling",     "email": "lee.huiling@sach.org.sg",      "contactnumber": "91234507"},
+    {"name": "Ong Siew Lan",     "email": "ong.siewlan@sach.org.sg",      "contactnumber": "91234508"},
+    {"name": "Ahmad Ismail",     "email": "ahmad.ismail@sach.org.sg",     "contactnumber": "91234509"},
+    {"name": "Priya Nair",       "email": "priya.nair@sach.org.sg",       "contactnumber": "91234510"},
+]
 
-def generate_managers_data(num_managers: int) -> list[dict[str, Any]]:
-    """Generate manager data using Faker."""
-    managers = []
-    for _ in range(num_managers):
-        first = fake.first_name()
-        last = fake.last_name()
-        managers.append({
-            "name": f"{first} {last}",
-            "email": f"{first.lower()}.{last.lower()}@sach.org.sg",
-            "contactnumber": fake.numerify("9#######"),
-        })
-    return managers
-
-
-def generate_nurses_data(num_wards: int, nurses_per_ward: int) -> list[dict[str, Any]]:
-    """Generate nurse data using Faker."""
-    nurses = []
-    for ward_idx in range(num_wards):
-        for i in range(nurses_per_ward):
-            first = fake.first_name()
-            last = fake.last_name()
-            designation = DESIGNATIONS[i % len(DESIGNATIONS)]
-            nurses.append({
-                "name": f"{first} {last}",
-                "designation": designation,
-                "email": f"{first.lower()}.{last.lower()}@sach.org.sg",
-                "contactnumber": fake.numerify("9#######"),
-                "ward_idx": ward_idx,
-            })
-    return nurses
-
-
-# Generate the data (WARDS_DATA is static, defined above)
-NUM_WARDS = len(WARDS_DATA)  # Override with actual ward count
-MANAGERS_DATA = generate_managers_data(NUM_MANAGERS)
-NURSES_DATA = generate_nurses_data(NUM_WARDS, NURSES_PER_WARD)
+# 70 nurses: 7 per ward × 10 wards
+# Designations cycle: RN, EN, NA, HCA, SSN, RN, EN
+NURSES_DATA = [
+    # Ward 0 — Ward 4 (Dementia, Simei)
+    {"name": "Chan Mei Yin",      "designation": "RN",  "email": "chan.meiyin@sach.org.sg",       "contactnumber": "98001001", "ward_idx": 0},
+    {"name": "Teo Boon Kiat",     "designation": "EN",  "email": "teo.boonkiat@sach.org.sg",      "contactnumber": "98001002", "ward_idx": 0},
+    {"name": "Siti Aminah",       "designation": "NA",  "email": "siti.aminah@sach.org.sg",       "contactnumber": "98001003", "ward_idx": 0},
+    {"name": "Raj Kumar",         "designation": "HCA", "email": "raj.kumar@sach.org.sg",         "contactnumber": "98001004", "ward_idx": 0},
+    {"name": "Loh Yee Mun",      "designation": "SSN", "email": "loh.yeemun@sach.org.sg",        "contactnumber": "98001005", "ward_idx": 0},
+    {"name": "Goh Sze Wei",      "designation": "RN",  "email": "goh.szewei@sach.org.sg",        "contactnumber": "98001006", "ward_idx": 0},
+    {"name": "Nurul Huda",       "designation": "EN",  "email": "nurul.huda@sach.org.sg",        "contactnumber": "98001007", "ward_idx": 0},
+    # Ward 1 — Ward 5 (Rehab, Simei)
+    {"name": "Yeo Jia Hui",      "designation": "RN",  "email": "yeo.jiahui@sach.org.sg",        "contactnumber": "98002001", "ward_idx": 1},
+    {"name": "Lim Chee Keong",   "designation": "EN",  "email": "lim.cheekeong@sach.org.sg",     "contactnumber": "98002002", "ward_idx": 1},
+    {"name": "Fatimah Zahra",    "designation": "NA",  "email": "fatimah.zahra@sach.org.sg",     "contactnumber": "98002003", "ward_idx": 1},
+    {"name": "Deepa Pillai",     "designation": "HCA", "email": "deepa.pillai@sach.org.sg",      "contactnumber": "98002004", "ward_idx": 1},
+    {"name": "Ho Kok Wai",       "designation": "SSN", "email": "ho.kokwai@sach.org.sg",         "contactnumber": "98002005", "ward_idx": 1},
+    {"name": "Tan Li Wen",       "designation": "RN",  "email": "tan.liwen@sach.org.sg",         "contactnumber": "98002006", "ward_idx": 1},
+    {"name": "Aisha Begum",      "designation": "EN",  "email": "aisha.begum@sach.org.sg",       "contactnumber": "98002007", "ward_idx": 1},
+    # Ward 2 — Ward 6 (Rehab, Simei)
+    {"name": "Pang Swee Lian",   "designation": "RN",  "email": "pang.sweelian@sach.org.sg",     "contactnumber": "98003001", "ward_idx": 2},
+    {"name": "Chia Beng Hock",   "designation": "EN",  "email": "chia.benghock@sach.org.sg",     "contactnumber": "98003002", "ward_idx": 2},
+    {"name": "Noor Aisyah",      "designation": "NA",  "email": "noor.aisyah@sach.org.sg",       "contactnumber": "98003003", "ward_idx": 2},
+    {"name": "Suresh Menon",     "designation": "HCA", "email": "suresh.menon@sach.org.sg",      "contactnumber": "98003004", "ward_idx": 2},
+    {"name": "Sim Bee Hoon",     "designation": "SSN", "email": "sim.beehoon@sach.org.sg",       "contactnumber": "98003005", "ward_idx": 2},
+    {"name": "Wee Cheng Yang",   "designation": "RN",  "email": "wee.chengyang@sach.org.sg",     "contactnumber": "98003006", "ward_idx": 2},
+    {"name": "Zurina Mohd",      "designation": "EN",  "email": "zurina.mohd@sach.org.sg",       "contactnumber": "98003007", "ward_idx": 2},
+    # Ward 3 — Ward 7 (Rehab, Simei)
+    {"name": "Tay Sock Hwa",     "designation": "RN",  "email": "tay.sockhwa@sach.org.sg",       "contactnumber": "98004001", "ward_idx": 3},
+    {"name": "Kang Wei Ming",    "designation": "EN",  "email": "kang.weiming@sach.org.sg",      "contactnumber": "98004002", "ward_idx": 3},
+    {"name": "Haslinda Yusof",   "designation": "NA",  "email": "haslinda.yusof@sach.org.sg",    "contactnumber": "98004003", "ward_idx": 3},
+    {"name": "Anand Rajan",      "designation": "HCA", "email": "anand.rajan@sach.org.sg",       "contactnumber": "98004004", "ward_idx": 3},
+    {"name": "Foo Siew Peng",    "designation": "SSN", "email": "foo.siewpeng@sach.org.sg",      "contactnumber": "98004005", "ward_idx": 3},
+    {"name": "Cheng Xiu Ying",   "designation": "RN",  "email": "cheng.xiuying@sach.org.sg",     "contactnumber": "98004006", "ward_idx": 3},
+    {"name": "Rozita Ibrahim",   "designation": "EN",  "email": "rozita.ibrahim@sach.org.sg",    "contactnumber": "98004007", "ward_idx": 3},
+    # Ward 4 — Ward 8 (Subacute, Simei)
+    {"name": "Yap Mei Lin",      "designation": "RN",  "email": "yap.meilin@sach.org.sg",        "contactnumber": "98005001", "ward_idx": 4},
+    {"name": "Seah Kok Leong",   "designation": "EN",  "email": "seah.kokleong@sach.org.sg",     "contactnumber": "98005002", "ward_idx": 4},
+    {"name": "Norhayati Ali",    "designation": "NA",  "email": "norhayati.ali@sach.org.sg",     "contactnumber": "98005003", "ward_idx": 4},
+    {"name": "Ganesh Sundaram",  "designation": "HCA", "email": "ganesh.sundaram@sach.org.sg",   "contactnumber": "98005004", "ward_idx": 4},
+    {"name": "Quek Hwee Ling",   "designation": "SSN", "email": "quek.hweeling@sach.org.sg",     "contactnumber": "98005005", "ward_idx": 4},
+    {"name": "Lau Chun Wai",     "designation": "RN",  "email": "lau.chunwai@sach.org.sg",       "contactnumber": "98005006", "ward_idx": 4},
+    {"name": "Mariam Hassan",    "designation": "EN",  "email": "mariam.hassan@sach.org.sg",     "contactnumber": "98005007", "ward_idx": 4},
+    # Ward 5 — Ward 9 (Subacute, Simei)
+    {"name": "Phang Sok Yee",    "designation": "RN",  "email": "phang.sokyee@sach.org.sg",      "contactnumber": "98006001", "ward_idx": 5},
+    {"name": "Ong Boon Huat",    "designation": "EN",  "email": "ong.boonhuat@sach.org.sg",      "contactnumber": "98006002", "ward_idx": 5},
+    {"name": "Rohani Wahab",     "designation": "NA",  "email": "rohani.wahab@sach.org.sg",      "contactnumber": "98006003", "ward_idx": 5},
+    {"name": "Vivek Sharma",     "designation": "HCA", "email": "vivek.sharma@sach.org.sg",      "contactnumber": "98006004", "ward_idx": 5},
+    {"name": "Soh Bee Kee",      "designation": "SSN", "email": "soh.beekee@sach.org.sg",        "contactnumber": "98006005", "ward_idx": 5},
+    {"name": "Chin Yen Nee",     "designation": "RN",  "email": "chin.yennee@sach.org.sg",       "contactnumber": "98006006", "ward_idx": 5},
+    {"name": "Salma Osman",      "designation": "EN",  "email": "salma.osman@sach.org.sg",       "contactnumber": "98006007", "ward_idx": 5},
+    # Ward 6 — Ward 10 (Paying Class, Simei)
+    {"name": "Khoo Mei Fen",     "designation": "RN",  "email": "khoo.meifen@sach.org.sg",       "contactnumber": "98007001", "ward_idx": 6},
+    {"name": "Heng Chee Seng",   "designation": "EN",  "email": "heng.cheeseng@sach.org.sg",     "contactnumber": "98007002", "ward_idx": 6},
+    {"name": "Zainab Kadir",     "designation": "NA",  "email": "zainab.kadir@sach.org.sg",      "contactnumber": "98007003", "ward_idx": 6},
+    {"name": "Lakshmi Devi",     "designation": "HCA", "email": "lakshmi.devi@sach.org.sg",      "contactnumber": "98007004", "ward_idx": 6},
+    {"name": "Neo Kim Huat",     "designation": "SSN", "email": "neo.kimhuat@sach.org.sg",       "contactnumber": "98007005", "ward_idx": 6},
+    {"name": "Fong Yoke Leng",   "designation": "RN",  "email": "fong.yokeleng@sach.org.sg",     "contactnumber": "98007006", "ward_idx": 6},
+    {"name": "Kartini Razak",    "designation": "EN",  "email": "kartini.razak@sach.org.sg",     "contactnumber": "98007007", "ward_idx": 6},
+    # Ward 7 — Ward 11 (Palliative, Simei)
+    {"name": "Chew Soo Khim",    "designation": "RN",  "email": "chew.sookhim@sach.org.sg",      "contactnumber": "98008001", "ward_idx": 7},
+    {"name": "Leong Wai Kuan",   "designation": "EN",  "email": "leong.waikuan@sach.org.sg",     "contactnumber": "98008002", "ward_idx": 7},
+    {"name": "Rahmah Yusoff",    "designation": "NA",  "email": "rahmah.yusoff@sach.org.sg",     "contactnumber": "98008003", "ward_idx": 7},
+    {"name": "Mohan Das",        "designation": "HCA", "email": "mohan.das@sach.org.sg",         "contactnumber": "98008004", "ward_idx": 7},
+    {"name": "Ang Bee Lian",     "designation": "SSN", "email": "ang.beelian@sach.org.sg",       "contactnumber": "98008005", "ward_idx": 7},
+    {"name": "Kwek Siew Hong",   "designation": "RN",  "email": "kwek.siewhong@sach.org.sg",     "contactnumber": "98008006", "ward_idx": 7},
+    {"name": "Hafizah Latif",    "designation": "EN",  "email": "hafizah.latif@sach.org.sg",     "contactnumber": "98008007", "ward_idx": 7},
+    # Ward 8 — CH (Community Hospital, Bedok)
+    {"name": "Png Geok Tin",     "designation": "RN",  "email": "png.geoktin@sach.org.sg",       "contactnumber": "98009001", "ward_idx": 8},
+    {"name": "Toh Choon Heng",   "designation": "EN",  "email": "toh.choonheng@sach.org.sg",     "contactnumber": "98009002", "ward_idx": 8},
+    {"name": "Salmah Johari",    "designation": "NA",  "email": "salmah.johari@sach.org.sg",     "contactnumber": "98009003", "ward_idx": 8},
+    {"name": "Kavitha Raju",     "designation": "HCA", "email": "kavitha.raju@sach.org.sg",      "contactnumber": "98009004", "ward_idx": 8},
+    {"name": "Low Kah Seng",     "designation": "SSN", "email": "low.kahseng@sach.org.sg",       "contactnumber": "98009005", "ward_idx": 8},
+    {"name": "Yeoh Li Ping",     "designation": "RN",  "email": "yeoh.liping@sach.org.sg",       "contactnumber": "98009006", "ward_idx": 8},
+    {"name": "Faridah Omar",     "designation": "EN",  "email": "faridah.omar@sach.org.sg",      "contactnumber": "98009007", "ward_idx": 8},
+    # Ward 9 — TCF (Transitional Care, Bedok)
+    {"name": "Sia Geok Choo",    "designation": "RN",  "email": "sia.geokchoo@sach.org.sg",      "contactnumber": "98010001", "ward_idx": 9},
+    {"name": "Beh Teck Soon",    "designation": "EN",  "email": "beh.tecksoon@sach.org.sg",      "contactnumber": "98010002", "ward_idx": 9},
+    {"name": "Norma Samad",      "designation": "NA",  "email": "norma.samad@sach.org.sg",       "contactnumber": "98010003", "ward_idx": 9},
+    {"name": "Srinivas Rao",     "designation": "HCA", "email": "srinivas.rao@sach.org.sg",      "contactnumber": "98010004", "ward_idx": 9},
+    {"name": "Tan Geok Bee",     "designation": "SSN", "email": "tan.geokbee@sach.org.sg",       "contactnumber": "98010005", "ward_idx": 9},
+    {"name": "Koh Li Hua",       "designation": "RN",  "email": "koh.lihua@sach.org.sg",         "contactnumber": "98010006", "ward_idx": 9},
+    {"name": "Azizah Hamid",     "designation": "EN",  "email": "azizah.hamid@sach.org.sg",      "contactnumber": "98010007", "ward_idx": 9},
+]
 
 
 def seed_roles(session: Session) -> dict[str, Role]:
@@ -738,8 +795,10 @@ def seed_shift_requests(
 ) -> int:
     """Seed shift requests for nurses.
 
-    - ~20% of nurses submit shift requests
+    - Current period: ~30% of nurses submit shift requests (densest)
+    - Next period: ~10% of nurses submit shift requests
     - Each nurse can submit up to 3 requests per period
+    - Dates spread evenly across days via round-robin
     - Mixed statuses: Pending, Approved, Rejected
     - Working shifts only: D, N, A, P
     """
@@ -749,7 +808,6 @@ def seed_shift_requests(
         logger.warning("  No periods or nurses available, skipping shift requests")
         return 0
 
-    current_period = periods[0]
     count = 0
 
     # Working shift codes only
@@ -765,73 +823,87 @@ def seed_shift_requests(
         None,  # No reason given
     ]
 
-    # Select ~20% of nurses to have shift requests
-    num_nurses_with_requests = max(1, len(nurses) // 5)
-    selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
+    # Density per period: current (index 0) is densest, next (index 1) is lighter
+    period_densities = [0.30, 0.10]
 
-    for nurse in selected_nurses:
-        # Check if requests already exist for this nurse/period
-        existing = session.exec(
-            select(ShiftRequest).where(
-                ShiftRequest.nurseid == nurse.nurseid,
-                ShiftRequest.periodid == current_period.periodid,
-            )
-        ).first()
+    for period_idx, period in enumerate(periods):
+        density = period_densities[period_idx] if period_idx < len(period_densities) else 0.10
 
-        if existing:
-            logger.info(f"  Shift requests for nurse {nurse.name} already exist, skipping")
-            continue
+        # Build list of all dates in this period for round-robin distribution
+        days_in_period = (period.enddate - period.startdate).days
+        period_dates = [period.startdate + timedelta(days=d) for d in range(days_in_period + 1)]
+        day_cursor = 0
 
-        # Generate 1-3 requests per nurse
-        num_requests = fake.random_int(min=1, max=3)
+        # Select nurses based on density
+        num_nurses_with_requests = max(1, int(len(nurses) * density))
+        selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
 
-        for request_num in range(1, num_requests + 1):
-            # Random date within the roster period
-            days_in_period = (current_period.enddate - current_period.startdate).days
-            random_day = fake.random_int(min=0, max=days_in_period)
-            preferred_date = current_period.startdate + timedelta(days=random_day)
+        period_count = 0
+        for nurse in selected_nurses:
+            # Check if requests already exist for this nurse/period
+            existing = session.exec(
+                select(ShiftRequest).where(
+                    ShiftRequest.nurseid == nurse.nurseid,
+                    ShiftRequest.periodid == period.periodid,
+                )
+            ).first()
 
-            status = fake.random_element(statuses)
+            if existing:
+                logger.info(f"  Shift requests for nurse {nurse.name} in period {period.periodid} already exist, skipping")
+                continue
 
-            # If approved/rejected, set reviewer (manager or algorithm)
-            reviewed_by = None
-            reviewed_at = None
-            rejection_reason = None
+            # Generate 1-3 requests per nurse
+            num_requests = fake.random_int(min=1, max=3)
 
-            if status in ["Approved", "Rejected"]:
-                # 70% reviewed by manager, 30% by algorithm (reviewedby = None for algorithm)
-                if fake.random_int(min=1, max=10) <= 7 and managers:
-                    reviewed_by = fake.random_element(managers).managerid
-                reviewed_at = datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=1, max=5))
+            for request_num in range(1, num_requests + 1):
+                # Round-robin date assignment for even spread across days
+                preferred_date = period_dates[day_cursor % len(period_dates)]
+                day_cursor += 1
 
-                if status == "Rejected":
-                    rejection_reason = fake.random_element([
-                        "Staffing requirements not met",
-                        "Too many requests for this date",
-                        "Conflicts with another approved request",
-                        "Insufficient notice period",
-                    ])
+                status = fake.random_element(statuses)
 
-            shift_request = ShiftRequest(
-                nurseid=nurse.nurseid,
-                periodid=current_period.periodid,
-                preferreddate=preferred_date,
-                preferredshifttype=fake.random_element(working_shifts),
-                requestnumber=request_num,
-                reason=fake.random_element(reasons),
-                priority=1,  # Default priority (not used per requirements)
-                status=status,
-                reviewedby=reviewed_by,
-                reviewedat=reviewed_at,
-                rejectionreason=rejection_reason,
-                notificationsent=status != "Pending",
-            )
-            session.add(shift_request)
-            count += 1
+                # If approved/rejected, set reviewer (manager or algorithm)
+                reviewed_by = None
+                reviewed_at = None
+                rejection_reason = None
 
-        session.commit()
+                if status in ["Approved", "Rejected"]:
+                    # 70% reviewed by manager, 30% by algorithm (reviewedby = None for algorithm)
+                    if fake.random_int(min=1, max=10) <= 7 and managers:
+                        reviewed_by = fake.random_element(managers).managerid
+                    reviewed_at = datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=1, max=5))
 
-    logger.info(f"  Created {count} shift requests for {len(selected_nurses)} nurses")
+                    if status == "Rejected":
+                        rejection_reason = fake.random_element([
+                            "Staffing requirements not met",
+                            "Too many requests for this date",
+                            "Conflicts with another approved request",
+                            "Insufficient notice period",
+                        ])
+
+                shift_request = ShiftRequest(
+                    nurseid=nurse.nurseid,
+                    periodid=period.periodid,
+                    preferreddate=preferred_date,
+                    preferredshifttype=fake.random_element(working_shifts),
+                    requestnumber=request_num,
+                    reason=fake.random_element(reasons),
+                    priority=1,  # Default priority (not used per requirements)
+                    status=status,
+                    reviewedby=reviewed_by,
+                    reviewedat=reviewed_at,
+                    rejectionreason=rejection_reason,
+                    notificationsent=status != "Pending",
+                )
+                session.add(shift_request)
+                period_count += 1
+
+            session.commit()
+
+        logger.info(f"  Period {period.periodid}: created {period_count} shift requests for {len(selected_nurses)} nurses ({int(density*100)}% density)")
+        count += period_count
+
+    logger.info(f"  Total: {count} shift requests across {len(periods)} periods")
     return count
 
 

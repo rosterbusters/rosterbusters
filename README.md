@@ -34,3 +34,6 @@ After seeding, admin, manager, nurse accounts are available:
 
 Check the console output after seeding for the actual generated emails.
 
+Managers: lim.weiling@sach.org.sg, manager123
+Nurses: chan.meiyin@sach.org.sg, nurse123
+
