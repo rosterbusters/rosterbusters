@@ -164,16 +164,69 @@ DESIGNATIONS = ["RN", "EN", "NA", "HCA", "SSN"]
 # Static ward data (real wards)
 # ============================================================================
 WARDS_DATA = [
-    {"wardname": "Ward 4", "wardtype": "Dementia", "location": "Simei"},
-    {"wardname": "Ward 5", "wardtype": "Rehab", "location": "Simei"},
-    {"wardname": "Ward 6", "wardtype": "Rehab", "location": "Simei"},
-    {"wardname": "Ward 7", "wardtype": "Rehab", "location": "Simei"},
-    {"wardname": "Ward 8", "wardtype": "Subacute", "location": "Simei"},
-    {"wardname": "Ward 9", "wardtype": "Subacute", "location": "Simei"},
-    {"wardname": "Ward 10", "wardtype": "Paying Class", "location": "Simei"},
-    {"wardname": "Ward 11", "wardtype": "Palliative", "location": "Simei"},
-    {"wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok"},
-    {"wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok"},
+    # SACH Simei wards
+    {
+        "wardname": "Ward 4", "wardtype": "Dementia", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 1, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 5", "wardtype": "Rehab", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 6", "wardtype": "Rehab", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 7", "wardtype": "Rehab", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 8", "wardtype": "Subacute", "location": "Simei",
+        "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 5, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 9", "wardtype": "Subacute", "location": "Simei",
+        "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 5, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 10", "wardtype": "Paying Class", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 4, "am_hca_min": 1, "am_hca_max": 1,
+        "pm_total": 6, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 1,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 2, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 0,
+    },
+    {
+        "wardname": "Ward 11", "wardtype": "Palliative", "location": "Simei",
+        "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    # SACH Bedok wards
+    {
+        "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
+        "am_total": 5, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 2, "am_hca_min": 1, "am_hca_max": 1,
+        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 2, "pm_hca_min": 1, "pm_hca_max": 1,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 2, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 0,
+    },
+    {
+        # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
+        "wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
+        "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+    },
 ]
 
 
@@ -293,6 +346,27 @@ def seed_wards(session: Session) -> list[Ward]:
                 wardtype=ward_data["wardtype"],
                 location=ward_data["location"],
                 isactive=True,
+                # AM shift staffing requirements
+                am_total=ward_data.get("am_total"),
+                am_rn=ward_data.get("am_rn"),
+                am_en_na_min=ward_data.get("am_en_na_min"),
+                am_en_na_max=ward_data.get("am_en_na_max"),
+                am_hca_min=ward_data.get("am_hca_min"),
+                am_hca_max=ward_data.get("am_hca_max"),
+                # PM shift staffing requirements
+                pm_total=ward_data.get("pm_total"),
+                pm_rn=ward_data.get("pm_rn"),
+                pm_en_na_min=ward_data.get("pm_en_na_min"),
+                pm_en_na_max=ward_data.get("pm_en_na_max"),
+                pm_hca_min=ward_data.get("pm_hca_min"),
+                pm_hca_max=ward_data.get("pm_hca_max"),
+                # ND shift staffing requirements
+                nd_total=ward_data.get("nd_total"),
+                nd_rn=ward_data.get("nd_rn"),
+                nd_en_na_min=ward_data.get("nd_en_na_min"),
+                nd_en_na_max=ward_data.get("nd_en_na_max"),
+                nd_hca_min=ward_data.get("nd_hca_min"),
+                nd_hca_max=ward_data.get("nd_hca_max"),
             )
             session.add(ward)
             session.commit()
