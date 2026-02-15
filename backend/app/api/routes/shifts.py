@@ -88,6 +88,7 @@ def get_shift_requests_by_ward(
     session: SessionDep,
     current_user: CurrentUser,
     ward_id: int,
+    period_id: int | None = Query(None),
 ) -> Any:
     """Get all shift requests for nurses in a specific ward."""
     statement = (
@@ -95,4 +96,6 @@ def get_shift_requests_by_ward(
         .join(Nurse, ShiftRequest.nurseid == Nurse.nurseid)
         .where(Nurse.wardid == ward_id)
     )
+    if period_id is not None:
+        statement = statement.where(ShiftRequest.periodid == period_id)
     return list(session.exec(statement).all())

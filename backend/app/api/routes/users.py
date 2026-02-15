@@ -15,6 +15,8 @@ from app.core.security import get_password_hash, verify_password
 from app.models import (
     Item,
     Message,
+    NurseManager,
+    RBACUser,
     UpdatePassword,
     User,
     UserCreate,
@@ -118,11 +120,22 @@ def update_password_me(
 
 
 @router.get("/me", response_model=UserPublic)
-def read_user_me(current_user: CurrentUser) -> Any:
+def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
     Get current user.
     """
-    return current_user
+    rbac_user = session.exec(
+        select(RBACUser).where(RBACUser.email == current_user.email)
+    ).first()
+    nurse_manager = session.exec(
+        select(NurseManager).where(NurseManager.email == current_user.email)
+    ).first()
+    user_public = UserPublic.model_validate(current_user)
+    if rbac_user:
+        user_public.nurseid = rbac_user.nurseid
+    if nurse_manager:
+        user_public.managerid = nurse_manager.managerid
+    return user_public
 
 
 @router.delete("/me", response_model=Message)
