@@ -5,7 +5,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user, SessionDep
-from app.models import Roster, ShiftCode, Nurse, Ward, RBACUser
+from app.models import Roster, ShiftCode, Nurse, Ward, RBACUser, NurseManager
 
 router = APIRouter()
 
@@ -14,7 +14,8 @@ class UpcomingShiftResponse(BaseModel):
     has_shift: bool
     nurse_name: str
     shift_type: Optional[str] = None
-    shift_time: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
     shift_date: Optional[date] = None
     shift_day: Optional[str] = None
     formatted_date: Optional[str] = None
@@ -28,16 +29,27 @@ async def get_upcoming_shift(
     current_user: RBACUser = Depends(get_current_user)
 ):
     # Get nurseid directly from RBACUser
+    user_name = None
     nurse_id = current_user.nurseid
+    manager_id = current_user.managerid
+  
+    if nurse_id:
+        nurse_query = select(Nurse).where(Nurse.nurseid == nurse_id)
+        nurse = session.exec(nurse_query).first()
+        if nurse:
+            user_name = nurse.name
+
+    if not user_name and manager_id:
+        manager_query = select(NurseManager).where(NurseManager.managerid == manager_id)
+        manager = session.exec(manager_query).first()
+        if manager:
+            user_name = manager.name
+
+    if not user_name:
+        user_name = current_user.email or current_user.username
     
     if not nurse_id:
-        # Fallback to email or username
-        user_name = current_user.email or current_user.username
         return UpcomingShiftResponse(has_shift=False, nurse_name=str(user_name))
-    
-    # Query the Nurse table using correct column name
-    nurse_query = select(Nurse).where(Nurse.nurseid == nurse_id)
-    nurse = session.exec(nurse_query).first()
     
     if not nurse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nurse profile not found")
@@ -52,7 +64,8 @@ async def get_upcoming_shift(
         .where(
             Roster.nurseid == nurse_id,
             Roster.shiftdate >= today,
-            Roster.status == "Confirmed"
+            Roster.status == "Confirmed",
+            ShiftCode.isworking == True  # CRITICAL FIX: Only show actual work shifts
         )
         .order_by(Roster.shiftdate.asc())
         .limit(1)
@@ -61,21 +74,42 @@ async def get_upcoming_shift(
     result = session.exec(roster_query).first()
     
     if not result:
-        return UpcomingShiftResponse(has_shift=False, nurse_name=nurse.name)
+        return UpcomingShiftResponse(has_shift=False, nurse_name=str(user_name))
     
     roster, shift_code, ward = result
     shift_date = roster.shiftdate
     day_name = shift_date.strftime("%A")
     formatted_date = shift_date.strftime("%d/%m/%Y")
-    shift_type = shift_code.description  # Use description for shift name
-    # Use ROSTER.starttime (actual scheduled time) and format it as string
-    shift_time = roster.starttime.strftime("%I:%M%p") if roster.starttime else None
+    
+    # Extract shift type name from shift code description
+    shift_description = shift_code.description
+    if "(" in shift_description and ")" in shift_description:
+        # Extract text within parentheses and capitalize properly
+        shift_type = shift_description.split("(")[1].split(")")[0].title()
+    else:
+        shift_type = shift_description
+    
+    # Use ROSTER.starttime and endtime (actual scheduled times) if available,
+    # otherwise fall back to shift code defaults
+    start_time = None
+    end_time = None
+    
+    if roster.starttime:
+        start_time = roster.starttime.strftime("%H:%M")
+    elif shift_code.defaultstart:
+        start_time = shift_code.defaultstart.strftime("%H:%M")
+    
+    if roster.endtime:
+        end_time = roster.endtime.strftime("%H:%M")
+    elif shift_code.defaultend:
+        end_time = shift_code.defaultend.strftime("%H:%M")
     
     return UpcomingShiftResponse(
         has_shift=True,
-        nurse_name=nurse.name,
+        nurse_name=str(user_name),
         shift_type=shift_type,
-        shift_time=shift_time,
+        start_time=start_time,
+        end_time=end_time,
         shift_date=shift_date,
         shift_day=day_name,
         formatted_date=formatted_date,

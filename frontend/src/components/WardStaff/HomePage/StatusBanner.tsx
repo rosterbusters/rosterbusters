@@ -39,13 +39,17 @@ export default function StatusBanner() {
         <Text fontSize="2xl" color="foreground" fontWeight="semibold">
           You have an upcoming{" "}
           <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
-            {shiftData.shift_type} Shift
+            {shiftData.shift_type}
           </Text>
-          {" "}at{" "}
+          {" "} from{" "}
           <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
-            {shiftData.shift_time}
+            {shiftData.start_time}
           </Text>
-          , on{" "}
+          {" "}to{" "}
+          <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
+            {shiftData.end_time}
+          </Text>
+          {" "}on{" "}
           <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
             {shiftData.shift_day}, {shiftData.formatted_date}.
           </Text>
