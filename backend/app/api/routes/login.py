@@ -128,10 +128,20 @@ async def auth_google_callback(
                         select(Role).where(Role.rolename == "NurseManager")
                     ).first()
                     if role:
+                        # Find existing ward assignment for this manager
+                        existing_role = session.exec(
+                            select(UserRole)
+                            .join(RBACUser, UserRole.userid == RBACUser.userid)
+                            .where(
+                                RBACUser.managerid == manager.managerid,
+                                UserRole.wardid.is_not(None),  # type: ignore[union-attr]
+                            )
+                        ).first()
                         session.add(
                             UserRole(
                                 userid=rbac_user.userid,
                                 roleid=role.roleid,
+                                wardid=existing_role.wardid if existing_role else None,
                                 isactive=True,
                             )
                         )

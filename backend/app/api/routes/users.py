@@ -23,6 +23,7 @@ from app.models import (
     UserCreate,
     UserPublic,
     UserRegister,
+    UserRole,
     UsersPublic,
     UserUpdate,
     UserUpdateMe,
@@ -139,6 +140,17 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
             user_public.wardid = nurse.wardid
     if nurse_manager:
         user_public.managerid = nurse_manager.managerid
+        # Get wardid from UserRole for nurse managers
+        if rbac_user and not user_public.wardid:
+            user_role = session.exec(
+                select(UserRole).where(
+                    UserRole.userid == rbac_user.userid,
+                    UserRole.wardid.is_not(None),  # type: ignore[union-attr]
+                    UserRole.isactive == True,
+                )
+            ).first()
+            if user_role:
+                user_public.wardid = user_role.wardid
     return user_public
 
 
