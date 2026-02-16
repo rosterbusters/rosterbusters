@@ -19,6 +19,7 @@ import { useState } from "react";
 import { AssignableStatus } from "@/components/WardStaff/Requests/AssignableStatus";
 import RequestCalendar from "@/components/WardStaff/Requests/RequestCalendar";
 import { NewShiftRequest } from "@/components/WardStaff/Requests/NewShiftRequest";
+import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/ward-staff/request-application")({
   component: RouteComponent,
@@ -33,6 +34,7 @@ function handleLeaveClicked() {
 
 function RouteComponent() {
   const [isShiftRequestOpen, setIsShiftRequestOpen] = useState(false);
+  const { user } = useAuth();
 
   return (
     <Flex
@@ -76,7 +78,7 @@ function RouteComponent() {
           </HStack>
         </Grid>
         <Box h="100%" w="100%">
-        <RequestCalendar/>
+        <RequestCalendar wardId={user?.wardid}/>
         </Box>
       </VStack>
       <NewShiftRequest

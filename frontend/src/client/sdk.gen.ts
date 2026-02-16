@@ -294,6 +294,9 @@ export class ShiftRequestsService {
             path: {
                 ward_id: data.wardId
             },
+            query: {
+                period_id: data.periodId
+            },
             errors: {
                 422: 'Validation Error'
             }

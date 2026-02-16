@@ -94,6 +94,9 @@ export type UserPublic = {
     is_superuser?: boolean;
     full_name?: (string | null);
     id: string;
+    nurseid?: (number | null);
+    managerid?: (number | null);
+    wardid?: (number | null);
 };
 
 export type UserRegister = {
@@ -211,6 +214,7 @@ export type ShiftRequestsGetShiftRequestsByNurseResponse = (Array<ShiftRequestPu
 
 export type ShiftRequestsGetShiftRequestsByWardData = {
     wardId: number;
+    periodId?: number;
 };
 
 export type ShiftRequestsGetShiftRequestsByWardResponse = (Array<ShiftRequestPublic>);

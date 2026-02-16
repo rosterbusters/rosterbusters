@@ -15,6 +15,7 @@ from app.core.security import get_password_hash, verify_password
 from app.models import (
     Item,
     Message,
+    Nurse,
     NurseManager,
     RBACUser,
     UpdatePassword,
@@ -133,6 +134,9 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     user_public = UserPublic.model_validate(current_user)
     if rbac_user:
         user_public.nurseid = rbac_user.nurseid
+        nurse = session.get(Nurse, rbac_user.nurseid)
+        if nurse:
+            user_public.wardid = nurse.wardid
     if nurse_manager:
         user_public.managerid = nurse_manager.managerid
     return user_public
