@@ -553,13 +553,13 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
         # 6) Night fairness (soft): variance of night counts
         night_counts = [sum(1 for d in range(NUM_DAYS) if schedule[n][d] == NIGHT) for n in range(NUM_NURSES)]
         if len(night_counts) > 1:
-            penalty += statistics.pvariance(night_counts) * SOFT_W_NIGHT_FAIR
+            penalty += (max(night_counts) - min(night_counts)) * SOFT_W_NIGHT_FAIR
 
         # 7) Weekend fairness (soft) - treat days 5,6 and 12,13 as weekends (example)
         weekend_days = [5,6, 12,13]
         weekend_counts = [sum(1 for d in weekend_days if schedule[n][d] != OFF) for n in range(NUM_NURSES)]
         if len(weekend_counts) > 1:
-            penalty += statistics.pvariance(weekend_counts) * SOFT_W_WEEKEND_FAIR
+            penalty += (max(weekend_counts) - min(weekend_counts)) * SOFT_W_WEEKEND_FAIR
 
         # 8) Weekday coverage preference & daily balance (soft)
         weekday_days = [d for d in range(NUM_DAYS) if d not in weekend_days]
@@ -575,7 +575,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
 
         # daily balance (variance)
         if len(daily_totals) > 1:
-            penalty += statistics.pvariance(daily_totals) * SOFT_W_DAILY_BALANCE
+            penalty += (max(daily_totals) - min(daily_totals)) * SOFT_W_DAILY_BALANCE
 
         # 9) Preference for mornings (soft) -> reward AM counts by decreasing penalty
         am_count = sum(1 for n in range(NUM_NURSES) for d in range(NUM_DAYS) if schedule[n][d] == AM)
@@ -792,50 +792,49 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             )
     return best, best_score
 
+OFF, AM, PM, NIGHT = 0, 1, 2, 3
+SHIFT_LABEL = {
+    OFF: "OFF",
+    AM: "AM",
+    PM: "PM",
+    NIGHT: "NIGHT"
+}
+PATTERNS_MAP = {
+    "AM": [AM],
+    "PM": [PM],
+    "OFF": [OFF],
+    "N-OFF": [NIGHT, OFF],
+    "N-N-OFF": [NIGHT, NIGHT, OFF],
+}
 
 def expand_individual_simple(individual, num_days=14):
     """
-    Convert pattern-based representation to full schedule.
-    This is a simplified version - full implementation needed.
+    Properly flattens the pattern-based representation into a daily schedule.
+    Input: [["AM", "N-OFF", ...], ["PM", ...]]
+    Output: [[1, 3, 0, ...], [2, ...]]
     """
-    # If individual is already expanded (list of lists), return it
-    if individual and isinstance(individual[0], list):
-        return individual
+    expanded_schedule = []
     
-    # Otherwise, would expand patterns here
-    return individual
-
+    for nurse_pattern_list in individual:
+        full_shifts = []
+        for p_name in nurse_pattern_list:
+            # Get the list of shift codes from our map
+            shifts = PATTERNS_MAP.get(p_name, [OFF])
+            full_shifts.extend(shifts)
+        
+        # Ensure we don't exceed or fall short of num_days due to pattern logic
+        expanded_schedule.append(full_shifts[:num_days])
+        
+    return expanded_schedule
 
 def format_output(nurses, individual, nurse_names, nurse_ranks, num_days, penalty):
     """
     Convert GA individual to standardized JSON output.
-    
-    Args:
-        nurses: Original nurse list
-        individual: GA solution (pattern-based or expanded schedule)
-        nurse_names: List of nurse names
-        nurse_ranks: List of nurse ranks
-        num_days: Number of days
-        penalty: Final GA penalty score
-    
-    Returns:
-        Standardized dict matching MILP output format
     """
-    # Expand individual to full schedule if needed
-    schedule = expand_individual_simple(individual, num_days)
+    # Use the now-working expansion function
+    schedule_codes = expand_individual_simple(individual, num_days)
     
-    # GA shift codes
-    OFF, AM, PM, NIGHT = 0, 1, 2, 3
-    SHIFT_LABEL = {
-        OFF: "OFF",
-        AM: "AM",
-        PM: "PM",
-        NIGHT: "NIGHT"
-    }
-    
-    # Create name to nurse mapping
     name_to_nurse = {n["name"]: n for n in nurses}
-    
     output_nurses = []
     
     for idx, nurse_name in enumerate(nurse_names):
@@ -844,21 +843,15 @@ def format_output(nurses, individual, nurse_names, nurse_ranks, num_days, penalt
         
         nurse_info = name_to_nurse[nurse_name]
         
-        # Get schedule for this nurse
-        nurse_schedule = schedule[idx] if idx < len(schedule) else [OFF] * num_days
+        # Get the flat list of codes for this nurse
+        nurse_codes = schedule_codes[idx] if idx < len(schedule_codes) else [OFF] * num_days
         
-        # Convert shift codes to shift names
-        schedule_names = []
-        for shift_code in nurse_schedule:
-            if isinstance(shift_code, int):
-                shift_name = SHIFT_LABEL.get(shift_code, "OFF")
-            else:
-                shift_name = shift_code
-            schedule_names.append(shift_name)
+        # Convert codes [1, 3, 0] -> labels ["AM", "NIGHT", "OFF"]
+        schedule_names = [SHIFT_LABEL.get(code, "OFF") for code in nurse_codes]
         
-        # Calculate statistics
+        # Calculate accurate statistics from the flat list
         stats = {
-            "total_shifts": sum(1 for s in schedule_names if s in ["AM", "PM", "NIGHT"]),
+            "total_shifts": sum(1 for s in schedule_names if s != "OFF"),
             "am_shifts": schedule_names.count("AM"),
             "pm_shifts": schedule_names.count("PM"),
             "night_shifts": schedule_names.count("NIGHT"),
@@ -869,11 +862,10 @@ def format_output(nurses, individual, nurse_names, nurse_ranks, num_days, penalt
             "id": nurse_info["id"],
             "name": nurse_info["name"],
             "rank": nurse_info["rank"],
-            "schedule": schedule_names,
+            "schedule": schedule_names, # This will now be a list of 14 separate strings
             "stats": stats
         })
     
-    # Sort by nurse ID
     output_nurses.sort(key=lambda x: x["id"])
     
     return {
