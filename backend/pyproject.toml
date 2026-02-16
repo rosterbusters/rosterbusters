@@ -25,6 +25,8 @@ dependencies = [
     "itsdangerous<3.0.0,>=2.1.2",
     "psycopg2-binary (>=2.9.11,<3.0.0)",
     "faker",
+    "pandas>=2.3.3",
+    "pyomo>=6.9.5",
 ]
 
 [dependency-groups]

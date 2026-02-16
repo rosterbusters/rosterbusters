@@ -143,28 +143,28 @@ function RosterPlanningPage() {
   // Handlers
   
   // Generate algorithm roster handler
-  const handleGenerateAlgorithm = useCallback(async () => {
-    if (!selectedWard || !selectedPeriod) {
-      showErrorToast("Please select a ward and period first");
-      return;
-    }
+const handleGenerateAlgorithm = useCallback(async () => {
+  if (!selectedWard || !selectedPeriod) {
+    showErrorToast("Please select a ward and period first");
+    return;
+  }
 
-    try {
-      const result = await generateAlgorithmRoster.mutateAsync({
-        wardId: selectedWard.wardId,
-        periodId: selectedPeriod.periodId,
-        startDate: currentStartDate,
-        viewMode,
-      });
-      
-      setRosterData(result.rosterData);
-      setIsAlgorithmGenerated(true);
-      showSuccessToast("Algorithm roster generated successfully!");
-    } catch (error) {
-      console.error("Failed to generate algorithm roster:", error);
-      showErrorToast("Failed to generate roster. Please try again.");
-    }
-  }, [selectedWard, selectedPeriod, currentStartDate, viewMode, generateAlgorithmRoster, showSuccessToast, showErrorToast]);
+  try {
+    const result = await generateAlgorithmRoster.mutateAsync({
+      wardId: selectedWard.wardId,     // CamelCase to match hook params
+      periodId: selectedPeriod.periodId, 
+      startDate: currentStartDate,    // Pass the actual Date object
+    });
+
+    // The hook now returns exactly what we need
+    setRosterData(result.rosterData);
+    setIsAlgorithmGenerated(true);
+    showSuccessToast("Algorithm roster generated successfully!");
+  } catch (error) {
+    console.error("Failed:", error);
+    showErrorToast("Failed to generate roster.");
+  }
+}, [selectedWard, selectedPeriod, currentStartDate, generateAlgorithmRoster, showSuccessToast, showErrorToast]);
 
   // Clear roster and return to manual mode
   const handleClearRoster = useCallback(() => {
