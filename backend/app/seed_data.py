@@ -22,7 +22,7 @@ from app.models.web import User
 # ============================================================================
 # CONFIGURATION - Adjust these to control seed data volume
 # ============================================================================
-NUM_NURSE_USERS = 5  # How many nurses get login accounts (for testing)
+NUM_NURSE_USERS = 70  # All nurses get login accounts (7 per ward × 10 wards)
 SEED = 42  # For reproducible fake data (set to None for random each time)
 
 # ============================================================================
@@ -623,12 +623,13 @@ def seed_nurse_users(
         session.commit()
         session.refresh(user)
 
-        # Assign Nurse role
+        # Assign Nurse role with ward assignment
         nurse_role = roles.get("Nurse")
         if nurse_role:
             user_role = UserRole(
                 userid=user.userid,
                 roleid=nurse_role.roleid,
+                wardid=nurse.wardid,
                 isactive=True,
                 assignedat=datetime.now(timezone.utc),
             )
