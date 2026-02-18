@@ -9,57 +9,73 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/tooltip";
-import { AssignableStatus } from "./AssignableStatus";
 import { shiftCollection } from "@/models/Shift";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
+import { ShiftRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
 
-interface NewShiftRequestProps {
+interface EditShiftRequestProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedDate?: Date | null;
+  requestId: number;
+  initialShiftType: string;
+  initialDate: string; // YYYY-MM-DD
 }
 
-export const NewShiftRequest = ({
+export const EditShiftRequest = ({
   isOpen,
   onClose,
-  selectedDate,
-}: NewShiftRequestProps) => {
-  const [shiftType, setShiftType] = useState<string[]>([]);
+  requestId,
+  initialShiftType,
+  initialDate,
+}: EditShiftRequestProps) => {
+  const [shiftType, setShiftType] = useState<string[]>([initialShiftType]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    selectedDate ?? undefined,
+    new Date(initialDate),
   );
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
-  const { data: periods } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-  });
+  useEffect(() => {
+    setShiftType([initialShiftType]);
+    setRequestDate(new Date(initialDate));
+  }, [initialShiftType, initialDate]);
 
-  const mutation = useMutation({
-    mutationFn: (data: ShiftRequestCreate) =>
-      ShiftRequestsService.createShiftRequest({ requestBody: data }),
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      ShiftRequestsService.updateShiftRequest({
+        requestId,
+        requestBody: {
+          preferredshifttype: shiftType[0],
+          preferreddate: requestDate?.toISOString().split("T")[0],
+        },
+      }),
     onSuccess: () => {
-      showSuccessToast("Shift request created!");
+      showSuccessToast("Shift request updated!");
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
       onClose();
     },
     onError: () => {
-      showErrorToast("Failed to create request");
+      showErrorToast("Failed to update request");
     },
   });
-  
-  useEffect(() => {
-    setRequestDate(selectedDate ?? undefined);
-  }, [selectedDate]);
 
-  const handleSubmit = () => {
-    const activePeriod = periods?.find((p) => p.status === "RequestOpen");
-    if (!activePeriod) return;
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      ShiftRequestsService.deleteShiftRequest({ requestId }),
+    onSuccess: () => {
+      showSuccessToast("Shift request deleted!");
+      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      onClose();
+    },
+    onError: () => {
+      showErrorToast("Failed to delete request");
+    },
+  });
+
+  const handleSave = () => {
     if (shiftType.length === 0) {
       showErrorToast("Please select a shift type.");
       return;
@@ -68,12 +84,7 @@ export const NewShiftRequest = ({
       showErrorToast("Please select a date.");
       return;
     }
-
-    mutation.mutate({
-      periodid: activePeriod.periodid,
-      preferreddate: requestDate.toISOString().split("T")[0],
-      preferredshifttype: shiftType[0],
-    });
+    updateMutation.mutate();
   };
 
   return (
@@ -89,12 +100,11 @@ export const NewShiftRequest = ({
           <Dialog.Content>
             <Dialog.Header>
               <Dialog.Title color={"primary"} fontWeight={"bold"}>
-                Create Shift Request
+                Edit Shift Request
               </Dialog.Title>
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems={"start"} gap={4} maxWidth={"225px"}>
-                <AssignableStatus />
                 <Select.Root
                   collection={shiftCollection}
                   size="sm"
@@ -120,7 +130,6 @@ export const NewShiftRequest = ({
                                 {code.value}
                               </Badge>
                             </Tooltip>
-
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}
@@ -129,7 +138,7 @@ export const NewShiftRequest = ({
                   </Portal>
                 </Select.Root>
                 <VStack alignItems={"start"}>
-                  <Text fontWeight={"medium"}> Date Requesting</Text>
+                  <Text fontWeight={"medium"}>Date Requesting</Text>
                   <DatePickerDemo
                     selected={requestDate}
                     onSelect={(date) => setRequestDate(date)}
@@ -138,12 +147,19 @@ export const NewShiftRequest = ({
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
-              <Button variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button onClick={handleSubmit} loading={mutation.isPending}>
-                Create
-              </Button>
+              
+              <VStack gap={2} flexDirection="row">
+                <Button variant="outline" onClick={() => deleteMutation.mutate()}
+                loading={deleteMutation.isPending}>
+                  Withdraw
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  loading={updateMutation.isPending}
+                >
+                  Save
+                </Button>
+              </VStack>
             </Dialog.Footer>
             <Dialog.CloseTrigger asChild>
               <CloseButton size="sm" />

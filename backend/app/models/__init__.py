@@ -33,6 +33,7 @@ from app.models.web import (
 from app.models.rbac import (
     Nurse,
     NurseManager,
+    NursePublic,
     RBACUser,
     Role,
     UserRole,
@@ -81,6 +82,7 @@ __all__ = [
     # RBAC
     "Nurse",
     "NurseManager",
+    "NursePublic",
     "RBACUser",
     "Role",
     "UserRole",

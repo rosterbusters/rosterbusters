@@ -6,6 +6,7 @@ import CustomWeekView from './CustomRequestView'
 import { Box,Grid,Span } from '@chakra-ui/react'
 import cx from "clsx"
 import { ShiftRequestsService } from '@/client'
+import useAuth from '@/hooks/useAuth'
 
 const localizer = momentLocalizer(moment);
 
@@ -45,6 +46,9 @@ interface RequestCalendarProps {
 }
 
 export default function RequestCalendar({ wardId }: RequestCalendarProps) {
+  const { user } = useAuth();
+  const currentNurseId = user?.nurseid;
+
   const [date, setDate] = useState(() =>
     moment().startOf('isoWeek').toDate()
     );
@@ -70,14 +74,32 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
     enabled: !!wardId && !!periodId,
   });
 
+  const { data: wardNurses } = useQuery({
+    queryKey: ['ward-nurses', wardId],
+    queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
+    enabled: !!wardId,
+  });
+
+  const nurseMap = useMemo(() => {
+    if (!wardNurses) return new Map<number, string>();
+    return new Map(wardNurses.map((n) => [n.nurseid, n.name]));
+  }, [wardNurses]);
+
   const events: Event[] = useMemo(() => {
     if (!shiftRequests) return [];
     return shiftRequests.map((sr) => ({
       title: sr.preferredshifttype,
       start: new Date(sr.preferreddate),
       end: new Date(sr.preferreddate),
+      resource: {
+        nurseName: nurseMap.get(sr.nurseid) ?? `Nurse ${sr.nurseid}`,
+        isOwn: sr.nurseid === currentNurseId,
+        requestId: sr.requestid,
+        preferredDate: sr.preferreddate,
+        shiftType: sr.preferredshifttype,
+      },
     }));
-  }, [shiftRequests]);
+  }, [shiftRequests, nurseMap, currentNurseId]);
 
   const { views, defaultView } = useMemo(() => {
   const customViews = {

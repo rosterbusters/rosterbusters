@@ -3,8 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-
-import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByNurseData, ShiftRequestsGetShiftRequestsByNurseResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse } from './types.gen';
+import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse } from './types.gen';
 
 export class DefaultService {
     /**
@@ -201,12 +200,10 @@ export class ShiftRequestsService {
         });
     }
     
-    
     /**
      * Get Roster Period
      * Get the roster period that contains the given date.
      * @param data The data for the request.
-     * @param data.targetDate Date to find the roster period for
      * @param data.targetDate Date to find the roster period for
      * @returns RosterPeriodPublic Successful Response
      * @throws ApiError
@@ -224,7 +221,6 @@ export class ShiftRequestsService {
         });
     }
     
-    
     /**
      * Get User Shift Requests
      * Get all shift requests for the current user.
@@ -237,7 +233,6 @@ export class ShiftRequestsService {
             url: '/api/v1/shift-requests/'
         });
     }
-    
     
     /**
      * Create Shift Request
@@ -257,36 +252,7 @@ export class ShiftRequestsService {
             }
         });
     }
-    
-    /**
-     * Get Shift Requests By Nurse
-     * Get all shift requests for a specific nurse.
-     * @param data The data for the request.
-     * @param data.nurseId
-     * @returns ShiftRequestPublic Successful Response
-     * @throws ApiError
-     */
-    public static getShiftRequestsByNurse(data: ShiftRequestsGetShiftRequestsByNurseData): CancelablePromise<ShiftRequestsGetShiftRequestsByNurseResponse> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/api/v1/shift-requests/nurse/{nurse_id}',
-            path: {
-                nurse_id: data.nurseId
-            },
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-    
-    /**
-     * Get Shift Requests By Ward
-     * Get all shift requests for nurses in a specific ward.
-     * @param data The data for the request.
-     * @param data.wardId
-     * @returns ShiftRequestPublic Successful Response
-     * @throws ApiError
-     */
+
     public static getShiftRequestsByWard(data: ShiftRequestsGetShiftRequestsByWardData): CancelablePromise<ShiftRequestsGetShiftRequestsByWardResponse> {
         return __request(OpenAPI, {
             method: 'GET',
@@ -299,6 +265,45 @@ export class ShiftRequestsService {
             },
             errors: {
                 422: 'Validation Error'
+            }
+        });
+    }
+
+    public static getWardNurses(data: ShiftRequestsGetWardNursesData): CancelablePromise<ShiftRequestsGetWardNursesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/shift-requests/ward/{ward_id}/nurses',
+            path: {
+                ward_id: data.wardId
+            }
+        });
+    }
+
+    public static updateShiftRequest(data: ShiftRequestsUpdateShiftRequestData): CancelablePromise<ShiftRequestsUpdateShiftRequestResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/shift-requests/{request_id}',
+            path: {
+                request_id: data.requestId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    public static deleteShiftRequest(data: ShiftRequestsDeleteShiftRequestData): CancelablePromise<ShiftRequestsDeleteShiftRequestResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/shift-requests/{request_id}',
+            path: {
+                request_id: data.requestId
+            },
+            errors: {
+                404: 'Not Found',
+                403: 'Forbidden'
             }
         });
     }
