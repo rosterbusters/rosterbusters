@@ -21,7 +21,7 @@ interface NewShiftRequestProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate?: Date | null;
-  wardId?: number;
+  wardId?: number | null;
 }
 
 export const NewShiftRequest = ({
@@ -48,6 +48,7 @@ export const NewShiftRequest = ({
       wardId != null
         ? ShiftRequestsService.getShiftCodesByWard({ wardId })
         : ShiftRequestsService.getWorkingShiftCodes(),
+    enabled: wardId !== undefined,
   });
 
   const shiftCollection = useMemo(

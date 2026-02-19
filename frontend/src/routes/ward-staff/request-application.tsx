@@ -84,7 +84,7 @@ function RouteComponent() {
       <NewShiftRequest
         isOpen={isShiftRequestOpen}
         onClose={() => setIsShiftRequestOpen(false)}
-        wardId={user?.wardid ?? undefined}
+        wardId={user?.wardid}
       />
     </Flex>
   );
