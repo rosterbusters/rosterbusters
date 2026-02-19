@@ -8,7 +8,7 @@ import {
   Popover,
   Textarea,
 } from "@chakra-ui/react";
-import { X, ChevronDown, MessageSquarePlus } from "lucide-react";
+import { X, ChevronDown, MessageSquarePlus, Check } from "lucide-react";
 
 import { usePopoverContext } from "@chakra-ui/react";
 import {
@@ -184,6 +184,7 @@ export function ShiftEditPopover({
     currentShift?.comment || "",
   );
   const [showCommentInput, setShowCommentInput] = useState(false);
+  const [commentSaved, setCommentSaved] = useState(false);
 
   // Reset state when popover opens with new data
   useEffect(() => {
@@ -191,6 +192,7 @@ export function ShiftEditPopover({
       setSelectedShift(currentShift?.shiftCode || null);
       setComment(currentShift?.comment || "");
       setShowCommentInput(!!currentShift?.comment);
+      setCommentSaved(false);
     }
   }, [isOpen, currentShift?.shiftCode, currentShift?.comment]);
 
@@ -210,6 +212,9 @@ export function ShiftEditPopover({
   const handleCommentSave = () => {
     if (onCommentChange) {
       onCommentChange(comment);
+      setCommentSaved(true);
+      // Reset saved indicator after a brief moment
+      setTimeout(() => setCommentSaved(false), 2000);
     }
   };
 
@@ -345,14 +350,18 @@ export function ShiftEditPopover({
                         fontSize="xs"
                         fontWeight="medium"
                         color="white"
-                        bg="#4B8798"
+                        bg={commentSaved ? "#16a34a" : "#4B8798"}
                         borderRadius="md"
                         cursor="pointer"
-                        _hover={{ bg: "#155E75" }}
-                        transition="background 0.15s ease"
+                        _hover={{ bg: commentSaved ? "#16a34a" : "#155E75" }}
+                        transition="all 0.2s ease"
                         onClick={handleCommentSave}
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
                       >
-                        Save
+                        {commentSaved && <Check size={12} />}
+                        {commentSaved ? "Saved" : "Save"}
                       </Box>
                     </Flex>
                   </Box>

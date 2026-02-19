@@ -192,7 +192,7 @@ function RosterPlanningPage() {
   const handleShiftChange = useCallback(
     (nurseId: number, date: string, newShiftCode: ShiftCode) => {
       // Update local roster data (mock mode)
-      setRosterData(prevData => 
+      setRosterData(prevData =>
         prevData.map(row => {
           if (row.nurseId === nurseId) {
             return {
@@ -214,6 +214,29 @@ function RosterPlanningPage() {
         })
       );
       console.log(`Shift changed: Nurse ${nurseId}, Date ${date}, New Shift: ${newShiftCode}`);
+    },
+    []
+  );
+
+  const handleCommentChange = useCallback(
+    (nurseId: number, date: string, comment: string) => {
+      setRosterData(prevData =>
+        prevData.map(row => {
+          if (row.nurseId === nurseId && row.shifts[date]) {
+            return {
+              ...row,
+              shifts: {
+                ...row.shifts,
+                [date]: {
+                  ...row.shifts[date],
+                  comment: comment || undefined,
+                },
+              },
+            };
+          }
+          return row;
+        })
+      );
     },
     []
   );
@@ -300,6 +323,7 @@ function RosterPlanningPage() {
             viewMode={viewMode}
             currentStartDate={currentStartDate}
             onShiftChange={handleShiftChange}
+            onCommentChange={handleCommentChange}
             isLoading={generateAlgorithmRoster.isPending}
           />
         </Box>

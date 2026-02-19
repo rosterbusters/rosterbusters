@@ -80,8 +80,8 @@ function generateMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
   });
 }
 
-// Mock edit history data for demonstration
-const MOCK_EDIT_HISTORY: EditHistoryEntry[] = [
+// Initial mock edit history data for demonstration
+const INITIAL_EDIT_HISTORY: EditHistoryEntry[] = [
   {
     id: 1,
     modifiedDate: "2025-10-04T14:56:00",
@@ -151,6 +151,7 @@ function NurseManagerHome() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
+  const [editHistory, setEditHistory] = useState<EditHistoryEntry[]>(INITIAL_EDIT_HISTORY);
 
   // Data hooks
   const { data: wards = [], isLoading: wardsLoading } = useWards();
@@ -229,9 +230,9 @@ function NurseManagerHome() {
           shiftCode: newShiftCode,
         });
       }
-      
+
       // Update local state for immediate UI feedback
-      setLocalRosterData(prevData => 
+      setLocalRosterData(prevData =>
         prevData.map(row => {
           if (row.nurseId === nurseId) {
             return {
@@ -255,6 +256,49 @@ function NurseManagerHome() {
       console.log(`Shift changed: Nurse ${nurseId}, Date ${date}, New Shift: ${newShiftCode}`);
     },
     [selectedWard, selectedPeriod, updateRoster]
+  );
+
+  const handleCommentChange = useCallback(
+    (nurseId: number, date: string, comment: string) => {
+      // Find nurse name for edit history
+      const nurse = localRosterData.find(r => r.nurseId === nurseId);
+
+      // Update local state for immediate UI feedback
+      setLocalRosterData(prevData =>
+        prevData.map(row => {
+          if (row.nurseId === nurseId && row.shifts[date]) {
+            return {
+              ...row,
+              shifts: {
+                ...row.shifts,
+                [date]: {
+                  ...row.shifts[date],
+                  comment: comment || undefined,
+                },
+              },
+            };
+          }
+          return row;
+        })
+      );
+
+      // Add to edit history
+      if (comment) {
+        setEditHistory(prev => [
+          {
+            id: Date.now(),
+            modifiedDate: moment().toISOString(),
+            changeType: "comment",
+            comment,
+            shiftDate: date,
+            nurseName: nurse?.name || "Unknown",
+            modifiedBy: "Current User",
+          },
+          ...prev,
+        ]);
+      }
+    },
+    [localRosterData]
   );
 
   const handleExportCSV = useCallback(() => {
@@ -396,6 +440,7 @@ function NurseManagerHome() {
               viewMode={viewMode}
               currentStartDate={currentStartDate}
               onShiftChange={handleShiftChange}
+              onCommentChange={handleCommentChange}
               isLoading={wardsLoading || rosterLoading}
             />
           </Box>
@@ -413,7 +458,7 @@ function NurseManagerHome() {
       <EditHistoryDialog
         isOpen={isEditHistoryOpen}
         onClose={() => setIsEditHistoryOpen(false)}
-        entries={MOCK_EDIT_HISTORY}
+        entries={editHistory}
       />
     </Flex>
   );
