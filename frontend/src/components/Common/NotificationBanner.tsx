@@ -1,5 +1,4 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUpRight } from "lucide-react";
 import { Stack, Table, Badge } from "@chakra-ui/react";
 import type { NotificationResponse } from "@/client/NotificationsService";
 

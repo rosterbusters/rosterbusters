@@ -29,30 +29,32 @@ export interface NotificationStatsResponse {
   recent: NotificationItem[]
 }
 
-export type NotificationType = "roster" | "shiftRequest" | "leaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder"
+export type NotificationType = "Roster" | "ShiftRequest" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "System" | "Probation"
 
 export const notificationTypeLabels: Record<string, string> = {
-  roster: "Roster",
-  shiftRequest: "Shift Request",
-  leaveRequest: "Leave Request",
+  Roster: "Roster",
+  ShiftRequest: "Shift Request",
+  LeaveRequest: "Leave Request",
   ShiftUpdate: "Roster",
   SwapRequest: "Shift Swap",
   LeaveApproval: "Leave Status",
   LeaveReminder: "Leave Reminder",
   RosterRelease: "Roster Release",
-  ShiftRequest: "Shift Request"
+  System: "System",
+  Probation: "Probation"
 }
 
 export const notificationTypeBadgeVariant: Record<string, string> = {
-  roster: "blue",
-  shiftRequest: "yellow",
-  leaveRequest: "green",
+  Roster: "blue",
+  ShiftRequest: "yellow",
+  LeaveRequest: "green",
   ShiftUpdate: "blue",
   SwapRequest: "purple",
   LeaveApproval: "green",
   LeaveReminder: "orange",
   RosterRelease: "cyan",
-  ShiftRequest: "yellow"
+  System: "gray",
+  Probation: "red"
 }
 
 export const priorityBadgeVariant: Record<string, string> = {
@@ -86,26 +88,29 @@ export function formatNotificationDate(dateString: string): string {
 // Helper to get route from notification type
 export const getNotificationRoute = (type: string): string => {
   const routeMap: Record<string, string> = {
-    roster: "/staffrosterschedule",
-    shiftRequest: "/shift-request",
-    leaveRequest: "/request-application",
+    Roster: "/staffrosterschedule",
+    ShiftRequest: "/shift-request",
+    LeaveRequest: "/request-application",
     ShiftUpdate: "/staffrosterschedule",
     SwapRequest: "/shift-request",
     LeaveApproval: "/request-application",
     LeaveReminder: "/request-application",
+    RosterRelease: "/staffrosterschedule",
+    System: "/system",
+    Probation: "/probation",
   }
   return routeMap[type] || "/home"
 }
 
 // Hardcoded data for dropdown (until migrated to API)
 export const nurseManagerNotifications: NotificationItem[] = [
-  { notificationid: 1, notificationtype: "roster", description: "Start Planning 10 Nov - 21 Nov Roster", date: "1/11/2001" },
-  { notificationid: 2, notificationtype: "leaveRequest", description: "Tony Quek : Leave Request for 31 Dec", date: "1/11/2001" },
-  { notificationid: 3, notificationtype: "roster", description: "Upload 18–20 Dec  Roster to Times HRIS", date: "1/11/2001" },
+  { notificationid: 1, notificationtype: "Roster", description: "Start Planning 10 Nov - 21 Nov Roster", date: "1/11/2001" },
+  { notificationid: 2, notificationtype: "LeaveRequest", description: "Tony Quek : Leave Request for 31 Dec", date: "1/11/2001" },
+  { notificationid: 3, notificationtype: "Roster", description: "Upload 18–20 Dec  Roster to Times HRIS", date: "1/11/2001" },
 ]
 
 export const wardStaffNotifications: NotificationItem[] = [
-  { notificationid: 1, notificationtype: "roster", description: "31 Dec Shift Request was approved.", date: "1/11/2001" },
-  { notificationid: 2, notificationtype: "roster", description: "18–20 Dec Roster released.", date: "1/11/2001" },
-  { notificationid: 3, notificationtype: "shiftRequest", description: "Shift Request Period is Now Open", date: "1/11/2001" },
+  { notificationid: 1, notificationtype: "Roster", description: "31 Dec Shift Request was approved.", date: "1/11/2001" },
+  { notificationid: 2, notificationtype: "Roster", description: "18–20 Dec Roster released.", date: "1/11/2001" },
+  { notificationid: 3, notificationtype: "ShiftRequest", description: "Shift Request Period is Now Open", date: "1/11/2001" },
 ]

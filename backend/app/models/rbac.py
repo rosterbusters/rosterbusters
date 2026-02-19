@@ -48,6 +48,8 @@ class RBACUserPublic(SQLModel):
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
     isactive: bool
+    name: Optional[str] = None
+    wardid: Optional[int] = None
 
 
 class Nurse(SQLModel, table=True):

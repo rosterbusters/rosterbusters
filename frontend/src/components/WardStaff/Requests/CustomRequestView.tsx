@@ -5,6 +5,7 @@ import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { NewShiftRequest } from "./NewShiftRequest";
 import { EditShiftRequest } from "./EditShiftRequest";
+import useAuth from "@/hooks/useAuth";
 interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
@@ -48,6 +49,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   startAccessor,
   endAccessor,
 }: CustomWeekViewProps) {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<{
@@ -137,6 +139,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         selectedDate={selectedDay}
+        wardId={(user as any)?.wardid}
       />
 
       {selectedRequest && (

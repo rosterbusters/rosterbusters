@@ -55,10 +55,20 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
     enabled: !!wardId,
   });
 
-  const activePeriod = useMemo(
-    () => periods?.find((p) => p.status === 'RequestOpen'),
-    [periods],
-  );
+  const activePeriod = useMemo(() => {
+    if (!periods) return undefined;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Prefer the period that contains today; fall back to first RequestOpen
+    return (
+      periods.find(
+        (p) =>
+          p.status === 'RequestOpen' &&
+          new Date(p.startdate) <= today &&
+          new Date(p.enddate) >= today,
+      ) ?? periods.find((p) => p.status === 'RequestOpen')
+    );
+  }, [periods]);
 
   const [date, setDate] = useState(() =>
     moment().startOf('isoWeek').toDate()

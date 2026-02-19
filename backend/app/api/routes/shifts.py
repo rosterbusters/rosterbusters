@@ -243,3 +243,63 @@ def get_ward_nurses(
     """Get all nurses for a specific ward."""
     statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)
     return list(session.exec(statement).all())
+
+
+@router.get("/my-shifts")
+def get_my_shifts(
+    session: SessionDep,
+    current_user: CurrentUser,
+    year: int = Query(..., description="Year (e.g., 2026)"),
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+) -> Any:
+    """
+    Get shifts for the logged-in nurse for a specific month.
+    Returns array of shifts with date, code, and description.
+    """
+    log(f"[get_my_shifts] year={year}, month={month}, user={current_user.email}")
+    
+    # Get nurse record from RBAC user
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user or not rbac_user.nurseid:
+        raise HTTPException(status_code=404, detail="User is not linked to a nurse record")
+    
+    # Calculate date range for the month
+    from datetime import date as date_type
+    from calendar import monthrange
+    
+    start_date = date_type(year, month, 1)
+    last_day = monthrange(year, month)[1]
+    end_date = date_type(year, month, last_day)
+    
+    log(f"[get_my_shifts] nurseid={rbac_user.nurseid}, date_range={start_date} to {end_date}")
+    
+    # Query roster for this nurse in this month
+    from app.models.roster import Roster
+    
+    statement = (
+        select(Roster)
+        .where(Roster.nurseid == rbac_user.nurseid)
+        .where(Roster.shiftdate >= start_date)
+        .where(Roster.shiftdate <= end_date)
+        .order_by(Roster.shiftdate)
+    )
+    
+    shifts = session.exec(statement).all()
+    
+    log(f"[get_my_shifts] Found {len(shifts)} shifts")
+    
+    # Get shift code descriptions
+    shift_codes = session.exec(select(ShiftCode)).all()
+    shift_code_map = {sc.shiftcode: sc.description for sc in shift_codes}
+    
+    return {
+        "shifts": [
+            {
+                "shift_date": shift.shiftdate.isoformat(),
+                "shift_code": shift.shiftcode,
+                "shift_description": shift_code_map.get(shift.shiftcode, shift.shiftcode),
+                "status": shift.status,
+            }
+            for shift in shifts
+        ]
+    }
