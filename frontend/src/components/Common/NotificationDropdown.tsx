@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
-  notifications,
   notificationTypeLabels,
   getNotificationRoute,
   type NotificationItem,
@@ -26,11 +25,16 @@ function formatNotificationDate(dateString: string): string {
 
 // Badge colors matching Ward Staff NotificationBanner
 const badgeColors: Record<NotificationType, string> = {
-  roster: "bg-[#06B6D4]",        // cyan.500
-  shift: "bg-[#0891B2]",         // cyan.600 (shiftRequest)
-  leave: "bg-[#0891B2]",         // cyan.600
-  system: "bg-[#6B7280]",        // gray.500
-  probation: "bg-[#D97706]",     // amber.600
+  Roster: "bg-[#06B6D4]",        // cyan.500
+  ShiftRequest: "bg-[#0891B2]",         // cyan.600 (shiftRequest)
+  LeaveRequest: "bg-[#0891B2]",         // cyan.600
+  System: "bg-[#6B7280]",        // gray.500
+  Probation: "bg-[#D97706]",     // amber.600
+  ShiftUpdate: "bg-[#0891B2]",   // cyan.600
+  SwapRequest: "bg-[#0891B2]",   // cyan.600
+  LeaveApproval: "bg-[#0891B2]", // cyan.600
+  LeaveReminder: "bg-[#0891B2]", // cyan.600
+  RosterRelease: "bg-[#06B6D4]", // cyan.500
 };
 
 // Badge component matching Ward Staff style
@@ -51,7 +55,7 @@ function NotificationBadge({ type }: { type: NotificationType }) {
 const VISIBLE_ROWS = 4;
 const ROW_HEIGHT = 44; // px per row
 
-function NotificationDropdown() {
+function NotificationDropdown({ notifications = [] }: { notifications?: NotificationItem[] }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [scrollIndex, setScrollIndex] = useState(0);
@@ -132,13 +136,13 @@ function NotificationDropdown() {
                     onClick={() => handleNotificationClick(notification)}
                   >
                     <div className="px-4">
-                      <NotificationBadge type={notification.notificationtype} />
+                      <NotificationBadge type={notification.notificationtype as NotificationType} />
                     </div>
                     <div className="px-4 text-sm text-[#4A4A4A] truncate">
                       {notification.description}
                     </div>
                     <div className="px-4 text-sm font-semibold text-[#4A4A4A]">
-                      {formatNotificationDate(notification.createdAt)}
+                      {notification.createdat ? formatNotificationDate(notification.createdat) : "N/A"}
                     </div>
                   </div>
                 ))
