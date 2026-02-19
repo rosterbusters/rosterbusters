@@ -260,23 +260,22 @@ export function useGenerateAlgorithmRoster() {
       wardId,
       periodId,
       startDate,
+      mockData,
     }: {
       wardId: number;
       periodId: number;
       startDate: Date; // Keep it as a Date object for easier math
+      mockData?: any;
     }) => {
-      // 1. Call the algorithm API
-      const response = await fetchWithAuth(
+      //Check if mock data is available - if mock data is not available then fetch.
+        const response = mockData ?? await fetchWithAuth(
         "/api/v1/roster/generate-algorithm",
         {
           method: "POST",
-          body: JSON.stringify({
-            ward_id: wardId,
-            period_id: periodId,
-          }),
+          body: JSON.stringify({ ward_id: wardId, period_id: periodId }),
         }
       );
-
+      
       // 2. Transform the backend format into the RosterRow format the Grid expects
       // Backend: n.schedule = ["AM", "OFF", ...]
       // Frontend: n.shifts = { "2026-02-16": { ... } }
@@ -296,10 +295,10 @@ export function useGenerateAlgorithmRoster() {
         return {
           nurseId: nurse.id,
           name: nurse.name,
-          designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA", //TODO: This one is just rough work by me (Mikhail), might need to check with db for specific rank
           // Calculate worked hours so the UI doesn't error on 'worked'
           hours: { 
-            worked: (nurse.stats?.total_shifts || 0) * 8, 
+            worked: (nurse.stats?.total_shifts || 0) * 8, //TODO: Check if this calculation is correct.
             contracted: 42 
           },
           shifts: shiftsObject,
