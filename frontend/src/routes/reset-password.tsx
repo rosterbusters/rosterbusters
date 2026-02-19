@@ -4,7 +4,11 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock } from "react-icons/fi"
 
-import { type ApiError, type NewPassword } from "@/client"
+import { type ApiError } from "@/client"
+
+interface NewPassword {
+  new_password: string
+}
 import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
 import { isLoggedIn } from "@/hooks/useAuth"
@@ -95,7 +99,7 @@ function ResetPassword() {
         {...register("confirm_password", confirmPasswordRules(getValues))}
         placeholder="Confirm Password"
       />
-      <Button variant="solid" type="submit">
+      <Button variant="default" type="submit">
         Reset Password
       </Button>
     </Container>

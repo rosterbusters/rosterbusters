@@ -1,0 +1,42 @@
+name: Test Production Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  test-prod-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy test environment
+        run: cp .env.test .env
+
+      - name: Create dummy Google OAuth credentials for CI
+        run: echo '{}' > backend/google_oauth_credentials.json
+
+      - name: Create external network
+        run: docker network create traefik-public || true
+
+      - name: Build production images
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml -f docker-compose.ci-prod.yml build
+
+      - name: Start services
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml -f docker-compose.ci-prod.yml up -d --wait backend frontend
+
+      - name: Test backend health
+        run: curl -f http://localhost:8000/api/v1/utils/health-check/
+
+      - name: Test frontend nginx serves app
+        run: curl -f http://localhost:80
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans

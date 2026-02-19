@@ -46,7 +46,7 @@ export default function NotificationBanner({
                   </span>
                 </Table.Cell>
                 <Table.Cell color="foreground" fontWeight="semibold">
-                  {item.date}
+                  {item.createdAt}
                 </Table.Cell>
               </Table.Row>
             ))}

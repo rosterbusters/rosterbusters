@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Button,
   CloseButton,
+  createListCollection,
   Dialog,
   Portal,
   Select,
@@ -9,9 +10,8 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/tooltip";
-import { shiftCollection } from "@/models/Shift";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { ShiftRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
@@ -38,6 +38,23 @@ export const EditShiftRequest = ({
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
+  const { data: shiftCodes } = useQuery({
+    queryKey: ["shift-codes"],
+    queryFn: () => ShiftRequestsService.getWorkingShiftCodes(),
+  });
+
+  const shiftCollection = useMemo(
+    () =>
+      createListCollection({
+        items: (shiftCodes ?? []).map((sc) => ({
+          value: sc.shiftcode,
+          label: sc.shiftcode,
+          description: sc.description,
+        })),
+      }),
+    [shiftCodes],
+  );
+
   useEffect(() => {
     setShiftType([initialShiftType]);
     setRequestDate(new Date(initialDate));
@@ -49,7 +66,7 @@ export const EditShiftRequest = ({
         requestId,
         requestBody: {
           preferredshifttype: shiftType[0],
-          preferreddate: requestDate?.toISOString().split("T")[0],
+          preferreddate: requestDate ? `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}` : undefined,
         },
       }),
     onSuccess: () => {
@@ -57,8 +74,9 @@ export const EditShiftRequest = ({
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
       onClose();
     },
-    onError: () => {
-      showErrorToast("Failed to update request");
+    onError: (error: unknown) => {
+      const detail = (error as any)?.body?.detail;
+      showErrorToast(detail || "Failed to update request");
     },
   });
 
@@ -70,8 +88,9 @@ export const EditShiftRequest = ({
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
       onClose();
     },
-    onError: () => {
-      showErrorToast("Failed to delete request");
+    onError: (error: unknown) => {
+      const detail = (error as any)?.body?.detail;
+      showErrorToast(detail || "Failed to delete request");
     },
   });
 

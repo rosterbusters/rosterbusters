@@ -8,7 +8,7 @@ from sqlmodel import func, select
 from app.api.deps import CurrentUser, SessionDep
 from app.models.rbac import Nurse, NursePublic
 from app.models.roster import RosterPeriod, RosterPeriodPublic
-from app.models.shifts import ShiftRequest, ShiftRequestCreate, ShiftRequestPublic, ShiftRequestUpdate
+from app.models.shifts import ShiftCode, ShiftCodePublic, WardShiftCode, ShiftRequest, ShiftRequestCreate, ShiftRequestPublic, ShiftRequestUpdate
 from app.rbac import get_rbac_user_by_email
 
 
@@ -16,6 +16,51 @@ def log(msg: str) -> None:
     print(msg, flush=True, file=sys.stderr)
 
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
+
+
+@router.get("/leave-codes", response_model=list[ShiftCodePublic])
+def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
+    """Get all shift codes where isworking is false."""
+    statement = select(ShiftCode).where(ShiftCode.isworking == False)
+    return list(session.exec(statement).all())
+
+@router.get("/shift-codes", response_model=list[ShiftCodePublic])
+def get_all_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
+    """Get all shift codes."""
+    statement = select(ShiftCode)
+    return list(session.exec(statement).all())
+
+@router.get("/shift-codes/working", response_model=list[ShiftCodePublic])
+def get_working_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
+    """Get all shift codes where isworking is true."""
+    statement = select(ShiftCode).where(ShiftCode.isworking == True)
+    return list(session.exec(statement).all())
+
+
+@router.get("/shift-codes/ward/{ward_id}", response_model=list[ShiftCodePublic])
+def get_shift_codes_by_ward(
+    session: SessionDep,
+    current_user: CurrentUser,
+    ward_id: int,
+) -> Any:
+    """
+    Get applicable shift codes for a ward.
+    Falls back to all working shift codes if no mappings are configured for that ward.
+    """
+    mapping_count = session.exec(
+        select(func.count()).where(WardShiftCode.wardid == ward_id)
+    ).one()
+
+    if mapping_count == 0:
+        statement = select(ShiftCode).where(ShiftCode.isworking == True)
+    else:
+        statement = (
+            select(ShiftCode)
+            .join(WardShiftCode, ShiftCode.shiftcode == WardShiftCode.shiftcode)
+            .where(WardShiftCode.wardid == ward_id)
+        )
+
+    return list(session.exec(statement).all())
 
 
 @router.get("/periods", response_model=list[RosterPeriodPublic])
@@ -68,7 +113,28 @@ def create_shift_request(
     ).one()
     if existing_count >= 3:
         raise HTTPException(status_code=400, detail="Maximum of 3 shift requests per period reached")
-    next_request_number = existing_count + 1
+
+    duplicate = session.exec(
+        select(ShiftRequest).where(
+            ShiftRequest.nurseid == rbac_user.nurseid,
+            ShiftRequest.periodid == request_in.periodid,
+            ShiftRequest.preferreddate == request_in.preferreddate,
+            ShiftRequest.preferredshifttype == request_in.preferredshifttype,
+        )
+    ).first()
+    if duplicate:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You already have a {request_in.preferredshifttype} request for this date",
+        )
+
+    used_numbers = set(session.exec(
+        select(ShiftRequest.requestnumber).where(
+            ShiftRequest.nurseid == rbac_user.nurseid,
+            ShiftRequest.periodid == request_in.periodid,
+        )
+    ).all())
+    next_request_number = next(n for n in (1, 2, 3) if n not in used_numbers)
 
     data = request_in.model_dump()
     data["requestnumber"] = next_request_number
