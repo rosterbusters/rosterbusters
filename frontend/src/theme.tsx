@@ -2,12 +2,12 @@ import { createSystem, defaultConfig } from "@chakra-ui/react";
 import { buttonRecipe } from "./theme/button.recipe";
 import { badgeRecipe } from "./theme/badge.recipe";
 import { tableRecipe } from "./theme/table.recipe";
+import "./theme/types"; // Add this import at the top
 
 export const system = createSystem(defaultConfig, {
   preflight: false,
   
   globalCss: {
-    
     html: {
       fontSize: "16px",
       fontFamily: "Poppins, sans-serif",
@@ -30,10 +30,6 @@ export const system = createSystem(defaultConfig, {
     },
   },
   theme: {
-    // breakpoints: {
-    //   mobile: "0px",
-    //   desktop: "640px",
-    // },
     semanticTokens: {
       colors: {
         danger: { value: "#BE123C" },
