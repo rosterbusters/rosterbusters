@@ -5,13 +5,13 @@ import { isLoggedIn } from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/ward-staff")({
   component: WardStaffLayout,
-  beforeLoad: async () => {
-    if (!isLoggedIn()) {
-      throw redirect({
-        to: "/login",
-      })
-    }
-  },
+  // beforeLoad: async () => {
+  //   if (!isLoggedIn()) {
+  //     throw redirect({
+  //       to: "/login",
+  //     })
+  //   }
+  // },
 })
 
 function WardStaffLayout() {
