@@ -399,35 +399,9 @@ export class ShiftRequestsService {
             url: '/api/v1/shift-requests/ward/{ward_id}/nurses',
             path: {
                 ward_id: data.wardId
-            }
-        });
-    }
-
-    public static updateShiftRequest(data: ShiftRequestsUpdateShiftRequestData): CancelablePromise<ShiftRequestsUpdateShiftRequestResponse> {
-        return __request(OpenAPI, {
-            method: 'PATCH',
-            url: '/api/v1/shift-requests/{request_id}',
-            path: {
-                request_id: data.requestId
             },
-            body: data.requestBody,
-            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
-            }
-        });
-    }
-
-    public static deleteShiftRequest(data: ShiftRequestsDeleteShiftRequestData): CancelablePromise<ShiftRequestsDeleteShiftRequestResponse> {
-        return __request(OpenAPI, {
-            method: 'DELETE',
-            url: '/api/v1/shift-requests/{request_id}',
-            path: {
-                request_id: data.requestId
-            },
-            errors: {
-                404: 'Not Found',
-                403: 'Forbidden'
             }
         });
     }
