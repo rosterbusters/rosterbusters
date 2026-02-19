@@ -92,9 +92,9 @@ jobs:
           set -e
           cd ~/rosterbusters
 
-          # Stop all containers including Traefik
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v 2>/dev/null || true
-          docker compose -f docker-compose.traefik.yml down 2>/dev/null || true
+          # Stop all containers including Traefik and any orphans
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
 
           # Create the external network for Traefik (idempotent)
           docker network create traefik-public 2>/dev/null || true
