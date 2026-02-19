@@ -74,7 +74,7 @@ const events = [
 
 export default function RequestCalendar() {
   const [date, setDate] = useState(() =>
-    moment().startOf('week').add(1, 'day').toDate()
+    moment().startOf('isoWeek').toDate()
     );
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);

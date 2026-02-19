@@ -20,7 +20,7 @@ import { AssignableStatus } from "@/components/WardStaff/Requests/AssignableStat
 import RequestCalendar from "@/components/WardStaff/Requests/RequestCalendar";
 import { NewShiftRequest } from "@/components/WardStaff/Requests/NewShiftRequest";
 
-export const Route = createFileRoute("/_wardStaff/request-application")({
+export const Route = createFileRoute("/ward-staff/request-application")({
   component: RouteComponent,
 });
 
@@ -66,7 +66,7 @@ function RouteComponent() {
           </HStack>
           <Button variant={"outline"} justifySelf="end" size="sm" onClick={() => setIsShiftRequestOpen(true)}><Plus/>Add Shift Request</Button>
         </Grid>
-        <Grid templateColumns={{base:'1fr', md:"1fr auto 1fr"}} w="full" gap={{base:2, md:0}}>
+        <Grid templateColumns={{base:'1fr', md:'1fr auto 1fr'}} w='full' gap={{base:2, md:0}}>
           <GridItem />
           <Text color="foreground" fontWeight="light" justifySelf="center">
             Click on a date to create/edit shift request.

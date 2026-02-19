@@ -16,12 +16,12 @@ export const Route = createFileRoute("/nurse-manager")({
 
 function NurseManagerLayout() {
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col min-h-screen">
       {/* Navbar only - NO sidebar for nurseManager routes */}
       <NurseManagerNavbar />
 
       {/* Main content area */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1">
         <Outlet />
       </main>
     </div>

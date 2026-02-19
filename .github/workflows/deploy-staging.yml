@@ -32,7 +32,7 @@ jobs:
 
       - name: Sync code to EC2
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
           set -e
           mkdir -p ~/rosterbusters
           cd ~/rosterbusters
@@ -40,8 +40,10 @@ jobs:
             git init
             git remote add origin https://github.com/rosterbusters/rosterbusters.git
           fi
+          git remote set-url origin https://oauth2:${{ secrets.GH_PAT }}@github.com/rosterbusters/rosterbusters.git
           git fetch origin
           git reset --hard origin/main
+          git remote set-url origin https://github.com/rosterbusters/rosterbusters.git
           EOF
 
       - name: Create .env file on EC2
@@ -89,8 +91,6 @@ jobs:
           docker compose down
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose build
           docker compose up -d
-          EOF
-      - name: Run Database Seeding Script
-        run: |
           docker compose exec backend python app/seed_data.py
-          
+          EOF
+      

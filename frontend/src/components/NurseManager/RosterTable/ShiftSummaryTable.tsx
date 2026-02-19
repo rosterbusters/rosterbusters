@@ -46,14 +46,14 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
 }
 
 // Shift counts structure for a day
-interface DayShiftCounts {
+export interface DayShiftCounts {
   RN: { A: number; P: number; N: number };
   EN: { A: number; P: number; N: number };
   HCA: { A: number; P: number; N: number };
 }
 
 // Calculate shift counts per day from roster data
-function calculateShiftCounts(
+export function calculateShiftCounts(
   data: RosterRow[],
   dayColumns: DayColumn[],
 ): Map<string, DayShiftCounts> {
@@ -89,7 +89,7 @@ function calculateShiftCounts(
 }
 
 // Get cell styling based on count vs minimum requirement
-function getCellStyle(
+export function getCellStyle(
   count: number,
   minimum: number,
   isRosterGenerated: boolean,
@@ -147,8 +147,6 @@ export function ShiftSummaryTable({
     <Box
       position="sticky"
       bottom={0}
-      left={0}
-      right={0}
       bg="white"
       border="2px solid"
       borderColor="#7EC8D9"

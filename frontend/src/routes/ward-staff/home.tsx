@@ -4,7 +4,7 @@ import StaffCalendar from "@/components/WardStaff/HomePage/StaffCalendar";
 import NotificationBanner from "@/components/WardStaff/HomePage/NotificationBanner";
 import StatusBanner from "@/components/WardStaff/HomePage/StatusBanner";
 
-export const Route = createFileRoute("/_wardStaff/home")({
+export const Route = createFileRoute("/ward-staff/home")({
   component: HomePage,
 });
 
