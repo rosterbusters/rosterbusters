@@ -92,11 +92,11 @@ jobs:
           set -e
           cd ~/rosterbusters
 
-          # Stop existing app containers (but not Traefik)
+          # Stop all containers including Traefik
           docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v 2>/dev/null || true
-          docker system prune -af --volumes
+          docker compose -f docker-compose.traefik.yml down 2>/dev/null || true
 
-          # Create the external network for Traefik after prune (idempotent)
+          # Create the external network for Traefik (idempotent)
           docker network create traefik-public 2>/dev/null || true
 
           # Start Traefik reverse proxy (handles SSL via Let's Encrypt)
