@@ -652,3 +652,22 @@ export class WardsService {
         });
     }
 }
+
+export class HomeService {
+    /**
+     * Get Upcoming Shift
+     * Get the next upcoming shift for the authenticated user.
+     * @returns UpcomingShiftResponse Successful Response
+     * @throws ApiError
+     */
+    public static getUpcomingShift(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/home/upcoming-shift',
+            errors: {
+                404: 'Not Found',
+                422: 'Validation Error'
+            }
+        });
+    }
+}

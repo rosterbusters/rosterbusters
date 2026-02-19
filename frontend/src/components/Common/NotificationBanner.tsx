@@ -1,20 +1,50 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { Stack, Table, Badge } from "@chakra-ui/react";
-import {
-  notificationTypeLabels,
-  getNotificationRoute,
-  type NotificationItem,
-} from "@/types/notifications";
+import type { NotificationResponse } from "@/client/NotificationsService";
+
+// Badge variant mapping based on notification types
+const getBadgeVariant = (notificationType: string): string => {
+  const variantMap: Record<string, string> = {
+    "Roster": "roster",
+    "RosterRelease": "roster",
+    "ShiftUpdate": "roster",
+    "ShiftRequest": "shiftRequest",
+    "LeaveRequest": "leaveRequest",
+    "LeaveApproval": "leaveRequest",
+    "LeaveReminder": "leaveRequest",
+    "System": "subtle"
+  };
+  
+  return variantMap[notificationType] || "subtle";
+};
+
+// Label mapping for notification types
+const notificationTypeLabels: Record<string, string> = {
+  "Roster": "Roster",
+  "RosterRelease": "Roster",
+  "ShiftUpdate": "Roster",
+  "ShiftRequest": "Shift Request",
+  "LeaveRequest": "Leave Request",
+  "LeaveApproval": "Leave Approval",
+  "LeaveReminder": "Leave Reminder",
+  "System": "System"
+};
+
+// Format date as D/M/YYYY
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const day = date.getDate();
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
 
 interface NotificationBannerProps {
-  items: NotificationItem[];
+  items: NotificationResponse[];
 }
 
-export default function NotificationBanner({
-  items,
-}: NotificationBannerProps) {
-  const navigate = useNavigate();
+export default function NotificationBanner({ items }: NotificationBannerProps) {
   return (
     <Stack width="full" gap="5">
       <Table.ScrollArea maxHeight="216px">
@@ -30,23 +60,18 @@ export default function NotificationBanner({
             {items.map((item) => (
               <Table.Row lineHeight="36px" key={item.notificationid}>
                 <Table.Cell lineHeight="36px">
-                  <Badge width="fit-content" variant={item.notificationtype as any}>
-                    {notificationTypeLabels[item.notificationtype]}
+                  <Badge 
+                    width="fit-content" 
+                    variant={getBadgeVariant(item.notificationtype) as any}
+                  >
+                    {notificationTypeLabels[item.notificationtype] || item.notificationtype}
                   </Badge>
                 </Table.Cell>
                 <Table.Cell color="foreground">
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    {item.description}
-                    <button
-                      onClick={() => navigate({ to: getNotificationRoute(item.notificationtype) })}
-                      aria-label={`Navigate to ${notificationTypeLabels[item.notificationtype]}`}
-                      style={{ display: "inline-flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                    >
-                    </button>
-                  </span>
+                  {item.subject}
                 </Table.Cell>
                 <Table.Cell color="foreground" fontWeight="semibold">
-                  {item.createdAt}
+                  {formatDate(item.createdat)}
                 </Table.Cell>
               </Table.Row>
             ))}

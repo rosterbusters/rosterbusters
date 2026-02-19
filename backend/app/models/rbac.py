@@ -40,6 +40,16 @@ class RBACUser(SQLModel, table=True):
     )
 
 
+# Public response model for RBACUser (for API responses)
+class RBACUserPublic(SQLModel):
+    userid: int
+    username: str
+    email: str
+    nurseid: Optional[int] = None
+    managerid: Optional[int] = None
+    isactive: bool
+
+
 class Nurse(SQLModel, table=True):
     __tablename__ = "nurse"
     nurseid: int | None = Field(default=None, primary_key=True)
