@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
-from app.models import Ward, ShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
+from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
 from app.models.web import User
 
 
@@ -1175,6 +1175,44 @@ def seed_web_users(session: Session) -> int:
     return count
 
 
+def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
+    """Seed ward-specific shift code mappings.
+
+    All wards are mapped to: D, N, A, P plus all leave codes (isworking=False).
+    """
+    logger.info("Seeding ward shift code mappings...")
+    DEFAULT_BASE_WORKING = {"A", "P", "N"}
+    SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
+    SPECIAL_WARD_IDS = {9, 10} #CH and TCF
+    leave_codes = {
+        sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
+    }
+
+    for ward in wards:
+        if ward.wardid in SPECIAL_WARD_IDS:
+            base_working=SPECIAL_BASE_WORKING
+        else:
+            base_working=DEFAULT_BASE_WORKING
+        
+        ward_codes=base_working | leave_codes
+        for shiftcode in sorted(ward_codes):
+            existing = session.exec(
+                select(WardShiftCode).where(
+                    WardShiftCode.wardid == ward.wardid,
+                    WardShiftCode.shiftcode == shiftcode,
+                )
+            ).first()
+
+            if existing:
+                logger.info(f"  Mapping {ward.wardname} -> {shiftcode} already exists, skipping")
+            else:
+                mapping = WardShiftCode(wardid=ward.wardid, shiftcode=shiftcode)
+                session.add(mapping)
+                logger.info(f"  Mapped {ward.wardname} -> {shiftcode}")
+
+    session.commit()
+
+
 def seed_all() -> None:
     """Run all seed functions."""
     logger.info("=" * 60)
@@ -1186,6 +1224,7 @@ def seed_all() -> None:
         roles = seed_roles(session)
         seed_shift_codes(session)
         wards = seed_wards(session)
+        seed_ward_shiftcodes(session, wards)
         managers = seed_managers(session, wards)
         nurses = seed_nurses(session, wards)
 

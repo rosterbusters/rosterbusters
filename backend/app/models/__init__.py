@@ -51,6 +51,7 @@ from app.models.roster import (
 # Shift models
 from app.models.shifts import (
     ShiftCode,
+    WardShiftCode,
     ShiftRequest,
     ShiftRequestCreate,
     ShiftRequestPublic,
@@ -94,6 +95,7 @@ __all__ = [
     "Ward",
     # Shifts
     "ShiftCode",
+    "WardShiftCode",
     "ShiftRequest",
     "ShiftRequestCreate",
     "ShiftRequestPublic",

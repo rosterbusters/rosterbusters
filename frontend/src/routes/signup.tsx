@@ -1,4 +1,4 @@
-import { Container, Flex, Image, Input, Text } from "@chakra-ui/react"
+import { Container, Flex, Image, Input, Text, Button } from "@chakra-ui/react"
 import {
   createFileRoute,
   Link as RouterLink,
@@ -8,7 +8,6 @@ import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock, FiUser } from "react-icons/fi"
 
 import type { UserRegister } from "@/client"
-import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { PasswordInput } from "@/components/ui/password-input"
