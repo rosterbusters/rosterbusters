@@ -10,6 +10,7 @@ import type {
   WardStatisticsResponse,
   ShiftAssignment,
 } from "./types";
+import { SHIFT_CODE_MAP } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -37,12 +38,12 @@ export function useWards() {
   return useQuery<Ward[]>({
     queryKey: ["roster", "wards"],
     queryFn: async () => {
-      const data = await fetchWithAuth("/api/v1/roster/wards");
+      const data = await fetchWithAuth("/api/v1/wards/");
       return data.map((w: Record<string, unknown>) => ({
-        wardId: w.ward_id,
-        wardName: w.ward_name,
-        wardType: w.ward_type,
-        campus: w.campus,
+        wardId: w.wardid,
+        wardName: w.wardname,
+        wardType: w.wardtype ?? "",
+        campus: w.campus ?? "",
       }));
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -103,6 +104,36 @@ export function useWardRoster(wardId: number | null, periodId: number | null) {
   });
 }
 
+// Hook to fetch shift codes with duration hours from the API
+export function useShiftCodes() {
+  return useQuery<Map<string, number>>({
+    queryKey: ["shiftCodes"],
+    queryFn: async () => {
+      const data: Array<{ shiftcode: string; shiftdurationhours: number | null }> =
+        await fetchWithAuth("/api/v1/shift-requests/shift-codes");
+      const map = new Map<string, number>();
+      data.forEach((sc) => {
+        if (sc.shiftdurationhours != null) {
+          map.set(sc.shiftcode, sc.shiftdurationhours);
+        }
+      });
+      return map;
+    },
+    staleTime: 30 * 60 * 1000, // 30 minutes
+  });
+}
+
+// Get duration hours for a shift code, falling back to the static SHIFT_CODE_MAP
+export function getShiftDurationHours(
+  shiftCode: string,
+  apiDurationMap?: Map<string, number>,
+): number {
+  if (apiDurationMap?.has(shiftCode)) {
+    return apiDurationMap.get(shiftCode)!;
+  }
+  return SHIFT_CODE_MAP[shiftCode as ShiftCode]?.durationHours ?? 0;
+}
+
 // Hook to update a roster entry
 export function useUpdateRoster() {
   const queryClient = useQueryClient();
@@ -144,16 +175,17 @@ export function useUpdateRoster() {
 // Transform API data to grid format
 export function transformRosterData(
   nurses: WardStatisticsResponse["nurses"],
-  rosterEntries: WardRosterResponse["roster_entries"]
+  rosterEntries: WardRosterResponse["roster_entries"],
+  shiftDurationMap?: Map<string, number>,
 ): RosterRow[] {
   // Create a map of nurse roster entries
   const rosterMap = new Map<number, Map<string, ShiftAssignment>>();
-  
+
   for (const entry of rosterEntries) {
     if (!rosterMap.has(entry.nurse_id)) {
       rosterMap.set(entry.nurse_id, new Map());
     }
-    
+
     const dateKey = moment(entry.shift_date).format("YYYY-MM-DD");
     rosterMap.get(entry.nurse_id)!.set(dateKey, {
       rosterId: entry.roster_id,
@@ -163,21 +195,19 @@ export function transformRosterData(
       status: entry.status as ShiftAssignment["status"],
     });
   }
-  
+
   // Transform nurses to roster rows
   return nurses.map((nurse) => {
     const nurseRoster = rosterMap.get(nurse.nurseId) || new Map();
-    
-    // Calculate hours (simplified - in production this would be more accurate)
+
+    // Calculate hours using API shift durations, falling back to static map
     let workedHours = 0;
     nurseRoster.forEach((shift) => {
-      if (["D", "P", "N"].includes(shift.shiftCode)) workedHours += 8;
-      else if (shift.shiftCode === "A") workedHours += 6;
-      else if (["N-12"].includes(shift.shiftCode)) workedHours += 12;
+      workedHours += getShiftDurationHours(shift.shiftCode, shiftDurationMap);
     });
-    
-    const contractedHours = nurse.employmentType === "FullTime" ? 42 : 21;
-    
+
+    const contractedHours = nurse.employmentType === "FullTime" ? 44 : 22;
+
     return {
       nurseId: nurse.nurseId,
       name: nurse.name,
@@ -277,12 +307,26 @@ export function useGenerateAlgorithmRoster() {
         }
       );
 
-      // 2. Transform the backend format into the RosterRow format the Grid expects
+      // 2. Fetch shift codes for accurate duration calculation
+      let shiftDurationMap: Map<string, number> = new Map();
+      try {
+        const shiftCodes: Array<{ shiftcode: string; shiftdurationhours: number | null }> =
+          await fetchWithAuth("/api/v1/shift-requests/shift-codes");
+        shiftCodes.forEach((sc) => {
+          if (sc.shiftdurationhours != null) {
+            shiftDurationMap.set(sc.shiftcode, sc.shiftdurationhours);
+          }
+        });
+      } catch {
+        // Fall back to static SHIFT_CODE_MAP via getShiftDurationHours
+      }
+
+      // 3. Transform the backend format into the RosterRow format the Grid expects
       // Backend: n.schedule = ["AM", "OFF", ...]
       // Frontend: n.shifts = { "2026-02-16": { ... } }
       const rosterData: RosterRow[] = response.roster.nurses.map((nurse: any) => {
         const shiftsObject: Record<string, any> = {};
-        
+
         nurse.schedule.forEach((shiftCode: string, index: number) => {
           const dateKey = moment(startDate).add(index, "days").format("YYYY-MM-DD");
           shiftsObject[dateKey] = {
@@ -293,18 +337,25 @@ export function useGenerateAlgorithmRoster() {
           };
         });
 
+        // Calculate worked hours from the actual schedule using API durations
+        const workedHours = nurse.schedule.reduce(
+          (sum: number, shiftCode: string) =>
+            sum + getShiftDurationHours(shiftCode, shiftDurationMap),
+          0,
+        );
+        const contractedHours = 44;
+
         return {
           nurseId: nurse.id,
           name: nurse.name,
           designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
-          // Calculate worked hours so the UI doesn't error on 'worked'
-          hours: { 
-            worked: (nurse.stats?.total_shifts || 0) * 8, 
-            contracted: 42 
+          hours: {
+            worked: workedHours,
+            contracted: contractedHours,
           },
           shifts: shiftsObject,
-          hasOvertime: false,
-          hasWarning: false,
+          hasOvertime: workedHours > contractedHours,
+          hasWarning: workedHours > contractedHours * 1.2,
         };
       });
 

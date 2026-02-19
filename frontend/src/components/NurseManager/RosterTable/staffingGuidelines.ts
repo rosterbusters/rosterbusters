@@ -32,31 +32,21 @@ export const MOCK_STAFFING_GUIDELINES: DailyStaffingGuideline = {
  * Add more designation mappings as needed.
  */
 export function mapDesignationToRole(designation: string): 'RN' | 'EN' | 'HCA' | null {
-  const normalizedDesignation = designation.toLowerCase();
-  
-  // Registered Nurse mappings
-  if (
-    normalizedDesignation.includes('registered nurse') ||
-    normalizedDesignation.includes('staff nurse')
-  ) {
-    return 'RN';
-  }
-  
-  // Enrolled Nurse mappings
-  if (normalizedDesignation.includes('enrolled nurse')) {
-    return 'EN';
-  }
-  
-  // Healthcare Assistant / Nursing Aide mappings
-  if (
-    normalizedDesignation.includes('healthcare assistant') ||
-    normalizedDesignation.includes('nursing aide') ||
-    normalizedDesignation.includes('hca')
-  ) {
-    return 'HCA';
-  }
-  
-  // Default - unknown designation
+  const d = designation.toLowerCase().trim();
+
+  // Short codes (used by algorithm-generated data and nurse designation field)
+  if (d === 'rn') return 'RN';
+  if (d === 'en') return 'EN';
+  if (d === 'na') return 'EN';  // Nursing Aide counted in EN/NA bucket
+  if (d === 'hca') return 'HCA';
+  if (d === 'ssn') return 'RN'; // Senior Staff Nurse → RN equivalent
+
+  // Full designation strings
+  if (d.includes('registered nurse') || d.includes('staff nurse')) return 'RN';
+  if (d.includes('enrolled nurse')) return 'EN';
+  if (d.includes('nursing aide')) return 'EN';
+  if (d.includes('healthcare assistant') || d.includes('hca')) return 'HCA';
+
   return null;
 }
 

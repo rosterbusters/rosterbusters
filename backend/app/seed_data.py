@@ -212,9 +212,9 @@ WARDS_DATA = [
     # SACH Bedok wards
     {
         "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
-        "am_total": 5, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 2, "am_hca_min": 1, "am_hca_max": 1,
-        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 2, "pm_hca_min": 1, "pm_hca_max": 1,
-        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 2, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 0,
+        "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.

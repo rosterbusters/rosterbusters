@@ -78,12 +78,18 @@ export const NewShiftRequest = ({
   });
   
   useEffect(() => {
-    setRequestDate(selectedDate ?? undefined);
-  }, [selectedDate]);
+    if (isOpen) {
+      setRequestDate(selectedDate ?? undefined);
+      setShiftType([]);
+    }
+  }, [isOpen]);
 
   const handleSubmit = () => {
     const activePeriod = periods?.find((p) => p.status === "RequestOpen");
-    if (!activePeriod) return;
+    if (!activePeriod) {
+      showErrorToast("There is no open request period available.");
+      return;
+    }
     if (shiftType.length === 0) {
       showErrorToast("Please select a shift type.");
       return;

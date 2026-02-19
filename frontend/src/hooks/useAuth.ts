@@ -52,10 +52,15 @@ const useAuth = () => {
 
   const loginMutation = useMutation({
     mutationFn: login,
-    onSuccess: () => {
-      // Refetch current user after successful login
-      queryClient.invalidateQueries({ queryKey: ["currentUser"] })
-      navigate({ to: "/" })
+    onSuccess: async () => {
+      // Fetch current user to determine role-based redirect
+      const currentUser = await UsersService.readUserMe()
+      queryClient.setQueryData(["currentUser"], currentUser)
+      if (currentUser.managerid) {
+        navigate({ to: "/nurse-manager/home" })
+      } else {
+        navigate({ to: "/ward-staff/home" })
+      }
     },
     onError: (err: ApiError) => {
       handleError(err)

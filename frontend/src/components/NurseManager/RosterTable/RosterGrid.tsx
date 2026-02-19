@@ -290,6 +290,7 @@ export function RosterGrid({
                       count,
                       guidelines[role][shiftType].minimum,
                       isRosterGenerated,
+                      guidelines[role][shiftType].maximum,
                     );
 
                     return (
@@ -561,8 +562,8 @@ export function RosterGrid({
                     content={
                       <Stack gap={1}>
                         {[
-                          { color: "alert", text: "Under 42 hours" },
-                          { color: "danger", text: "Above 44 hours" },
+                          { color: "alert", text: `Under ${viewMode === "week" ? 42 : 84} hours` },
+                          { color: "danger", text: `Above ${viewMode === "week" ? 44 : 88} hours` },
                         ].map((item) => (
                           <HStack key={item.text} gap={2}>
                             <Box borderRadius="full" w={2} h={2} bg={item.color} flexShrink={0} />

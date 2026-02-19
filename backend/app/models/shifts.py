@@ -18,6 +18,8 @@ class ShiftCode(SQLModel, table=True):
 class ShiftCodePublic(SQLModel):
     shiftcode: str
     description: str
+    isworking: bool
+    shiftdurationhours: Optional[float] = None
 
 class WardShiftCode(SQLModel, table=True):
     __tablename__ = "ward_shiftcode"
