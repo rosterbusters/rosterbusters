@@ -7,7 +7,6 @@ export const system = createSystem(defaultConfig, {
   preflight: false,
   
   globalCss: {
-    
     html: {
       fontSize: "16px",
       fontFamily: "Poppins, sans-serif",
@@ -30,10 +29,6 @@ export const system = createSystem(defaultConfig, {
     },
   },
   theme: {
-    // breakpoints: {
-    //   mobile: "0px",
-    //   desktop: "640px",
-    // },
     semanticTokens: {
       colors: {
         danger: { value: "#BE123C" },

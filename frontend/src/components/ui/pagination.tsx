@@ -43,9 +43,9 @@ export interface PaginationRootProps
 }
 
 const variantMap: Record<PaginationVariant, ButtonVariantMap> = {
-  outline: { default: "ghost", ellipsis: "plain", current: "outline" },
+  outline: { default: "ghost", ellipsis: "ghost", current: "outline" },
   solid: { default: "outline", ellipsis: "outline", current: "solid" },
-  subtle: { default: "ghost", ellipsis: "plain", current: "subtle" },
+  subtle: { default: "ghost", ellipsis: "ghost", current: "outline" },
 }
 
 export const PaginationRoot = React.forwardRef<
@@ -92,7 +92,7 @@ export const PaginationItem = React.forwardRef<
 
   if (getHref) {
     return (
-      <LinkButton href={getHref(props.value)} variant={variant} size={size}>
+      <LinkButton href={getHref(props.value)} variant={variant as any} size={size}>
         {props.value}
       </LinkButton>
     )
@@ -118,7 +118,7 @@ export const PaginationPrevTrigger = React.forwardRef<
     return (
       <LinkButton
         href={previousPage != null ? getHref(previousPage) : undefined}
-        variant={variantMap.default}
+        variant={variantMap.default as any}
         size={size}
       >
         <HiChevronLeft />
@@ -146,7 +146,7 @@ export const PaginationNextTrigger = React.forwardRef<
     return (
       <LinkButton
         href={nextPage != null ? getHref(nextPage) : undefined}
-        variant={variantMap.default}
+        variant={variantMap.default as any}
         size={size}
       >
         <HiChevronRight />

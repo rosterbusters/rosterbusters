@@ -1,6 +1,6 @@
 import { Navigate,Calendar, momentLocalizer, View,ToolbarProps } from 'react-big-calendar'
 import moment from 'moment'
-import { useState, useCallback, useMemo, ComponentType } from 'react'
+import { useState, useCallback, useMemo, useEffect, ComponentType } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import CustomWeekView from './CustomRequestView'
 import { Box,Grid,Span } from '@chakra-ui/react'
@@ -49,21 +49,30 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
+  const { data: periods } = useQuery({
+    queryKey: ['roster-periods'],
+    queryFn: () => ShiftRequestsService.getRosterPeriods(),
+    enabled: !!wardId,
+  });
+
+  const activePeriod = useMemo(
+    () => periods?.find((p) => p.status === 'RequestOpen'),
+    [periods],
+  );
+
   const [date, setDate] = useState(() =>
     moment().startOf('isoWeek').toDate()
     );
 
+  useEffect(() => {
+    if (activePeriod?.startdate) {
+      setDate(moment(activePeriod.startdate).startOf('isoWeek').toDate());
+    }
+  }, [activePeriod?.startdate]);
+
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
-  const targetDate = moment(date).format('YYYY-MM-DD');
-
-  const { data: rosterPeriod } = useQuery({
-    queryKey: ['roster-period', targetDate],
-    queryFn: () => ShiftRequestsService.getRosterPeriod({ targetDate }),
-    enabled: !!wardId,
-  });
-
-  const periodId = rosterPeriod?.periodid;
+  const periodId = activePeriod?.periodid;
 
   const { data: shiftRequests } = useQuery({
     queryKey: ['shift-requests', 'ward', wardId, periodId],

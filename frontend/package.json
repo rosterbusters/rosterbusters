@@ -8,10 +8,11 @@
     "watch-routes": "npx tsr watch",
     "dev": "concurrently \"npm run watch-routes\" \"vite\"",
     "dev:server": "vite --host 0.0.0.0 --port 5173",
-    "build": "tsc -p tsconfig.build.json && vite build",
+    "build": "npm run typegen && tsc -p tsconfig.build.json && vite build",
     "lint": "biome check --write --unsafe --no-errors-on-unmatched --files-ignore-unknown=true ./",
     "preview": "vite preview",
-    "generate-client": "openapi-ts"
+    "generate-client": "openapi-ts",
+    "typegen": "npx @chakra-ui/cli typegen ./src/theme.tsx"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.27.0",
