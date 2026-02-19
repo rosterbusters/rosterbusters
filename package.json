@@ -6,6 +6,8 @@
   "scripts": {
     "generate-routes": "npx tsr generate",
     "watch-routes": "npx tsr watch",
+    "postinstall": "npx chakra typegen src/theme.ts",
+    "prepare": "npx chakra typegen src/theme.ts",
     "dev": "concurrently \"npm run watch-routes\" \"vite\"",
     "dev:server": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc -p tsconfig.build.json && vite build",
