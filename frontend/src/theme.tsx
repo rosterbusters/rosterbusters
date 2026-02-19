@@ -2,7 +2,6 @@ import { createSystem, defaultConfig } from "@chakra-ui/react";
 import { buttonRecipe } from "./theme/button.recipe";
 import { badgeRecipe } from "./theme/badge.recipe";
 import { tableRecipe } from "./theme/table.recipe";
-// import "./theme/types.d.ts"; // Add this import at the top
 
 export const system = createSystem(defaultConfig, {
   preflight: false,
