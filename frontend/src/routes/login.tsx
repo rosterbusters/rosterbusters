@@ -158,7 +158,7 @@ function Login() {
                       placeholder="Email Address"
                       type="email"
                       size="md"
-                      variant="ghost"
+                      variant="subtle"
                       bg="gray.50"
                     />
                   </InputGroup>
@@ -166,7 +166,7 @@ function Login() {
 
                 {/* Password */}
                 <Field invalid={!!errors.password} errorText={errors.password?.message}>
-                  <InputGroup 
+                  <InputGroup
                     startElement={<FiLock color="gray" />}
                     endElement={
                       <IconButton
@@ -186,7 +186,7 @@ function Login() {
                       placeholder="Password"
                       type={showPassword ? "text" : "password"}
                       size="md"
-                      variant="ghost"
+                      variant="subtle"
                       bg="gray.50"
                     />
                   </InputGroup>
