@@ -5,13 +5,13 @@ import { isLoggedIn } from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/nurse-manager")({
   component: NurseManagerLayout,
-  // beforeLoad: async () => {
-  //   if (!isLoggedIn()) {
-  //     throw redirect({
-  //       to: "/login",
-  //     })
-  //   }
-  // },
+  beforeLoad: async () => {
+    if (!isLoggedIn()) {
+      throw redirect({
+        to: "/login",
+      })
+    }
+  },
 })
 
 function NurseManagerLayout() {
