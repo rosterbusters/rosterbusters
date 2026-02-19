@@ -22,7 +22,7 @@ from app.models.web import User
 # ============================================================================
 # CONFIGURATION - Adjust these to control seed data volume
 # ============================================================================
-NUM_NURSE_USERS = 5  # How many nurses get login accounts (for testing)
+NUM_NURSE_USERS = 70  # All nurses get login accounts (7 per ward × 10 wards)
 SEED = 42  # For reproducible fake data (set to None for random each time)
 
 # ============================================================================
@@ -623,12 +623,13 @@ def seed_nurse_users(
         session.commit()
         session.refresh(user)
 
-        # Assign Nurse role
+        # Assign Nurse role with ward assignment
         nurse_role = roles.get("Nurse")
         if nurse_role:
             user_role = UserRole(
                 userid=user.userid,
                 roleid=nurse_role.roleid,
+                wardid=nurse.wardid,
                 isactive=True,
                 assignedat=datetime.now(timezone.utc),
             )
@@ -823,20 +824,19 @@ def seed_shift_requests(
         None,  # No reason given
     ]
 
-    # Density per period: current (index 0) is densest, next (index 1) is lighter
-    period_densities = [0.30, 0.10]
-
+    # Current period: ALL nurses get at least 1 request; next period: ~10%
     for period_idx, period in enumerate(periods):
-        density = period_densities[period_idx] if period_idx < len(period_densities) else 0.10
-
         # Build list of all dates in this period for round-robin distribution
         days_in_period = (period.enddate - period.startdate).days
         period_dates = [period.startdate + timedelta(days=d) for d in range(days_in_period + 1)]
         day_cursor = 0
 
-        # Select nurses based on density
-        num_nurses_with_requests = max(1, int(len(nurses) * density))
-        selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
+        # Current period: every nurse; next period: 10% sample
+        if period_idx == 0:
+            selected_nurses = list(nurses)
+        else:
+            num_nurses_with_requests = max(1, int(len(nurses) * 0.10))
+            selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
 
         period_count = 0
         for nurse in selected_nurses:
@@ -859,6 +859,17 @@ def seed_shift_requests(
                 # Round-robin date assignment for even spread across days
                 preferred_date = period_dates[day_cursor % len(period_dates)]
                 day_cursor += 1
+
+                # Check if this specific request already exists
+                existing_req = session.exec(
+                    select(ShiftRequest).where(
+                        ShiftRequest.nurseid == nurse.nurseid,
+                        ShiftRequest.periodid == period.periodid,
+                        ShiftRequest.requestnumber == request_num,
+                    )
+                ).first()
+                if existing_req:
+                    continue
 
                 status = fake.random_element(statuses)
 
@@ -900,7 +911,7 @@ def seed_shift_requests(
 
             session.commit()
 
-        logger.info(f"  Period {period.periodid}: created {period_count} shift requests for {len(selected_nurses)} nurses ({int(density*100)}% density)")
+        logger.info(f"  Period {period.periodid}: created {period_count} shift requests for {len(selected_nurses)} nurses")
         count += period_count
 
     logger.info(f"  Total: {count} shift requests across {len(periods)} periods")

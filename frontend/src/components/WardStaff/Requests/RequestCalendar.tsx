@@ -1,9 +1,12 @@
 import { Navigate,Calendar, momentLocalizer, View,ToolbarProps } from 'react-big-calendar'
 import moment from 'moment'
 import { useState, useCallback, useMemo, ComponentType } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import CustomWeekView from './CustomRequestView'
 import { Box,Grid,Span } from '@chakra-ui/react'
 import cx from "clsx"
+import { ShiftRequestsService } from '@/client'
+import useAuth from '@/hooks/useAuth'
 
 const localizer = momentLocalizer(moment);
 
@@ -37,52 +40,71 @@ export const CustomToolbar: ComponentType<ToolbarProps> = ({
     </Grid>
   )
 }
-const events = [
-  {
-    start: moment().hour(10).minute(0).toDate(),
-    end: moment().hour(11).minute(0).toDate(),
-    title: "A",
-  },
-  {
-    start: moment().hour(14).minute(0).toDate(),
-    end: moment().hour(15).minute(30).toDate(),
-    title: "N",
-  },
-  {
-    start: moment().hour(14).minute(0).toDate(),
-    end: moment().hour(15).minute(30).toDate(),
-    title: "P",
-  },
-  {
-    start: moment().hour(14).minute(0).toDate(),
-    end: moment().hour(15).minute(30).toDate(),
-    title: "AL",
-  },
-  {
-    start: moment().subtract(1,"day").hour(14).minute(0).toDate(),
-    end: moment().subtract(1,"day").hour(15).minute(30).toDate(),
-    title: "D",
-  },
-  {
-    start: moment().add(2,"day").hour(14).minute(0).toDate(),
-    end: moment().add(2,"day").hour(15).minute(30).toDate(),
-    title: "DO",
-  },
-  
-];
 
+interface RequestCalendarProps {
+  wardId: number | null | undefined;
+}
 
-export default function RequestCalendar() {
+export default function RequestCalendar({ wardId }: RequestCalendarProps) {
+  const { user } = useAuth();
+  const currentNurseId = user?.nurseid;
+
   const [date, setDate] = useState(() =>
     moment().startOf('isoWeek').toDate()
     );
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
+  const targetDate = moment(date).format('YYYY-MM-DD');
+
+  const { data: rosterPeriod } = useQuery({
+    queryKey: ['roster-period', targetDate],
+    queryFn: () => ShiftRequestsService.getRosterPeriod({ targetDate }),
+    enabled: !!wardId,
+  });
+
+  const periodId = rosterPeriod?.periodid;
+
+  const { data: shiftRequests } = useQuery({
+    queryKey: ['shift-requests', 'ward', wardId, periodId],
+    queryFn: () => ShiftRequestsService.getShiftRequestsByWard({
+      wardId: wardId!,
+      periodId: periodId,
+    }),
+    enabled: !!wardId && !!periodId,
+  });
+
+  const { data: wardNurses } = useQuery({
+    queryKey: ['ward-nurses', wardId],
+    queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
+    enabled: !!wardId,
+  });
+
+  const nurseMap = useMemo(() => {
+    if (!wardNurses) return new Map<number, string>();
+    return new Map(wardNurses.map((n) => [n.nurseid, n.name]));
+  }, [wardNurses]);
+
+  const events: Event[] = useMemo(() => {
+    if (!shiftRequests) return [];
+    return shiftRequests.map((sr) => ({
+      title: sr.preferredshifttype,
+      start: new Date(sr.preferreddate),
+      end: new Date(sr.preferreddate),
+      resource: {
+        nurseName: nurseMap.get(sr.nurseid) ?? `Nurse ${sr.nurseid}`,
+        isOwn: sr.nurseid === currentNurseId,
+        requestId: sr.requestid,
+        preferredDate: sr.preferreddate,
+        shiftType: sr.preferredshifttype,
+      },
+    }));
+  }, [shiftRequests, nurseMap, currentNurseId]);
+
   const { views, defaultView } = useMemo(() => {
   const customViews = {
     fortnight: CustomWeekView,
-    week: false,                
+    week: false,
     day: false,
   };
 
@@ -101,7 +123,7 @@ export default function RequestCalendar() {
         endAccessor="end"
         events={events}
         components={{
-          toolbar: CustomToolbar 
+          toolbar: CustomToolbar
         }}
         view={defaultView}
         views={views}

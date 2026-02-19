@@ -343,6 +343,22 @@ export const ShiftRequestPublicSchema = {
     title: 'ShiftRequestPublic'
 } as const;
 
+export const NursePublicSchema = {
+    properties: {
+        nurseid: {
+            type: 'integer',
+            title: 'Nurseid'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        }
+    },
+    type: 'object',
+    required: ['nurseid', 'name'],
+    title: 'NursePublic'
+} as const;
+
 export const UpdatePasswordSchema = {
     properties: {
         current_password: {

@@ -42,7 +42,6 @@ export default function NotificationBanner({
                       aria-label={`Navigate to ${notificationTypeLabels[item.notificationtype]}`}
                       style={{ display: "inline-flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0 }}
                     >
-                      <ArrowUpRight size={16} color="#4B8798" />
                     </button>
                   </span>
                 </Table.Cell>

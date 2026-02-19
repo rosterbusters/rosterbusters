@@ -94,6 +94,8 @@ export type UserPublic = {
     is_superuser?: boolean;
     full_name?: (string | null);
     id: string;
+    nurseid?: (number | null);
+    wardid?: (number | null);
 };
 
 export type UserRegister = {
@@ -203,18 +205,6 @@ export type ShiftRequestsCreateShiftRequestData = {
 
 export type ShiftRequestsCreateShiftRequestResponse = (ShiftRequestPublic);
 
-export type ShiftRequestsGetShiftRequestsByNurseData = {
-    nurseId: number;
-};
-
-export type ShiftRequestsGetShiftRequestsByNurseResponse = (Array<ShiftRequestPublic>);
-
-export type ShiftRequestsGetShiftRequestsByWardData = {
-    wardId: number;
-};
-
-export type ShiftRequestsGetShiftRequestsByWardResponse = (Array<ShiftRequestPublic>);
-
 export type UsersReadUsersData = {
     limit?: number;
     skip?: number;
@@ -278,3 +268,37 @@ export type UtilsTestEmailResponse = (Message);
 export type UtilsHealthCheckResponse = (boolean);
 
 export type WardsGetWardsResponse = (Array<Ward>);
+
+export type ShiftRequestsGetShiftRequestsByWardData = {
+    wardId: number;
+    periodId?: number;
+};
+
+export type ShiftRequestsGetShiftRequestsByWardResponse = (Array<ShiftRequestPublic>);
+
+export type NursePublic = {
+    nurseid: number;
+    name: string;
+};
+
+export type ShiftRequestsGetWardNursesData = {
+    wardId: number;
+};
+
+export type ShiftRequestsGetWardNursesResponse = Array<NursePublic>;
+
+export type ShiftRequestUpdate = {
+    preferredshifttype?: (string | null);
+    preferreddate?: (string | null);
+};
+
+export type ShiftRequestsUpdateShiftRequestData = {
+    requestId: number;
+    requestBody: ShiftRequestUpdate;
+};
+export type ShiftRequestsUpdateShiftRequestResponse = ShiftRequestPublic;
+
+export type ShiftRequestsDeleteShiftRequestData = {
+    requestId: number;
+};
+export type ShiftRequestsDeleteShiftRequestResponse = void;

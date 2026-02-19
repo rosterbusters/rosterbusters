@@ -54,3 +54,7 @@ class ShiftRequestPublic(SQLModel):
     priority: int
     status: str
 
+class ShiftRequestUpdate(SQLModel):
+    preferredshifttype: Optional[str] = None
+    preferreddate: Optional[date] = None
+

@@ -64,6 +64,7 @@ class UserPublic(UserBase):
     id: uuid.UUID
     nurseid: int | None = None
     managerid: int | None = None
+    wardid: int | None = None
 
 
 class UsersPublic(SQLModel):

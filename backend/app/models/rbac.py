@@ -88,3 +88,8 @@ class UserRole(SQLModel, table=True):
     wardid: Optional[int] = None
     isactive: bool = Field(default=True)
     assignedat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class NursePublic(SQLModel):
+    nurseid: int
+    name: str
