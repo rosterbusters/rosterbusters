@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { useNavigate, createFileRoute } from "@tanstack/react-router"
 import { Center, Spinner, Text, VStack } from "@chakra-ui/react"
+import { UsersService } from "@/client"
 
 export const Route = createFileRoute("/auth/callback")({
   component: AuthCallback,
@@ -16,7 +17,7 @@ function AuthCallback() {
 
     if (error) {
       // Handle error - redirect to login with error message
-      navigate({ 
+      navigate({
         to: "/login",
         search: { error: error }
       })
@@ -26,9 +27,17 @@ function AuthCallback() {
     if (token) {
       // Store token in localStorage
       localStorage.setItem('access_token', token)
-      
-      // Redirect to dashboard
-      navigate({ to: "/" })
+
+      // Fetch user to determine role-based redirect
+      UsersService.readUserMe().then((user) => {
+        if (user.managerid) {
+          navigate({ to: "/nurse-manager/home" })
+        } else {
+          navigate({ to: "/ward-staff/home" })
+        }
+      }).catch(() => {
+        navigate({ to: "/ward-staff/home" })
+      })
     } else {
       // No token or error - redirect to login
       navigate({ to: "/login" })

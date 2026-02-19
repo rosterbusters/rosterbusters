@@ -11,6 +11,7 @@ from app.core import security
 from app.core.config import settings
 from app.core.db import engine
 from app.models import TokenPayload, RBACUser
+from app.rbac import get_user_roles, user_has_role
 
 try:
     from jwt.exceptions import InvalidTokenError
@@ -61,3 +62,38 @@ def get_current_active_superuser(current_user: CurrentUser) -> RBACUser:
             status_code=403, detail="The user doesn't have enough privileges"
         )
     return current_user
+
+
+def require_nurse_manager(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> RBACUser:
+    """Dependency: allows only users with the NurseManager role."""
+    if not user_has_role(session, current_user.email, "NurseManager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nurse manager access required",
+        )
+    return current_user
+
+
+def require_nurse(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> RBACUser:
+    """Dependency: allows users with the Nurse role OR the NurseManager role.
+
+    NurseManagers who have been granted nurse access can reach ward-staff
+    routes without needing a separate Nurse role assignment.
+    """
+    roles = get_user_roles(session, current_user.email)
+    if "Nurse" not in roles and "NurseManager" not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ward staff access required",
+        )
+    return current_user
+
+
+NurseManagerUser = Annotated[RBACUser, Depends(require_nurse_manager)]
+NurseUser = Annotated[RBACUser, Depends(require_nurse)]

@@ -1,4 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
+import gaSched1 from "@/mockData/ga_sched_1.json";
+import gaSched2 from "@/mockData/ga_sched_2.json";
+import milpSched1 from "@/mockData/milp_sched_1.json";
 import { createFileRoute } from "@tanstack/react-router";
 import { Flex, Box, Button, Text, HStack } from "@chakra-ui/react";
 import moment from "moment";
@@ -11,13 +14,15 @@ import {
   usePublishRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
+  useShiftCodes,
+  getShiftDurationHours,
   type Ward,
   type RosterPeriod,
   type ViewMode,
   type ShiftCode,
   type RosterRow,
 } from "@/components/NurseManager/RosterTable";
-import { RosterPlanningHeader } from "@/components/NurseManager/RosterPlanning";
+import { RosterPlanningHeader, getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import {
   DialogRoot,
   DialogContent,
@@ -36,13 +41,13 @@ export const Route = createFileRoute("/nurse-manager/roster-planning")({
 // Generate empty roster data for manual editing mode (before algorithm generation)
 function generateEmptyRosterData(): RosterRow[] {
   const mockNurses = [
-    { id: 1, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 42 } },
-    { id: 2, name: "Tonnie Marti", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 42 } },
-    { id: 3, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 42 } },
-    { id: 4, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 42 } },
-    { id: 5, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 42 } },
-    { id: 6, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 42 } },
-    { id: 7, name: "Mary Susan", designation: "Senior Staff Nurse II", hours: { worked: 0, contracted: 42 } },
+    { id: 1, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 44 } },
+    { id: 2, name: "Tonnie Marti", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 44 } },
+    { id: 3, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 0, contracted: 44 } },
+    { id: 4, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 44 } },
+    { id: 5, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 44 } },
+    { id: 6, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 0, contracted: 44 } },
+    { id: 7, name: "Mary Susan", designation: "Senior Staff Nurse II", hours: { worked: 0, contracted: 44 } },
   ];
 
   // Return roster rows with empty shifts (null values) - users can manually assign shifts
@@ -76,6 +81,7 @@ function RosterPlanningPage() {
   // Data hooks
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
+  const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToCSV } = useRosterExport();
   const publishRoster = usePublishRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
@@ -139,6 +145,30 @@ function RosterPlanningPage() {
       setRosterData(generateEmptyRosterData());
     }
   }, [viewMode, isAlgorithmGenerated]);
+
+  // Derive roster data with hours calculated from the visible date window only
+  const displayRosterData = useMemo(() => {
+    const days = viewMode === "week" ? 7 : 14;
+    const visibleDates = Array.from({ length: days }, (_, i) =>
+      moment(currentStartDate).add(i, "days").format("YYYY-MM-DD"),
+    );
+
+    const periodMultiplier = viewMode === "week" ? 1 : 2;
+    return rosterData.map((row) => {
+      const workedHours = visibleDates.reduce((sum, dateKey) => {
+        const shift = row.shifts[dateKey];
+        return sum + (shift ? getShiftDurationHours(shift.shiftCode, shiftDurationMap) : 0);
+      }, 0);
+      const contractedHours = row.hours.contracted * periodMultiplier;
+
+      return {
+        ...row,
+        hours: { ...row.hours, worked: workedHours, contracted: contractedHours },
+        hasOvertime: workedHours > contractedHours,
+        hasWarning: workedHours > contractedHours * 1.2,
+      };
+    });
+  }, [rosterData, currentStartDate, viewMode, shiftDurationMap]);
 
   // Handlers
   
@@ -803,6 +833,49 @@ const handleGenerateAlgorithm = useCallback(async () => {
     setRosterData(generateEmptyRosterData());
     setIsAlgorithmGenerated(false);
   }, []);
+
+  // Load a mock JSON dataset into the roster grid
+  const handleLoadMockData = useCallback((mockKey: string) => {
+    const mockMap: Record<string, typeof gaSched1> = {
+      ga_sched_1: gaSched1,
+      ga_sched_2: gaSched2,
+      milp_sched_1: milpSched1,
+    };
+    const mock = mockMap[mockKey];
+    if (!mock) return;
+
+    const rows: RosterRow[] = mock.roster.nurses.map((nurse) => {
+      const shiftsObject: RosterRow["shifts"] = {};
+      nurse.schedule.forEach((shiftCode, index) => {
+        const dateKey = moment(currentStartDate).add(index, "days").format("YYYY-MM-DD");
+        shiftsObject[dateKey] = {
+          rosterId: 0,
+          nurseId: nurse.id,
+          shiftDate: dateKey,
+          shiftCode: shiftCode as ShiftCode,
+          status: "Pending",
+        };
+      });
+      const workedHours = nurse.schedule.reduce(
+        (sum, shiftCode) => sum + getShiftDurationHours(shiftCode, shiftDurationMap),
+        0,
+      );
+      const contractedHours = 42;
+      return {
+        nurseId: nurse.id,
+        name: nurse.name,
+        designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+        hours: { worked: workedHours, contracted: contractedHours },
+        shifts: shiftsObject,
+        hasOvertime: workedHours > contractedHours,
+        hasWarning: workedHours > contractedHours * 1.2,
+      };
+    });
+
+    setRosterData(rows);
+    setIsAlgorithmGenerated(true);
+    showSuccessToast(`Loaded mock data: ${mockKey.replace(/_/g, " ").toUpperCase()}`);
+  }, [currentStartDate, showSuccessToast]);
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
   }, []);
@@ -823,36 +896,32 @@ const handleGenerateAlgorithm = useCallback(async () => {
 
   const handleShiftChange = useCallback(
     (nurseId: number, date: string, newShiftCode: ShiftCode) => {
-      // Update local roster data (mock mode)
-      setRosterData(prevData => 
+      setRosterData(prevData =>
         prevData.map(row => {
-          if (row.nurseId === nurseId) {
-            return {
-              ...row,
-              shifts: {
-                ...row.shifts,
-                [date]: {
-                  ...(row.shifts[date] || {}),
-                  rosterId: row.shifts[date]?.rosterId || 0,
-                  nurseId,
-                  shiftDate: date,
-                  shiftCode: newShiftCode,
-                  status: "Pending" as const,
-                },
+          if (row.nurseId !== nurseId) return row;
+          return {
+            ...row,
+            shifts: {
+              ...row.shifts,
+              [date]: {
+                ...(row.shifts[date] || {}),
+                rosterId: row.shifts[date]?.rosterId || 0,
+                nurseId,
+                shiftDate: date,
+                shiftCode: newShiftCode,
+                status: "Pending" as const,
               },
-            };
-          }
-          return row;
+            },
+          };
         })
       );
-      console.log(`Shift changed: Nurse ${nurseId}, Date ${date}, New Shift: ${newShiftCode}`);
     },
-    []
+    [],
   );
 
   const handleDownloadRoster = useCallback(() => {
-    exportToCSV(rosterData, currentStartDate, viewMode);
-  }, [rosterData, currentStartDate, viewMode, exportToCSV]);
+    exportToCSV(displayRosterData, currentStartDate, viewMode);
+  }, [displayRosterData, currentStartDate, viewMode, exportToCSV]);
 
   const handlePublishClick = useCallback(() => {
     setIsPublishDialogOpen(true);
@@ -883,7 +952,6 @@ const handleGenerateAlgorithm = useCallback(async () => {
       w="100vw"
       direction="column"
       overflowY="auto"
-      gap={4}
       bgColor="background2"
       p={5}
     >
@@ -906,6 +974,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
           onDownloadRoster={handleDownloadRoster}
           onGenerateAlgorithm={handleGenerateAlgorithm}
           onClearRoster={handleClearRoster}
+          onLoadMockData={handleLoadMockData}
         />
       </Box>
 
@@ -928,20 +997,22 @@ const handleGenerateAlgorithm = useCallback(async () => {
           pb={0}
         >
           <RosterGrid
-            data={rosterData}
+            data={displayRosterData}
             viewMode={viewMode}
             currentStartDate={currentStartDate}
             onShiftChange={handleShiftChange}
+            showSummary={false}
             isLoading={generateAlgorithmRoster.isPending}
           />
         </Box>
 
         {/* Sticky Summary Table at bottom */}
         <ShiftSummaryTable
-          data={rosterData}
+          data={displayRosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
           isRosterGenerated={isAlgorithmGenerated}
+          guidelines={getWardGuidelines(selectedWard?.wardName)}
         />
       </Box>
 

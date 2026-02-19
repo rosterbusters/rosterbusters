@@ -38,7 +38,7 @@ function Navbar() {
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
   const { user, logout } = useAuth();
 
-  const userName = user?.full_name || user?.email || "Staff Name";
+  const userName = (user as any)?.name || user?.full_name || user?.email || "Staff Name";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
@@ -205,7 +205,7 @@ function Navbar() {
         {/* RIGHT ZONE: Utilities */}
         <div className="flex items-center shrink-0">
           {/* Notification Bell Dropdown */}
-          <NotificationDropdown />
+          <NotificationDropdown role="nurse" />
 
           {/* Staff Name Display with Logout Dropdown */}
           <DropdownMenu>
@@ -267,7 +267,7 @@ function Navbar() {
         </div>
 
         {/* Right: Notification Bell Dropdown */}
-        <NotificationDropdown />
+        <NotificationDropdown role="nurse" />
       </div>
 
       {/* Mobile Dropdown Panel (appears below navbar) - NO backdrop */}

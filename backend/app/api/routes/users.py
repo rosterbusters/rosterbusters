@@ -134,7 +134,19 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     if not rbac_user:
         raise HTTPException(status_code=404, detail="User not found in RBAC system")
     
-    # Return RBACUserPublic directly - fields match RBACUser
+    # Look up display name and wardid from Nurse or NurseManager table
+    name = None
+    wardid = None
+    if rbac_user.nurseid:
+        nurse = session.get(Nurse, rbac_user.nurseid)
+        if nurse:
+            name = nurse.name
+            wardid = nurse.wardid
+    elif rbac_user.managerid:
+        manager = session.get(NurseManager, rbac_user.managerid)
+        if manager:
+            name = manager.name
+
     return RBACUserPublic(
         userid=rbac_user.userid,
         username=rbac_user.username,
@@ -142,6 +154,8 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         nurseid=rbac_user.nurseid,
         managerid=rbac_user.managerid,
         isactive=rbac_user.isactive,
+        name=name,
+        wardid=wardid,
     )
 
 

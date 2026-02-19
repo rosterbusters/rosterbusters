@@ -6,14 +6,18 @@ import moment from "moment";
 import {
   RosterGrid,
   RosterHeader,
+  ShiftSummaryTable,
   useRosterPeriods,
   useRosterPageData,
   useRosterExport,
+  useShiftCodes,
+  getShiftDurationHours,
   type RosterPeriod,
   type ViewMode,
   type ShiftCode,
   type RosterRow,
 } from "@/components/NurseManager/RosterTable";
+import { getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
 import NotificationBanner from "@/components/NurseManager/HomePage/NotificationBanner";
 import { WardsService } from "@/client";
@@ -87,6 +91,7 @@ function NurseManagerHome() {
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
+  const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToCSV } = useRosterExport();
 
   const { rows: apiRows, isLoading: rosterLoading } = useRosterPageData(
@@ -121,6 +126,28 @@ function NurseManagerHome() {
       setSelectedPeriod(currentPeriod);
     }
   }, [periods, selectedPeriod]);
+
+  // Derive roster data with hours calculated from the visible date window only
+  const displayRosterData = useMemo(() => {
+    const days = viewMode === "week" ? 7 : 14;
+    const visibleDates = Array.from({ length: days }, (_, i) =>
+      moment(currentStartDate).add(i, "days").format("YYYY-MM-DD"),
+    );
+
+    return localRosterData.map((row) => {
+      const workedHours = visibleDates.reduce((sum, dateKey) => {
+        const shift = row.shifts[dateKey];
+        return sum + (shift ? getShiftDurationHours(shift.shiftCode, shiftDurationMap) : 0);
+      }, 0);
+
+      return {
+        ...row,
+        hours: { ...row.hours, worked: workedHours },
+        hasOvertime: workedHours > row.hours.contracted,
+        hasWarning: workedHours > row.hours.contracted * 1.2,
+      };
+    });
+  }, [localRosterData, currentStartDate, viewMode, shiftDurationMap]);
 
   // Handlers
   const handleDateChange = useCallback((date: Date) => {
@@ -169,8 +196,8 @@ function NurseManagerHome() {
   );
 
   const handleExportCSV = useCallback(() => {
-    exportToCSV(localRosterData, currentStartDate, viewMode);
-  }, [localRosterData, currentStartDate, viewMode, exportToCSV]);
+    exportToCSV(displayRosterData, currentStartDate, viewMode);
+  }, [displayRosterData, currentStartDate, viewMode, exportToCSV]);
 
   const handleViewEditHistory = useCallback(() => {
     // TODO: Implement edit history modal
@@ -257,30 +284,53 @@ function NurseManagerHome() {
         </Stack>
       </Stack>
 
-      {/* Header Section */}
-      <Stack bgColor="white" p={4} rounded="lg" width="100%" gap={6}>
-        <RosterHeader
-          currentStartDate={currentStartDate}
+      {/* Header + Roster Grid + Summary Table */}
+      <Box
+        bgColor="white"
+        rounded="lg"
+        width="100%"
+        overflow="hidden"
+        display="flex"
+        flexDirection="column"
+      >
+        <Box p={4} pb={0}>
+          <RosterHeader
+            currentStartDate={currentStartDate}
+            viewMode={viewMode}
+            selectedWard={selectedWard}
+            selectedPeriod={selectedPeriod}
+            wards={wards}
+            periods={displayPeriods}
+            onDateChange={handleDateChange}
+            onViewModeChange={handleViewModeChange}
+            onWardChange={handleWardChange}
+            onPeriodChange={handlePeriodChange}
+            onExportCSV={handleExportCSV}
+            onViewEditHistory={handleViewEditHistory}
+          />
+        </Box>
+
+        {/* Scrollable grid */}
+        <Box flex={1} overflow="auto" p={4} pb={0}>
+          <RosterGrid
+            data={displayRosterData}
+            viewMode={viewMode}
+            currentStartDate={currentStartDate}
+            onShiftChange={handleShiftChange}
+            isLoading={wardsLoading || rosterLoading}
+            showSummary={false}
+          />
+        </Box>
+
+        {/* Sticky summary table */}
+        <ShiftSummaryTable
+          data={displayRosterData}
           viewMode={viewMode}
-          selectedWard={selectedWard}
-          selectedPeriod={selectedPeriod}
-          wards={wards}
-          periods={displayPeriods}
-          onDateChange={handleDateChange}
-          onViewModeChange={handleViewModeChange}
-          onWardChange={handleWardChange}
-          onPeriodChange={handlePeriodChange}
-          onExportCSV={handleExportCSV}
-          onViewEditHistory={handleViewEditHistory}
-        />
-        <RosterGrid
-          data={localRosterData}
-          viewMode={viewMode}
           currentStartDate={currentStartDate}
-          onShiftChange={handleShiftChange}
-          isLoading={wardsLoading || rosterLoading}
+          isRosterGenerated={true}
+          guidelines={getWardGuidelines(selectedWard?.wardname)}
         />
-      </Stack>
+      </Box>
     </Flex>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, ChevronUp, ChevronDown } from "lucide-react";
+import { Bell } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +14,7 @@ import {
   type NotificationItem,
   type NotificationType,
 } from "@/types/notifications";
+import { NotificationsService } from "@/client/NotificationsService";
 
 // Format date as D/MM/YYYY
 function formatNotificationDate(dateString: string): string {
@@ -51,25 +53,31 @@ function NotificationBadge({ type }: { type: NotificationType }) {
   );
 }
 
-// Number of visible rows at a time
-const VISIBLE_ROWS = 4;
 const ROW_HEIGHT = 44; // px per row
+const MAX_VISIBLE_HEIGHT = ROW_HEIGHT * 4; // show ~4 rows, then scroll
 
-function NotificationDropdown({ notifications = [] }: { notifications?: NotificationItem[] }) {
+function NotificationDropdown({ role }: { role?: "nurse" | "manager" }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [scrollIndex, setScrollIndex] = useState(0);
+
+  const { data } = useQuery({
+    queryKey: ["dropdownNotifications", role],
+    queryFn: () =>
+      role === "manager"
+        ? NotificationsService.getManagerNotifications({ limit: 20, offset: 0 })
+        : NotificationsService.getNurseNotifications({ limit: 20, offset: 0 }),
+    refetchInterval: 60000,
+  });
+
+  // Map API response: use subject as the display description
+  const notifications: NotificationItem[] = (data?.notifications ?? []).map((n) => ({
+    ...n,
+    description: n.subject,
+  }));
 
   // Sort notifications by date (most recent first)
-  const sortedNotifications = [...notifications].reverse();
-  
-  // Calculate max scroll index
-  const maxScrollIndex = Math.max(0, sortedNotifications.length - VISIBLE_ROWS);
-  
-  // Get visible notifications based on scroll position
-  const visibleNotifications = sortedNotifications.slice(
-    scrollIndex,
-    scrollIndex + VISIBLE_ROWS
+  const sortedNotifications = [...notifications].sort(
+    (a, b) => new Date(b.createdat ?? 0).getTime() - new Date(a.createdat ?? 0).getTime()
   );
 
   const handleNotificationClick = (notification: NotificationItem) => {
@@ -77,17 +85,6 @@ function NotificationDropdown({ notifications = [] }: { notifications?: Notifica
     navigate({ to: route });
     setOpen(false);
   };
-
-  const handleScrollUp = () => {
-    setScrollIndex((prev) => Math.max(0, prev - 1));
-  };
-
-  const handleScrollDown = () => {
-    setScrollIndex((prev) => Math.min(maxScrollIndex, prev + 1));
-  };
-
-  const canScrollUp = scrollIndex > 0;
-  const canScrollDown = scrollIndex < maxScrollIndex;
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -104,81 +101,39 @@ function NotificationDropdown({ notifications = [] }: { notifications?: Notifica
         className="w-[520px] rounded-lg border border-[#E6E6E6] bg-white p-0 shadow-lg"
         sideOffset={8}
       >
-        {/* Table Container */}
-        <div className="flex">
-          {/* Table */}
-          <div className="flex-1">
-            {/* Table Header */}
-            <div className="grid grid-cols-[100px_1fr_100px] border-b border-[#E6E6E6] bg-white">
-              <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">
-                Type
-              </div>
-              <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">
-                Notification
-              </div>
-              <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">
-                Date
-              </div>
-            </div>
+        {/* Table Header */}
+        <div className="grid grid-cols-[100px_1fr_100px] border-b border-[#E6E6E6] bg-white">
+          <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">Type</div>
+          <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">Notification</div>
+          <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">Date</div>
+        </div>
 
-            {/* Table Body */}
-            <div style={{ height: `${VISIBLE_ROWS * ROW_HEIGHT}px` }}>
-              {visibleNotifications.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-sm text-[#737373]">
-                  No notifications
+        {/* Scrollable Table Body */}
+        <div className="overflow-y-auto" style={{ maxHeight: `${MAX_VISIBLE_HEIGHT}px` }}>
+          {sortedNotifications.length === 0 ? (
+            <div className="flex items-center justify-center text-sm text-[#737373]" style={{ height: `${ROW_HEIGHT * 2}px` }}>
+              No notifications
+            </div>
+          ) : (
+            sortedNotifications.map((notification) => (
+              <div
+                key={notification.notificationid}
+                className="grid grid-cols-[100px_1fr_100px] items-center border-b border-[#E6E6E6] last:border-b-0 hover:bg-[#F5F5F5] cursor-pointer transition-colors"
+                style={{ height: `${ROW_HEIGHT}px` }}
+                onClick={() => handleNotificationClick(notification)}
+              >
+                <div className="px-4">
+                  <NotificationBadge type={notification.notificationtype as NotificationType} />
                 </div>
-              ) : (
-                visibleNotifications.map((notification) => (
-                  <div
-                    key={notification.notificationid}
-                    className="grid grid-cols-[100px_1fr_100px] items-center border-b border-[#E6E6E6] last:border-b-0 hover:bg-[#F5F5F5] cursor-pointer transition-colors"
-                    style={{ height: `${ROW_HEIGHT}px` }}
-                    onClick={() => handleNotificationClick(notification)}
-                  >
-                    <div className="px-4">
-                      <NotificationBadge type={notification.notificationtype as NotificationType} />
-                    </div>
-                    <div className="px-4 text-sm text-[#4A4A4A] truncate">
-                      {notification.description}
-                    </div>
-                    <div className="px-4 text-sm font-semibold text-[#4A4A4A]">
-                      {notification.createdat ? formatNotificationDate(notification.createdat) : "N/A"}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Scroll Buttons */}
-          <div className="flex flex-col justify-center border-l border-[#E6E6E6] px-1">
-            <button
-              onClick={handleScrollUp}
-              disabled={!canScrollUp}
-              className={cn(
-                "p-1 rounded transition-colors",
-                canScrollUp
-                  ? "text-[#4B8798] hover:bg-[#DDE8EA]/50"
-                  : "text-[#D1D5DB] cursor-not-allowed"
-              )}
-              aria-label="Scroll up"
-            >
-              <ChevronUp className="h-5 w-5" />
-            </button>
-            <button
-              onClick={handleScrollDown}
-              disabled={!canScrollDown}
-              className={cn(
-                "p-1 rounded transition-colors",
-                canScrollDown
-                  ? "text-[#4B8798] hover:bg-[#DDE8EA]/50"
-                  : "text-[#D1D5DB] cursor-not-allowed"
-              )}
-              aria-label="Scroll down"
-            >
-              <ChevronDown className="h-5 w-5" />
-            </button>
-          </div>
+                <div className="px-4 text-sm text-[#4A4A4A] truncate">
+                  {notification.description}
+                </div>
+                <div className="px-4 text-sm font-semibold text-[#4A4A4A]">
+                  {notification.createdat ? formatNotificationDate(notification.createdat) : "N/A"}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
