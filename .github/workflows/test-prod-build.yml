@@ -26,7 +26,7 @@ jobs:
         run: docker network create traefik-public || true
 
       - name: Build production images
-        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml -f docker-compose.ci-prod.yml build
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml -f docker-compose.ci-prod.yml build --no-parallel
 
       - name: Start services
         run: docker compose -f docker-compose.yml -f docker-compose.staging.yml -f docker-compose.ci-prod.yml up -d --wait backend frontend
