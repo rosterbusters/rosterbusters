@@ -17,14 +17,14 @@ from app.models import User
 
 router = APIRouter()
 
-oauth = OAuth()
-oauth.register(
-    name="google",
-    client_id=settings.GOOGLE_CLIENT_ID,
-    client_secret=settings.GOOGLE_CLIENT_SECRET,
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
-)
+# oauth = OAuth()
+# oauth.register(
+#     name="google",
+#     client_id=settings.GOOGLE_CLIENT_ID,
+#     client_secret=settings.GOOGLE_CLIENT_SECRET,
+#     server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+#     client_kwargs={"scope": "openid email profile"},
+# )
 
 
 @router.get("/login/google")

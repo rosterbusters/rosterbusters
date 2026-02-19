@@ -23,14 +23,21 @@ import {
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
 import NotificationDropdown from "@/components/Common/NotificationDropdown";
+import { useQuery } from "@tanstack/react-query";
+import { HomeService } from "@/client";
 
 function NurseManagerNavbar() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
+  
+  const { data: userData } = useQuery({
+    queryKey: ["upcomingShift"],
+    queryFn: () => HomeService.getUpcomingShift(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-  // TODO: Replace with actual backend data
-  const userName = "Manager Name";
+  const userName = userData?.nurse_name || "Manager";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {

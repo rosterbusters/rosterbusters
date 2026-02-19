@@ -130,29 +130,19 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     rbac_user = session.exec(
         select(RBACUser).where(RBACUser.email == current_user.email)
     ).first()
-    nurse_manager = session.exec(
-        select(NurseManager).where(NurseManager.email == current_user.email)
-    ).first()
-    user_public = UserPublic.model_validate(current_user)
-    if rbac_user:
-        user_public.nurseid = rbac_user.nurseid
-        nurse = session.get(Nurse, rbac_user.nurseid)
-        if nurse:
-            user_public.wardid = nurse.wardid
-    if nurse_manager:
-        user_public.managerid = nurse_manager.managerid
-        # Get wardid from UserRole for nurse managers
-        if rbac_user and not user_public.wardid:
-            user_role = session.exec(
-                select(UserRole).where(
-                    UserRole.userid == rbac_user.userid,
-                    UserRole.wardid.is_not(None),  # type: ignore[union-attr]
-                    UserRole.isactive == True,
-                )
-            ).first()
-            if user_role:
-                user_public.wardid = user_role.wardid
-    return user_public
+    
+    if not rbac_user:
+        raise HTTPException(status_code=404, detail="User not found in RBAC system")
+    
+    # Return RBACUserPublic directly - fields match RBACUser
+    return RBACUserPublic(
+        userid=rbac_user.userid,
+        username=rbac_user.username,
+        email=rbac_user.email,
+        nurseid=rbac_user.nurseid,
+        managerid=rbac_user.managerid,
+        isactive=rbac_user.isactive,
+    )
 
 
 @router.delete("/me", response_model=Message)
