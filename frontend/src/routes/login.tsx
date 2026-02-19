@@ -158,7 +158,7 @@ function Login() {
                       placeholder="Email Address"
                       type="email"
                       size="md"
-                      variant="subtle"
+                      variant="ghost"
                       bg="gray.50"
                     />
                   </InputGroup>
@@ -186,7 +186,7 @@ function Login() {
                       placeholder="Password"
                       type={showPassword ? "text" : "password"}
                       size="md"
-                      variant="subtle"
+                      variant="ghost"
                       bg="gray.50"
                     />
                   </InputGroup>

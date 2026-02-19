@@ -79,7 +79,7 @@ const DeleteItem = ({ id }: { id: string }) => {
           <DialogFooter gap={2}>
             <DialogActionTrigger asChild>
               <Button
-                variant="subtle"
+                variant="ghost"
                 colorPalette="gray"
                 disabled={isSubmitting}
               >
