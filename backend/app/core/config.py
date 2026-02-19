@@ -37,10 +37,7 @@ class Settings(BaseSettings):
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
-    # Google OAuth Settings
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_OAUTH_ALLOWED_DOMAINS: str = ""
+
     BACKEND_HOST: str = "http://localhost:8000"
     FRONTEND_HOST: str = "http://localhost:5173"
 

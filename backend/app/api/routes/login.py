@@ -1,10 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, datetime, timezone
 from typing import Annotated
 
-from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.requests import Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from authlib.integrations.starlette_client import OAuth
 from sqlmodel import select
 
 from app import crud
@@ -30,7 +31,7 @@ oauth.register(
 async def login_google(request: Request) -> RedirectResponse:
     """Initiate Google OAuth login"""
     redirect_uri = f"{settings.BACKEND_HOST}/api/v1/auth/google/callback"
-    return await oauth.google.authorize_redirect(request, redirect_uri)  # type: ignore[no-any-return]
+    return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/auth/google/callback")
@@ -44,18 +45,12 @@ async def auth_google_callback(
         user_info = token.get("userinfo")
 
         if not user_info:
-            raise HTTPException(
-                status_code=400, detail="Could not get user info from Google"
-            )
+            raise HTTPException(status_code=400, detail="Could not get user info from Google")
 
         email = user_info.get("email")
-
         if not email:
-            raise HTTPException(
-                status_code=400, detail="Email not provided by Google"
-            )
+            raise HTTPException(status_code=400, detail="Email not provided by Google")
 
-        # Domain check
         if settings.GOOGLE_OAUTH_ALLOWED_DOMAINS:
             email_domain = email.split("@")[1]
             allowed_domains = settings.GOOGLE_OAUTH_ALLOWED_DOMAINS.split(",")
@@ -65,7 +60,6 @@ async def auth_google_callback(
                     detail=f"Only {', '.join(allowed_domains)} email addresses are allowed",
                 )
 
-        # Check existing User (your current model)
         statement = select(User).where(User.email == email)
         user = session.exec(statement).first()
 
@@ -87,13 +81,8 @@ async def auth_google_callback(
         rbac_user = session.exec(rbac_statement).first()
 
         if not rbac_user:
-            # Check if email matches nurse/manager
-            nurse = session.exec(
-                select(Nurse).where(Nurse.email == email)
-            ).first()
-            manager = session.exec(
-                select(NurseManager).where(NurseManager.email == email)
-            ).first()
+            nurse = session.exec(select(Nurse).where(Nurse.email == email)).first()
+            manager = session.exec(select(NurseManager).where(NurseManager.email == email)).first()
 
             if nurse or manager:
                 rbac_user = RBACUser(
@@ -109,51 +98,30 @@ async def auth_google_callback(
                 session.commit()
                 session.refresh(rbac_user)
 
-                # Assign role
                 if nurse:
-                    role = session.exec(
-                        select(Role).where(Role.rolename == "Nurse")
-                    ).first()
+                    role = session.exec(select(Role).where(Role.rolename == "Nurse")).first()
                     if role:
-                        session.add(
-                            UserRole(
-                                userid=rbac_user.userid,
-                                roleid=role.roleid,
-                                isactive=True,
-                            )
-                        )
+                        session.add(UserRole(userid=rbac_user.userid, roleid=role.roleid, isactive=True))
 
                 if manager:
-                    role = session.exec(
-                        select(Role).where(Role.rolename == "NurseManager")
-                    ).first()
+                    role = session.exec(select(Role).where(Role.rolename == "NurseManager")).first()
                     if role:
-                        # Find existing ward assignment for this manager
                         existing_role = session.exec(
                             select(UserRole)
                             .join(RBACUser, UserRole.userid == RBACUser.userid)
-                            .where(
-                                RBACUser.managerid == manager.managerid,
-                                UserRole.wardid.is_not(None),  # type: ignore[union-attr]
-                            )
+                            .where(RBACUser.managerid == manager.managerid, UserRole.wardid.is_not(None))
                         ).first()
-                        session.add(
-                            UserRole(
-                                userid=rbac_user.userid,
-                                roleid=role.roleid,
-                                wardid=existing_role.wardid if existing_role else None,
-                                isactive=True,
-                            )
-                        )
+                        session.add(UserRole(
+                            userid=rbac_user.userid,
+                            roleid=role.roleid,
+                            wardid=existing_role.wardid if existing_role else None,
+                            isactive=True,
+                        ))
 
                 session.commit()
 
-        # Generate token (existing code)
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = security.create_access_token(
-            user.id, expires_delta=access_token_expires
-        )
-
+        access_token = security.create_access_token(user.id, expires_delta=access_token_expires)
         redirect_url = f"{settings.FRONTEND_HOST}/auth/callback?token={access_token}"
         return RedirectResponse(url=redirect_url)
 
@@ -169,15 +137,11 @@ def login_access_token(
     """
     OAuth2 compatible token login, get an access token for future requests
     """
-    user = crud.authenticate(
-        session=session, email=form_data.username, password=form_data.password
-    )
+    user = crud.authenticate(session=session, email=form_data.username, password=form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
-    elif not user.is_active:
+    elif not user.isactive:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        user.id, expires_delta=access_token_expires
-    )
+    access_token = security.create_access_token(user.userid, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}

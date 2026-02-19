@@ -1,38 +1,32 @@
-import { Badge, Stack, Table } from "@chakra-ui/react";
-import { notifications, notificationTypeLabels, type NotificationType } from "@/types/notifications";
+import { Stack, Spinner, Text } from "@chakra-ui/react";
+import { useQuery } from "@tanstack/react-query";
+import { NotificationsService } from "@/client/NotificationsService";
+import NotificationBanner from "@/components/Common/NotificationBanner";
 
-const badgeVariantMap: Record<NotificationType, string> = {
-  roster: "roster",
-  leave: "requests",
-  shift: "shiftRequest",
-  system: "subtle",
-  probation: "probation",
-};
+export default function WardStaffNotificationBanner() {
+  const { data: notificationsData, isLoading, error } = useQuery({
+    queryKey: ["staffNotifications"],
+    queryFn: () => NotificationsService.getNurseNotifications({ limit: 20, offset: 0 }),
+    refetchInterval: 60000,
+  });
 
-export default function NotificationBanner() {
-  return(
-    <Stack width="full" gap="5">
-    <Table.ScrollArea maxHeight="216px">
-      <Table.Root size="sm" interactive stickyHeader>
-        <Table.Header>
-          <Table.Row>
-            <Table.ColumnHeader>Type</Table.ColumnHeader>
-            <Table.ColumnHeader>Notification</Table.ColumnHeader>
-            <Table.ColumnHeader>Date</Table.ColumnHeader>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {notifications.map((item) => (
-            <Table.Row lineHeight={"36px"} key={item.notificationid}>
-              <Table.Cell lineHeight={"36px"}><Badge width="fit-content" variant={badgeVariantMap[item.notificationtype] as any}>{notificationTypeLabels[item.notificationtype]}</Badge></Table.Cell>
-              <Table.Cell color="foreground">{item.description}</Table.Cell>
-              <Table.Cell color="foreground" fontWeight={"semibold"}>{item.createdAt}</Table.Cell>
-            </Table.Row>
-          ))}
-        </Table.Body>
-      </Table.Root>
-    </Table.ScrollArea>
+  if (isLoading) {
+    return (
+      <Stack align="center" justify="center" py={8}>
+        <Spinner size="lg" />
+      </Stack>
+    );
+  }
 
-    </Stack>
-  )
+  if (error) {
+    return (
+      <Stack align="center" justify="center" py={8}>
+        <Text color="red.500">Failed to load notifications</Text>
+      </Stack>
+    );
+  }
+
+  const notifications = notificationsData?.notifications || [];
+
+  return <NotificationBanner items={notifications} />;
 }

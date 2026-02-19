@@ -24,6 +24,8 @@ const useAuth = () => {
     queryKey: ["currentUser"],
     queryFn: UsersService.readUserMe,
     enabled: isLoggedIn(),
+    retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   })
 
   const signUpMutation = useMutation({
@@ -51,6 +53,8 @@ const useAuth = () => {
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: () => {
+      // Refetch current user after successful login
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] })
       navigate({ to: "/" })
     },
     onError: (err: ApiError) => {
@@ -58,8 +62,12 @@ const useAuth = () => {
     },
   })
 
+  
   const logout = () => {
     localStorage.removeItem("access_token")
+    localStorage.removeItem("refresh_token")
+    // Reset queries to clear cached data
+    queryClient.resetQueries()
     navigate({ to: "/login" })
   }
 

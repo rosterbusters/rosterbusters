@@ -4,7 +4,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app.core.security import get_password_hash, verify_password
-from app.models import Item, ItemCreate, User, UserCreate, UserUpdate
+from app.models import Item, ItemCreate, User, UserCreate, UserUpdate, RBACUser
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:
@@ -37,11 +37,13 @@ def get_user_by_email(*, session: Session, email: str) -> User | None:
     return session_user
 
 
-def authenticate(*, session: Session, email: str, password: str) -> User | None:
-    db_user = get_user_by_email(session=session, email=email)
+def authenticate(*, session: Session, email: str, password: str) -> RBACUser | None:
+    """Authenticate using RBACUser table."""
+    statement = select(RBACUser).where(RBACUser.email == email)
+    db_user = session.exec(statement).first()
     if not db_user:
         return None
-    if not verify_password(password, db_user.hashed_password):
+    if not verify_password(password, db_user.passwordhash):
         return None
     return db_user
 

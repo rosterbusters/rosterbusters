@@ -35,6 +35,7 @@ from app.models.rbac import (
     NurseManager,
     NursePublic,
     RBACUser,
+    RBACUserPublic,
     Role,
     UserRole,
 )
@@ -56,6 +57,14 @@ from app.models.shifts import (
     ShiftRequestCreate,
     ShiftRequestPublic,
 )
+
+# Notification models
+from app.models.notification_models import (
+       NotificationResponse,
+       NotificationsListResponse,
+       MarkNotificationReadRequest,
+       NotificationStatsResponse
+   )
 
 __all__ = [
     # SQLModel base
@@ -85,6 +94,7 @@ __all__ = [
     "NurseManager",
     "NursePublic",
     "RBACUser",
+    "RBACUserPublic",
     "Role",
     "UserRole",
     # Roster
@@ -99,4 +109,9 @@ __all__ = [
     "ShiftRequest",
     "ShiftRequestCreate",
     "ShiftRequestPublic",
+    # Notifications
+    "NotificationResponse",
+    "NotificationsListResponse",
+    "MarkNotificationReadRequest",
+    "NotificationStatsResponse"
 ]
