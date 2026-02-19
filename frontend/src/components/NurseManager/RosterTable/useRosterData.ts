@@ -250,6 +250,7 @@ export interface AlgorithmRosterResponse {
   rosterData: RosterRow[];
 }
 
+
 // Hook to generate algorithm-based roster
 export function useGenerateAlgorithmRoster() {
   const queryClient = useQueryClient();
@@ -259,90 +260,90 @@ export function useGenerateAlgorithmRoster() {
       wardId,
       periodId,
       startDate,
-      viewMode,
     }: {
       wardId: number;
       periodId: number;
-      startDate: Date;
-      viewMode: "week" | "twoWeeks";
-    }): Promise<AlgorithmRosterResponse> => {
-      // TODO: Replace with actual API call when backend is ready
-      // return fetchWithAuth(`/api/v1/roster/generate-algorithm`, {
-      //   method: "POST",
-      //   body: JSON.stringify({
-      //     ward_id: wardId,
-      //     period_id: periodId,
-      //     start_date: moment(startDate).format("YYYY-MM-DD"),
-      //     days: viewMode === "week" ? 7 : 14,
-      //   }),
-      // });
+      startDate: Date; // Keep it as a Date object for easier math
+    }) => {
+      // 1. Call the algorithm API
+      const response = await fetchWithAuth(
+        "/api/v1/roster/generate-algorithm",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ward_id: wardId,
+            period_id: periodId,
+          }),
+        }
+      );
 
-      // Mock implementation - simulates algorithm generation with delay
-      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API delay
-      
-      const mockNurses = [
-        { id: 1, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 52, contracted: 42 } },
-        { id: 2, name: "Tonnie Marti", designation: "Senior Nursing Aide II", hours: { worked: 32, contracted: 42 } },
-        { id: 3, name: "Mary Susan", designation: "Senior Nursing Aide II", hours: { worked: 42, contracted: 42 } },
-        { id: 4, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 42, contracted: 42 } },
-        { id: 5, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 32, contracted: 42 } },
-        { id: 6, name: "Mary Susan", designation: "Senior Staff Nurse I", hours: { worked: 42, contracted: 42 } },
-        { id: 7, name: "Mary Susan", designation: "Senior Staff Nurse II", hours: { worked: 42, contracted: 42 } },
-      ];
-
-      // Algorithm-generated shift patterns
-      const shiftPatterns: ShiftCode[][] = [
-        ["A", "DO", "D", "P", "D", "DO", "A"],
-        ["A", "DO", "D", "P", "D", "DO", "A"],
-        ["D", "P", "D", "DO", "P", "D", "DO"],
-        ["A", "DO", "P", "D", "DO", "P", "A"],
-        ["D", "D", "P", "D", "DO", "DO", "A"],
-        ["D", "P", "D", "DO", "D", "DO", "A"],
-        ["A", "DO", "P", "P", "D", "DO", "A"],
-      ];
-
-      const days = viewMode === "week" ? 7 : 14;
-
-      const rosterData: RosterRow[] = mockNurses.map((nurse, nurseIndex) => {
-        const shifts: Record<string, ShiftAssignment> = {};
+      // 2. Transform the backend format into the RosterRow format the Grid expects
+      // Backend: n.schedule = ["AM", "OFF", ...]
+      // Frontend: n.shifts = { "2026-02-16": { ... } }
+      const rosterData: RosterRow[] = response.roster.nurses.map((nurse: any) => {
+        const shiftsObject: Record<string, any> = {};
         
-        for (let i = 0; i < days; i++) {
-          const date = moment(startDate).add(i, "days").format("YYYY-MM-DD");
-          const shiftCode = shiftPatterns[nurseIndex % shiftPatterns.length][i % 7];
-          shifts[date] = {
-            rosterId: nurseIndex * 100 + i,
+        nurse.schedule.forEach((shiftCode: string, index: number) => {
+          const dateKey = moment(startDate).add(index, "days").format("YYYY-MM-DD");
+          shiftsObject[dateKey] = {
             nurseId: nurse.id,
-            shiftDate: date,
-            shiftCode,
+            shiftDate: dateKey,
+            shiftCode: shiftCode,
             status: "Pending",
           };
-        }
+        });
 
         return {
           nurseId: nurse.id,
           name: nurse.name,
-          designation: nurse.designation,
-          hours: nurse.hours,
-          shifts,
-          hasOvertime: nurse.hours.worked > nurse.hours.contracted,
-          hasWarning: nurse.hours.worked > nurse.hours.contracted * 1.1,
+          designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          // Calculate worked hours so the UI doesn't error on 'worked'
+          hours: { 
+            worked: (nurse.stats?.total_shifts || 0) * 8, 
+            contracted: 42 
+          },
+          shifts: shiftsObject,
+          hasOvertime: false,
+          hasWarning: false,
         };
       });
 
       return {
-        wardId,
-        periodId,
-        generatedAt: new Date().toISOString(),
         rosterData,
+        algorithm: response.method,
       };
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (data, variables) => {
       // Invalidate roster queries to refetch
       queryClient.invalidateQueries({
         queryKey: ["roster", "ward", variables.wardId, variables.periodId],
       });
+      
+      // Optionally show success notification
+      // toast.success(`Roster generated using ${data.algorithm}`);
+    },
+    onError: (error: any) => {
+      // Handle errors
+      console.error("Algorithm generation failed:", error);
+      // toast.error(error.message || "Failed to generate roster");
     },
   });
+}
+
+// Helper function to calculate day index from date
+function calculateDayIndex(targetDate: string, startDate: string): number {
+  const target = new Date(targetDate);
+  const start = new Date(startDate);
+  const diffTime = target.getTime() - start.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+}
+
+// Helper function to add days to a date
+function addDays(dateStr: string, days: number): string {
+  const date = new Date(dateStr);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split("T")[0];
 }
 
 // Hook for CSV export
