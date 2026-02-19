@@ -15,7 +15,7 @@
     "typegen": "npx @chakra-ui/cli typegen ./src/theme.tsx"
   },
   "dependencies": {
-    "@chakra-ui/react": "^3.27.0",
+    "@chakra-ui/react": "^3.33.0",
     "@emotion/react": "^11.14.0",
     "@fontsource/poppins": "^5.2.7",
     "@radix-ui/react-avatar": "^1.1.11",
