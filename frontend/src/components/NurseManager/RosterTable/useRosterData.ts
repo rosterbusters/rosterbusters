@@ -290,20 +290,19 @@ export function useGenerateAlgorithmRoster() {
       wardId,
       periodId,
       startDate,
+      mockData,
     }: {
       wardId: number;
       periodId: number;
       startDate: Date; // Keep it as a Date object for easier math
+      mockData?: any;
     }) => {
-      // 1. Call the algorithm API
-      const response = await fetchWithAuth(
+      //Check if mock data is available - if mock data is not available then fetch.
+        const response = mockData ?? await fetchWithAuth(
         "/api/v1/roster/generate-algorithm",
         {
           method: "POST",
-          body: JSON.stringify({
-            ward_id: wardId,
-            period_id: periodId,
-          }),
+          body: JSON.stringify({ ward_id: wardId, period_id: periodId }),
         }
       );
 
