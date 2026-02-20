@@ -43,12 +43,12 @@ export const NewShiftRequest = ({
   });
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", wardId],
+    queryKey: ["shift-codes", wardId ?? "default"],
     queryFn: () =>
       wardId != null
         ? ShiftRequestsService.getShiftCodesByWard({ wardId })
         : ShiftRequestsService.getWorkingShiftCodes(),
-    enabled: wardId !== undefined,
+    // enabled: wardId !== undefined,
   });
 
   const shiftCollection = useMemo(
@@ -85,7 +85,9 @@ export const NewShiftRequest = ({
   }, [isOpen]);
 
   const handleSubmit = () => {
-    const activePeriod = periods?.find((p) => p.status === "RequestOpen");
+    const activePeriod =
+      periods?.find(p => p.status === "RequestOpen" && new Date(p.startdate) <= new Date() && new Date(p.enddate) >= new Date())
+      ?? periods?.find(p => p.status === "RequestOpen");
     if (!activePeriod) {
       showErrorToast("There is no open request period available.");
       return;
