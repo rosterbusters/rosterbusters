@@ -4,6 +4,7 @@ export { RosterHeader } from "./RosterHeader";
 export { ShiftBadge } from "./ShiftBadge";
 export { ShiftEditPopover } from "./ShiftEditPopover";
 export { ShiftSummaryTable } from "./ShiftSummaryTable";
+export { EditHistoryDialog } from "./EditHistoryDialog";
 
 // Export hooks
 export {
