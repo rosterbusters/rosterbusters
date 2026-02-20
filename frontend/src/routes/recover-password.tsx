@@ -22,7 +22,6 @@ export const Route = createFileRoute("/recover-password")({
     if (isLoggedIn()) {
       throw redirect({
         to: "/",
-        search: {},
       })
     }
   },
