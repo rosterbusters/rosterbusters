@@ -194,6 +194,22 @@ export const MessageSchema = {
     title: 'Message'
 } as const;
 
+export const NursePublicSchema = {
+    properties: {
+        nurseid: {
+            type: 'integer',
+            title: 'Nurseid'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        }
+    },
+    type: 'object',
+    required: ['nurseid', 'name'],
+    title: 'NursePublic'
+} as const;
+
 export const PrivateUserCreateSchema = {
     properties: {
         email: {
@@ -249,6 +265,22 @@ export const RosterPeriodPublicSchema = {
     title: 'RosterPeriodPublic'
 } as const;
 
+export const ShiftCodePublicSchema = {
+    properties: {
+        shiftcode: {
+            type: 'string',
+            title: 'Shiftcode'
+        },
+        description: {
+            type: 'string',
+            title: 'Description'
+        }
+    },
+    type: 'object',
+    required: ['shiftcode', 'description'],
+    title: 'ShiftCodePublic'
+} as const;
+
 export const ShiftRequestCreateSchema = {
     properties: {
         periodid: {
@@ -263,11 +295,6 @@ export const ShiftRequestCreateSchema = {
         preferredshifttype: {
             type: 'string',
             title: 'Preferredshifttype'
-        },
-        requestnumber: {
-            type: 'integer',
-            title: 'Requestnumber',
-            default: 1
         },
         reason: {
             anyOf: [
@@ -341,6 +368,36 @@ export const ShiftRequestPublicSchema = {
     type: 'object',
     required: ['requestid', 'nurseid', 'periodid', 'preferreddate', 'preferredshifttype', 'requestnumber', 'reason', 'priority', 'status'],
     title: 'ShiftRequestPublic'
+} as const;
+
+export const ShiftRequestUpdateSchema = {
+    properties: {
+        preferredshifttype: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Preferredshifttype'
+        },
+        preferreddate: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Preferreddate'
+        }
+    },
+    type: 'object',
+    title: 'ShiftRequestUpdate'
 } as const;
 
 export const UpdatePasswordSchema = {
@@ -439,6 +496,39 @@ export const UserPublicSchema = {
             type: 'string',
             format: 'uuid',
             title: 'Id'
+        },
+        nurseid: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nurseid'
+        },
+        managerid: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Managerid'
+        },
+        wardid: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Wardid'
         }
     },
     type: 'object',
@@ -660,6 +750,204 @@ export const WardSchema = {
             type: 'boolean',
             title: 'Isactive',
             default: true
+        },
+        am_total: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Am Total'
+        },
+        am_rn: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Am Rn'
+        },
+        am_en_na_min: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Am En Na Min'
+        },
+        am_en_na_max: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Am En Na Max'
+        },
+        am_hca_min: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Am Hca Min'
+        },
+        am_hca_max: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Am Hca Max'
+        },
+        pm_total: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Pm Total'
+        },
+        pm_rn: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Pm Rn'
+        },
+        pm_en_na_min: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Pm En Na Min'
+        },
+        pm_en_na_max: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Pm En Na Max'
+        },
+        pm_hca_min: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Pm Hca Min'
+        },
+        pm_hca_max: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Pm Hca Max'
+        },
+        nd_total: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nd Total'
+        },
+        nd_rn: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nd Rn'
+        },
+        nd_en_na_min: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nd En Na Min'
+        },
+        nd_en_na_max: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nd En Na Max'
+        },
+        nd_hca_min: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nd Hca Min'
+        },
+        nd_hca_max: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nd Hca Max'
         }
     },
     type: 'object',

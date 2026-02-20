@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { Box, Flex, Text, Table } from "@chakra-ui/react";
 import moment from "moment";
+import { Tooltip } from "@/components/ui/tooltip";
 
 import type {
   RosterRow,
@@ -93,17 +94,18 @@ export function getCellStyle(
   count: number,
   minimum: number,
   isRosterGenerated: boolean,
+  maximum?: number,
 ): { bg: string; color: string } {
   if (!isRosterGenerated) {
-    return { bg: "transparent", color: "#4B8798" }; // Neutral - no color
+    return { bg: "transparent", color: "#4B8798" };
   }
   if (count < minimum) {
-    return { bg: "#C62828", color: "white" }; // Red - below minimum
+    return { bg: "#C62828", color: "white" };          // Red — below minimum
   }
-  if (count > minimum) {
-    return { bg: "#5B8C3D", color: "white" }; // Green - exceeds minimum
+  if (maximum !== undefined && count > maximum) {
+    return { bg: "#5B8C3D", color: "white" };          // Green — above maximum (surplus)
   }
-  return { bg: "transparent", color: "#4B8798" }; // No color - within range
+  return { bg: "white", color: "#4B8798" };            // White — within [min, max]
 }
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
@@ -242,22 +244,42 @@ export function ShiftSummaryTable({
                           count,
                           guidelines[role][shiftType].minimum,
                           isRosterGenerated,
+                          guidelines[role][shiftType].maximum,
                         );
 
                         return (
-                          <Flex
+                          <Tooltip
                             key={shiftType}
-                            justify="center"
-                            align="center"
-                            bg={style.bg}
-                            color={style.color}
-                            flex={1}
-                            py={1}
-                            fontSize="xs"
-                            fontWeight="semibold"
+                            content={
+                              <Text fontSize="xs">
+                                Min: {guidelines[role][shiftType].minimum}
+                                {guidelines[role][shiftType].maximum !== undefined
+                                  ? `  Max: ${guidelines[role][shiftType].maximum}`
+                                  : ""}
+                              </Text>
+                            }
+                            lazyMount={true}
+                            contentProps={{
+                              css: {
+                                "--tooltip-bg": "white",
+                                "box-shadow": "0px 0px 4px rgba(0,0,0,0.1)",
+                                color: "black",
+                              },
+                            }}
                           >
-                            {count}
-                          </Flex>
+                            <Flex
+                              justify="center"
+                              align="center"
+                              bg={style.bg}
+                              color={style.color}
+                              flex={1}
+                              py={1}
+                              fontSize="xs"
+                              fontWeight="semibold"
+                            >
+                              {count}
+                            </Flex>
+                          </Tooltip>
                         );
                       })}
                     </Flex>

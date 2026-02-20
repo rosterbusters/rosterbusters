@@ -15,11 +15,16 @@ from app.core.security import get_password_hash, verify_password
 from app.models import (
     Item,
     Message,
+    Nurse,
+    NurseManager,
+    RBACUser,
+    RBACUserPublic,
     UpdatePassword,
     User,
     UserCreate,
     UserPublic,
     UserRegister,
+    UserRole,
     UsersPublic,
     UserUpdate,
     UserUpdateMe,
@@ -85,7 +90,7 @@ def update_user_me(
 
     if user_in.email:
         existing_user = crud.get_user_by_email(session=session, email=user_in.email)
-        if existing_user and existing_user.id != current_user.id:
+        if existing_user and existing_user.email != current_user.email:
             raise HTTPException(
                 status_code=409, detail="User with this email already exists"
             )
@@ -104,25 +109,54 @@ def update_password_me(
     """
     Update own password.
     """
-    if not verify_password(body.current_password, current_user.hashed_password):
+    if not verify_password(body.current_password, current_user.passwordhash):
         raise HTTPException(status_code=400, detail="Incorrect password")
     if body.current_password == body.new_password:
         raise HTTPException(
             status_code=400, detail="New password cannot be the same as the current one"
         )
     hashed_password = get_password_hash(body.new_password)
-    current_user.hashed_password = hashed_password
+    current_user.passwordhash = hashed_password
     session.add(current_user)
     session.commit()
     return Message(message="Password updated successfully")
 
 
-@router.get("/me", response_model=UserPublic)
-def read_user_me(current_user: CurrentUser) -> Any:
+@router.get("/me", response_model=RBACUserPublic)
+def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
-    Get current user.
+    Get current user (using RBAC authentication).
     """
-    return current_user
+    rbac_user = session.exec(
+        select(RBACUser).where(RBACUser.email == current_user.email)
+    ).first()
+    
+    if not rbac_user:
+        raise HTTPException(status_code=404, detail="User not found in RBAC system")
+    
+    # Look up display name and wardid from Nurse or NurseManager table
+    name = None
+    wardid = None
+    if rbac_user.nurseid:
+        nurse = session.get(Nurse, rbac_user.nurseid)
+        if nurse:
+            name = nurse.name
+            wardid = nurse.wardid
+    elif rbac_user.managerid:
+        manager = session.get(NurseManager, rbac_user.managerid)
+        if manager:
+            name = manager.name
+
+    return RBACUserPublic(
+        userid=rbac_user.userid,
+        username=rbac_user.username,
+        email=rbac_user.email,
+        nurseid=rbac_user.nurseid,
+        managerid=rbac_user.managerid,
+        isactive=rbac_user.isactive,
+        name=name,
+        wardid=wardid,
+    )
 
 
 @router.delete("/me", response_model=Message)
@@ -130,10 +164,6 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
     Delete own user.
     """
-    if current_user.is_superuser:
-        raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
-        )
     session.delete(current_user)
     session.commit()
     return Message(message="User deleted successfully")

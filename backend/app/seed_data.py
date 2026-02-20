@@ -2,13 +2,12 @@
 Database seeding script for RBAC data.
 Run: docker compose exec backend python app/seed_data.py
 
-Uses Faker to generate realistic test data.
-Configure the numbers below to control how much data is generated.
+Uses hardcoded mock data for managers and nurses to guarantee consistency
+across all tables (nurse, nursemanager, RBACUser, web_user, userrole).
 """
 import logging
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Any
 
 from faker import Faker
 from sqlmodel import Session, select
@@ -16,21 +15,18 @@ from sqlmodel import Session, select
 from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
-from app.models import Ward, ShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
+from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
 from app.models.web import User
 
 
 # ============================================================================
 # CONFIGURATION - Adjust these to control seed data volume
 # ============================================================================
-# NUM_WARDS is determined by WARDS_DATA (static list of real wards)
-NUM_MANAGERS = 10  # 1 per ward (10 wards total)
-NURSES_PER_WARD = 7  # Typical staffing: 2 RN, 3 EN/NA, 2 HCA per ward
-NUM_NURSE_USERS = 5  # How many nurses get login accounts (for testing)
+NUM_NURSE_USERS = 70  # All nurses get login accounts (7 per ward × 10 wards)
 SEED = 42  # For reproducible fake data (set to None for random each time)
 
 # ============================================================================
-# Initialize Faker
+# Initialize Faker (still used for roster/shift/leave/notification seeding)
 # ============================================================================
 fake = Faker()
 if SEED is not None:
@@ -44,9 +40,9 @@ logger = logging.getLogger(__name__)
 # Static data (doesn't need Faker)
 # ============================================================================
 ROLES_DATA = [
-    {"rolename": "Admin", "displayname": "Administrator"},
-    {"rolename": "NurseManager", "displayname": "Nurse Manager"},
-    {"rolename": "Nurse", "displayname": "Ward Staff Nurse"},
+    {"rolename": "Nurse", "displayname": "Ward Staff Nurse"},           # roleid=1
+    {"rolename": "NurseManager", "displayname": "Nurse Manager"},       # roleid=2
+    {"rolename": "Admin", "displayname": "Administrator"},              # roleid=3
 ]
 
 SHIFT_CODES_DATA = [
@@ -164,60 +160,174 @@ DESIGNATIONS = ["RN", "EN", "NA", "HCA", "SSN"]
 # Static ward data (real wards)
 # ============================================================================
 WARDS_DATA = [
-    {"wardname": "Ward 4", "wardtype": "Dementia", "location": "Simei"},
-    {"wardname": "Ward 5", "wardtype": "Rehab", "location": "Simei"},
-    {"wardname": "Ward 6", "wardtype": "Rehab", "location": "Simei"},
-    {"wardname": "Ward 7", "wardtype": "Rehab", "location": "Simei"},
-    {"wardname": "Ward 8", "wardtype": "Subacute", "location": "Simei"},
-    {"wardname": "Ward 9", "wardtype": "Subacute", "location": "Simei"},
-    {"wardname": "Ward 10", "wardtype": "Paying Class", "location": "Simei"},
-    {"wardname": "Ward 11", "wardtype": "Palliative", "location": "Simei"},
-    {"wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok"},
-    {"wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok"},
+    # SACH Simei wards
+    {
+        "wardname": "Ward 4", "wardtype": "Dementia", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 1, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 5", "wardtype": "Rehab", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 6", "wardtype": "Rehab", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 7", "wardtype": "Rehab", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 8", "wardtype": "Subacute", "location": "Simei",
+        "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 5, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 9", "wardtype": "Subacute", "location": "Simei",
+        "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 5, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        "wardname": "Ward 10", "wardtype": "Paying Class", "location": "Simei",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 4, "am_hca_min": 1, "am_hca_max": 1,
+        "pm_total": 6, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 1,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 2, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 0,
+    },
+    {
+        "wardname": "Ward 11", "wardtype": "Palliative", "location": "Simei",
+        "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    # SACH Bedok wards
+    {
+        "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
+        "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+    },
+    {
+        # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
+        "wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok",
+        "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
+        "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+    },
 ]
 
 
 # ============================================================================
-# Faker-based data generators
+# Hardcoded manager & nurse data (1 manager per ward, 7 nurses per ward)
 # ============================================================================
+NUM_WARDS = len(WARDS_DATA)
 
+MANAGERS_DATA = [
+    {"name": "Lim Wei Ling",     "email": "lim.weiling@sach.org.sg",      "contactnumber": "91234501"},
+    {"name": "Tan Siew Bee",     "email": "tan.siewbee@sach.org.sg",      "contactnumber": "91234502"},
+    {"name": "Ng Ai Hua",        "email": "ng.aihua@sach.org.sg",         "contactnumber": "91234503"},
+    {"name": "Wong Mei Fong",    "email": "wong.meifong@sach.org.sg",     "contactnumber": "91234504"},
+    {"name": "Chua Shu Min",     "email": "chua.shumin@sach.org.sg",      "contactnumber": "91234505"},
+    {"name": "Koh Pei Shan",     "email": "koh.peishan@sach.org.sg",      "contactnumber": "91234506"},
+    {"name": "Lee Hui Ling",     "email": "lee.huiling@sach.org.sg",      "contactnumber": "91234507"},
+    {"name": "Ong Siew Lan",     "email": "ong.siewlan@sach.org.sg",      "contactnumber": "91234508"},
+    {"name": "Ahmad Ismail",     "email": "ahmad.ismail@sach.org.sg",     "contactnumber": "91234509"},
+    {"name": "Priya Nair",       "email": "priya.nair@sach.org.sg",       "contactnumber": "91234510"},
+]
 
-def generate_managers_data(num_managers: int) -> list[dict[str, Any]]:
-    """Generate manager data using Faker."""
-    managers = []
-    for _ in range(num_managers):
-        first = fake.first_name()
-        last = fake.last_name()
-        managers.append({
-            "name": f"{first} {last}",
-            "email": f"{first.lower()}.{last.lower()}@sach.org.sg",
-            "contactnumber": fake.numerify("9#######"),
-        })
-    return managers
-
-
-def generate_nurses_data(num_wards: int, nurses_per_ward: int) -> list[dict[str, Any]]:
-    """Generate nurse data using Faker."""
-    nurses = []
-    for ward_idx in range(num_wards):
-        for i in range(nurses_per_ward):
-            first = fake.first_name()
-            last = fake.last_name()
-            designation = DESIGNATIONS[i % len(DESIGNATIONS)]
-            nurses.append({
-                "name": f"{first} {last}",
-                "designation": designation,
-                "email": f"{first.lower()}.{last.lower()}@sach.org.sg",
-                "contactnumber": fake.numerify("9#######"),
-                "ward_idx": ward_idx,
-            })
-    return nurses
-
-
-# Generate the data (WARDS_DATA is static, defined above)
-NUM_WARDS = len(WARDS_DATA)  # Override with actual ward count
-MANAGERS_DATA = generate_managers_data(NUM_MANAGERS)
-NURSES_DATA = generate_nurses_data(NUM_WARDS, NURSES_PER_WARD)
+# 70 nurses: 7 per ward × 10 wards
+# Designations cycle: RN, EN, NA, HCA, SSN, RN, EN
+NURSES_DATA = [
+    # Ward 0 — Ward 4 (Dementia, Simei)
+    {"name": "Chan Mei Yin",      "designation": "RN",  "email": "chan.meiyin@sach.org.sg",       "contactnumber": "98001001", "ward_idx": 0},
+    {"name": "Teo Boon Kiat",     "designation": "EN",  "email": "teo.boonkiat@sach.org.sg",      "contactnumber": "98001002", "ward_idx": 0},
+    {"name": "Siti Aminah",       "designation": "NA",  "email": "siti.aminah@sach.org.sg",       "contactnumber": "98001003", "ward_idx": 0},
+    {"name": "Raj Kumar",         "designation": "HCA", "email": "raj.kumar@sach.org.sg",         "contactnumber": "98001004", "ward_idx": 0},
+    {"name": "Loh Yee Mun",      "designation": "SSN", "email": "loh.yeemun@sach.org.sg",        "contactnumber": "98001005", "ward_idx": 0},
+    {"name": "Goh Sze Wei",      "designation": "RN",  "email": "goh.szewei@sach.org.sg",        "contactnumber": "98001006", "ward_idx": 0},
+    {"name": "Nurul Huda",       "designation": "EN",  "email": "nurul.huda@sach.org.sg",        "contactnumber": "98001007", "ward_idx": 0},
+    # Ward 1 — Ward 5 (Rehab, Simei)
+    {"name": "Yeo Jia Hui",      "designation": "RN",  "email": "yeo.jiahui@sach.org.sg",        "contactnumber": "98002001", "ward_idx": 1},
+    {"name": "Lim Chee Keong",   "designation": "EN",  "email": "lim.cheekeong@sach.org.sg",     "contactnumber": "98002002", "ward_idx": 1},
+    {"name": "Fatimah Zahra",    "designation": "NA",  "email": "fatimah.zahra@sach.org.sg",     "contactnumber": "98002003", "ward_idx": 1},
+    {"name": "Deepa Pillai",     "designation": "HCA", "email": "deepa.pillai@sach.org.sg",      "contactnumber": "98002004", "ward_idx": 1},
+    {"name": "Ho Kok Wai",       "designation": "SSN", "email": "ho.kokwai@sach.org.sg",         "contactnumber": "98002005", "ward_idx": 1},
+    {"name": "Tan Li Wen",       "designation": "RN",  "email": "tan.liwen@sach.org.sg",         "contactnumber": "98002006", "ward_idx": 1},
+    {"name": "Aisha Begum",      "designation": "EN",  "email": "aisha.begum@sach.org.sg",       "contactnumber": "98002007", "ward_idx": 1},
+    # Ward 2 — Ward 6 (Rehab, Simei)
+    {"name": "Pang Swee Lian",   "designation": "RN",  "email": "pang.sweelian@sach.org.sg",     "contactnumber": "98003001", "ward_idx": 2},
+    {"name": "Chia Beng Hock",   "designation": "EN",  "email": "chia.benghock@sach.org.sg",     "contactnumber": "98003002", "ward_idx": 2},
+    {"name": "Noor Aisyah",      "designation": "NA",  "email": "noor.aisyah@sach.org.sg",       "contactnumber": "98003003", "ward_idx": 2},
+    {"name": "Suresh Menon",     "designation": "HCA", "email": "suresh.menon@sach.org.sg",      "contactnumber": "98003004", "ward_idx": 2},
+    {"name": "Sim Bee Hoon",     "designation": "SSN", "email": "sim.beehoon@sach.org.sg",       "contactnumber": "98003005", "ward_idx": 2},
+    {"name": "Wee Cheng Yang",   "designation": "RN",  "email": "wee.chengyang@sach.org.sg",     "contactnumber": "98003006", "ward_idx": 2},
+    {"name": "Zurina Mohd",      "designation": "EN",  "email": "zurina.mohd@sach.org.sg",       "contactnumber": "98003007", "ward_idx": 2},
+    # Ward 3 — Ward 7 (Rehab, Simei)
+    {"name": "Tay Sock Hwa",     "designation": "RN",  "email": "tay.sockhwa@sach.org.sg",       "contactnumber": "98004001", "ward_idx": 3},
+    {"name": "Kang Wei Ming",    "designation": "EN",  "email": "kang.weiming@sach.org.sg",      "contactnumber": "98004002", "ward_idx": 3},
+    {"name": "Haslinda Yusof",   "designation": "NA",  "email": "haslinda.yusof@sach.org.sg",    "contactnumber": "98004003", "ward_idx": 3},
+    {"name": "Anand Rajan",      "designation": "HCA", "email": "anand.rajan@sach.org.sg",       "contactnumber": "98004004", "ward_idx": 3},
+    {"name": "Foo Siew Peng",    "designation": "SSN", "email": "foo.siewpeng@sach.org.sg",      "contactnumber": "98004005", "ward_idx": 3},
+    {"name": "Cheng Xiu Ying",   "designation": "RN",  "email": "cheng.xiuying@sach.org.sg",     "contactnumber": "98004006", "ward_idx": 3},
+    {"name": "Rozita Ibrahim",   "designation": "EN",  "email": "rozita.ibrahim@sach.org.sg",    "contactnumber": "98004007", "ward_idx": 3},
+    # Ward 4 — Ward 8 (Subacute, Simei)
+    {"name": "Yap Mei Lin",      "designation": "RN",  "email": "yap.meilin@sach.org.sg",        "contactnumber": "98005001", "ward_idx": 4},
+    {"name": "Seah Kok Leong",   "designation": "EN",  "email": "seah.kokleong@sach.org.sg",     "contactnumber": "98005002", "ward_idx": 4},
+    {"name": "Norhayati Ali",    "designation": "NA",  "email": "norhayati.ali@sach.org.sg",     "contactnumber": "98005003", "ward_idx": 4},
+    {"name": "Ganesh Sundaram",  "designation": "HCA", "email": "ganesh.sundaram@sach.org.sg",   "contactnumber": "98005004", "ward_idx": 4},
+    {"name": "Quek Hwee Ling",   "designation": "SSN", "email": "quek.hweeling@sach.org.sg",     "contactnumber": "98005005", "ward_idx": 4},
+    {"name": "Lau Chun Wai",     "designation": "RN",  "email": "lau.chunwai@sach.org.sg",       "contactnumber": "98005006", "ward_idx": 4},
+    {"name": "Mariam Hassan",    "designation": "EN",  "email": "mariam.hassan@sach.org.sg",     "contactnumber": "98005007", "ward_idx": 4},
+    # Ward 5 — Ward 9 (Subacute, Simei)
+    {"name": "Phang Sok Yee",    "designation": "RN",  "email": "phang.sokyee@sach.org.sg",      "contactnumber": "98006001", "ward_idx": 5},
+    {"name": "Ong Boon Huat",    "designation": "EN",  "email": "ong.boonhuat@sach.org.sg",      "contactnumber": "98006002", "ward_idx": 5},
+    {"name": "Rohani Wahab",     "designation": "NA",  "email": "rohani.wahab@sach.org.sg",      "contactnumber": "98006003", "ward_idx": 5},
+    {"name": "Vivek Sharma",     "designation": "HCA", "email": "vivek.sharma@sach.org.sg",      "contactnumber": "98006004", "ward_idx": 5},
+    {"name": "Soh Bee Kee",      "designation": "SSN", "email": "soh.beekee@sach.org.sg",        "contactnumber": "98006005", "ward_idx": 5},
+    {"name": "Chin Yen Nee",     "designation": "RN",  "email": "chin.yennee@sach.org.sg",       "contactnumber": "98006006", "ward_idx": 5},
+    {"name": "Salma Osman",      "designation": "EN",  "email": "salma.osman@sach.org.sg",       "contactnumber": "98006007", "ward_idx": 5},
+    # Ward 6 — Ward 10 (Paying Class, Simei)
+    {"name": "Khoo Mei Fen",     "designation": "RN",  "email": "khoo.meifen@sach.org.sg",       "contactnumber": "98007001", "ward_idx": 6},
+    {"name": "Heng Chee Seng",   "designation": "EN",  "email": "heng.cheeseng@sach.org.sg",     "contactnumber": "98007002", "ward_idx": 6},
+    {"name": "Zainab Kadir",     "designation": "NA",  "email": "zainab.kadir@sach.org.sg",      "contactnumber": "98007003", "ward_idx": 6},
+    {"name": "Lakshmi Devi",     "designation": "HCA", "email": "lakshmi.devi@sach.org.sg",      "contactnumber": "98007004", "ward_idx": 6},
+    {"name": "Neo Kim Huat",     "designation": "SSN", "email": "neo.kimhuat@sach.org.sg",       "contactnumber": "98007005", "ward_idx": 6},
+    {"name": "Fong Yoke Leng",   "designation": "RN",  "email": "fong.yokeleng@sach.org.sg",     "contactnumber": "98007006", "ward_idx": 6},
+    {"name": "Kartini Razak",    "designation": "EN",  "email": "kartini.razak@sach.org.sg",     "contactnumber": "98007007", "ward_idx": 6},
+    # Ward 7 — Ward 11 (Palliative, Simei)
+    {"name": "Chew Soo Khim",    "designation": "RN",  "email": "chew.sookhim@sach.org.sg",      "contactnumber": "98008001", "ward_idx": 7},
+    {"name": "Leong Wai Kuan",   "designation": "EN",  "email": "leong.waikuan@sach.org.sg",     "contactnumber": "98008002", "ward_idx": 7},
+    {"name": "Rahmah Yusoff",    "designation": "NA",  "email": "rahmah.yusoff@sach.org.sg",     "contactnumber": "98008003", "ward_idx": 7},
+    {"name": "Mohan Das",        "designation": "HCA", "email": "mohan.das@sach.org.sg",         "contactnumber": "98008004", "ward_idx": 7},
+    {"name": "Ang Bee Lian",     "designation": "SSN", "email": "ang.beelian@sach.org.sg",       "contactnumber": "98008005", "ward_idx": 7},
+    {"name": "Kwek Siew Hong",   "designation": "RN",  "email": "kwek.siewhong@sach.org.sg",     "contactnumber": "98008006", "ward_idx": 7},
+    {"name": "Hafizah Latif",    "designation": "EN",  "email": "hafizah.latif@sach.org.sg",     "contactnumber": "98008007", "ward_idx": 7},
+    # Ward 8 — CH (Community Hospital, Bedok)
+    {"name": "Png Geok Tin",     "designation": "RN",  "email": "png.geoktin@sach.org.sg",       "contactnumber": "98009001", "ward_idx": 8},
+    {"name": "Toh Choon Heng",   "designation": "EN",  "email": "toh.choonheng@sach.org.sg",     "contactnumber": "98009002", "ward_idx": 8},
+    {"name": "Salmah Johari",    "designation": "NA",  "email": "salmah.johari@sach.org.sg",     "contactnumber": "98009003", "ward_idx": 8},
+    {"name": "Kavitha Raju",     "designation": "HCA", "email": "kavitha.raju@sach.org.sg",      "contactnumber": "98009004", "ward_idx": 8},
+    {"name": "Low Kah Seng",     "designation": "SSN", "email": "low.kahseng@sach.org.sg",       "contactnumber": "98009005", "ward_idx": 8},
+    {"name": "Yeoh Li Ping",     "designation": "RN",  "email": "yeoh.liping@sach.org.sg",       "contactnumber": "98009006", "ward_idx": 8},
+    {"name": "Faridah Omar",     "designation": "EN",  "email": "faridah.omar@sach.org.sg",      "contactnumber": "98009007", "ward_idx": 8},
+    # Ward 9 — TCF (Transitional Care, Bedok)
+    {"name": "Sia Geok Choo",    "designation": "RN",  "email": "sia.geokchoo@sach.org.sg",      "contactnumber": "98010001", "ward_idx": 9},
+    {"name": "Beh Teck Soon",    "designation": "EN",  "email": "beh.tecksoon@sach.org.sg",      "contactnumber": "98010002", "ward_idx": 9},
+    {"name": "Norma Samad",      "designation": "NA",  "email": "norma.samad@sach.org.sg",       "contactnumber": "98010003", "ward_idx": 9},
+    {"name": "Srinivas Rao",     "designation": "HCA", "email": "srinivas.rao@sach.org.sg",      "contactnumber": "98010004", "ward_idx": 9},
+    {"name": "Tan Geok Bee",     "designation": "SSN", "email": "tan.geokbee@sach.org.sg",       "contactnumber": "98010005", "ward_idx": 9},
+    {"name": "Koh Li Hua",       "designation": "RN",  "email": "koh.lihua@sach.org.sg",         "contactnumber": "98010006", "ward_idx": 9},
+    {"name": "Azizah Hamid",     "designation": "EN",  "email": "azizah.hamid@sach.org.sg",      "contactnumber": "98010007", "ward_idx": 9},
+]
 
 
 def seed_roles(session: Session) -> dict[str, Role]:
@@ -293,6 +403,27 @@ def seed_wards(session: Session) -> list[Ward]:
                 wardtype=ward_data["wardtype"],
                 location=ward_data["location"],
                 isactive=True,
+                # AM shift staffing requirements
+                am_total=ward_data["am_total"],
+                am_rn=ward_data["am_rn"],
+                am_en_na_min=ward_data["am_en_na_min"],
+                am_en_na_max=ward_data["am_en_na_max"],
+                am_hca_min=ward_data["am_hca_min"],
+                am_hca_max=ward_data["am_hca_max"],
+                # PM shift staffing requirements
+                pm_total=ward_data["pm_total"],
+                pm_rn=ward_data["pm_rn"],
+                pm_en_na_min=ward_data["pm_en_na_min"],
+                pm_en_na_max=ward_data["pm_en_na_max"],
+                pm_hca_min=ward_data["pm_hca_min"],
+                pm_hca_max=ward_data["pm_hca_max"],
+                # ND shift staffing requirements
+                nd_total=ward_data["nd_total"],
+                nd_rn=ward_data["nd_rn"],
+                nd_en_na_min=ward_data["nd_en_na_min"],
+                nd_en_na_max=ward_data["nd_en_na_max"],
+                nd_hca_min=ward_data["nd_hca_min"],
+                nd_hca_max=ward_data["nd_hca_max"],
             )
             session.add(ward)
             session.commit()
@@ -492,12 +623,13 @@ def seed_nurse_users(
         session.commit()
         session.refresh(user)
 
-        # Assign Nurse role
+        # Assign Nurse role with ward assignment
         nurse_role = roles.get("Nurse")
         if nurse_role:
             user_role = UserRole(
                 userid=user.userid,
                 roleid=nurse_role.roleid,
+                wardid=nurse.wardid,
                 isactive=True,
                 assignedat=datetime.now(timezone.utc),
             )
@@ -511,55 +643,80 @@ def seed_nurse_users(
 
 
 def seed_roster_periods(session: Session) -> list[RosterPeriod]:
-    """Seed roster periods (current and next 2-week periods).
+    """Seed roster periods covering the previous calendar month and upcoming 2 weeks.
 
-    Period: Monday to Sunday (2 weeks = 14 days)
-    Request open: Friday, 2 weeks before roster starts (start - 10 days)
-    Request close: Friday, 1 week before roster starts (start - 3 days)
+    Periods are 2-week Mon–Sun blocks aligned to the current week's Monday.
+    Blocks step backward until the previous calendar month is fully covered,
+    then forward for the next 2-week block.
+
+    Returns the list with the current period at index 0 and the next period at
+    index 1 (preserving backward-compat for callers that use periods[0/1]),
+    followed by past periods in reverse-chronological order.
     """
     logger.info("Seeding roster periods...")
-    periods = []
 
     today = date.today()
-    # Start from Monday of current week
     current_monday = today - timedelta(days=today.weekday())
+    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
 
-    for i, period_label in enumerate(["Current", "Next"]):
-        # Period runs Monday to Sunday (14 days)
-        start_date = current_monday + timedelta(weeks=i * 2)
-        end_date = start_date + timedelta(days=13)  # Sunday of second week
+    # Collect all period start dates needed
+    period_starts: set[date] = set()
 
-        # Request open: Friday 2 weeks before (start - 10 days = Friday of that week)
-        request_open = start_date - timedelta(days=10)
-        # Request close: Friday 1 week before (start - 3 days = Friday before Monday)
-        request_close = start_date - timedelta(days=3)
+    # Current + next
+    period_starts.add(current_monday)
+    period_starts.add(current_monday + timedelta(weeks=2))
 
-        period_name = f"{period_label} Period {start_date.strftime('%b %d')}-{end_date.strftime('%b %d %Y')}"
+    # Step backward in 2-week blocks until the block's end date reaches
+    # before the first day of the previous month
+    p = current_monday - timedelta(weeks=2)
+    while True:
+        period_starts.add(p)
+        if p <= first_of_prev_month:
+            break
+        p -= timedelta(weeks=2)
+
+    all_periods: dict[date, RosterPeriod] = {}
+    for start in sorted(period_starts):
+        end = start + timedelta(days=13)
+        request_open = start - timedelta(days=10)
+        request_close = start - timedelta(days=3)
+
+        if start == current_monday:
+            label, status = "Current", "RequestOpen"
+        elif start > current_monday:
+            label, status = "Next", "RequestOpen"
+        else:
+            label, status = "Past", "Published"
+
+        period_name = f"{label} Period {start.strftime('%b %d')}-{end.strftime('%b %d %Y')}"
 
         existing = session.exec(
-            select(RosterPeriod).where(RosterPeriod.startdate == start_date)
+            select(RosterPeriod).where(RosterPeriod.startdate == start)
         ).first()
 
         if existing:
-            logger.info(f"  Roster period {start_date} already exists, skipping")
-            periods.append(existing)
-            continue
+            logger.info(f"  Roster period {start} already exists, skipping")
+            all_periods[start] = existing
+        else:
+            period = RosterPeriod(
+                name=period_name,
+                startdate=start,
+                enddate=end,
+                requestopendate=request_open,
+                requestclosedate=request_close,
+                status=status,
+            )
+            session.add(period)
+            session.commit()
+            session.refresh(period)
+            all_periods[start] = period
+            logger.info(f"  Created roster period: {period_name} (ID: {period.periodid})")
 
-        period = RosterPeriod(
-            name=period_name,
-            startdate=start_date,
-            enddate=end_date,
-            requestopendate=request_open,
-            requestclosedate=request_close,
-            status="RequestOpen" if i == 0 else "RequestOpen",
-        )
-        session.add(period)
-        session.commit()
-        session.refresh(period)
-        periods.append(period)
-        logger.info(f"  Created roster period: {period_name} (ID: {period.periodid})")
-
-    return periods
+    sorted_starts = sorted(all_periods.keys())
+    # current + future first (index 0 = current), then past in reverse-chron order
+    current_and_future = [all_periods[s] for s in sorted_starts if s >= current_monday]
+    past = [all_periods[s] for s in reversed(sorted_starts) if s < current_monday]
+    return current_and_future + past
 
 
 def seed_roster_entries(
@@ -569,11 +726,14 @@ def seed_roster_entries(
     periods: list[RosterPeriod],
     managers: list[NurseManager],
 ) -> int:
-    """Seed roster entries for all nurses in the current period.
+    """Seed roster entries for all nurses from the previous calendar month
+    through today + 14 days (upcoming 2 weeks).
 
-    - Populates starttime/endtime from shift code defaults
-    - Mix of Auto and Manual assignments
-    - assignedby is set for Manual assignments (manager ID)
+    - One entry per nurse per day over the full range
+    - starttime/endtime populated from shift code defaults
+    - Mix of Auto (70%) and Manual (30%) assignments
+    - Past dates are always Confirmed; future dates are Confirmed or Pending
+    - Shift pattern offset by nurse index for realistic variety across a ward
     """
     logger.info("Seeding roster entries...")
 
@@ -581,78 +741,95 @@ def seed_roster_entries(
         logger.warning("  No periods available, skipping roster entries")
         return 0
 
-    current_period = periods[0]
-    count = 0
+    today = date.today()
+    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    range_end = today + timedelta(days=14)
 
-    # Build shift code lookup for start/end times
+    # Build date → period mapping from all seeded periods
+    date_to_period: dict[date, RosterPeriod] = {}
+    for period in periods:
+        current = period.startdate
+        while current <= period.enddate:
+            date_to_period[current] = period
+            current += timedelta(days=1)
+
+    # Build shift code lookup
     shift_codes_db = session.exec(select(ShiftCode)).all()
     shift_lookup = {sc.shiftcode: sc for sc in shift_codes_db}
 
-    for nurse in nurses:
+    # 7-day rotating pattern; offset per nurse for variety
+    shift_pattern = ["D", "D", "N", "N", "DO", "DO", "D"]
+
+    count = 0
+    for nurse_idx, nurse in enumerate(nurses):
         ward = next((w for w in wards if w.wardid == nurse.wardid), None)
         if not ward:
             continue
 
-        # Find manager for this ward (if any)
-        ward_manager = managers[wards.index(ward)] if ward in wards and wards.index(ward) < len(managers) else None
+        ward_idx = wards.index(ward) if ward in wards else 0
+        ward_manager = managers[ward_idx] if ward_idx < len(managers) else None
 
-        # Generate 14 days of shifts
-        start_date = current_period.startdate
+        current_date = first_of_prev_month
+        day_offset = 0
+        nurse_count = 0
 
-        for day_offset in range(14):
-            shift_date = start_date + timedelta(days=day_offset)
+        while current_date <= range_end:
+            period = date_to_period.get(current_date)
+            if period is None:
+                current_date += timedelta(days=1)
+                day_offset += 1
+                continue
 
-            # Check if roster entry exists
             existing = session.exec(
                 select(Roster).where(
                     Roster.nurseid == nurse.nurseid,
-                    Roster.periodid == current_period.periodid,
-                    Roster.shiftdate == shift_date,
+                    Roster.shiftdate == current_date,
                 )
             ).first()
 
             if existing:
+                current_date += timedelta(days=1)
+                day_offset += 1
                 continue
 
-            # Simple rotation: D, D, N, N, DO, DO, D pattern
-            shift_idx = day_offset % 7
-            if shift_idx < 2:
-                shift_code = "D"
-            elif shift_idx < 4:
-                shift_code = "N"
-            elif shift_idx < 6:
-                shift_code = "DO"
-            else:
-                shift_code = "D"
-
-            # Get start/end times from shift code
+            shift_code = shift_pattern[(day_offset + nurse_idx * 3) % len(shift_pattern)]
             sc = shift_lookup.get(shift_code)
             start_time = sc.defaultstart if sc else None
             end_time = sc.defaultend if sc else None
 
-            # Mix of Auto (70%) and Manual (30%) assignments
             is_manual = fake.random_int(min=1, max=10) <= 3
             assignment_method = "Manual" if is_manual else "Auto"
             assigned_by = ward_manager.managerid if is_manual and ward_manager else None
 
+            # Past/today: always Confirmed; future: mostly Confirmed, some Pending
+            if current_date <= today:
+                status = "Confirmed"
+            else:
+                status = fake.random_element(["Confirmed", "Confirmed", "Confirmed", "Pending"])
+
             roster = Roster(
                 nurseid=nurse.nurseid,
                 wardid=ward.wardid,
-                periodid=current_period.periodid,
-                shiftdate=shift_date,
+                periodid=period.periodid,
+                shiftdate=current_date,
                 shiftcode=shift_code,
                 starttime=start_time,
                 endtime=end_time,
-                status="Confirmed",
+                status=status,
                 assignmentmethod=assignment_method,
                 assignedby=assigned_by,
             )
             session.add(roster)
             count += 1
+            nurse_count += 1
+
+            current_date += timedelta(days=1)
+            day_offset += 1
 
         session.commit()
+        logger.info(f"  {nurse.name}: {nurse_count} entries ({first_of_prev_month} → {range_end})")
 
-    logger.info(f"  Created {count} roster entries")
+    logger.info(f"  Total: {count} roster entries")
     return count
 
 
@@ -664,8 +841,10 @@ def seed_shift_requests(
 ) -> int:
     """Seed shift requests for nurses.
 
-    - ~20% of nurses submit shift requests
+    - Current period: ~30% of nurses submit shift requests (densest)
+    - Next period: ~10% of nurses submit shift requests
     - Each nurse can submit up to 3 requests per period
+    - Dates spread evenly across days via round-robin
     - Mixed statuses: Pending, Approved, Rejected
     - Working shifts only: D, N, A, P
     """
@@ -675,7 +854,6 @@ def seed_shift_requests(
         logger.warning("  No periods or nurses available, skipping shift requests")
         return 0
 
-    current_period = periods[0]
     count = 0
 
     # Working shift codes only
@@ -691,73 +869,97 @@ def seed_shift_requests(
         None,  # No reason given
     ]
 
-    # Select ~20% of nurses to have shift requests
-    num_nurses_with_requests = max(1, len(nurses) // 5)
-    selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
+    # Current period: ALL nurses get at least 1 request; next period: ~10%
+    for period_idx, period in enumerate(periods):
+        # Build list of all dates in this period for round-robin distribution
+        days_in_period = (period.enddate - period.startdate).days
+        period_dates = [period.startdate + timedelta(days=d) for d in range(days_in_period + 1)]
+        day_cursor = 0
 
-    for nurse in selected_nurses:
-        # Check if requests already exist for this nurse/period
-        existing = session.exec(
-            select(ShiftRequest).where(
-                ShiftRequest.nurseid == nurse.nurseid,
-                ShiftRequest.periodid == current_period.periodid,
-            )
-        ).first()
+        # Current period: every nurse; next period: 10% sample
+        if period_idx == 0:
+            selected_nurses = list(nurses)
+        else:
+            num_nurses_with_requests = max(1, int(len(nurses) * 0.10))
+            selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
 
-        if existing:
-            logger.info(f"  Shift requests for nurse {nurse.name} already exist, skipping")
-            continue
+        period_count = 0
+        for nurse in selected_nurses:
+            # Check if requests already exist for this nurse/period
+            existing = session.exec(
+                select(ShiftRequest).where(
+                    ShiftRequest.nurseid == nurse.nurseid,
+                    ShiftRequest.periodid == period.periodid,
+                )
+            ).first()
 
-        # Generate 1-3 requests per nurse
-        num_requests = fake.random_int(min=1, max=3)
+            if existing:
+                logger.info(f"  Shift requests for nurse {nurse.name} in period {period.periodid} already exist, skipping")
+                continue
 
-        for request_num in range(1, num_requests + 1):
-            # Random date within the roster period
-            days_in_period = (current_period.enddate - current_period.startdate).days
-            random_day = fake.random_int(min=0, max=days_in_period)
-            preferred_date = current_period.startdate + timedelta(days=random_day)
+            # Generate 1-3 requests per nurse
+            num_requests = fake.random_int(min=1, max=3)
 
-            status = fake.random_element(statuses)
+            for request_num in range(1, num_requests + 1):
+                # Round-robin date assignment for even spread across days
+                preferred_date = period_dates[day_cursor % len(period_dates)]
+                day_cursor += 1
 
-            # If approved/rejected, set reviewer (manager or algorithm)
-            reviewed_by = None
-            reviewed_at = None
-            rejection_reason = None
+                # Check if this specific request already exists
+                existing_req = session.exec(
+                    select(ShiftRequest).where(
+                        ShiftRequest.nurseid == nurse.nurseid,
+                        ShiftRequest.periodid == period.periodid,
+                        ShiftRequest.requestnumber == request_num,
+                    )
+                ).first()
+                if existing_req:
+                    continue
 
-            if status in ["Approved", "Rejected"]:
-                # 70% reviewed by manager, 30% by algorithm (reviewedby = None for algorithm)
-                if fake.random_int(min=1, max=10) <= 7 and managers:
-                    reviewed_by = fake.random_element(managers).managerid
-                reviewed_at = datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=1, max=5))
+                status = fake.random_element(statuses)
 
-                if status == "Rejected":
-                    rejection_reason = fake.random_element([
-                        "Staffing requirements not met",
-                        "Too many requests for this date",
-                        "Conflicts with another approved request",
-                        "Insufficient notice period",
-                    ])
+                # If approved/rejected, set reviewer (manager or algorithm)
+                reviewed_by = None
+                reviewed_at = None
+                rejection_reason = None
 
-            shift_request = ShiftRequest(
-                nurseid=nurse.nurseid,
-                periodid=current_period.periodid,
-                preferreddate=preferred_date,
-                preferredshifttype=fake.random_element(working_shifts),
-                requestnumber=request_num,
-                reason=fake.random_element(reasons),
-                priority=1,  # Default priority (not used per requirements)
-                status=status,
-                reviewedby=reviewed_by,
-                reviewedat=reviewed_at,
-                rejectionreason=rejection_reason,
-                notificationsent=status != "Pending",
-            )
-            session.add(shift_request)
-            count += 1
+                if status in ["Approved", "Rejected"]:
+                    # 70% reviewed by manager, 30% by algorithm (reviewedby = None for algorithm)
+                    if fake.random_int(min=1, max=10) <= 7 and managers:
+                        reviewed_by = fake.random_element(managers).managerid
+                    reviewed_at = datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=1, max=5))
 
-        session.commit()
+                    if status == "Rejected":
+                        rejection_reason = fake.random_element([
+                            "Staffing requirements not met",
+                            "Too many requests for this date",
+                            "Conflicts with another approved request",
+                            "Insufficient notice period",
+                        ])
 
-    logger.info(f"  Created {count} shift requests for {len(selected_nurses)} nurses")
+                shift_request = ShiftRequest(
+                    nurseid=nurse.nurseid,
+                    periodid=period.periodid,
+                    preferreddate=preferred_date,
+                    preferredshifttype=fake.random_element(working_shifts),
+                    requestnumber=request_num,
+                    reason=fake.random_element(reasons),
+                    priority=1,  # Default priority (not used per requirements)
+                    status=status,
+                    reviewedby=reviewed_by,
+                    reviewedat=reviewed_at,
+                    rejectionreason=rejection_reason,
+                    notificationsent=status != "Pending",
+                )
+                session.add(shift_request)
+                period_count += 1
+
+            session.commit()
+
+        logger.info(f"  Period {period.periodid}: created {period_count} shift requests for {len(selected_nurses)} nurses")
+        count += period_count
+
+    logger.info(f"  Total: {count} shift requests across {len(periods)} periods")
     return count
 
 
@@ -839,14 +1041,17 @@ def seed_notifications(
     session: Session,
     nurses: list[Nurse],
     periods: list[RosterPeriod],
+    managers: list[NurseManager],
 ) -> int:
-    """Seed notifications for ward staff using NotificationQueue.
+    """Seed notifications for ward staff and managers using NotificationQueue.
 
     Notification types:
     - ShiftUpdate: Roster released, roster changes
     - SwapRequest: Shift swap notifications
     - LeaveApproval: Request approved/rejected
     - LeaveReminder: Request period reminders
+
+    Every nurse and nurse manager receives at least 3 notifications.
     """
     logger.info("Seeding notifications...")
 
@@ -857,8 +1062,10 @@ def seed_notifications(
     current_period = periods[0]
     count = 0
 
-    # Notification templates with subjects and message bodies
-    notification_templates = [
+    channels = ["WhatsApp", "Email", "Both"]
+
+    # Notification templates for nurses
+    nurse_templates = [
         {
             "type": "ShiftUpdate",
             "subject": "Roster Released",
@@ -909,72 +1116,128 @@ def seed_notifications(
         },
     ]
 
-    channels = ["WhatsApp", "Email", "Both"]
+    # Notification templates for managers
+    manager_templates = [
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Period Started",
+            "body": f"Roster period {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} has begun.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveReminder",
+            "subject": "Shift Requests Pending Review",
+            "body": "There are shift requests from your ward staff awaiting your review.",
+            "priority": "Normal",
+        },
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Finalized",
+            "body": "The roster for the upcoming period has been finalized.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveApproval",
+            "subject": "Leave Request Submitted",
+            "body": "A nurse in your ward has submitted a leave request. Please review.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveReminder",
+            "subject": "Request Window Closing Soon",
+            "body": f"Reminder: The shift request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
+            "priority": "Urgent",
+        },
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Released to Staff",
+            "body": f"The {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} roster has been released to ward staff.",
+            "priority": "Normal",
+        },
+    ]
 
-    # Create notifications for ~50% of ward staff (nurses)
-    num_nurses_with_notifications = max(1, len(nurses) // 2)
-    selected_nurses = fake.random_elements(nurses, length=num_nurses_with_notifications, unique=True)
+    def _make_notification(recipient_type: str, recipient_id: int, template: dict) -> NotificationQueue:
+        days_ago = fake.random_int(min=0, max=7)
+        created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
 
-    for nurse in selected_nurses:
-        # Check if notifications already exist for this nurse
-        existing = session.exec(
+        status_choice = fake.random_int(min=1, max=6)
+        if status_choice <= 2:
+            status = "Read"
+            sent_at = created_at + timedelta(minutes=1)
+            read_at = created_at + timedelta(hours=fake.random_int(min=1, max=24))
+        elif status_choice <= 5:
+            status = "Sent"
+            sent_at = created_at + timedelta(minutes=1)
+            read_at = None
+        else:
+            status = "Pending"
+            sent_at = None
+            read_at = None
+
+        return NotificationQueue(
+            recipienttype=recipient_type,
+            recipientid=recipient_id,
+            notificationtype=template["type"],
+            channel=fake.random_element(channels),
+            priority=template["priority"],
+            subject=template["subject"],
+            messagebody=template["body"],
+            relatedentitytype="RosterPeriod",
+            relatedentityid=current_period.periodid,
+            status=status,
+            scheduledat=created_at,
+            sentat=sent_at,
+            readat=read_at,
+            retrycount=0,
+            createdat=created_at,
+        )
+
+    # Create at least 3 notifications for every nurse
+    for nurse in nurses:
+        existing_count = session.exec(
             select(NotificationQueue).where(
                 NotificationQueue.recipientid == nurse.nurseid,
                 NotificationQueue.recipienttype == "Nurse",
             )
-        ).first()
+        ).all()
 
-        if existing:
+        if len(existing_count) >= 3:
             continue
 
-        # Generate 1-3 notifications per nurse
-        num_notifications = fake.random_int(min=1, max=3)
-
-        for _ in range(num_notifications):
-            template = fake.random_element(notification_templates)
-
-            # Random date within last 7 days
-            days_ago = fake.random_int(min=0, max=7)
-            created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
-
-            # Determine status: ~33% Read, ~50% Sent, ~17% Pending
-            status_choice = fake.random_int(min=1, max=6)
-            if status_choice <= 2:
-                status = "Read"
-                sent_at = created_at + timedelta(minutes=1)
-                read_at = created_at + timedelta(hours=fake.random_int(min=1, max=24))
-            elif status_choice <= 5:
-                status = "Sent"
-                sent_at = created_at + timedelta(minutes=1)
-                read_at = None
-            else:
-                status = "Pending"
-                sent_at = None
-                read_at = None
-
-            notification = NotificationQueue(
-                recipienttype="Nurse",
-                recipientid=nurse.nurseid,
-                notificationtype=template["type"],
-                channel=fake.random_element(channels),
-                priority=template["priority"],
-                subject=template["subject"],
-                messagebody=template["body"],
-                relatedentitytype="RosterPeriod",
-                relatedentityid=current_period.periodid,
-                status=status,
-                scheduledat=created_at,
-                sentat=sent_at,
-                readat=read_at,
-                retrycount=0,
-                createdat=created_at,
-            )
-            session.add(notification)
+        num_notifications = fake.random_int(min=3, max=5)
+        for i in range(num_notifications - len(existing_count)):
+            template = nurse_templates[i % len(nurse_templates)]
+            session.add(_make_notification("Nurse", nurse.nurseid, template))
             count += 1
 
     session.commit()
-    logger.info(f"  Created {count} notifications for {len(selected_nurses)} ward staff")
-    return count
+    logger.info(f"  Created {count} notifications for {len(nurses)} nurses")
+
+    # Create at least 3 notifications for every manager
+    manager_count = 0
+    for manager in managers:
+        existing_count = session.exec(
+            select(NotificationQueue).where(
+                NotificationQueue.recipientid == manager.managerid,
+                NotificationQueue.recipienttype == "NurseManager",
+            )
+        ).all()
+
+        if len(existing_count) >= 3:
+            continue
+
+        num_notifications = fake.random_int(min=3, max=5)
+        for i in range(num_notifications - len(existing_count)):
+            template = manager_templates[i % len(manager_templates)]
+            session.add(_make_notification("NurseManager", manager.managerid, template))
+            manager_count += 1
+
+    session.commit()
+    logger.info(f"  Created {manager_count} notifications for {len(managers)} managers")
+
+    total = count + manager_count
+    logger.info(f"  Total: {total} notifications created")
+    return total
 
 
 def seed_web_users(session: Session) -> int:
@@ -1018,6 +1281,44 @@ def seed_web_users(session: Session) -> int:
     return count
 
 
+def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
+    """Seed ward-specific shift code mappings.
+
+    All wards are mapped to: D, N, A, P plus all leave codes (isworking=False).
+    """
+    logger.info("Seeding ward shift code mappings...")
+    DEFAULT_BASE_WORKING = {"A", "P", "N"}
+    SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
+    SPECIAL_WARD_IDS = {9, 10} #CH and TCF
+    leave_codes = {
+        sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
+    }
+
+    for ward in wards:
+        if ward.wardid in SPECIAL_WARD_IDS:
+            base_working=SPECIAL_BASE_WORKING
+        else:
+            base_working=DEFAULT_BASE_WORKING
+        
+        ward_codes=base_working | leave_codes
+        for shiftcode in sorted(ward_codes):
+            existing = session.exec(
+                select(WardShiftCode).where(
+                    WardShiftCode.wardid == ward.wardid,
+                    WardShiftCode.shiftcode == shiftcode,
+                )
+            ).first()
+
+            if existing:
+                logger.info(f"  Mapping {ward.wardname} -> {shiftcode} already exists, skipping")
+            else:
+                mapping = WardShiftCode(wardid=ward.wardid, shiftcode=shiftcode)
+                session.add(mapping)
+                logger.info(f"  Mapped {ward.wardname} -> {shiftcode}")
+
+    session.commit()
+
+
 def seed_all() -> None:
     """Run all seed functions."""
     logger.info("=" * 60)
@@ -1029,6 +1330,7 @@ def seed_all() -> None:
         roles = seed_roles(session)
         seed_shift_codes(session)
         wards = seed_wards(session)
+        seed_ward_shiftcodes(session, wards)
         managers = seed_managers(session, wards)
         nurses = seed_nurses(session, wards)
 
@@ -1050,8 +1352,8 @@ def seed_all() -> None:
         # Seed leave requests (~15% of nurses, leave-type shift codes)
         seed_leave_requests(session, nurses, periods)
 
-        # Seed notifications for ward staff (~50% of nurses)
-        seed_notifications(session, nurses, periods)
+        # Seed notifications for all nurses and managers (at least 3 each)
+        seed_notifications(session, nurses, periods, managers)
 
     logger.info("=" * 60)
     logger.info("Database seeding completed!")

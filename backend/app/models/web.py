@@ -62,6 +62,9 @@ class User(UserBase, table=True):
 # Properties to return via API, id is always required
 class UserPublic(UserBase):
     id: uuid.UUID
+    nurseid: int | None = None
+    managerid: int | None = None
+    wardid: int | None = None
 
 
 class UsersPublic(SQLModel):

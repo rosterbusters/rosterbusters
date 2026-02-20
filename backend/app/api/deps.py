@@ -10,7 +10,8 @@ from sqlmodel import Session
 from app.core import security
 from app.core.config import settings
 from app.core.db import engine
-from app.models import TokenPayload, User
+from app.models import TokenPayload, RBACUser
+from app.rbac import get_user_roles, user_has_role
 
 try:
     from jwt.exceptions import InvalidTokenError
@@ -31,7 +32,7 @@ SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
-def get_current_user(session: SessionDep, token: TokenDep) -> User:
+def get_current_user(session: SessionDep, token: TokenDep) -> RBACUser:
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
@@ -42,20 +43,64 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
-    user = session.get(User, token_data.sub)
+    try:
+        user_id = int(token_data.sub)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
+        )
+    user = session.get(RBACUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not user.is_active:
+    if not user.isactive:
         raise HTTPException(status_code=400, detail="Inactive user")
     return user
 
 
-CurrentUser = Annotated[User, Depends(get_current_user)]
+CurrentUser = Annotated[RBACUser, Depends(get_current_user)]
 
 
-def get_current_active_superuser(current_user: CurrentUser) -> User:
-    if not current_user.is_superuser:
+def get_current_active_superuser(current_user: CurrentUser) -> RBACUser:
+    # Check if user has Admin role - for now just check if active
+    # TODO: Implement proper role checking via UserRole table
+    if not current_user.isactive:
         raise HTTPException(
             status_code=403, detail="The user doesn't have enough privileges"
         )
     return current_user
+
+
+def require_nurse_manager(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> RBACUser:
+    """Dependency: allows only users with the NurseManager role."""
+    if not user_has_role(session, current_user.email, "NurseManager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nurse manager access required",
+        )
+    return current_user
+
+
+def require_nurse(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> RBACUser:
+    """Dependency: allows users with the Nurse role OR the NurseManager role.
+
+    NurseManagers who have been granted nurse access can reach ward-staff
+    routes without needing a separate Nurse role assignment.
+    """
+    roles = get_user_roles(session, current_user.email)
+    if "Nurse" not in roles and "NurseManager" not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ward staff access required",
+        )
+    return current_user
+
+
+NurseManagerUser = Annotated[RBACUser, Depends(require_nurse_manager)]
+NurseUser = Annotated[RBACUser, Depends(require_nurse)]

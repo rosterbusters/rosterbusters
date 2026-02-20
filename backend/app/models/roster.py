@@ -23,6 +23,54 @@ class Ward(SQLModel, table=True):
     wardtype: Optional[str] = Field(default=None, max_length=50)
     location: Optional[str] = Field(default=None, max_length=100)
     isactive: bool = Field(default=True)
+    
+    # Staffing requirements - AM shift
+    am_total: Optional[int] = Field(default=None)
+    am_rn: Optional[int] = Field(default=None)
+    am_en_na_min: Optional[int] = Field(default=None)
+    am_en_na_max: Optional[int] = Field(default=None)
+    am_hca_min: Optional[int] = Field(default=None)
+    am_hca_max: Optional[int] = Field(default=None)
+
+    # Staffing requirements - PM shift
+    pm_total: Optional[int] = Field(default=None)
+    pm_rn: Optional[int] = Field(default=None)
+    pm_en_na_min: Optional[int] = Field(default=None)
+    pm_en_na_max: Optional[int] = Field(default=None)
+    pm_hca_min: Optional[int] = Field(default=None)
+    pm_hca_max: Optional[int] = Field(default=None)
+
+    # Staffing requirements - ND (Night) shift
+    nd_total: Optional[int] = Field(default=None)
+    nd_rn: Optional[int] = Field(default=None)
+    nd_en_na_min: Optional[int] = Field(default=None)
+    nd_en_na_max: Optional[int] = Field(default=None)
+    nd_hca_min: Optional[int] = Field(default=None)
+    nd_hca_max: Optional[int] = Field(default=None)
+
+    # Staffing requirements - AM shift
+    am_total: Optional[int] = Field(default=None)
+    am_rn: Optional[int] = Field(default=None)
+    am_en_na_min: Optional[int] = Field(default=None)
+    am_en_na_max: Optional[int] = Field(default=None)
+    am_hca_min: Optional[int] = Field(default=None)
+    am_hca_max: Optional[int] = Field(default=None)
+
+    # Staffing requirements - PM shift
+    pm_total: Optional[int] = Field(default=None)
+    pm_rn: Optional[int] = Field(default=None)
+    pm_en_na_min: Optional[int] = Field(default=None)
+    pm_en_na_max: Optional[int] = Field(default=None)
+    pm_hca_min: Optional[int] = Field(default=None)
+    pm_hca_max: Optional[int] = Field(default=None)
+
+    # Staffing requirements - ND (Night) shift
+    nd_total: Optional[int] = Field(default=None)
+    nd_rn: Optional[int] = Field(default=None)
+    nd_en_na_min: Optional[int] = Field(default=None)
+    nd_en_na_max: Optional[int] = Field(default=None)
+    nd_hca_min: Optional[int] = Field(default=None)
+    nd_hca_max: Optional[int] = Field(default=None)
 
 
 class RosterPeriod(SQLModel, table=True):
@@ -75,7 +123,6 @@ class NotificationQueue(SQLModel, table=True):
     readat: Optional[datetime] = None
     failurereason: Optional[str] = None
     retrycount: int = Field(default=0)
-
     createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

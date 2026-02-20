@@ -5,6 +5,7 @@ import { FcGoogle } from "react-icons/fc"
 import { useState } from "react"; 
 import { useForm, SubmitHandler } from 'react-hook-form';
 import type { Body_login_access_token as AccessToken } from "@/client"
+import { UsersService } from "@/client"
 import { Button } from "@chakra-ui/react";
 import { Field } from "@/components/ui/field"
 import { Input } from "@chakra-ui/react"
@@ -16,9 +17,18 @@ export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
     if (isLoggedIn()) {
-      throw redirect({
-        to: "/",
-      })
+      let to: "/nurse-manager/home" | "/ward-staff/home" = "/ward-staff/home"
+      try {
+        const user = await UsersService.readUserMe()
+        if (user.managerid) {
+          to = "/nurse-manager/home"
+        }
+      } catch {
+        // Invalid/expired token — clear it and let the user log in again
+        localStorage.removeItem("access_token")
+        return
+      }
+      throw redirect({ to })
     }
   },
 })
@@ -166,7 +176,7 @@ function Login() {
 
                 {/* Password */}
                 <Field invalid={!!errors.password} errorText={errors.password?.message}>
-                  <InputGroup 
+                  <InputGroup
                     startElement={<FiLock color="gray" />}
                     endElement={
                       <IconButton

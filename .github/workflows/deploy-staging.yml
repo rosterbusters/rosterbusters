@@ -51,7 +51,7 @@ jobs:
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ~/rosterbusters/.env" << 'EOF'
           ENVIRONMENT=staging
           PROJECT_NAME=RosterBusters
-          FRONTEND_HOST=http://${{ secrets.EC2_HOST }}:5173
+          FRONTEND_HOST=https://dashboard.${{ secrets.DOMAIN_STAGING }}
           DOMAIN=${{ secrets.DOMAIN_STAGING }}
           STACK_NAME=${{ secrets.STACK_NAME_STAGING }}
           SECRET_KEY=${{ secrets.SECRET_KEY }}
@@ -73,10 +73,13 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
           DOCKER_IMAGE_BACKEND=backend
           DOCKER_IMAGE_FRONTEND=frontend
-          BACKEND_CORS_ORIGINS=["http://${{ secrets.EC2_HOST }}:5173"]
+          BACKEND_CORS_ORIGINS=["https://dashboard.${{ secrets.DOMAIN_STAGING }}"]
           ACCESS_TOKEN_EXPIRE_MINUTES=10080
           ALGORITHM=HS256
           POSTGRES_PORT=5432
+          EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
+          USERNAME=${{ secrets.TRAEFIK_USERNAME }}
+          HASHED_PASSWORD=${{ secrets.TRAEFIK_HASHED_PASSWORD }}
           EOF
 
       - name: Strip whitespace from .env
@@ -88,9 +91,23 @@ jobs:
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
           set -e
           cd ~/rosterbusters
-          docker compose down
-          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose build
-          docker compose up -d
-          docker compose exec backend python app/seed_data.py
+
+          # Stop all containers including Traefik and any orphans
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
+
+          # Create the external network for Traefik (idempotent)
+          docker network create traefik-public 2>/dev/null || true
+
+          # Start Traefik reverse proxy (handles SSL via Let's Encrypt)
+          docker compose -f docker-compose.traefik.yml up -d
+
+          # Build and start the app in production mode
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml build
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+
+          # Seed database
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_data.py
           EOF
       

@@ -17,6 +17,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
+import { Select, createListCollection } from "@chakra-ui/react";
 import moment from "moment";
 import type { Ward, RosterPeriod, ViewMode } from "../RosterTable/types";
 import {
@@ -26,6 +27,13 @@ import {
   MenuItem,
 } from "@/components/ui/menu";
 import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge";
+
+const MOCK_DATA_OPTIONS = [
+  { value: "", label: "— Load mock data —" },
+  { value: "ga_sched_1", label: "GA Schedule 1" },
+  { value: "ga_sched_2", label: "GA Schedule 2" },
+  { value: "milp_sched_1", label: "MILP Schedule 1" },
+];
 
 interface RosterPlanningHeaderProps {
   currentStartDate: Date;
@@ -44,6 +52,7 @@ interface RosterPlanningHeaderProps {
   onDownloadRoster: () => void;
   onGenerateAlgorithm?: () => void;
   onClearRoster?: () => void;
+  onLoadMockData?: (mockKey: string) => void;
 }
 
 export function RosterPlanningHeader({
@@ -63,8 +72,12 @@ export function RosterPlanningHeader({
   onDownloadRoster,
   onGenerateAlgorithm,
   onClearRoster,
+  onLoadMockData,
 }: RosterPlanningHeaderProps) {
-  const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
+  const endDate = moment(currentStartDate).add(
+    viewMode === "week" ? 6 : 13,
+    "days",
+  );
   const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
 
   const handleToday = () => {
@@ -83,13 +96,20 @@ export function RosterPlanningHeader({
     const newDate = moment(currentStartDate).add(days, "days").toDate();
     onDateChange(newDate);
   };
-
+  
+  
+  const wardCollection = createListCollection({
+    items: wards,
+    itemToString: (ward) => ward.wardName,
+    itemToValue: (ward) => String(ward.wardId),
+  });
+  
   return (
     <Box w="full" position="relative">
       {/* Top Row: Algorithm Badge (Left) + Ward/Menu (Right) - Absolute positioned */}
-      <Flex 
-        justify="space-between" 
-        align="center" 
+      <Flex
+        justify="space-between"
+        align="center"
         position="absolute"
         top={0}
         left={0}
@@ -101,35 +121,47 @@ export function RosterPlanningHeader({
 
         {/* Right Section: Ward Dropdown + Hamburger Menu */}
         <HStack gap={2}>
+          
+
+          <HStack gap={2}>
           <Text fontSize="sm" color="#6B7280" fontWeight="medium">
             Ward:
           </Text>
-          <Box position="relative" minW="140px">
-            <select
-              value={selectedWard?.wardId || ""}
-              onChange={(e) => {
-                const ward = wards.find(w => w.wardId === Number(e.target.value));
-                if (ward) onWardChange(ward);
-              }}
-              style={{
-                width: "100%",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "1px solid #E6E6E6",
-                fontSize: "14px",
-                color: "#4A4A4A",
-                backgroundColor: "white",
-                cursor: "pointer",
-              }}
-            >
-              {wards.map((ward) => (
-                <option key={ward.wardId} value={ward.wardId}>
-                  {ward.wardName}
-                </option>
-              ))}
-            </select>
-          </Box>
+          <Select.Root
+            collection={wardCollection}
+            size="sm"
+            width="140px"
+            color="foreground"
+            value={selectedWard ? [String(selectedWard.wardId)] : []}
+            onValueChange={(details) => {
+              const ward = wards.find(
+                (w) => String(w.wardId) === details.value[0],
+              );
+              if (ward) onWardChange(ward);
+            }}
+          >
+            <Select.HiddenSelect />
+            <Select.Control>
+              <Select.Trigger>
+                <Select.ValueText placeholder="Select Ward" />
+              </Select.Trigger>
+              <Select.IndicatorGroup>
+                <Select.Indicator />
+              </Select.IndicatorGroup>
+            </Select.Control>
+            <Select.Positioner>
+              <Select.Content>
+                {wardCollection.items.map((ward) => (
+                  <Select.Item key={ward.wardId} item={ward}>
+                    {ward.wardName}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Positioner>
+          </Select.Root>
+        </HStack>
           
+
           {/* Hamburger Menu */}
           <MenuRoot>
             <MenuTrigger asChild>
@@ -173,26 +205,16 @@ export function RosterPlanningHeader({
       </Flex>
 
       {/* Centered Content Stack */}
-      <Flex 
-        direction="column" 
-        align="center" 
-        justify="center"
-        gap={3}
-        pt={1}
-      >
+      <Flex direction="column" align="center" justify="center" gap={3} pt={1}>
         {/* Title */}
-        <Text
-          fontSize="xl"
-          fontWeight="bold"
-          color="#155E75"
-          textAlign="center"
-        >
+        <Text color="primary" fontWeight="semibold" fontSize={"lg"}>
           Staff Roster Schedule
         </Text>
 
+
         {/* Date Range Row: Navigation (Left) + Date Range (Center) + View Mode (Right) */}
-        <Flex 
-          justify="space-between" 
+        <Flex
+          justify="space-between"
           align="center"
           w="full"
           flexWrap="wrap"
@@ -247,10 +269,10 @@ export function RosterPlanningHeader({
           </Text>
 
           {/* Right Section: View Mode Toggle */}
-          <HStack 
-            gap={0} 
-            borderRadius="lg" 
-            border="1px solid #E6E6E6" 
+          <HStack
+            gap={0}
+            borderRadius="lg"
+            border="1px solid #E6E6E6"
             overflow="hidden"
           >
             <Button
@@ -259,8 +281,8 @@ export function RosterPlanningHeader({
               onClick={() => onViewModeChange("week")}
               bg={viewMode === "week" ? "#4B8798" : "transparent"}
               color={viewMode === "week" ? "white" : "#4A4A4A"}
-              _hover={{ 
-                bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC" 
+              _hover={{
+                bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC",
               }}
               borderRadius={0}
               px={4}
@@ -273,8 +295,8 @@ export function RosterPlanningHeader({
               onClick={() => onViewModeChange("twoWeeks")}
               bg={viewMode === "twoWeeks" ? "#4B8798" : "transparent"}
               color={viewMode === "twoWeeks" ? "white" : "#4A4A4A"}
-              _hover={{ 
-                bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC" 
+              _hover={{
+                bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC",
               }}
               borderRadius={0}
               px={4}
@@ -293,7 +315,9 @@ export function RosterPlanningHeader({
             <select
               value={selectedPeriod?.periodId || ""}
               onChange={(e) => {
-                const period = periods.find(p => p.periodId === Number(e.target.value));
+                const period = periods.find(
+                  (p) => p.periodId === Number(e.target.value),
+                );
                 if (period) onPeriodChange(period);
               }}
               style={{
@@ -309,7 +333,8 @@ export function RosterPlanningHeader({
             >
               {periods.map((period) => (
                 <option key={period.periodId} value={period.periodId}>
-                  {period.name || `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
+                  {period.name ||
+                    `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
                 </option>
               ))}
             </select>
@@ -318,33 +343,76 @@ export function RosterPlanningHeader({
 
         {/* Algorithm Generation Buttons */}
         {!isAlgorithmGenerated ? (
-          // Generate Algorithm Roster Button
-          <Button
-            size="md"
-            bg="#4B8798"
-            color="white"
-            _hover={{ bg: "#3d6f7d" }}
-            _active={{ bg: "#2d5a68" }}
-            onClick={onGenerateAlgorithm}
-            disabled={isGenerating}
-            px={6}
-            py={2}
-            borderRadius="lg"
-            fontWeight="semibold"
-            boxShadow="md"
-          >
-            {isGenerating ? (
+          // Generate + Mock Data row
+          <HStack gap={4} flexWrap="wrap" justify="center">
+            <Button
+              size="md"
+              bg="#4B8798"
+              color="white"
+              _hover={{ bg: "#3d6f7d" }}
+              _active={{ bg: "#2d5a68" }}
+              onClick={onGenerateAlgorithm}
+              disabled={isGenerating}
+              px={6}
+              py={2}
+              borderRadius="lg"
+              fontWeight="semibold"
+              boxShadow="md"
+            >
+              {isGenerating ? (
+                <HStack gap={2}>
+                  <Spinner size="sm" />
+                  <Text>Generating...</Text>
+                </HStack>
+              ) : (
+                <HStack gap={2}>
+                  <Wand2 className="h-5 w-5" />
+                  <Text>Generate Algorithm Roster</Text>
+                </HStack>
+              )}
+            </Button>
+
+            {/* Mock Data Selector */}
+            {onLoadMockData && (
               <HStack gap={2}>
-                <Spinner size="sm" />
-                <Text>Generating...</Text>
-              </HStack>
-            ) : (
-              <HStack gap={2}>
-                <Wand2 className="h-5 w-5" />
-                <Text>Generate Algorithm Roster</Text>
+                <Text
+                  fontSize="sm"
+                  color="#6B7280"
+                  fontWeight="medium"
+                  whiteSpace="nowrap"
+                >
+                  Mock data:
+                </Text>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) onLoadMockData(e.target.value);
+                    e.target.value = "";
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid #E6E6E6",
+                    fontSize: "14px",
+                    color: "#4A4A4A",
+                    backgroundColor: "white",
+                    cursor: "pointer",
+                    minWidth: "160px",
+                  }}
+                >
+                  {MOCK_DATA_OPTIONS.map((opt) => (
+                    <option
+                      key={opt.value}
+                      value={opt.value}
+                      disabled={opt.value === ""}
+                    >
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </HStack>
             )}
-          </Button>
+          </HStack>
         ) : (
           // Regenerate / Clear Buttons (after generation)
           <HStack gap={3}>
@@ -375,7 +443,11 @@ export function RosterPlanningHeader({
               variant="outline"
               borderColor="#E6E6E6"
               color="#6B7280"
-              _hover={{ bg: "#F8FAFC", borderColor: "#DC2626", color: "#DC2626" }}
+              _hover={{
+                bg: "#F8FAFC",
+                borderColor: "#DC2626",
+                color: "#DC2626",
+              }}
               onClick={onClearRoster}
               disabled={isGenerating}
               px={4}
@@ -393,4 +465,3 @@ export function RosterPlanningHeader({
 }
 
 export default RosterPlanningHeader;
-

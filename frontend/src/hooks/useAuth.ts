@@ -24,6 +24,8 @@ const useAuth = () => {
     queryKey: ["currentUser"],
     queryFn: UsersService.readUserMe,
     enabled: isLoggedIn(),
+    retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   })
 
   const signUpMutation = useMutation({
@@ -50,16 +52,27 @@ const useAuth = () => {
 
   const loginMutation = useMutation({
     mutationFn: login,
-    onSuccess: () => {
-      navigate({ to: "/" })
+    onSuccess: async () => {
+      // Fetch current user to determine role-based redirect
+      const currentUser = await UsersService.readUserMe()
+      queryClient.setQueryData(["currentUser"], currentUser)
+      if (currentUser.managerid) {
+        navigate({ to: "/nurse-manager/home" })
+      } else {
+        navigate({ to: "/ward-staff/home" })
+      }
     },
     onError: (err: ApiError) => {
       handleError(err)
     },
   })
 
+  
   const logout = () => {
     localStorage.removeItem("access_token")
+    localStorage.removeItem("refresh_token")
+    // Reset queries to clear cached data
+    queryClient.resetQueries()
     navigate({ to: "/login" })
   }
 

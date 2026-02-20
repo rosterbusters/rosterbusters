@@ -1,3 +1,5 @@
+import logging
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -6,6 +8,12 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.main import api_router
 from app.core.config import settings
+
+# Configure app logging to use uvicorn's handlers so log output is consistent
+uvicorn_logger = logging.getLogger("uvicorn")
+app_logger = logging.getLogger("app")
+app_logger.setLevel(logging.INFO)
+app_logger.handlers = uvicorn_logger.handlers
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:

@@ -38,7 +38,7 @@ function Navbar() {
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
   const { user, logout } = useAuth();
 
-  const userName = user?.full_name || user?.email || "Staff Name";
+  const userName = (user as any)?.name || user?.full_name || user?.email || "Staff Name";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
@@ -205,7 +205,7 @@ function Navbar() {
         {/* RIGHT ZONE: Utilities */}
         <div className="flex items-center shrink-0">
           {/* Notification Bell Dropdown */}
-          <NotificationDropdown />
+          <NotificationDropdown role="nurse" />
 
           {/* Staff Name Display with Logout Dropdown */}
           <DropdownMenu>
@@ -267,12 +267,12 @@ function Navbar() {
         </div>
 
         {/* Right: Notification Bell Dropdown */}
-        <NotificationDropdown />
+        <NotificationDropdown role="nurse" />
       </div>
 
       {/* Mobile Dropdown Panel (appears below navbar) - NO backdrop */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed left-0 top-14 z-50 ml-3 w-[75vw] max-w-[320px] h-[calc(100vh-3.5rem)] rounded-r-xl border border-l-0 border-[#E6E6E6] bg-white shadow-lg overflow-hidden">
+        <div className="md:hidden fixed left-0 top-14 z-50 w-[75vw] max-w-[320px] h-[calc(100vh-3.5rem)] rounded-r-xl border border-l-0 border-[#E6E6E6] bg-white shadow-lg overflow-hidden">
           <div className="h-full overflow-y-auto px-4 pt-4">
             {/* Staff Identity Header */}
             <div className="!px-2 pt-6 pb-5 mb-6 border-b border-[#E6E6E6]">
@@ -298,7 +298,7 @@ function Navbar() {
             <div className="h-4" />
 
             {/* Navigation Menu Items */}
-            <nav className="flex flex-col">
+            <nav className="flex flex-col gap-4">
               {/* Home */}
               <Link
                 to="/ward-staff/home"
@@ -365,15 +365,15 @@ function Navbar() {
 
                 {/* Submenu Items - indented */}
                 {leaveShiftExpanded && (
-                  <div className="ml-8 mt-2 flex flex-col gap-1.5 pl-4 border-2 border-[#E6E6E6]">
+                  <div className="ml-8 mt-2 flex flex-col gap-1.5 pl-4">
                     <Link
-                      to="/ward-staff/leave-request"
+                      to="/ward-staff/request-application"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
                         className={cn(
                           "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                          isActive("/leave-request")
+                          isActive("/request-application")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
                         )}

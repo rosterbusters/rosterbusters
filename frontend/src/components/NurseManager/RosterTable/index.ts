@@ -17,6 +17,8 @@ export {
   useRosterPageData,
   useRosterExport,
   useGenerateAlgorithmRoster,
+  useShiftCodes,
+  getShiftDurationHours,
   transformRosterData,
 } from "./useRosterData";
 

@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Button,
   CloseButton,
+  createListCollection,
   Dialog,
   Portal,
   Select,
@@ -12,7 +13,6 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/tooltip";
 import { AssignableStatus } from "./AssignableStatus";
-import { shiftCollection } from "@/models/Shift";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
@@ -21,12 +21,14 @@ interface NewShiftRequestProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate?: Date | null;
+  wardId?: number | null;
 }
 
 export const NewShiftRequest = ({
   isOpen,
   onClose,
   selectedDate,
+  wardId,
 }: NewShiftRequestProps) => {
   const [shiftType, setShiftType] = useState<string[]>([]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
@@ -40,6 +42,27 @@ export const NewShiftRequest = ({
     queryFn: () => ShiftRequestsService.getRosterPeriods(),
   });
 
+  const { data: shiftCodes } = useQuery({
+    queryKey: ["shift-codes", wardId],
+    queryFn: () =>
+      wardId != null
+        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
+        : ShiftRequestsService.getWorkingShiftCodes(),
+    enabled: wardId !== undefined,
+  });
+
+  const shiftCollection = useMemo(
+    () =>
+      createListCollection({
+        items: (shiftCodes ?? []).map((sc) => ({
+          value: sc.shiftcode,
+          label: sc.shiftcode,
+          description: sc.description,
+        })),
+      }),
+    [shiftCodes],
+  );
+
   const mutation = useMutation({
     mutationFn: (data: ShiftRequestCreate) =>
       ShiftRequestsService.createShiftRequest({ requestBody: data }),
@@ -48,22 +71,37 @@ export const NewShiftRequest = ({
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
       onClose();
     },
-    onError: () => {
-      showErrorToast("Failed to create request");
+    onError: (error: unknown) => {
+      const detail = (error as any)?.body?.detail;
+      showErrorToast(detail || "Failed to create request");
     },
   });
   
   useEffect(() => {
-    setRequestDate(selectedDate ?? undefined);
-  }, [selectedDate]);
+    if (isOpen) {
+      setRequestDate(selectedDate ?? undefined);
+      setShiftType([]);
+    }
+  }, [isOpen]);
 
   const handleSubmit = () => {
     const activePeriod = periods?.find((p) => p.status === "RequestOpen");
-    if (!activePeriod || !requestDate || shiftType.length === 0) return;
+    if (!activePeriod) {
+      showErrorToast("There is no open request period available.");
+      return;
+    }
+    if (shiftType.length === 0) {
+      showErrorToast("Please select a shift type.");
+      return;
+    }
+    if (!requestDate) {
+      showErrorToast("Please select a date.");
+      return;
+    }
 
     mutation.mutate({
       periodid: activePeriod.periodid,
-      preferreddate: requestDate.toISOString().split("T")[0],
+      preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
       preferredshifttype: shiftType[0],
     });
   };
