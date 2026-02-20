@@ -149,7 +149,7 @@ export interface WardStatisticsResponse {
 // ============================================
 
 // Role categories for summary
-export type StaffRole = 'RN' | 'EN' | 'HCA';
+export type StaffRole = 'RN' | 'EN' | 'NA' | 'HCA12' | 'HCA3';
 
 // Shift types for summary (A = AM/Day, P = PM, N = Night)
 export type SummaryShiftType = 'A' | 'P' | 'N';
@@ -161,9 +161,11 @@ export interface ShiftRequirement {
 }
 
 export interface DailyStaffingGuideline {
-  RN: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
-  EN: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
-  HCA: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+  RN:   { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+  EN:   { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+  NA:   { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+  HCA12: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
+  HCA3: { A: ShiftRequirement; P: ShiftRequirement; N: ShiftRequirement };
 }
 
 

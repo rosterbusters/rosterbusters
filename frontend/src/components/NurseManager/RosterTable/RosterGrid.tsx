@@ -36,7 +36,14 @@ import type {
 import { Tooltip } from "@/components/ui/tooltip";
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
-const STAFF_ROLES: StaffRole[] = ["RN", "EN", "HCA"];
+const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
+const ROLE_LABEL: Record<StaffRole, string> = {
+  RN: "RN",
+  EN: "EN",
+  NA: "NA",
+  HCA12: "HCA1&2",
+  HCA3: "HCA3",
+};
 
 interface RosterGridProps {
   data: RosterRow[];
@@ -285,7 +292,7 @@ export function RosterGrid({
             textAlign="right"
             bg="white"
           >
-            {role}
+            {ROLE_LABEL[role]}
           </Table.Cell>
           {dayColumns.map((col) => {
             const dateKey = moment(col.date).format("YYYY-MM-DD");
