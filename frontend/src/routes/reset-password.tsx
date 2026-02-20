@@ -24,8 +24,7 @@ export const Route = createFileRoute("/reset-password")({
   beforeLoad: async () => {
     if (isLoggedIn()) {
       throw redirect({
-        to: "/",
-        search: {},
+        to: "/login",
       })
     }
   },
