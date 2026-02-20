@@ -127,7 +127,7 @@ export function ShiftSummaryTable({
   viewMode,
   currentStartDate,
   guidelines = MOCK_STAFFING_GUIDELINES,
-  labelColumnWidth: labelColWidthProp = "260px",
+  labelColumnWidth: labelColWidthProp = "160px",
   isRosterGenerated = false,
 }: ShiftSummaryTableProps) {
   // Generate day columns

@@ -4,20 +4,17 @@ import {
   Flex,
   Text,
   HStack,
-  Stack,
   Table,
   Icon,
   Spinner,
 } from "@chakra-ui/react";
 import {
   AlertCircle,
-  Clock,
   Filter,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import moment from "moment";
-import { CircleQuestionMark } from "lucide-react";
 
 import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
@@ -203,8 +200,8 @@ export function RosterGrid({
   // Column width calculation
   const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
 
-  // Total columns: Name + Hours + Day columns
-  const totalCols = 2 + dayColumns.length;
+  // Total columns: Name + Day columns
+  const totalCols = 1 + dayColumns.length;
 
   // Calculate shift counts for summary
   const shiftCounts = useMemo(
@@ -238,7 +235,7 @@ export function RosterGrid({
         borderColor="#7EC8D9"
       >
         <Table.Cell
-          colSpan={2}
+          colSpan={1}
           borderRight="1px solid"
           borderColor="gray.200"
           p={1}
@@ -281,7 +278,7 @@ export function RosterGrid({
           bg="white"
         >
           <Table.Cell
-            colSpan={2}
+            colSpan={1}
             fontWeight="semibold"
             fontSize="xs"
             color="#4B8798"
@@ -347,7 +344,7 @@ export function RosterGrid({
         bg="#ADD8E6"
       >
         <Table.Cell
-          colSpan={2}
+          colSpan={1}
           fontWeight="bold"
           fontSize="xs"
           color="#4B8798"
@@ -476,40 +473,6 @@ export function RosterGrid({
         </HStack>
       </Table.Cell>
 
-      {/* Hours Cell - worked in red if over contracted */}
-      <Table.Cell
-        borderRight="1px solid"
-        borderColor="gray.200"
-        py={2}
-        px={3}
-        w="100px"
-        minW="100px"
-      >
-        <HStack gap={1}>
-          <Icon
-            as={Clock}
-            boxSize={3}
-            color={row.hasOvertime ? "danger" : "inherit"}
-          />
-          <HStack gap={0}>
-            <Text
-              fontSize="sm"
-              color={row.hasOvertime ? "danger" : undefined}
-              fontWeight="medium"
-            >
-              {row.hours.worked}
-            </Text>
-            <Text
-              fontSize="sm"
-              fontWeight="medium"
-              color={row.hasOvertime ? "danger" : undefined}
-            >
-              &nbsp;/ {row.hours.contracted}
-            </Text>
-          </HStack>
-        </HStack>
-      </Table.Cell>
-
       {/* Shift Cells */}
       {dayColumns.map((col) => {
         const dateKey = moment(col.date).format("YYYY-MM-DD");
@@ -568,45 +531,6 @@ export function RosterGrid({
                     Name
                   </Text>
                   <Icon as={Filter} boxSize={4} />
-                </HStack>
-              </Table.ColumnHeader>
-
-              {/* Hours Column Header */}
-              <Table.ColumnHeader
-                w="100px"
-                minW="100px"
-                color="faintforeground"
-                bg="white"
-              >
-                <HStack gap={2}>
-                  <Text fontSize="sm" fontWeight="medium">
-                    Hours
-                  </Text>
-                  <Tooltip
-                    content={
-                      <Stack gap={1}>
-                        {[
-                          { color: "alert", text: `Under ${viewMode === "week" ? 42 : 84} hours` },
-                          { color: "danger", text: `Above ${viewMode === "week" ? 44 : 88} hours` },
-                        ].map((item) => (
-                          <HStack key={item.text} gap={2}>
-                            <Box borderRadius="full" w={2} h={2} bg={item.color} flexShrink={0} />
-                            <Text fontSize="xs">{item.text}</Text>
-                          </HStack>
-                        ))}
-                      </Stack>
-                    }
-                    lazyMount={true}
-                    contentProps={{
-                      css: {
-                        "--tooltip-bg": "white",
-                        "box-shadow": "0px 0px 4px rgba(0,0,0,0.1)",
-                        color: "black",
-                      },
-                    }}
-                  >
-                    <Icon as={CircleQuestionMark} boxSize={4} />
-                  </Tooltip>
                 </HStack>
               </Table.ColumnHeader>
 
