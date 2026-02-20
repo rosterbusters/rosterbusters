@@ -16,6 +16,7 @@ import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as NurseManagerRouteImport } from './routes/nurse-manager'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as WardStaffIndexRouteImport } from './routes/ward-staff/index'
 import { Route as NurseManagerIndexRouteImport } from './routes/nurse-manager/index'
 import { Route as WardStaffStaffrosterscheduleRouteImport } from './routes/ward-staff/staffrosterschedule'
@@ -67,6 +68,11 @@ const LoginRoute = LoginRouteImport.update({
 } as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WardStaffIndexRoute = WardStaffIndexRouteImport.update({
@@ -168,7 +174,7 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof LayoutRouteWithChildren
+  '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
@@ -195,7 +201,7 @@ export interface FileRoutesByFullPath {
   '/ward-staff/': typeof WardStaffIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof LayoutRouteWithChildren
+  '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -221,6 +227,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
   '/login': typeof LoginRoute
   '/nurse-manager': typeof NurseManagerRouteWithChildren
@@ -302,6 +309,7 @@ export interface FileRouteTypes {
     | '/ward-staff'
   id:
     | '__root__'
+    | '/'
     | '/_layout'
     | '/login'
     | '/nurse-manager'
@@ -330,6 +338,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
   LoginRoute: typeof LoginRoute
   NurseManagerRoute: typeof NurseManagerRouteWithChildren
@@ -389,6 +398,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof LayoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ward-staff/': {
@@ -584,6 +600,7 @@ const WardStaffRouteWithChildren = WardStaffRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
   LoginRoute: LoginRoute,
   NurseManagerRoute: NurseManagerRouteWithChildren,
