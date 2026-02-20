@@ -7,6 +7,7 @@ import {
   RosterGrid,
   RosterHeader,
   ShiftSummaryTable,
+  EditHistoryDialog,
   useRosterPeriods,
   useRosterPageData,
   useRosterExport,
@@ -16,6 +17,7 @@ import {
   type ViewMode,
   type ShiftCode,
   type RosterRow,
+  type EditHistoryEntry,
 } from "@/components/NurseManager/RosterTable";
 import { getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
@@ -81,6 +83,68 @@ function generateMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
   });
 }
 
+// Initial mock edit history data for demonstration
+const INITIAL_EDIT_HISTORY: EditHistoryEntry[] = [
+  {
+    id: 1,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "shift_change",
+    previousShiftCode: "A",
+    newShiftCode: "P",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Mary Susan",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 2,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "shift_change",
+    previousShiftCode: "A",
+    newShiftCode: "P",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Tonnie Marti",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 3,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "comment",
+    comment: "hduehud",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Mary Lamb",
+    modifiedBy: "Tonnie Marti",
+  },
+  {
+    id: 4,
+    modifiedDate: "2025-10-03T09:30:00",
+    changeType: "shift_change",
+    previousShiftCode: "D",
+    newShiftCode: "N",
+    shiftDate: "2025-10-03T09:30:00",
+    nurseName: "Sarah Johnson",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 5,
+    modifiedDate: "2025-10-03T08:15:00",
+    changeType: "shift_change",
+    previousShiftCode: "DO",
+    newShiftCode: "A",
+    shiftDate: "2025-10-03T08:15:00",
+    nurseName: "Emily Chen",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 6,
+    modifiedDate: "2025-10-02T16:45:00",
+    changeType: "comment",
+    comment: "Nurse requested swap due to family emergency",
+    shiftDate: "2025-10-02T16:45:00",
+    nurseName: "David Wong",
+    modifiedBy: "Grace",
+  },
+];
+
 function NurseManagerHome() {
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
@@ -89,6 +153,8 @@ function NurseManagerHome() {
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
+  const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
+  const [editHistory, setEditHistory] = useState<EditHistoryEntry[]>(INITIAL_EDIT_HISTORY);
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
@@ -195,12 +261,50 @@ function NurseManagerHome() {
     []
   );
 
+  const handleCommentChange = useCallback(
+    (nurseId: number, date: string, comment: string) => {
+      const nurse = localRosterData.find(r => r.nurseId === nurseId);
+      setLocalRosterData(prevData =>
+        prevData.map(row => {
+          if (row.nurseId === nurseId && row.shifts[date]) {
+            return {
+              ...row,
+              shifts: {
+                ...row.shifts,
+                [date]: {
+                  ...row.shifts[date],
+                  comment: comment || undefined,
+                },
+              },
+            };
+          }
+          return row;
+        })
+      );
+      if (comment) {
+        setEditHistory(prev => [
+          {
+            id: Date.now(),
+            modifiedDate: moment().toISOString(),
+            changeType: "comment",
+            comment,
+            shiftDate: date,
+            nurseName: nurse?.name || "Unknown",
+            modifiedBy: "Current User",
+          },
+          ...prev,
+        ]);
+      }
+    },
+    [localRosterData]
+  );
+
   const handleExportCSV = useCallback(() => {
     exportToCSV(displayRosterData, currentStartDate, viewMode);
   }, [displayRosterData, currentStartDate, viewMode, exportToCSV]);
 
   const handleViewEditHistory = useCallback(() => {
-    // TODO: Implement edit history modal
+    setIsEditHistoryOpen(true);
   }, []);
 
   // Generate mock periods if API periods are empty
@@ -317,6 +421,7 @@ function NurseManagerHome() {
             viewMode={viewMode}
             currentStartDate={currentStartDate}
             onShiftChange={handleShiftChange}
+            onCommentChange={handleCommentChange}
             isLoading={wardsLoading || rosterLoading}
             showSummary={false}
           />
@@ -331,6 +436,12 @@ function NurseManagerHome() {
           guidelines={getWardGuidelines(selectedWard?.wardname)}
         />
       </Box>
+
+      <EditHistoryDialog
+        isOpen={isEditHistoryOpen}
+        onClose={() => setIsEditHistoryOpen(false)}
+        entries={editHistory}
+      />
     </Flex>
   );
 }
