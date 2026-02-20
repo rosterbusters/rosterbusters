@@ -118,8 +118,12 @@ async def auth_google_callback(
 
                 session.commit()
 
+        if not rbac_user:
+            error_url = f"{settings.FRONTEND_HOST}/login?error=Account+not+registered+in+system"
+            return RedirectResponse(url=error_url)
+
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = security.create_access_token(user.id, expires_delta=access_token_expires)
+        access_token = security.create_access_token(rbac_user.userid, expires_delta=access_token_expires)
         redirect_url = f"{settings.FRONTEND_HOST}/auth/callback?token={access_token}"
         return RedirectResponse(url=redirect_url)
 
