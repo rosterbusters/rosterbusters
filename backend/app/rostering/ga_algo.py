@@ -1,6 +1,6 @@
 # Genetic Algorithm with Standardized Input/Output
 import random
-import statistics
+import numpy as np
 from copy import deepcopy
 
 
@@ -128,7 +128,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
     Returns: (best_individual, best_penalty)
     """
     # ===================== CONFIG =====================
-    NUM_DAYS = 14
+    NUM_DAYS = 15
     NUM_NURSES = len(nurse_names)
 
     # Shift codes (for printing and hours calc)
@@ -137,8 +137,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
     PM = 2
     NIGHT = 3 
 
-    SHIFT_LABEL = {OFF: "OFF", AM: "AM ", PM: "PM", NIGHT: "N"}
-    SHIFT_HOURS = {OFF: 0, AM: 8, PM: 8, NIGHT: 8}  # assume night counted as 10h (example)
+    SHIFT_HOURS = {OFF: 0, AM: 8, PM: 8, NIGHT: 10}  # assume night counted as 10h (example)
 
     # Patterns and their day sequences (list of shift codes)
     PATTERNS = {
@@ -147,42 +146,34 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
         "OFF":    [OFF],
         "N-OFF":  [NIGHT, OFF],
         "N-N-OFF":[NIGHT, NIGHT, OFF],
+        "N-END":  [NIGHT]
     }
     PATTERN_NAMES = list(PATTERNS.keys())
 
     # Nurse ranks (A > B > C). For demo we randomize ranks; you can supply them.
-    RANKS = ["A", "B", "C"]
     random.seed(1)
     NURSE_RANKS = nurse_ranks
 
     # Example demand: for each day and shift, required minima for ranks (A,B,C).
     # Format: demand[day][shift] = {'A': minA, 'B': minB, 'C': minC}
     # For demo we set same demand each day; in practice set per-day demands.
-    def make_default_demand():
-        demand = []
-        for d in range(NUM_DAYS):
-            demand.append({
-                AM:    {'A': 2, 'B': 4, 'C': 1},
-                PM:    {'A': 2, 'B': 2, 'C': 1},
-                NIGHT: {'A': 1, 'B': 1, 'C': 1},
-            })
-        return demand
 
     DEMAND = demand
 
     # Example shift requests: list per nurse of (day, shift_code) tuples (up to 3)
     # Here we sample some random requests for demonstration
-    def sample_requests(num_nurses, max_reqs=3):
-        reqs = []
-        for n in range(num_nurses):
-            k = random.randint(0, max_reqs)
-            s = set()
-            while len(s) < k:
-                d = random.randrange(0, NUM_DAYS)
-                shift = random.choice([AM, PM, NIGHT])
-                s.add((d, shift))
-            reqs.append(list(s))
-        return reqs
+    # note: I leave this here so I know the template for requests.
+    # def sample_requests(num_nurses, max_reqs=3):
+    #     reqs = []
+    #     for n in range(num_nurses):
+    #         k = random.randint(0, max_reqs)
+    #         s = set()
+    #         while len(s) < k:
+    #             d = random.randrange(0, NUM_DAYS)
+    #             shift = random.choice([AM, PM, NIGHT])
+    #             s.add((d, shift))
+    #         reqs.append(list(s))
+    #     return reqs
 
     NURSE_REQUESTS = nurse_requests
 
@@ -191,9 +182,10 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
     MAX_HOURS = 88
 
     # Penalty weights (tune as needed)
-    HARD_PEN_SHIFT = 200000  # missing required staff
+    HARD_PEN_NDO = 999999
+    HARD_PEN_SHIFT = 150000  # missing required staff
     HARD_PEN_HOUR = 100000   # hours outside min/max
-    HARD_PEN_DAYOFF = 100000 # missing required days-off (2 per week)
+    HARD_PEN_DAYOFF = 160000 # missing required days-off (2 per week)
     HARD_PEN_NIGHTS = 80000 # for too few or too many nights
 
     SOFT_W_REQUEST = 50
@@ -205,19 +197,19 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
     SOFT_W_OVERTIME = 200
 
     # GA hyperparams
-    POP_SIZE = 2000
-    GENERATIONS = 300
+    POP_SIZE = 550
+    GENERATIONS = 380
     TOURNAMENT_K = 2
     CROSSOVER_RATE = 0.8
     REBALANCE_PROB = 0.25   # 5–10% is ideal
     PATTERN_SWAP_PROB = 0.3 #need to increase with generations
-    BASE_MUTATION_RATE = 0.2
-    MAX_MUTATION_RATE  = 0.5
-    PLATEAU_GENS = 20
-    ELITISM = 1
+    PATTERN_SWAP_MAX = 0.5
+    BASE_MUTATION_RATE = 0.25
+    MAX_MUTATION_RATE  = 0.75
+    PLATEAU_GENS = 10 #change back to 20/25
+    ELITISM = 3
 
     # ===================== UTILITIES =====================
-    from collections import defaultdict
     def extract_night_blocks(schedule, nurse):
         blocks = []
         d = 0
@@ -325,6 +317,13 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
                 elif i + 2 <= NUM_DAYS and days[i:i+2] == [NIGHT, OFF]:
                     patterns.append("N-OFF")
                     i += 2
+                elif days[i] == NIGHT:
+                    if i == 13:
+                        patterns.append("N-END")
+                        i += 1
+                    else:
+                        ok = False
+                        break
                 elif days[i] == AM:
                     patterns.append("AM")
                     i += 1
@@ -349,7 +348,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
 
         return new_ind
 
-    def local_search(ind, steps=30):
+    def local_search(ind, steps=32):
         best = deepcopy(ind)
         best_score = evaluate(best)
 
@@ -385,19 +384,6 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             shifts.extend(PATTERNS[p])
         return shifts
 
-    # def gen_pattern_sequence_for_nurse():
-    #     """Generate a random sequence of pattern names whose expanded length == NUM_DAYS."""
-    #     seq = []
-    #     days_left = NUM_DAYS
-    #     # to avoid infinite loop, shuffle pattern names and pick those that fit.
-    #     while days_left > 0:
-    #         choices = [p for p in PATTERN_NAMES if len(PATTERNS[p]) <= days_left]
-    #         # prefer short patterns sometimes so we can fit many small patterns
-    #         p = random.choice(choices)
-    #         seq.append(p)
-    #         days_left -= len(PATTERNS[p])
-    #     return seq
-
     def gen_pattern_sequence_for_nurse():
         """
         Generate a feasible 14-day pattern sequence using ONLY:
@@ -406,7 +392,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
         Guarantees:
         - Exactly 14 days
         - Exactly 4 OFF days
-        - 2–4 total nights
+        - 2-4 total nights
         """
 
         patterns = []
@@ -419,6 +405,11 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
 
         # ---- Step 2: Insert night blocks ----
         while nights_remaining > 0:
+            # If exactly 1 day left and 1 night remaining
+            if days_used == 13 and nights_remaining == 1:
+                patterns.append("N-END")
+                days_used += 1
+                nights_remaining -= 1
             # Prefer double-night blocks when possible
             if nights_remaining >= 2 and random.random() < 0.5:
                 patterns.append("N-N-OFF")
@@ -451,7 +442,6 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
         random.shuffle(patterns)
         return patterns
 
-
     def create_individual():
         """Create an individual: list (for nurses) of pattern lists."""
         return [gen_pattern_sequence_for_nurse() for _ in range(NUM_NURSES)]
@@ -465,10 +455,6 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             if len(seq) != NUM_DAYS:
                 raise ValueError("Expanded sequence length mismatch")
         return schedule
-
-    def rank_can_do(nurse_rank, needed_rank):
-        order = {'A': 3, 'B': 2, 'C': 1}
-        return order[nurse_rank] >= order[needed_rank]
 
     # ===================== FITNESS =====================
     def night_weekly_penalty(schedule):
@@ -500,38 +486,68 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
         penalty = 0
 
         # 1) Shift coverage minima (hard)
-        # For each day and shift, count nurses capable (A counts for B and C etc).
-        for d in range(NUM_DAYS):
+        for d in range(14):
             for shift in [AM, PM, NIGHT]:
-                counts = {'A': 0, 'B': 0, 'C': 0}
+
+                # Count exact ranks only
+                available = {'A': 0, 'B': 0, 'C': 0}
+
                 for n in range(NUM_NURSES):
                     if schedule[n][d] == shift:
                         r = NURSE_RANKS[n]
-                        # A counts for A,B,C; B counts for B,C; C counts for C
-                        if r == 'A':
-                            counts['A'] += 1
-                            counts['B'] += 1
-                            counts['C'] += 1
-                        elif r == 'B':
-                            counts['B'] += 1
-                            counts['C'] += 1
-                        else:
-                            counts['C'] += 1
+                        available[r] += 1
+
                 req = DEMAND[d][shift]
-                for rank in ['A', 'B', 'C']:
-                    if counts[rank] < req[rank]:
-                        miss = req[rank] - counts[rank]
-                        penalty += miss * HARD_PEN_SHIFT
+
+                # Copy because we will modify
+                remaining = available.copy()
+
+                # 1. Satisfy A demand using A only
+                used_A_for_A = min(remaining['A'], req['A'])
+                remaining['A'] -= used_A_for_A
+                missing_A = req['A'] - used_A_for_A
+
+                # 2. Satisfy B demand using B first, then leftover A
+                needed_B = req['B']
+                used_B_for_B = min(remaining['B'], needed_B)
+                remaining['B'] -= used_B_for_B
+                needed_B -= used_B_for_B
+
+                used_A_for_B = min(remaining['A'], needed_B)
+                remaining['A'] -= used_A_for_B
+                needed_B -= used_A_for_B
+
+                missing_B = needed_B
+
+                # 3. Satisfy C demand using C first, then B, then A
+                needed_C = req['C']
+
+                used_C_for_C = min(remaining['C'], needed_C)
+                remaining['C'] -= used_C_for_C
+                needed_C -= used_C_for_C
+
+                used_B_for_C = min(remaining['B'], needed_C)
+                remaining['B'] -= used_B_for_C
+                needed_C -= used_B_for_C
+
+                used_A_for_C = min(remaining['A'], needed_C)
+                remaining['A'] -= used_A_for_C
+                needed_C -= used_A_for_C
+
+                missing_C = needed_C
+
+                # Add penalties
+                penalty += (missing_A + missing_B + missing_C) * HARD_PEN_SHIFT
 
         # 2) Hours per nurse (hard)
         hours_per_nurse = []
         for n in range(NUM_NURSES):
-            h = sum(SHIFT_HOURS[s] for s in schedule[n])
+            h = sum(SHIFT_HOURS[s] for s in schedule[n][:14])
             hours_per_nurse.append(h)
             if h < MIN_HOURS:
                 penalty += (MIN_HOURS - h) * HARD_PEN_HOUR * 1.2
             if h > MAX_HOURS:
-                penalty += (h - MAX_HOURS) * HARD_PEN_HOUR
+                penalty += (h - MAX_HOURS) * HARD_PEN_HOUR * 0.8
 
         # 3) 2 days off per week (hard): for weeks [0..6] and [7..13]
         for n in range(NUM_NURSES):
@@ -542,16 +558,14 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
                 elif offs > 2:
                     penalty += (offs - 2) * 0.9 * HARD_PEN_DAYOFF
 
-        # 4) Day-off after night(s) is guaranteed by construction (patterns), so no penalty needed.
-
         # 5) Requests (soft)
         for n in range(NUM_NURSES):
             for (d, s) in NURSE_REQUESTS[n]:
-                if schedule[n][d] != s:
+                if d < 14 and schedule[n][d] != s: # Safety check for day index
                     penalty += SOFT_W_REQUEST
 
         # 6) Night fairness (soft): variance of night counts
-        night_counts = [sum(1 for d in range(NUM_DAYS) if schedule[n][d] == NIGHT) for n in range(NUM_NURSES)]
+        night_counts = [sum(1 for d in range(14) if schedule[n][d] == NIGHT) for n in range(NUM_NURSES)]
         if len(night_counts) > 1:
             penalty += (max(night_counts) - min(night_counts)) * SOFT_W_NIGHT_FAIR
 
@@ -562,8 +576,8 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             penalty += (max(weekend_counts) - min(weekend_counts)) * SOFT_W_WEEKEND_FAIR
 
         # 8) Weekday coverage preference & daily balance (soft)
-        weekday_days = [d for d in range(NUM_DAYS) if d not in weekend_days]
-        daily_totals = [sum(1 for n in range(NUM_NURSES) if schedule[n][d] != OFF) for d in range(NUM_DAYS)]
+        weekday_days = [d for d in range(14) if d not in weekend_days and d != 14]
+        daily_totals = [sum(1 for n in range(NUM_NURSES) if schedule[n][d] != OFF) for d in range(14)]
         # prefer weekdays to have on-average at least a target coverage (approx from demand)
         # compute a simple target: average of minima sums across shifts
         avg_min = 0
@@ -578,7 +592,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             penalty += (max(daily_totals) - min(daily_totals)) * SOFT_W_DAILY_BALANCE
 
         # 9) Preference for mornings (soft) -> reward AM counts by decreasing penalty
-        am_count = sum(1 for n in range(NUM_NURSES) for d in range(NUM_DAYS) if schedule[n][d] == AM)
+        am_count = sum(1 for n in range(NUM_NURSES) for d in range(14) if schedule[n][d] == AM)
         penalty -= (am_count) * SOFT_W_MORNING_PREF * 0.05
 
         # 10) Overtime soft (beyond MAX_HOURS)
@@ -604,6 +618,92 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             if len(expanded) != NUM_DAYS:
                 ind2[n] = gen_pattern_sequence_for_nurse()
         return ind2
+    
+    def repair_coverage(ind):
+        """
+        Repair coverage deficits by reassigning OFF nurses
+        (or low-impact shifts) to required shifts.
+
+        Strategy:
+        - For each day and shift:
+            - Compute deficit per rank
+            - Try to fill using OFF nurses first
+            - Prefer exact rank, then higher rank
+        """
+
+        schedule = expand_individual(ind)
+
+        for d in range(14):
+            for shift in [AM, PM, NIGHT]:
+
+                # --- Count current coverage ---
+                available = {'A': 0, 'B': 0, 'C': 0}
+                for n in range(NUM_NURSES):
+                    if schedule[n][d] == shift:
+                        available[NURSE_RANKS[n]] += 1
+
+                req = DEMAND[d][shift]
+
+                # --- Compute deficits ---
+                deficit = {
+                    r: max(0, req[r] - available[r])
+                    for r in ['A', 'B', 'C']
+                }
+
+                # --- Try to fix each rank deficit ---
+                for rank in ['A', 'B', 'C']:
+                    while deficit[rank] > 0:
+
+                        # Eligible ranks (exact first, then higher)
+                        if rank == 'A':
+                            candidate_ranks = ['A']
+                        elif rank == 'B':
+                            candidate_ranks = ['B', 'A']
+                        else:  # C
+                            candidate_ranks = ['C', 'B', 'A']
+
+                        assigned = False
+
+                        for n in range(NUM_NURSES):
+
+                            if NURSE_RANKS[n] not in candidate_ranks:
+                                continue
+
+                            # Prefer OFF nurses
+                            if schedule[n][d] == OFF:
+
+                                # Avoid breaking night block continuity
+                                if shift != NIGHT:
+                                    if d > 0 and schedule[n][d-1] == NIGHT:
+                                        continue
+                                    if d < 13 and schedule[n][d+1] == NIGHT:
+                                        continue
+
+                                schedule[n][d] = shift
+                                deficit[rank] -= 1
+                                assigned = True
+                                break
+
+                        # If no OFF found, try swapping low-impact shifts
+                        if not assigned:
+                            for n in range(NUM_NURSES):
+
+                                if NURSE_RANKS[n] not in candidate_ranks:
+                                    continue
+
+                                if schedule[n][d] in [AM, PM] and shift == NIGHT:
+                                    # convert AM/PM -> NIGHT if needed
+                                    schedule[n][d] = NIGHT
+                                    deficit[rank] -= 1
+                                    assigned = True
+                                    break
+
+                        # If still not assigned, stop trying
+                        if not assigned:
+                            break
+
+        # Convert back to patterns safely
+        return schedule_to_patterns(schedule, fallback_ind=ind)
 
     # ===================== OPERATORS =====================
     def nurse_penalty(schedule, nurse_id):
@@ -700,7 +800,10 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
                     while exp_len > NUM_DAYS:
                         pats.pop(random.randrange(len(pats)))
                         exp_len = sum(len(PATTERNS[q]) for q in pats)
-
+                    # Ensure N-END only at final position
+                    for idx, p in enumerate(pats):
+                        if p == "N-END" and idx != len(pats) - 1:
+                            pats[idx] = "OFF"
                     while exp_len < NUM_DAYS:
                         candidates = [p for p in PATTERN_NAMES if len(PATTERNS[p]) <= NUM_DAYS - exp_len]
                         pats.append(random.choice(candidates))
@@ -754,7 +857,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
         
         for e in range(ELITISM):
             elite = deepcopy(pop[rank_idx[e]])
-            if gen > 75 and gen % 5 == 0:
+            if gen > 70 and gen % 5 == 0:
                 elite = local_search(elite)
             new_pop.append(elite)
             #new_pop.append(deepcopy(pop[rank_idx[e]]))
@@ -765,11 +868,12 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             p2 = tournament(pop)
             child = crossover(p1, p2)
             child = mutate(child, mutation_rate)
-            if random.random() < PATTERN_SWAP_PROB:
+            if random.random() < PATTERN_SWAP_PROB + ((PATTERN_SWAP_MAX-PATTERN_SWAP_PROB)/(1+np.exp(-0.2 * (gen-149)))):
                 child = pattern_swap_mutation(child)
             child = repair_individual(child)
             if random.random() < REBALANCE_PROB:
                 child = rebalance_night_blocks(child) #rebalance_nights_weekly(child)
+            child = repair_coverage(child)
             child = repair_individual(child)
             new_pop.append(child)
 
@@ -778,7 +882,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
         gen_best_idx = min(range(len(scores)), key=lambda i: scores[i])
         gen_best_score = scores[gen_best_idx]
         if gen_best_score < best_score:
-            if (best_score - gen_best_score) > 3:
+            if (best_score - gen_best_score) > 49:
                 last_improve_gen = gen
             best_score = gen_best_score
             best = deepcopy(pop[gen_best_idx])
@@ -794,10 +898,10 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
 
 OFF, AM, PM, NIGHT = 0, 1, 2, 3
 SHIFT_LABEL = {
-    OFF: "OFF",
-    AM: "AM",
-    PM: "PM",
-    NIGHT: "NIGHT"
+    OFF: "DO",
+    AM: "A",
+    PM: "P",
+    NIGHT: "N"
 }
 PATTERNS_MAP = {
     "AM": [AM],
