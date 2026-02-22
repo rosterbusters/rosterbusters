@@ -22,6 +22,7 @@ interface EditShiftRequestProps {
   requestId: number;
   initialShiftType: string;
   initialDate: string; // YYYY-MM-DD
+  wardId?: number | null;
 }
 
 export const EditShiftRequest = ({
@@ -30,6 +31,7 @@ export const EditShiftRequest = ({
   requestId,
   initialShiftType,
   initialDate,
+  wardId,
 }: EditShiftRequestProps) => {
   const [shiftType, setShiftType] = useState<string[]>([initialShiftType]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
@@ -39,8 +41,11 @@ export const EditShiftRequest = ({
   const queryClient = useQueryClient();
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes"],
-    queryFn: () => ShiftRequestsService.getWorkingShiftCodes(),
+    queryKey: ["shift-codes", wardId ?? "default"],
+    queryFn: () =>
+      wardId != null
+        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
+        : ShiftRequestsService.getWorkingShiftCodes(),
   });
 
   const shiftCollection = useMemo(

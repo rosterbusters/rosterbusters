@@ -103,5 +103,10 @@ class UserRole(SQLModel, table=True):
 
 
 class NursePublic(SQLModel):
-    nurseid: int
-    name: str
+      nurseid: int
+      name: str
+      designation: str
+      email: str
+      wardid: int | None = None
+      employmenttype: str
+      isactive: bool

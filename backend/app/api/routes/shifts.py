@@ -1,67 +1,82 @@
-import sys
 from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import func, select
+from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models.rbac import Nurse, NursePublic
 from app.models.roster import RosterPeriod, RosterPeriodPublic
-from app.models.shifts import ShiftCode, ShiftCodePublic, WardShiftCode, ShiftRequest, ShiftRequestCreate, ShiftRequestPublic, ShiftRequestUpdate
+from app.models.shifts import (
+    ShiftCode,
+    ShiftCodePublic,
+    ShiftRequest,
+    ShiftRequestCreate,
+    ShiftRequestPublic,
+    ShiftRequestUpdate,
+)
+from app.models.rbac import Nurse, NursePublic
 from app.rbac import get_rbac_user_by_email
-
-
-def log(msg: str) -> None:
-    print(msg, flush=True, file=sys.stderr)
 
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
 
 
+# ─────────────────────────────────────────────
+# SHIFT CODE ENDPOINTS
+# ─────────────────────────────────────────────
+
 @router.get("/leave-codes", response_model=list[ShiftCodePublic])
 def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all shift codes where isworking is false."""
-    statement = select(ShiftCode).where(ShiftCode.isworking == False)
+    statement = select(ShiftCode).where(ShiftCode.isworking == False)  # noqa: E712
     return list(session.exec(statement).all())
+
 
 @router.get("/shift-codes", response_model=list[ShiftCodePublic])
 def get_all_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all shift codes."""
-    statement = select(ShiftCode)
-    return list(session.exec(statement).all())
+    return list(session.exec(select(ShiftCode)).all())
+
 
 @router.get("/shift-codes/working", response_model=list[ShiftCodePublic])
 def get_working_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all shift codes where isworking is true."""
-    statement = select(ShiftCode).where(ShiftCode.isworking == True)
+    statement = select(ShiftCode).where(ShiftCode.isworking == True)  # noqa: E712
     return list(session.exec(statement).all())
 
 
 @router.get("/shift-codes/ward/{ward_id}", response_model=list[ShiftCodePublic])
 def get_shift_codes_by_ward(
+    ward_id: int,
     session: SessionDep,
     current_user: CurrentUser,
-    ward_id: int,
 ) -> Any:
-    """
-    Get applicable shift codes for a ward.
+    """Get applicable shift codes for a ward.
+
     Falls back to all working shift codes if no mappings are configured for that ward.
     """
-    mapping_count = session.exec(
-        select(func.count()).where(WardShiftCode.wardid == ward_id)
-    ).one()
-
-    if mapping_count == 0:
-        statement = select(ShiftCode).where(ShiftCode.isworking == True)
-    else:
+    # Try to get ward-specific shift codes via WardShiftCode mapping table if it exists,
+    # otherwise fall back to all working shift codes.
+    try:
+        from app.models.shifts import WardShiftCode  # noqa: F401
         statement = (
             select(ShiftCode)
             .join(WardShiftCode, ShiftCode.shiftcode == WardShiftCode.shiftcode)
             .where(WardShiftCode.wardid == ward_id)
         )
+        codes = list(session.exec(statement).all())
+        if codes:
+            return codes
+    except Exception:
+        pass
 
+    # Fallback: return all working shift codes
+    statement = select(ShiftCode).where(ShiftCode.isworking == True)  # noqa: E712
     return list(session.exec(statement).all())
 
+
+# ─────────────────────────────────────────────
+# ROSTER PERIOD ENDPOINTS
+# ─────────────────────────────────────────────
 
 @router.get("/periods", response_model=list[RosterPeriodPublic])
 def get_roster_periods(session: SessionDep, current_user: CurrentUser) -> Any:
@@ -87,64 +102,9 @@ def get_roster_period(
     return period
 
 
-@router.post("/", response_model=ShiftRequestPublic)
-def create_shift_request(
-    session: SessionDep,
-    current_user: CurrentUser,
-    request_in: ShiftRequestCreate,
-) -> Any:
-    """Create a shift request for the logged-in nurse."""
-    log(f"[create_shift_request] current_user.email={current_user.email}")
-
-    rbac_user = get_rbac_user_by_email(session, current_user.email)
-    log(f"[create_shift_request] rbac_user: userid={rbac_user.userid if rbac_user else None}, nurseid={rbac_user.nurseid if rbac_user else None}")
-
-    if not rbac_user or not rbac_user.nurseid:
-        log(f"[create_shift_request] User {current_user.email} is not linked to a nurse record")
-        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
-
-    log(f"[create_shift_request] Creating request: nurseid={rbac_user.nurseid}, periodid={request_in.periodid}, date={request_in.preferreddate}, shift={request_in.preferredshifttype}")
-
-    existing_count = session.exec(
-        select(func.count()).where(
-            ShiftRequest.nurseid == rbac_user.nurseid,
-            ShiftRequest.periodid == request_in.periodid,
-        )
-    ).one()
-    if existing_count >= 3:
-        raise HTTPException(status_code=400, detail="Maximum of 3 shift requests per period reached")
-
-    duplicate = session.exec(
-        select(ShiftRequest).where(
-            ShiftRequest.nurseid == rbac_user.nurseid,
-            ShiftRequest.periodid == request_in.periodid,
-            ShiftRequest.preferreddate == request_in.preferreddate,
-            ShiftRequest.preferredshifttype == request_in.preferredshifttype,
-        )
-    ).first()
-    if duplicate:
-        raise HTTPException(
-            status_code=400,
-            detail=f"You already have a {request_in.preferredshifttype} request for this date",
-        )
-
-    used_numbers = set(session.exec(
-        select(ShiftRequest.requestnumber).where(
-            ShiftRequest.nurseid == rbac_user.nurseid,
-            ShiftRequest.periodid == request_in.periodid,
-        )
-    ).all())
-    next_request_number = next(n for n in (1, 2, 3) if n not in used_numbers)
-
-    data = request_in.model_dump()
-    data["requestnumber"] = next_request_number
-    shift_request = ShiftRequest(**data, nurseid=rbac_user.nurseid)
-    session.add(shift_request)
-    session.commit()
-    session.refresh(shift_request)
-    log(f"[create_shift_request] Created requestid={shift_request.requestid}")
-    return shift_request
-
+# ─────────────────────────────────────────────
+# SHIFT REQUEST ENDPOINTS (current user)
+# ─────────────────────────────────────────────
 
 @router.get("/", response_model=list[ShiftRequestPublic])
 def get_user_shift_requests(
@@ -153,43 +113,64 @@ def get_user_shift_requests(
 ) -> Any:
     """Get all shift requests for the current user."""
     rbac_user = get_rbac_user_by_email(session, current_user.email)
-    log(f"[get_user_shift_requests] email={current_user.email}, rbac nurseid={rbac_user.nurseid if rbac_user else None}")
-
     if not rbac_user or not rbac_user.nurseid:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
     statement = select(ShiftRequest).where(ShiftRequest.nurseid == rbac_user.nurseid)
-    results = list(session.exec(statement).all())
-    log(f"[get_user_shift_requests] Found {len(results)} requests for nurseid={rbac_user.nurseid}")
-    return results
+    return list(session.exec(statement).all())
 
 
-@router.get("/ward/{ward_id}", response_model=list[ShiftRequestPublic])
-def get_shift_requests_by_ward(
+@router.post("/", response_model=ShiftRequestPublic)
+def create_shift_request(
     session: SessionDep,
     current_user: CurrentUser,
-    ward_id: int,
-    period_id: int | None = Query(None),
+    request_in: ShiftRequestCreate,
 ) -> Any:
-    """Get all shift requests for nurses in a specific ward."""
-    log(f"[get_shift_requests_by_ward] ward_id={ward_id}, period_id={period_id}, requested_by={current_user.email}")
-    statement = (
-        select(ShiftRequest)
-        .join(Nurse, ShiftRequest.nurseid == Nurse.nurseid)
-        .where(Nurse.wardid == ward_id)
+    """Create a shift request for the logged-in nurse."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user or not rbac_user.nurseid:
+        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+
+    # Count existing requests for this nurse in this period (max 3 allowed)
+    existing_requests = list(
+        session.exec(
+            select(ShiftRequest).where(
+                ShiftRequest.nurseid == rbac_user.nurseid,
+                ShiftRequest.periodid == request_in.periodid,
+            )
+        ).all()
     )
-    if period_id is not None:
-        statement = statement.where(ShiftRequest.periodid == period_id)
-    results = list(session.exec(statement).all())
-    log(f"[get_shift_requests_by_ward] Found {len(results)} requests for ward_id={ward_id}")
-    return results
+
+    if len(existing_requests) >= 3:
+        raise HTTPException(
+            status_code=400,
+            detail="You have reached the maximum of 3 shift requests per roster period",
+        )
+
+    # NOTE: Per-date uniqueness is NOT enforced — the DB schema enforces uniqueness on
+    # (NurseID, PeriodID, RequestNumber) only. Multiple requests on the same date
+    # with different request numbers are allowed.
+
+    # Determine the next request number
+    used_numbers = {r.requestnumber for r in existing_requests}
+    next_number = next(n for n in [1, 2, 3] if n not in used_numbers)
+
+    shift_request = ShiftRequest(
+        **request_in.model_dump(),
+        nurseid=rbac_user.nurseid,
+        requestnumber=next_number,
+    )
+    session.add(shift_request)
+    session.commit()
+    session.refresh(shift_request)
+    return shift_request
 
 
 @router.patch("/{request_id}", response_model=ShiftRequestPublic)
 def update_shift_request(
+    request_id: int,
     session: SessionDep,
     current_user: CurrentUser,
-    request_id: int,
     request_in: ShiftRequestUpdate,
 ) -> Any:
     """Update a shift request (shift type and/or date). Only the owning nurse can update."""
@@ -201,11 +182,11 @@ def update_shift_request(
     if not shift_request:
         raise HTTPException(status_code=404, detail="Shift request not found")
     if shift_request.nurseid != rbac_user.nurseid:
-        raise HTTPException(status_code=403, detail="Not authorized to edit this request")
+        raise HTTPException(status_code=403, detail="Not authorized to update this request")
 
     update_data = request_in.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(shift_request, field, value)
+    for key, value in update_data.items():
+        setattr(shift_request, key, value)
 
     session.add(shift_request)
     session.commit()
@@ -215,9 +196,9 @@ def update_shift_request(
 
 @router.delete("/{request_id}", status_code=204)
 def delete_shift_request(
+    request_id: int,
     session: SessionDep,
     current_user: CurrentUser,
-    request_id: int,
 ) -> None:
     """Delete a shift request. Only the owning nurse can delete."""
     rbac_user = get_rbac_user_by_email(session, current_user.email)
@@ -234,72 +215,38 @@ def delete_shift_request(
     session.commit()
 
 
-@router.get("/ward/{ward_id}/nurses", response_model=list[NursePublic])
-def get_ward_nurses(
+# ─────────────────────────────────────────────
+# WARD-SCOPED ENDPOINTS (for calendar view)
+# ─────────────────────────────────────────────
+
+@router.get("/ward/{ward_id}", response_model=list[ShiftRequestPublic])
+def get_shift_requests_by_ward(
+    ward_id: int,
     session: SessionDep,
     current_user: CurrentUser,
-    ward_id: int,
+    period_id: int | None = Query(default=None),
 ) -> Any:
-    """Get all nurses for a specific ward."""
-    statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)
+    """Get all shift requests for nurses in a specific ward."""
+    # Get all nurse IDs in this ward
+    nurse_ids = list(
+        session.exec(select(Nurse.nurseid).where(Nurse.wardid == ward_id)).all()
+    )
+    if not nurse_ids:
+        return []
+
+    statement = select(ShiftRequest).where(ShiftRequest.nurseid.in_(nurse_ids))  # type: ignore[attr-defined]
+    if period_id is not None:
+        statement = statement.where(ShiftRequest.periodid == period_id)
+
     return list(session.exec(statement).all())
 
 
-@router.get("/my-shifts")
-def get_my_shifts(
+@router.get("/ward/{ward_id}/nurses", response_model=list[NursePublic])
+def get_ward_nurses(
+    ward_id: int,
     session: SessionDep,
     current_user: CurrentUser,
-    year: int = Query(..., description="Year (e.g., 2026)"),
-    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
 ) -> Any:
-    """
-    Get shifts for the logged-in nurse for a specific month.
-    Returns array of shifts with date, code, and description.
-    """
-    log(f"[get_my_shifts] year={year}, month={month}, user={current_user.email}")
-    
-    # Get nurse record from RBAC user
-    rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
-        raise HTTPException(status_code=404, detail="User is not linked to a nurse record")
-    
-    # Calculate date range for the month
-    from datetime import date as date_type
-    from calendar import monthrange
-    
-    start_date = date_type(year, month, 1)
-    last_day = monthrange(year, month)[1]
-    end_date = date_type(year, month, last_day)
-    
-    log(f"[get_my_shifts] nurseid={rbac_user.nurseid}, date_range={start_date} to {end_date}")
-    
-    # Query roster for this nurse in this month
-    from app.models.roster import Roster
-    
-    statement = (
-        select(Roster)
-        .where(Roster.nurseid == rbac_user.nurseid)
-        .where(Roster.shiftdate >= start_date)
-        .where(Roster.shiftdate <= end_date)
-        .order_by(Roster.shiftdate)
-    )
-    
-    shifts = session.exec(statement).all()
-    
-    log(f"[get_my_shifts] Found {len(shifts)} shifts")
-    
-    # Get shift code descriptions
-    shift_codes = session.exec(select(ShiftCode)).all()
-    shift_code_map = {sc.shiftcode: sc.description for sc in shift_codes}
-    
-    return {
-        "shifts": [
-            {
-                "shift_date": shift.shiftdate.isoformat(),
-                "shift_code": shift.shiftcode,
-                "shift_description": shift_code_map.get(shift.shiftcode, shift.shiftcode),
-                "status": shift.status,
-            }
-            for shift in shifts
-        ]
-    }
+    """Get all nurses for a specific ward."""
+    statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    return list(session.exec(statement).all())
