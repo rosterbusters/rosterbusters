@@ -127,34 +127,27 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
     Get current user (using RBAC authentication).
     """
-    rbac_user = session.exec(
-        select(RBACUser).where(RBACUser.email == current_user.email)
-    ).first()
-    
-    if not rbac_user:
-        raise HTTPException(status_code=404, detail="User not found in RBAC system")
-    
-    # Look up display name and wardid from Nurse or NurseManager table
-    name = None
     wardid = None
-    if rbac_user.nurseid:
-        nurse = session.get(Nurse, rbac_user.nurseid)
+    if current_user.nurseid:
+        # Nurse: look up their ward from the Nurse table
+        nurse = session.exec(
+            select(Nurse).where(Nurse.nurseid == current_user.nurseid)
+        ).first()
         if nurse:
-            name = nurse.name
             wardid = nurse.wardid
-    elif rbac_user.managerid:
-        manager = session.get(NurseManager, rbac_user.managerid)
-        if manager:
-            name = manager.name
+    elif current_user.managerid:
+        # Nurse Manager: they manage multiple wards so wardid stays None.
+        # The manager's ward context is resolved separately on pages that need it
+        # (e.g., leave-overview uses the manager's own ward selector).
+        wardid = None
 
     return RBACUserPublic(
-        userid=rbac_user.userid,
-        username=rbac_user.username,
-        email=rbac_user.email,
-        nurseid=rbac_user.nurseid,
-        managerid=rbac_user.managerid,
-        isactive=rbac_user.isactive,
-        name=name,
+        userid=current_user.userid,
+        username=current_user.username,
+        email=current_user.email,
+        nurseid=current_user.nurseid,
+        managerid=current_user.managerid,
+        isactive=current_user.isactive,
         wardid=wardid,
     )
 

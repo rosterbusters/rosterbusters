@@ -557,6 +557,16 @@ def seed_manager_users(
             continue
 
         username = manager.email.split("@")[0]
+
+        existing_by_username = session.exec(
+            select(RBACUser).where(RBACUser.username == username)
+        ).first()
+
+        if existing_by_username:
+            logger.info(f"  Manager username '{username}' already exists, skipping")
+            users.append(existing_by_username)
+            continue
+
         user = RBACUser(
             username=username,
             email=manager.email,
@@ -611,6 +621,16 @@ def seed_nurse_users(
             continue
 
         username = nurse.email.split("@")[0]
+
+        existing_by_username = session.exec(
+            select(RBACUser).where(RBACUser.username == username)
+        ).first()
+
+        if existing_by_username:
+            logger.info(f"  Nurse username '{username}' already exists, skipping")
+            users.append(existing_by_username)
+            continue
+
         user = RBACUser(
             username=username,
             email=nurse.email,

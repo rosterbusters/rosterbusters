@@ -1,5 +1,5 @@
 // Shift code types matching the database ShiftCode table
-export type ShiftCode = 'D' | 'A' | 'N' | 'P' | 'DO' | 'AL' | 'MC' | 'URG' | 'N-12';
+export type ShiftCode = 'D' | 'A' | 'N' | 'P' | 'DO' | 'AL' | 'MC' | 'URG' | 'N-12' | 'BCL' | 'CCL' | 'ML' | 'CL' | 'EML';
 
 export interface ShiftCodeInfo {
   code: ShiftCode;
@@ -21,6 +21,11 @@ export const SHIFT_CODE_MAP: Record<ShiftCode, ShiftCodeInfo> = {
   'AL': { code: 'AL', description: 'Annual Leave', isWorking: false },
   'MC': { code: 'MC', description: 'Medical Certificate', isWorking: false },
   'URG': { code: 'URG', description: 'Urgent Leave', isWorking: false },
+  'BCL': { code: 'BCL', description: 'Birthday Leave', isWorking: false },
+  'CCL': { code: 'CCL', description: 'Childcare Leave', isWorking: false },
+  'ML': { code: 'ML', description: 'Marriage Leave', isWorking: false },
+  'CL': { code: 'CL', description: 'Compassionate Leave', isWorking: false },
+  'EML': { code: 'EML', description: 'Extended Marriage Leave', isWorking: false },
 };
 
 // Theme color mapping for shift codes
@@ -34,6 +39,11 @@ export const SHIFT_COLOR_MAP: Record<ShiftCode, string> = {
   'AL': '#94a3b8',   // slate.400 - Annual Leave
   'MC': '#fbbf24',   // amber.400 - Medical Certificate
   'URG': '#f87171',  // red.400 - Urgent Leave
+  'BCL': '#a78bfa',  // violet.400 - Birthday Leave
+  'CCL': '#34d399',  // emerald.400 - Childcare Leave
+  'ML': '#f472b6',   // pink.400 - Marriage Leave
+  'CL': '#60a5fa',   // blue.400 - Compassionate Leave
+  'EML': '#c084fc',  // purple.400 - Extended Marriage Leave
 };
 
 // Staff designation/role types
@@ -70,6 +80,7 @@ export interface ShiftAssignment {
   status: 'Confirmed' | 'Pending' | 'Swapped' | 'Cancelled';
   startTime?: string;
   endTime?: string;
+  comment?: string;
 }
 
 // Hours summary for a nurse
@@ -142,6 +153,27 @@ export interface WardStatisticsResponse {
   staff_nurse_count: number;
   hca_count: number;
   nurses: NurseInfo[];
+}
+
+// ============================================
+// Edit History Types
+// ============================================
+
+export type EditHistoryChangeType = 'shift_change' | 'comment';
+
+export interface EditHistoryEntry {
+  id: number;
+  modifiedDate: string;        // ISO datetime string
+  changeType: EditHistoryChangeType;
+  // For shift changes
+  previousShiftCode?: ShiftCode;
+  newShiftCode?: ShiftCode;
+  // For comments
+  comment?: string;
+  // Context
+  shiftDate: string;           // The date of the shift that was modified
+  nurseName: string;
+  modifiedBy: string;
 }
 
 // ============================================

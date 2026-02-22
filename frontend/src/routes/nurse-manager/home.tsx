@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Flex, Box, Stack } from "@chakra-ui/react";
-import moment from "moment";
+import { Flex, Stack, Box } from "@chakra-ui/react";import moment from "moment";
 
 import {
   RosterGrid,
@@ -58,7 +57,7 @@ function generateMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
 
   return mockNurses.map((nurse, nurseIndex) => {
     const shifts: Record<string, { rosterId: number; nurseId: number; shiftDate: string; shiftCode: ShiftCode; status: "Confirmed" }> = {};
-    
+
     for (let i = 0; i < days; i++) {
       const date = moment(startDate).add(i, "days").format("YYYY-MM-DD");
       const shiftCode = shiftPatterns[nurseIndex % shiftPatterns.length][i % 7];
