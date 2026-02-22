@@ -62,6 +62,10 @@ export type RosterPeriodPublic = {
 export type ShiftCodePublic = {
     shiftcode: string;
     description: string;
+    isworking: boolean;
+    shiftdurationhours?: number | null;
+    defaultstart?: string | null;
+    defaultend?: string | null;
 };
 
 export type ShiftRequestCreate = {
