@@ -11,19 +11,29 @@ import type { DailyStaffingGuideline } from "./types";
  */
 export const MOCK_STAFFING_GUIDELINES: DailyStaffingGuideline = {
   RN: {
-    A: { minimum: 4 },  // AM shift - minimum 4 Registered Nurses
-    P: { minimum: 3 },  // PM shift - minimum 3 Registered Nurses
-    N: { minimum: 3 },  // Night shift - minimum 3 Registered Nurses
+    A: { minimum: 4 },
+    P: { minimum: 3 },
+    N: { minimum: 3 },
   },
   EN: {
-    A: { minimum: 2 },  // AM shift - minimum 2 Enrolled Nurses
-    P: { minimum: 2 },  // PM shift - minimum 2 Enrolled Nurses
-    N: { minimum: 2 },  // Night shift - minimum 2 Enrolled Nurses
+    A: { minimum: 2 },
+    P: { minimum: 2 },
+    N: { minimum: 2 },
   },
-  HCA: {
-    A: { minimum: 2 },  // AM shift - minimum 2 Healthcare Assistants
-    P: { minimum: 2 },  // PM shift - minimum 2 Healthcare Assistants
-    N: { minimum: 2 },  // Night shift - minimum 2 Healthcare Assistants
+  NA: {
+    A: { minimum: 1 },
+    P: { minimum: 1 },
+    N: { minimum: 1 },
+  },
+  HCA12: {
+    A: { minimum: 2 },
+    P: { minimum: 2 },
+    N: { minimum: 2 },
+  },
+  HCA3: {
+    A: { minimum: 1 },
+    P: { minimum: 1 },
+    N: { minimum: 1 },
   },
 };
 
@@ -31,21 +41,26 @@ export const MOCK_STAFFING_GUIDELINES: DailyStaffingGuideline = {
  * Maps nurse designation strings to summary role categories.
  * Add more designation mappings as needed.
  */
-export function mapDesignationToRole(designation: string): 'RN' | 'EN' | 'HCA' | null {
+export function mapDesignationToRole(designation: string): 'RN' | 'EN' | 'NA' | 'HCA12' | 'HCA3' | null {
   const d = designation.toLowerCase().trim();
 
-  // Short codes (used by algorithm-generated data and nurse designation field)
+  // Short codes
   if (d === 'rn') return 'RN';
   if (d === 'en') return 'EN';
-  if (d === 'na') return 'EN';  // Nursing Aide counted in EN/NA bucket
-  if (d === 'hca') return 'HCA';
+  if (d === 'na') return 'NA';
   if (d === 'ssn') return 'RN'; // Senior Staff Nurse → RN equivalent
+
+  // HCA grade splits
+  if (d === 'hca1' || d === 'hca 1' || d === 'hca-1' || d.includes('hca grade 1')) return 'HCA12';
+  if (d === 'hca2' || d === 'hca 2' || d === 'hca-2' || d.includes('hca grade 2')) return 'HCA12';
+  if (d === 'hca3' || d === 'hca 3' || d === 'hca-3' || d.includes('hca grade 3')) return 'HCA3';
+  if (d === 'hca') return 'HCA12'; // generic HCA defaults to HCA1&2
 
   // Full designation strings
   if (d.includes('registered nurse') || d.includes('staff nurse')) return 'RN';
   if (d.includes('enrolled nurse')) return 'EN';
-  if (d.includes('nursing aide')) return 'EN';
-  if (d.includes('healthcare assistant') || d.includes('hca')) return 'HCA';
+  if (d.includes('nursing aide')) return 'NA';
+  if (d.includes('healthcare assistant')) return 'HCA12';
 
   return null;
 }

@@ -50,7 +50,9 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
 export interface DayShiftCounts {
   RN: { A: number; P: number; N: number };
   EN: { A: number; P: number; N: number };
-  HCA: { A: number; P: number; N: number };
+  NA: { A: number; P: number; N: number };
+  HCA12: { A: number; P: number; N: number };
+  HCA3: { A: number; P: number; N: number };
 }
 
 // Calculate shift counts per day from roster data
@@ -66,7 +68,9 @@ export function calculateShiftCounts(
     counts.set(dateKey, {
       RN: { A: 0, P: 0, N: 0 },
       EN: { A: 0, P: 0, N: 0 },
-      HCA: { A: 0, P: 0, N: 0 },
+      NA: { A: 0, P: 0, N: 0 },
+      HCA12: { A: 0, P: 0, N: 0 },
+      HCA3: { A: 0, P: 0, N: 0 },
     });
   });
 
@@ -109,14 +113,21 @@ export function getCellStyle(
 }
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
-const STAFF_ROLES: StaffRole[] = ["RN", "EN", "HCA"];
+const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
+const ROLE_LABEL: Record<StaffRole, string> = {
+  RN: "RN",
+  EN: "EN",
+  NA: "NA",
+  HCA12: "HCA1&2",
+  HCA3: "HCA3",
+};
 
 export function ShiftSummaryTable({
   data,
   viewMode,
   currentStartDate,
   guidelines = MOCK_STAFFING_GUIDELINES,
-  labelColumnWidth: labelColWidthProp = "260px",
+  labelColumnWidth: labelColWidthProp = "160px",
   isRosterGenerated = false,
 }: ShiftSummaryTableProps) {
   // Generate day columns
@@ -221,7 +232,7 @@ export function ShiftSummaryTable({
                 textAlign="right"
                 bg="white"
               >
-                {role}
+                {ROLE_LABEL[role]}
               </Table.Cell>
 
               {/* Shift counts for each day */}

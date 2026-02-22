@@ -6,6 +6,7 @@ import {
   RosterGrid,
   RosterHeader,
   ShiftSummaryTable,
+  EditHistoryDialog,
   useRosterPeriods,
   useRosterPageData,
   useRosterExport,
@@ -153,7 +154,6 @@ function NurseManagerHome() {
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
   const [editHistory, setEditHistory] = useState<EditHistoryEntry[]>(INITIAL_EDIT_HISTORY);
-
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
@@ -262,10 +262,7 @@ function NurseManagerHome() {
 
   const handleCommentChange = useCallback(
     (nurseId: number, date: string, comment: string) => {
-      // Find nurse name for edit history
       const nurse = localRosterData.find(r => r.nurseId === nurseId);
-
-      // Update local state for immediate UI feedback
       setLocalRosterData(prevData =>
         prevData.map(row => {
           if (row.nurseId === nurseId && row.shifts[date]) {
@@ -283,8 +280,6 @@ function NurseManagerHome() {
           return row;
         })
       );
-
-      // Add to edit history
       if (comment) {
         setEditHistory(prev => [
           {
@@ -425,6 +420,7 @@ function NurseManagerHome() {
             viewMode={viewMode}
             currentStartDate={currentStartDate}
             onShiftChange={handleShiftChange}
+            onCommentChange={handleCommentChange}
             isLoading={wardsLoading || rosterLoading}
             showSummary={false}
           />
@@ -439,6 +435,12 @@ function NurseManagerHome() {
           guidelines={getWardGuidelines(selectedWard?.wardname)}
         />
       </Box>
+
+      <EditHistoryDialog
+        isOpen={isEditHistoryOpen}
+        onClose={() => setIsEditHistoryOpen(false)}
+        entries={editHistory}
+      />
     </Flex>
   );
 }

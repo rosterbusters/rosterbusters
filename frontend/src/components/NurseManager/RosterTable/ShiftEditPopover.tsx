@@ -7,6 +7,7 @@ import {
   HStack,
   Popover,
   Textarea,
+  Input,
 } from "@chakra-ui/react";
 import { X, ChevronDown, MessageSquarePlus, Check } from "lucide-react";
 
@@ -58,8 +59,17 @@ function ShiftDropdown({
   onSelect,
 }: ShiftDropdownProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const selectedOption = options.find((code) => code === selectedShift);
+
+  const filteredOptions = options.filter((code) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      code.toLowerCase().includes(q) ||
+      (SHIFT_CODE_MAP[code]?.description ?? "").toLowerCase().includes(q)
+    );
+  });
 
   return (
     <Box>
@@ -74,7 +84,10 @@ function ShiftDropdown({
         px={3}
         py={2}
         cursor="pointer"
-        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+        onClick={() => {
+          if (isDropdownOpen) setSearchQuery("");
+          setIsDropdownOpen(!isDropdownOpen);
+        }}
         _hover={{ borderColor: "#4B8798" }}
         transition="all 0.15s ease"
         bg="white"
@@ -123,10 +136,34 @@ function ShiftDropdown({
           overflow="hidden"
           bg="white"
           boxShadow="sm"
-          maxH="180px"
+          maxH="220px"
           overflowY="auto"
         >
-          {options.map((code) => (
+          {/* Search input */}
+          <Box
+            px={2}
+            py={2}
+            borderBottom="1px solid"
+            borderColor="gray.100"
+            position="sticky"
+            top={0}
+            bg="white"
+            zIndex={1}
+          >
+            <Input
+              placeholder="Search..."
+              size="xs"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              autoFocus
+              borderColor="gray.200"
+              _focus={{ borderColor: "#4B8798", boxShadow: "0 0 0 1px #4B8798" }}
+            />
+          </Box>
+
+          {/* Options list */}
+          {filteredOptions.map((code) => (
             <Flex
               key={code}
               align="center"
@@ -140,6 +177,7 @@ function ShiftDropdown({
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect(code);
+                setSearchQuery("");
                 setIsDropdownOpen(false);
               }}
             >
@@ -161,6 +199,11 @@ function ShiftDropdown({
               </Text>
             </Flex>
           ))}
+          {filteredOptions.length === 0 && (
+            <Flex px={3} py={2} align="center">
+              <Text fontSize="sm" color="gray.400">No results</Text>
+            </Flex>
+          )}
         </Box>
       )}
     </Box>
@@ -213,7 +256,6 @@ export function ShiftEditPopover({
     if (onCommentChange) {
       onCommentChange(comment);
       setCommentSaved(true);
-      // Reset saved indicator after a brief moment
       setTimeout(() => setCommentSaved(false), 2000);
     }
   };
