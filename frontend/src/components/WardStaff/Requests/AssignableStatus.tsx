@@ -11,14 +11,24 @@ export function AssignableStatus() {
     queryFn: () => ShiftRequestsService.getRosterPeriods(),
   });
 
-  const activePeriod = useMemo(
-    () => periods?.find((p) => p.status === "RequestOpen"),
-    [periods],
-  );
+  const activePeriod = useMemo(() => {
+    if (!periods) return undefined;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return (
+      periods.find(
+        (p) =>
+          p.status === "RequestOpen" &&
+          new Date(p.startdate) <= today &&
+          new Date(p.enddate) >= today,
+      ) ?? periods.find((p) => p.status === "RequestOpen")
+    );
+  }, [periods]);
 
   const { data: userRequests } = useQuery({
     queryKey: ["shift-requests", "user"],
     queryFn: () => ShiftRequestsService.getUserShiftRequests(),
+    staleTime: 0,
   });
 
   const count = activePeriod && userRequests
