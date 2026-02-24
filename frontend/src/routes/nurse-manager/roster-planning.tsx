@@ -979,7 +979,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
       p={5}
     >
       {/* Header Section */}
-      <Box bgColor="white" p={4} rounded="lg" width="100%">
+      <Box bgColor="white" p={4} rounded="lg" width="100%" position="relative" zIndex={2}>
         <RosterPlanningHeader
           currentStartDate={currentStartDate}
           viewMode={viewMode}

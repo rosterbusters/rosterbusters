@@ -396,7 +396,7 @@ function NurseManagerHome() {
         display="flex"
         flexDirection="column"
       >
-        <Box p={4} pb={0}>
+        <Box p={4} pb={0} position="relative" zIndex={2}>
           <RosterHeader
             currentStartDate={currentStartDate}
             viewMode={viewMode}

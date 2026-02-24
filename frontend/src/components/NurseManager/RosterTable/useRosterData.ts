@@ -396,6 +396,26 @@ function addDays(dateStr: string, days: number): string {
   return date.toISOString().split("T")[0];
 }
 
+// Map full designation strings to short acronyms for Excel export
+function designationToAcronym(designation: string): string {
+  const d = designation.toLowerCase().trim();
+
+  if (d.includes('senior nursing aide'))   return 'SNA';
+  if (d.includes('senior staff nurse'))    return 'SSN';
+  if (d.includes('senior enrolled nurse')) return 'SEN';
+  if (d.includes('staff nurse'))           return 'SN';
+  if (d.includes('enrolled nurse'))        return 'EN';
+  if (d.includes('registered nurse'))      return 'RN';
+  if (d.includes('nursing aide'))          return 'NA';
+  if (d.includes('healthcare assistant'))  return 'HCA';
+  if (d.includes('nurse clinician'))       return 'NC';
+  if (d.includes('nurse manager'))         return 'NM';
+  if (d.includes('assistant nurse'))       return 'ANC';
+
+  // Already an acronym (RN, EN, HCA, etc.) – return as-is
+  return designation;
+}
+
 // Hook for Excel export
 export function useRosterExport() {
   return {
@@ -412,9 +432,9 @@ export function useRosterExport() {
         ),
       ];
 
-      // Data rows: designation, name, then shift code per day
+      // Data rows: designation (acronym), name, then shift code per day
       const rows = data.map((row) => [
-        row.designation,
+        designationToAcronym(row.designation),
         row.name,
         ...Array.from({ length: days }, (_, i) => {
           const dateKey = moment(startDate).add(i, "days").format("YYYY-MM-DD");
@@ -425,7 +445,7 @@ export function useRosterExport() {
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
 
       ws["!cols"] = [
-        { wch: 22 }, // designation
+        { wch: 10 }, // designation (acronym – narrower)
         { wch: 20 }, // name
         ...Array(days).fill({ wch: 12 }), // date columns
       ];

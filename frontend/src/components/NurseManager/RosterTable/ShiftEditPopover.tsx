@@ -282,7 +282,7 @@ export function ShiftEditPopover({
         placement: "bottom",
       }}
     >
-      <Popover.Positioner>
+      <Popover.Positioner zIndex={1400}>
         <Popover.Content w="300px" borderRadius="lg" boxShadow="lg">
           {/* Header */}
           <Popover.Header

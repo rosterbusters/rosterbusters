@@ -511,7 +511,6 @@ export function RosterGrid({
       {/* Table Container */}
       <Box overflow="auto" w="100%">
         <Table.Root
-          zIndex="1"
           size="sm"
           variant="outline"
           w="100%"
