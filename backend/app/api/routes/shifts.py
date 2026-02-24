@@ -2,7 +2,7 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import or_, select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.models.roster import RosterPeriod, RosterPeriodPublic
@@ -131,7 +131,7 @@ def create_shift_request(
     if not rbac_user or not rbac_user.nurseid:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
-    # Count existing requests for this nurse in this period (max 3 allowed)
+    # Count existing requests for this nurse in this period (for request number assignment)
     existing_requests = list(
         session.exec(
             select(ShiftRequest).where(
@@ -141,11 +141,29 @@ def create_shift_request(
         ).all()
     )
 
-    if len(existing_requests) >= 3:
-        raise HTTPException(
-            status_code=400,
-            detail="You have reached the maximum of 3 shift requests per roster period",
+    # Enforce 3-request cap for working shifts and DO/RD (leave requests are unlimited)
+    _CAPPED_CODES = {"DO", "RD"}
+    shift_code = session.exec(
+        select(ShiftCode).where(ShiftCode.shiftcode == request_in.preferredshifttype)
+    ).first()
+
+    if shift_code and (shift_code.isworking or shift_code.shiftcode in _CAPPED_CODES):
+        existing_capped = list(
+            session.exec(
+                select(ShiftRequest)
+                .join(ShiftCode, ShiftRequest.preferredshifttype == ShiftCode.shiftcode)
+                .where(
+                    ShiftRequest.nurseid == rbac_user.nurseid,
+                    ShiftRequest.periodid == request_in.periodid,
+                    or_(ShiftCode.isworking == True, ShiftCode.shiftcode.in_(list(_CAPPED_CODES))),  # noqa: E712
+                )
+            ).all()
         )
+        if len(existing_capped) >= 3:
+            raise HTTPException(
+                status_code=400,
+                detail="You have reached the maximum of 3 shift requests per roster period",
+            )
 
     # NOTE: Per-date uniqueness is NOT enforced — the DB schema enforces uniqueness on
     # (NurseID, PeriodID, RequestNumber) only. Multiple requests on the same date
@@ -153,7 +171,7 @@ def create_shift_request(
 
     # Determine the next request number
     used_numbers = {r.requestnumber for r in existing_requests}
-    next_number = next(n for n in [1, 2, 3] if n not in used_numbers)
+    next_number = next(n for n in range(1, len(existing_requests) + 2) if n not in used_numbers)
 
     shift_request = ShiftRequest(
         **request_in.model_dump(),
