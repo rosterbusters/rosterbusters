@@ -279,7 +279,7 @@ export function RosterHeader({
             onClick={onExportCSV}
           >
             <Download />
-            Export to CSV
+            Export to Excel
           </Button>
         </HStack>
       </Flex>

@@ -82,7 +82,7 @@ function RosterPlanningPage() {
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
-  const { exportToCSV } = useRosterExport();
+  const { exportToXLSX } = useRosterExport();
   const publishRoster = usePublishRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
 
@@ -920,8 +920,8 @@ const handleGenerateAlgorithm = useCallback(async () => {
   );
 
   const handleDownloadRoster = useCallback(() => {
-    exportToCSV(displayRosterData, currentStartDate, viewMode);
-  }, [displayRosterData, currentStartDate, viewMode, exportToCSV]);
+    exportToXLSX(displayRosterData, currentStartDate, viewMode);
+  }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
 
   const handlePublishClick = useCallback(() => {
     setIsPublishDialogOpen(true);

@@ -158,7 +158,7 @@ function NurseManagerHome() {
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
-  const { exportToCSV } = useRosterExport();
+  const { exportToXLSX } = useRosterExport();
 
   const { rows: apiRows, isLoading: rosterLoading } = useRosterPageData(
     selectedWard?.wardid ?? null,
@@ -299,9 +299,9 @@ function NurseManagerHome() {
     [localRosterData]
   );
 
-  const handleExportCSV = useCallback(() => {
-    exportToCSV(displayRosterData, currentStartDate, viewMode);
-  }, [displayRosterData, currentStartDate, viewMode, exportToCSV]);
+  const handleExportXLSX = useCallback(() => {
+    exportToXLSX(displayRosterData, currentStartDate, viewMode);
+  }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
 
   const handleViewEditHistory = useCallback(() => {
     setIsEditHistoryOpen(true);
@@ -409,7 +409,7 @@ function NurseManagerHome() {
             onViewModeChange={handleViewModeChange}
             onWardChange={handleWardChange}
             onPeriodChange={handlePeriodChange}
-            onExportCSV={handleExportCSV}
+            onExportCSV={handleExportXLSX}
             onViewEditHistory={handleViewEditHistory}
           />
         </Box>

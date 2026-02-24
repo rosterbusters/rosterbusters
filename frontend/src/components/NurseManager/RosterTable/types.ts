@@ -1,5 +1,5 @@
 // Shift code types matching the database ShiftCode table
-export type ShiftCode = 'D' | 'A' | 'N' | 'P' | 'DO' | 'AL' | 'MC' | 'URG' | 'N-12';
+export type ShiftCode = 'D' | 'A' | 'N' | 'P' | 'DO' | 'AL' | 'MC' | 'URG' | 'N-12' | 'BCL' | 'CCL' | 'ML' | 'CL' | 'EML';
 
 export interface ShiftCodeInfo {
   code: ShiftCode;
