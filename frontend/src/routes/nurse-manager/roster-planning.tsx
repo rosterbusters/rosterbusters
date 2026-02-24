@@ -919,6 +919,29 @@ const handleGenerateAlgorithm = useCallback(async () => {
     [],
   );
 
+  const handleCommentChange = useCallback(
+    (nurseId: number, date: string, comment: string) => {
+      setRosterData(prevData =>
+        prevData.map(row => {
+          if (row.nurseId === nurseId && row.shifts[date]) {
+            return {
+              ...row,
+              shifts: {
+                ...row.shifts,
+                [date]: {
+                  ...row.shifts[date],
+                  comment: comment || undefined,
+                },
+              },
+            };
+          }
+          return row;
+        })
+      );
+    },
+    []
+  );
+
   const handleDownloadRoster = useCallback(() => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
   }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);

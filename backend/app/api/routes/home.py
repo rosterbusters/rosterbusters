@@ -1,13 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import select
 from datetime import date
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user, SessionDep
 from app.models import Roster, ShiftCode, Nurse, Ward, RBACUser, NurseManager
 
 router = APIRouter()
+
+
+class RosterShiftPublic(BaseModel):
+    shiftdate: date
+    shiftcode: str
+    starttime: Optional[str] = None
+    endtime: Optional[str] = None
+    description: Optional[str] = None
 
 
 class UpcomingShiftResponse(BaseModel):
@@ -116,3 +124,49 @@ async def get_upcoming_shift(
         shift_code=roster.shiftcode,
         ward_name=ward.wardname
     )
+
+
+@router.get("/my-shifts", response_model=List[RosterShiftPublic])
+async def get_my_shifts(
+    session: SessionDep,
+    current_user: RBACUser = Depends(get_current_user),
+    start_date: Optional[date] = Query(default=None),
+    end_date: Optional[date] = Query(default=None),
+):
+    nurse_id = current_user.nurseid
+    if not nurse_id:
+        return []
+
+    query = (
+        select(Roster, ShiftCode)
+        .join(ShiftCode, Roster.shiftcode == ShiftCode.shiftcode)
+        .where(Roster.nurseid == nurse_id, Roster.status == "Confirmed")
+    )
+    if start_date:
+        query = query.where(Roster.shiftdate >= start_date)
+    if end_date:
+        query = query.where(Roster.shiftdate <= end_date)
+    query = query.order_by(Roster.shiftdate.asc())
+
+    results = session.exec(query).all()
+
+    shifts = []
+    for roster, shift_code in results:
+        start_time = None
+        end_time = None
+        if roster.starttime:
+            start_time = roster.starttime.strftime("%H:%M")
+        elif shift_code.defaultstart:
+            start_time = shift_code.defaultstart.strftime("%H:%M")
+        if roster.endtime:
+            end_time = roster.endtime.strftime("%H:%M")
+        elif shift_code.defaultend:
+            end_time = shift_code.defaultend.strftime("%H:%M")
+        shifts.append(RosterShiftPublic(
+            shiftdate=roster.shiftdate,
+            shiftcode=roster.shiftcode,
+            starttime=start_time,
+            endtime=end_time,
+            description=shift_code.description,
+        ))
+    return shifts

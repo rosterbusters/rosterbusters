@@ -670,4 +670,30 @@ export class HomeService {
             }
         });
     }
+
+    /**
+     * Get My Shifts
+     * Get confirmed roster shifts for the authenticated nurse, optionally filtered by date range.
+     * @returns RosterShiftPublic[] Successful Response
+     * @throws ApiError
+     */
+    public static getMyShifts(data?: { startDate?: string; endDate?: string }): CancelablePromise<Array<{
+        shiftdate: string;
+        shiftcode: string;
+        starttime: string | null;
+        endtime: string | null;
+        description: string | null;
+    }>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/home/my-shifts',
+            query: {
+                start_date: data?.startDate,
+                end_date: data?.endDate,
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
 }
