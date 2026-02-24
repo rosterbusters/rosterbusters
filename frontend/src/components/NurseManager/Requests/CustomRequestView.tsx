@@ -1,8 +1,11 @@
-import { useMemo, type JSX } from "react";
+import { useMemo, type JSX, useState } from "react";
 import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
+import { NewShiftRequest } from "./NewShiftRequest";
+import { EditShiftRequest } from "./EditShiftRequest";
+import useAuth from "@/hooks/useAuth";
 interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
@@ -46,10 +49,25 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   startAccessor,
   endAccessor,
 }: CustomWeekViewProps) {
+  const { user } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<{
+    requestId: number;
+    shiftType: string;
+    preferredDate: string;
+  } | null>(null);
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
   );
+  const handleDayClicked = (day: Date) => {
+    setSelectedDay(day);
+    console.log(day)
+    setIsOpen(true); 
+  };
+
+  
 
   return (
     <>
@@ -61,7 +79,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
               bg="white"
               color="#404040"
               p={2}
-
+            
               h="32px"
               fontWeight="medium"
             >
@@ -69,31 +87,44 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
             </GridItem>
           ))}
         </Grid>
-
+        
         <Grid width={"full"} minW={"820px"} templateColumns="repeat(7, 1fr)" templateRows="repeat(2, 1fr)">
           {currRange.map((day, i) => {
             const eventsForDay = getEventsForDay(day, events);
 
             return (
-
+              
               <GridItem
-
+              
                 key={i}
                 bg="white"
                 textAlign={"start"}
                 color="foreground"
                 p={2}
                 minH="250px"
+                onClick={() => handleDayClicked(day)}
+                cursor={"pointer"}
                 borderColor="border"
                 borderWidth="1px"
                 bgColor={moment(day).isSame(moment(), 'day') ? "menuactive" : "white"}
               >
-                {localizer.format(day, "D")}
+                {localizer.format(day, "D")} 
                 <Box mt={2}>
                   {eventsForDay.length > 0 &&
-                    eventsForDay.map((ev, idx) => (
+                    [...eventsForDay]
+                  .sort((a, b) => (b.resource?.isOwn ? 1 : 0) - (a.resource?.isOwn ? 1 : 0))
+                  .map((ev, idx) => (
                       <Box key={idx} pb={2} maxW="100%">
-                        <CalendarRequestBlock shift={ev.title}/>
+                        <CalendarRequestBlock
+                          shift={ev.title}
+                          nurseName={ev.resource?.nurseName}
+                          owned={ev.resource?.isOwn}
+                          onClick={ev.resource?.isOwn ? () => setSelectedRequest({
+                            requestId: ev.resource.requestId,
+                            shiftType: ev.resource.shiftType,
+                            preferredDate: ev.resource.preferredDate,
+                          }) : undefined}
+                        />
                       </Box>
                     ))
                   }
@@ -103,6 +134,23 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
           })}
         </Grid>
       </VStack>
+
+      <NewShiftRequest
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        selectedDate={selectedDay}
+        wardId={(user as any)?.wardid}
+      />
+
+      {selectedRequest && (
+        <EditShiftRequest
+          isOpen={!!selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+          requestId={selectedRequest.requestId}
+          initialShiftType={selectedRequest.shiftType}
+          initialDate={selectedRequest.preferredDate}
+        />
+      )}
     </>
   )
 }

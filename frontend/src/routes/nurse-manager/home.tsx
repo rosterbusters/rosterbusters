@@ -225,6 +225,7 @@ function NurseManagerHome() {
 
   const handleWardChange = useCallback((ward: Ward) => {
     setSelectedWard(ward);
+    localStorage.setItem("selectedWardId", String(ward.wardid));
   }, []);
 
   const handlePeriodChange = useCallback((period: RosterPeriod) => {
@@ -335,10 +336,12 @@ function NurseManagerHome() {
     ];
   }, [periods]);
 
-  // Set default ward if not set
+  // Set default ward if not set, restoring from localStorage if available
   useEffect(() => {
     if (wards.length > 0 && !selectedWard) {
-      setSelectedWard(wards[0]);
+      const savedId = localStorage.getItem("selectedWardId");
+      const restored = savedId ? wards.find(w => String(w.wardid) === savedId) : null;
+      setSelectedWard(restored ?? wards[0]);
     }
   }, [wards, selectedWard]);
 
@@ -373,7 +376,7 @@ function NurseManagerHome() {
           alignItems="start"
           justifyContent="center"
         >
-          <StatusBanner />
+          <StatusBanner ward={selectedWard} />
         </Stack>
 
         <Stack

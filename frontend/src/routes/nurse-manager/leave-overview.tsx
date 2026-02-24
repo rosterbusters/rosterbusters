@@ -10,7 +10,6 @@ import {
   Button,
 } from "@chakra-ui/react";
 
-import { AssignableStatus } from "@/components/NurseManager/Requests/AssignableStatus";
 import RequestCalendar from "@/components/NurseManager/Requests/RequestCalendar";
 
 export const Route = createFileRoute("/nurse-manager/leave-overview")({
@@ -63,11 +62,9 @@ function LeaveOverviewPage() {
             Click on a date to view shift request details.
           </Text>
           <HStack justifySelf="end">
-            <AssignableStatus/>
           </HStack>
         </Grid>
         <Box h="100%" w="100%">
-        <RequestCalendar/>
         </Box>
       </VStack>
     </Flex>
