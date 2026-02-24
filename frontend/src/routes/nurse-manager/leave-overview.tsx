@@ -9,9 +9,13 @@ import {
   Grid,
   Button,
 } from "@chakra-ui/react";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 
 import { AssignableStatus } from "@/components/NurseManager/Requests/AssignableStatus";
 import RequestCalendar from "@/components/NurseManager/Requests/RequestCalendar";
+import { NewShiftRequest } from "@/components/WardStaff/Requests/NewShiftRequest";
+import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/nurse-manager/leave-overview")({
   component: LeaveOverviewPage,
@@ -25,6 +29,9 @@ function handleLeaveClicked() {
 }
 
 function LeaveOverviewPage() {
+  const [isShiftRequestOpen, setIsShiftRequestOpen] = useState(false);
+  const { user } = useAuth();
+
   return (
     <Flex
       minH="100vh"
@@ -55,21 +62,28 @@ function LeaveOverviewPage() {
               Leave Requests
             </Button>
           </HStack>
-          <GridItem />
+          <Button variant={"outline"} justifySelf="end" size="sm" onClick={() => setIsShiftRequestOpen(true)}>
+            <Plus />Add Shift Request
+          </Button>
         </Grid>
-        <Grid templateColumns={{base:'1fr', md:"1fr auto 1fr"}} w="full" gap={{base:2, md:0}}>
+        <Grid templateColumns={{ base: '1fr', md: '1fr auto 1fr' }} w='full' gap={{ base: 2, md: 0 }}>
           <GridItem />
           <Text color="foreground" fontWeight="light" justifySelf="center">
-            Click on a date to view shift request details.
+            Click on a date to create/edit shift request.
           </Text>
           <HStack justifySelf="end">
-            <AssignableStatus/>
+            <AssignableStatus />
           </HStack>
         </Grid>
         <Box h="100%" w="100%">
-        <RequestCalendar/>
+          <RequestCalendar wardId={(user as any)?.wardid} />
         </Box>
       </VStack>
+      <NewShiftRequest
+        isOpen={isShiftRequestOpen}
+        onClose={() => setIsShiftRequestOpen(false)}
+        wardId={(user as any)?.wardid}
+      />
     </Flex>
   );
 }
