@@ -335,12 +335,22 @@ function NurseManagerHome() {
     ];
   }, [periods]);
 
+  // Generate mock wards if API wards are empty
+  const displayWards = useMemo(() => {
+    if (wards.length > 0) return wards;
+    return [
+      { wardid: 4, wardname: "Ward 4", wardtype: "Dementia", location: "Main" },
+      { wardid: 5, wardname: "Ward 5", wardtype: "Rehab", location: "Main" },
+      { wardid: 6, wardname: "Ward 6", wardtype: "Rehab", location: "Main" },
+    ] as Ward[];
+  }, [wards]);
+
   // Set default ward if not set
   useEffect(() => {
-    if (wards.length > 0 && !selectedWard) {
-      setSelectedWard(wards[0]);
+    if (displayWards.length > 0 && !selectedWard) {
+      setSelectedWard(displayWards[0]);
     }
-  }, [wards, selectedWard]);
+  }, [displayWards, selectedWard]);
 
   // Set default period if not set
   useEffect(() => {
