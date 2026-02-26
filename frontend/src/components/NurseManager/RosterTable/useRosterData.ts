@@ -298,7 +298,7 @@ export function useGenerateAlgorithmRoster() {
       mockData?: any;
     }) => {
       //Check if mock data is available - if mock data is not available then fetch.
-        const response = mockData ?? await fetchWithAuth(
+        const response = /*mockData ??*/ await fetchWithAuth(
         "/api/v1/roster/generate-algorithm",
         {
           method: "POST",
