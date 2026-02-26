@@ -12,8 +12,8 @@ import {
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
-import RequestCalendar from "@/components/NurseManager/Requests/RequestCalendar";
-import { NewShiftRequest } from "@/components/WardStaff/Requests/NewShiftRequest";
+import RequestCalendar from "@/components/NurseManager/Requests/ShiftRequests/RequestCalendar";
+import { NewShiftRequest } from "@/components/WardStaff/Requests/ShiftRequests/NewShiftRequest";
 import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/nurse-manager/leave-overview")({

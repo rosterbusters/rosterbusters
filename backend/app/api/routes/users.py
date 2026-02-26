@@ -136,6 +136,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         ).first()
         if nurse:
             wardid = nurse.wardid
+            name = nurse.name
     elif current_user.managerid:
         # Nurse Manager: look up their display name from the NurseManager table.
         # They manage multiple wards so wardid stays None.

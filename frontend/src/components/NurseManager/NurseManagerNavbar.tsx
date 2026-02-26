@@ -50,7 +50,7 @@ function NurseManagerNavbar() {
     return paths.some((path) => location.pathname === path);
   };
 
-  const leaveShiftPaths = ["/nurse-manager/leave-overview", "/nurse-manager/shift-overview"];
+  const leaveShiftPaths = ["/nurse-manager/request-application", "/nurse-manager/shift-overview"];
   const isLeaveShiftActive = isSectionActive(leaveShiftPaths);
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
@@ -148,10 +148,10 @@ function NurseManagerNavbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/nurse-manager/leave-overview"
+                          to="/nurse-manager/request-application"
                           className={cn(
                             "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/nurse-manager/leave-overview")
+                            isActive("/nurse-manager/request-application")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
@@ -384,13 +384,13 @@ function NurseManagerNavbar() {
                 {leaveShiftExpanded && (
                   <div className="ml-8 mt-2 flex flex-col gap-1.5 pl-4">
                     <Link
-                      to="/nurse-manager/leave-overview"
+                      to="/nurse-manager/request-application"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
                         className={cn(
                           "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                          isActive("/nurse-manager/leave-overview")
+                          isActive("/nurse-manager/request-application")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
                         )}

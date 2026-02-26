@@ -987,70 +987,159 @@ def seed_leave_requests(
     session: Session,
     nurses: list[Nurse],
     periods: list[RosterPeriod],
+    managers: list[NurseManager],
 ) -> int:
-    """Seed leave requests for nurses using LeaveRequest model.
+    """Seed leave requests spread across the current and next calendar month.
 
-    Uses leave type codes (AL, MC, etc.).
-    Only fills required columns.
+    - Each ward is guaranteed at least one leave request
+    - ~50% of nurses receive 1-3 leave requests
+    - Past-dated leaves are mostly Approved; future-dated are mostly Pending
+    - Full LeaveRequest fields are populated (status, approvedby, category, etc.)
     """
     logger.info("Seeding leave requests...")
 
-    if not periods or not nurses:
-        logger.warning("  No periods or nurses available, skipping leave requests")
+    if not nurses:
+        logger.warning("  No nurses available, skipping leave requests")
         return 0
 
-    current_period = periods[0]
-    count = 0
+    today = date.today()
+    # Range: first of current month → last of next month
+    range_start = today.replace(day=1)
+    next_month_first = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    range_end = (next_month_first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    total_days = (range_end - range_start).days + 1
 
-    # Common leave types
-    common_leaves = ["AL", "MC"]
-    # All leave types (per updated chk_leavereq_type constraint)
-    all_leaves = ["AL", "MC", "URG", "UPL", "CL", "CCL", "FCL", "BDL"]
+    # leave type → (leavecategory, weight)
+    leave_type_meta = {
+        "AL":  ("PreApproved",          4),
+        "MC":  ("MedicalCertificate",   4),
+        "CL":  ("Urgent",               2),
+        "CCL": ("PreApproved",          2),
+        "FCL": ("PreApproved",          1),
+        "BDL": ("PreApproved",          1),
+        "URG": ("Urgent",               1),
+        "UPL": ("PreApproved",          1),
+    }
+    leave_types_weighted = [lt for lt, (_, w) in leave_type_meta.items() for _ in range(w)]
 
-    days_in_period = (current_period.enddate - current_period.startdate).days
+    reasons_by_type = {
+        "AL":  ["Family holiday", "Personal rest", "Annual vacation", None],
+        "MC":  ["Fever and flu", "Medical appointment", "Doctor's visit", None],
+        "CL":  ["Bereavement", "Family emergency", None],
+        "CCL": ["Child's school event", "Childcare arrangement", None],
+        "FCL": ["Caring for elderly parent", "Family care needed", None],
+        "BDL": ["Birthday leave", None],
+        "URG": ["Family emergency", "Urgent personal matter", None],
+        "UPL": ["Personal matter", None],
+    }
 
+    rejection_reasons = [
+        "Staffing requirements not met",
+        "Insufficient notice period",
+        "Conflicts with another approved leave",
+        "Ward coverage cannot be maintained",
+    ]
+
+    manager_ids = [m.managerid for m in managers if m.managerid]
+
+    # Group nurses by ward
+    ward_to_nurses: dict[int, list[Nurse]] = {}
     for nurse in nurses:
-        # Count existing leave requests for this nurse in the current period
-        existing_requests = session.exec(
+        if nurse.wardid:
+            ward_to_nurses.setdefault(nurse.wardid, []).append(nurse)
+
+    count = 0
+    nurses_with_requests: set[int] = set()
+
+    def _add_leave(nurse: Nurse, start: date, leave_type: str) -> bool:
+        """Create one leave request. Returns False if an overlapping request exists."""
+        category, _ = leave_type_meta[leave_type]
+        duration = fake.random_int(min=1, max=3)
+        end = min(start + timedelta(days=duration - 1), range_end)
+
+        # Skip if this nurse already has an overlapping request
+        overlap = session.exec(
             select(LeaveRequest).where(
                 LeaveRequest.nurseid == nurse.nurseid,
-                LeaveRequest.startdate >= current_period.startdate,
-                LeaveRequest.startdate <= current_period.enddate,
+                LeaveRequest.startdate <= end,
+                LeaveRequest.enddate >= start,
             )
-        ).all()
+        ).first()
+        if overlap:
+            return False
 
-        requests_needed = 3 - len(existing_requests)
-        if requests_needed <= 0:
-            logger.info(f"  Nurse {nurse.name} already has 3+ leave requests, skipping")
-            continue
+        # Status: past → mostly Approved; today → Pending/Approved; future → mostly Pending
+        if start < today:
+            status = fake.random_element(["Approved", "Approved", "Approved", "Rejected", "Cancelled"])
+        elif start == today:
+            status = fake.random_element(["Pending", "Approved"])
+        else:
+            status = fake.random_element(["Pending", "Pending", "Approved"])
 
-        for _ in range(requests_needed):
-            # Random start date within the roster period
-            random_day = fake.random_int(min=0, max=max(0, days_in_period - 1))
-            start_date = current_period.startdate + timedelta(days=random_day)
-            # Leave duration: 1-3 days
-            leave_duration = fake.random_int(min=1, max=3)
-            end_date = min(start_date + timedelta(days=leave_duration - 1), current_period.enddate)
+        approved_by = None
+        approved_at = None
+        rejection_reason = None
 
-            # Weight towards common leave types (70% common, 30% any)
-            if fake.random_int(min=1, max=10) <= 7:
-                leave_type = fake.random_element(common_leaves)
-            else:
-                leave_type = fake.random_element(all_leaves)
+        if status == "Approved" and manager_ids:
+            approved_by = fake.random_element(manager_ids)
+            approved_at = datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=1, max=14))
+        elif status == "Rejected":
+            rejection_reason = fake.random_element(rejection_reasons)
 
-            # Only required fields
-            leave_request = LeaveRequest(
-                nurseid=nurse.nurseid,
-                startdate=start_date,
-                enddate=end_date,
-                leavetype=leave_type,
-            )
-            session.add(leave_request)
+        submitted_period = "AfterFinalization" if start <= today else "BeforeRoster"
+
+        leave_req = LeaveRequest(
+            nurseid=nurse.nurseid,
+            startdate=start,
+            enddate=end,
+            leavetype=leave_type,
+            leavecategory=category,
+            submittedduringperiod=submitted_period,
+            requiresreplacement=fake.boolean(chance_of_getting_true=25),
+            reason=fake.random_element(reasons_by_type.get(leave_type, [None])),
+            requestedat=datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=0, max=21)),
+            status=status,
+            approvedby=approved_by,
+            approvedat=approved_at,
+            rejectionreason=rejection_reason,
+            notificationsent=status != "Pending",
+            impactsroster=status == "Approved",
+        )
+        session.add(leave_req)
+        return True
+
+    # Pass 1: guarantee at least one leave request per ward
+    for ward_id, ward_nurses in ward_to_nurses.items():
+        nurse = fake.random_element(ward_nurses)
+        day_offset = fake.random_int(min=0, max=total_days - 1)
+        start = range_start + timedelta(days=day_offset)
+        leave_type = fake.random_element(["AL", "MC", "CL"])
+        if _add_leave(nurse, start, leave_type):
+            nurses_with_requests.add(nurse.nurseid)
             count += 1
+            logger.info(f"  Ward {ward_id}: guaranteed leave → {nurse.name} ({leave_type}, {start})")
 
+    session.commit()
+
+    # Pass 2: ~50% of nurses get 1–3 additional leave requests
+    num_selected = max(1, len(nurses) // 2)
+    selected = fake.random_elements(nurses, length=min(num_selected, len(nurses)), unique=True)
+
+    for nurse in selected:
+        num_requests = fake.random_int(min=1, max=3)
+        for _ in range(num_requests):
+            day_offset = fake.random_int(min=0, max=total_days - 1)
+            start = range_start + timedelta(days=day_offset)
+            leave_type = fake.random_element(leave_types_weighted)
+            if _add_leave(nurse, start, leave_type):
+                nurses_with_requests.add(nurse.nurseid)
+                count += 1
         session.commit()
 
-    logger.info(f"  Created {count} leave requests for {len(nurses)} nurses (3 each)")
+    logger.info(
+        f"  Created {count} leave requests across {len(ward_to_nurses)} wards "
+        f"({len(nurses_with_requests)} nurses, {range_start} – {range_end})"
+    )
     return count
 
 
@@ -1367,7 +1456,7 @@ def seed_all() -> None:
         seed_shift_requests(session, nurses, periods, managers)
 
         # Seed leave requests (~15% of nurses, leave-type shift codes)
-        seed_leave_requests(session, nurses, periods)
+        seed_leave_requests(session, nurses, periods, managers)
 
         # Seed notifications for all nurses and managers (at least 3 each)
         seed_notifications(session, nurses, periods, managers)

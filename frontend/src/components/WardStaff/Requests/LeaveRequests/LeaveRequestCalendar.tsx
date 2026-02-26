@@ -1,11 +1,11 @@
 import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from 'react-big-calendar'
 import moment from 'moment'
-import { useState, useCallback, useMemo, useEffect, ComponentType } from 'react'
+import { useState, useCallback, useMemo, ComponentType } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import CustomMonthView from './CustomLeaveView'
 import { Box, Grid, HStack, Span } from '@chakra-ui/react'
 import cx from 'clsx'
-import { ShiftRequestsService } from '@/client'
+import { ShiftRequestsService, LeaveRequestsService } from '@/client'
 import useAuth from '@/hooks/useAuth'
 
 const localizer = momentLocalizer(moment);
@@ -90,61 +90,15 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
-  // ─── Leave codes ──────────────────────────────────────────────────────────
-  const { data: leaveCodes } = useQuery({
-    queryKey: ['leave-codes'],
-    queryFn: () => ShiftRequestsService.getLeaveCodes(),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const leaveCodeSet = useMemo(() => {
-    if (!leaveCodes) return new Set<string>();
-    return new Set(leaveCodes.map((lc) => lc.shiftcode));
-  }, [leaveCodes]);
-
-  // ─── Roster periods ───────────────────────────────────────────────────────
-  const { data: periods } = useQuery({
-    queryKey: ['roster-periods'],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const activePeriod = useMemo(() => {
-    if (!periods) return undefined;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return (
-      periods.find(
-        (p) =>
-          p.status === 'RequestOpen' &&
-          new Date(p.startdate) <= today &&
-          new Date(p.enddate) >= today,
-      ) ?? periods.find((p) => p.status === 'RequestOpen')
-    );
-  }, [periods]);
-
   // ─── Calendar navigation (month view) ────────────────────────────────────
   const [date, setDate] = useState(() => moment().startOf('month').toDate());
-
-  useEffect(() => {
-    if (activePeriod?.startdate) {
-      setDate(moment(activePeriod.startdate).startOf('month').toDate());
-    }
-  }, [activePeriod?.startdate]);
-
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
-  const periodId = activePeriod?.periodid;
-
-  // ─── Shift requests for ward (filtered to leave types) ───────────────────
-  const { data: shiftRequests } = useQuery({
-    queryKey: ['shift-requests', 'ward', wardId, periodId],
-    queryFn: () =>
-      ShiftRequestsService.getShiftRequestsByWard({
-        wardId: wardId!,
-        periodId: periodId,
-      }),
-    enabled: !!wardId && !!periodId,
+  // ─── Leave requests for ward ──────────────────────────────────────────────
+  const { data: leaveRequests } = useQuery({
+    queryKey: ['ward-leave-requests', wardId],
+    queryFn: () => LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
+    enabled: !!wardId,
     staleTime: 0,
   });
 
@@ -163,23 +117,22 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
 
   // ─── Map leave requests → calendar events ─────────────────────────────────
   const events: Event[] = useMemo(() => {
-    if (!shiftRequests) return [];
-    return shiftRequests
-      .filter((sr) => leaveCodeSet.size === 0 || leaveCodeSet.has(sr.preferredshifttype))
-      .map((sr) => ({
-        title: sr.preferredshifttype,
-        start: new Date(sr.preferreddate),
-        end: new Date(sr.preferreddate),
-        allDay: true,
-        resource: {
-          nurseName: nurseMap.get(sr.nurseid) ?? `Nurse ${sr.nurseid}`,
-          isOwn: sr.nurseid === currentNurseId,
-          requestId: sr.requestid,
-          preferredDate: sr.preferreddate,
-          shiftType: sr.preferredshifttype,
-        },
-      }));
-  }, [shiftRequests, nurseMap, currentNurseId, leaveCodeSet]);
+    if (!leaveRequests) return [];
+    return leaveRequests.map((lr) => ({
+      title: lr.leavetype,
+      start: new Date(lr.startdate),
+      end: new Date(lr.enddate),
+      allDay: true,
+      resource: {
+        nurseName: nurseMap.get(lr.nurseid) ?? `Nurse ${lr.nurseid}`,
+        isOwn: lr.nurseid === currentNurseId,
+        requestId: lr.leaveid,
+        preferredDate: lr.startdate,
+        shiftType: lr.leavetype,
+        status: lr.status,
+      },
+    }));
+  }, [leaveRequests, nurseMap, currentNurseId]);
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {

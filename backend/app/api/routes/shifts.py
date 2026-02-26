@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import or_, select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models.roster import RosterPeriod, RosterPeriodPublic
+from app.models.roster import LeaveRequest, LeaveRequestPublic, RosterPeriod, RosterPeriodPublic
 from app.models.shifts import (
     ShiftCode,
     ShiftCodePublic,
@@ -267,4 +267,28 @@ def get_ward_nurses(
 ) -> Any:
     """Get all nurses for a specific ward."""
     statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    return list(session.exec(statement).all())
+
+
+@router.get("/ward/{ward_id}/leave-requests", response_model=list[LeaveRequestPublic])
+def get_ward_leave_requests(
+    ward_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+) -> Any:
+    """Get all leave requests for nurses in a specific ward, optionally filtered by date range."""
+    nurse_ids = list(
+        session.exec(select(Nurse.nurseid).where(Nurse.wardid == ward_id)).all()
+    )
+    if not nurse_ids:
+        return []
+
+    statement = select(LeaveRequest).where(LeaveRequest.nurseid.in_(nurse_ids))  # type: ignore[attr-defined]
+    if start_date is not None:
+        statement = statement.where(LeaveRequest.enddate >= start_date)
+    if end_date is not None:
+        statement = statement.where(LeaveRequest.startdate <= end_date)
+
     return list(session.exec(statement).all())

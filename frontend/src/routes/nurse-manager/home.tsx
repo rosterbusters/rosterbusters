@@ -298,11 +298,10 @@ function NurseManagerHome() {
     },
     [localRosterData]
   );
-
   const handleExportXLSX = useCallback(() => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
   }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
-
+  
   const handleViewEditHistory = useCallback(() => {
     setIsEditHistoryOpen(true);
   }, []);
@@ -343,7 +342,7 @@ function NurseManagerHome() {
       const restored = savedId ? wards.find(w => String(w.wardid) === savedId) : null;
       setSelectedWard(restored ?? wards[0]);
     }
-  }, [displayWards, selectedWard]);
+  }, [wards, selectedWard]);
 
   // Set default period if not set
   useEffect(() => {
@@ -399,7 +398,7 @@ function NurseManagerHome() {
         display="flex"
         flexDirection="column"
       >
-        <Box p={4} pb={0} position="relative" zIndex={2}>
+        <Box p={4} pb={0}>
           <RosterHeader
             currentStartDate={currentStartDate}
             viewMode={viewMode}

@@ -1,5 +1,4 @@
 import { useMemo, type JSX, useState } from "react";
-import { useMemo, type JSX, useState } from "react";
 import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
@@ -7,6 +6,8 @@ import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { NewShiftRequest } from "./NewShiftRequest";
 import { EditShiftRequest } from "./EditShiftRequest";
 import useAuth from "@/hooks/useAuth";
+import moment from "moment";
+
 interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
@@ -14,7 +15,6 @@ interface CustomWeekViewProps {
 
   [key: string]: unknown;
 }
-import moment from "moment";
 
 interface CustomWeekViewComponent {
   (props: CustomWeekViewProps): JSX.Element;
@@ -50,14 +50,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   startAccessor,
   endAccessor,
 }: CustomWeekViewProps) {
-  const { user } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-  const [selectedRequest, setSelectedRequest] = useState<{
-    requestId: number;
-    shiftType: string;
-    preferredDate: string;
-  } | null>(null);
+  
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);

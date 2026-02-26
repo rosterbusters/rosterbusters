@@ -43,6 +43,7 @@ from app.models.rbac import (
 # Roster/scheduling models
 from app.models.roster import (
     LeaveRequest,
+    LeaveRequestPublic,
     NotificationQueue,
     Roster,
     RosterPeriod,
