@@ -22,7 +22,7 @@ from app.models.web import User
 # ============================================================================
 # CONFIGURATION - Adjust these to control seed data volume
 # ============================================================================
-NUM_NURSE_USERS = 70
+NUM_NURSE_USERS = 70  # All nurses get login accounts (7 per ward × 10 wards)
 SEED = 42  # For reproducible fake data (set to None for random each time)
 
 # ============================================================================
@@ -227,7 +227,7 @@ WARDS_DATA = [
 
 
 # ============================================================================
-# Manager & nurse data
+# Hardcoded manager & nurse data (1 manager per ward, 7 nurses per ward)
 # ============================================================================
 NUM_WARDS = len(WARDS_DATA)
 
@@ -244,8 +244,90 @@ MANAGERS_DATA = [
     {"name": "Priya Nair",       "email": "priya.nair@sach.org.sg",       "contactnumber": "91234510"},
 ]
 
-NURSES_DATA = build_nurses_data()
-NUM_NURSE_USERS = len(NURSES_DATA)  # ~251 total across 8 wards
+# 70 nurses: 7 per ward × 10 wards
+# Designations cycle: RN, EN, NA, HCA, SSN, RN, EN
+NURSES_DATA = [
+    # Ward 0 — Ward 4 (Dementia, Simei)
+    {"name": "Chan Mei Yin",      "designation": "RN",  "email": "chan.meiyin@sach.org.sg",       "contactnumber": "98001001", "ward_idx": 0},
+    {"name": "Teo Boon Kiat",     "designation": "EN",  "email": "teo.boonkiat@sach.org.sg",      "contactnumber": "98001002", "ward_idx": 0},
+    {"name": "Siti Aminah",       "designation": "NA",  "email": "siti.aminah@sach.org.sg",       "contactnumber": "98001003", "ward_idx": 0},
+    {"name": "Raj Kumar",         "designation": "HCA", "email": "raj.kumar@sach.org.sg",         "contactnumber": "98001004", "ward_idx": 0},
+    {"name": "Loh Yee Mun",      "designation": "SSN", "email": "loh.yeemun@sach.org.sg",        "contactnumber": "98001005", "ward_idx": 0},
+    {"name": "Goh Sze Wei",      "designation": "RN",  "email": "goh.szewei@sach.org.sg",        "contactnumber": "98001006", "ward_idx": 0},
+    {"name": "Nurul Huda",       "designation": "EN",  "email": "nurul.huda@sach.org.sg",        "contactnumber": "98001007", "ward_idx": 0},
+    # Ward 1 — Ward 5 (Rehab, Simei)
+    {"name": "Yeo Jia Hui",      "designation": "RN",  "email": "yeo.jiahui@sach.org.sg",        "contactnumber": "98002001", "ward_idx": 1},
+    {"name": "Lim Chee Keong",   "designation": "EN",  "email": "lim.cheekeong@sach.org.sg",     "contactnumber": "98002002", "ward_idx": 1},
+    {"name": "Fatimah Zahra",    "designation": "NA",  "email": "fatimah.zahra@sach.org.sg",     "contactnumber": "98002003", "ward_idx": 1},
+    {"name": "Deepa Pillai",     "designation": "HCA", "email": "deepa.pillai@sach.org.sg",      "contactnumber": "98002004", "ward_idx": 1},
+    {"name": "Ho Kok Wai",       "designation": "SSN", "email": "ho.kokwai@sach.org.sg",         "contactnumber": "98002005", "ward_idx": 1},
+    {"name": "Tan Li Wen",       "designation": "RN",  "email": "tan.liwen@sach.org.sg",         "contactnumber": "98002006", "ward_idx": 1},
+    {"name": "Aisha Begum",      "designation": "EN",  "email": "aisha.begum@sach.org.sg",       "contactnumber": "98002007", "ward_idx": 1},
+    # Ward 2 — Ward 6 (Rehab, Simei)
+    {"name": "Pang Swee Lian",   "designation": "RN",  "email": "pang.sweelian@sach.org.sg",     "contactnumber": "98003001", "ward_idx": 2},
+    {"name": "Chia Beng Hock",   "designation": "EN",  "email": "chia.benghock@sach.org.sg",     "contactnumber": "98003002", "ward_idx": 2},
+    {"name": "Noor Aisyah",      "designation": "NA",  "email": "noor.aisyah@sach.org.sg",       "contactnumber": "98003003", "ward_idx": 2},
+    {"name": "Suresh Menon",     "designation": "HCA", "email": "suresh.menon@sach.org.sg",      "contactnumber": "98003004", "ward_idx": 2},
+    {"name": "Sim Bee Hoon",     "designation": "SSN", "email": "sim.beehoon@sach.org.sg",       "contactnumber": "98003005", "ward_idx": 2},
+    {"name": "Wee Cheng Yang",   "designation": "RN",  "email": "wee.chengyang@sach.org.sg",     "contactnumber": "98003006", "ward_idx": 2},
+    {"name": "Zurina Mohd",      "designation": "EN",  "email": "zurina.mohd@sach.org.sg",       "contactnumber": "98003007", "ward_idx": 2},
+    # Ward 3 — Ward 7 (Rehab, Simei)
+    {"name": "Tay Sock Hwa",     "designation": "RN",  "email": "tay.sockhwa@sach.org.sg",       "contactnumber": "98004001", "ward_idx": 3},
+    {"name": "Kang Wei Ming",    "designation": "EN",  "email": "kang.weiming@sach.org.sg",      "contactnumber": "98004002", "ward_idx": 3},
+    {"name": "Haslinda Yusof",   "designation": "NA",  "email": "haslinda.yusof@sach.org.sg",    "contactnumber": "98004003", "ward_idx": 3},
+    {"name": "Anand Rajan",      "designation": "HCA", "email": "anand.rajan@sach.org.sg",       "contactnumber": "98004004", "ward_idx": 3},
+    {"name": "Foo Siew Peng",    "designation": "SSN", "email": "foo.siewpeng@sach.org.sg",      "contactnumber": "98004005", "ward_idx": 3},
+    {"name": "Cheng Xiu Ying",   "designation": "RN",  "email": "cheng.xiuying@sach.org.sg",     "contactnumber": "98004006", "ward_idx": 3},
+    {"name": "Rozita Ibrahim",   "designation": "EN",  "email": "rozita.ibrahim@sach.org.sg",    "contactnumber": "98004007", "ward_idx": 3},
+    # Ward 4 — Ward 8 (Subacute, Simei)
+    {"name": "Yap Mei Lin",      "designation": "RN",  "email": "yap.meilin@sach.org.sg",        "contactnumber": "98005001", "ward_idx": 4},
+    {"name": "Seah Kok Leong",   "designation": "EN",  "email": "seah.kokleong@sach.org.sg",     "contactnumber": "98005002", "ward_idx": 4},
+    {"name": "Norhayati Ali",    "designation": "NA",  "email": "norhayati.ali@sach.org.sg",     "contactnumber": "98005003", "ward_idx": 4},
+    {"name": "Ganesh Sundaram",  "designation": "HCA", "email": "ganesh.sundaram@sach.org.sg",   "contactnumber": "98005004", "ward_idx": 4},
+    {"name": "Quek Hwee Ling",   "designation": "SSN", "email": "quek.hweeling@sach.org.sg",     "contactnumber": "98005005", "ward_idx": 4},
+    {"name": "Lau Chun Wai",     "designation": "RN",  "email": "lau.chunwai@sach.org.sg",       "contactnumber": "98005006", "ward_idx": 4},
+    {"name": "Mariam Hassan",    "designation": "EN",  "email": "mariam.hassan@sach.org.sg",     "contactnumber": "98005007", "ward_idx": 4},
+    # Ward 5 — Ward 9 (Subacute, Simei)
+    {"name": "Phang Sok Yee",    "designation": "RN",  "email": "phang.sokyee@sach.org.sg",      "contactnumber": "98006001", "ward_idx": 5},
+    {"name": "Ong Boon Huat",    "designation": "EN",  "email": "ong.boonhuat@sach.org.sg",      "contactnumber": "98006002", "ward_idx": 5},
+    {"name": "Rohani Wahab",     "designation": "NA",  "email": "rohani.wahab@sach.org.sg",      "contactnumber": "98006003", "ward_idx": 5},
+    {"name": "Vivek Sharma",     "designation": "HCA", "email": "vivek.sharma@sach.org.sg",      "contactnumber": "98006004", "ward_idx": 5},
+    {"name": "Soh Bee Kee",      "designation": "SSN", "email": "soh.beekee@sach.org.sg",        "contactnumber": "98006005", "ward_idx": 5},
+    {"name": "Chin Yen Nee",     "designation": "RN",  "email": "chin.yennee@sach.org.sg",       "contactnumber": "98006006", "ward_idx": 5},
+    {"name": "Salma Osman",      "designation": "EN",  "email": "salma.osman@sach.org.sg",       "contactnumber": "98006007", "ward_idx": 5},
+    # Ward 6 — Ward 10 (Paying Class, Simei)
+    {"name": "Khoo Mei Fen",     "designation": "RN",  "email": "khoo.meifen@sach.org.sg",       "contactnumber": "98007001", "ward_idx": 6},
+    {"name": "Heng Chee Seng",   "designation": "EN",  "email": "heng.cheeseng@sach.org.sg",     "contactnumber": "98007002", "ward_idx": 6},
+    {"name": "Zainab Kadir",     "designation": "NA",  "email": "zainab.kadir@sach.org.sg",      "contactnumber": "98007003", "ward_idx": 6},
+    {"name": "Lakshmi Devi",     "designation": "HCA", "email": "lakshmi.devi@sach.org.sg",      "contactnumber": "98007004", "ward_idx": 6},
+    {"name": "Neo Kim Huat",     "designation": "SSN", "email": "neo.kimhuat@sach.org.sg",       "contactnumber": "98007005", "ward_idx": 6},
+    {"name": "Fong Yoke Leng",   "designation": "RN",  "email": "fong.yokeleng@sach.org.sg",     "contactnumber": "98007006", "ward_idx": 6},
+    {"name": "Kartini Razak",    "designation": "EN",  "email": "kartini.razak@sach.org.sg",     "contactnumber": "98007007", "ward_idx": 6},
+    # Ward 7 — Ward 11 (Palliative, Simei)
+    {"name": "Chew Soo Khim",    "designation": "RN",  "email": "chew.sookhim@sach.org.sg",      "contactnumber": "98008001", "ward_idx": 7},
+    {"name": "Leong Wai Kuan",   "designation": "EN",  "email": "leong.waikuan@sach.org.sg",     "contactnumber": "98008002", "ward_idx": 7},
+    {"name": "Rahmah Yusoff",    "designation": "NA",  "email": "rahmah.yusoff@sach.org.sg",     "contactnumber": "98008003", "ward_idx": 7},
+    {"name": "Mohan Das",        "designation": "HCA", "email": "mohan.das@sach.org.sg",         "contactnumber": "98008004", "ward_idx": 7},
+    {"name": "Ang Bee Lian",     "designation": "SSN", "email": "ang.beelian@sach.org.sg",       "contactnumber": "98008005", "ward_idx": 7},
+    {"name": "Kwek Siew Hong",   "designation": "RN",  "email": "kwek.siewhong@sach.org.sg",     "contactnumber": "98008006", "ward_idx": 7},
+    {"name": "Hafizah Latif",    "designation": "EN",  "email": "hafizah.latif@sach.org.sg",     "contactnumber": "98008007", "ward_idx": 7},
+    # Ward 8 — CH (Community Hospital, Bedok)
+    {"name": "Png Geok Tin",     "designation": "RN",  "email": "png.geoktin@sach.org.sg",       "contactnumber": "98009001", "ward_idx": 8},
+    {"name": "Toh Choon Heng",   "designation": "EN",  "email": "toh.choonheng@sach.org.sg",     "contactnumber": "98009002", "ward_idx": 8},
+    {"name": "Salmah Johari",    "designation": "NA",  "email": "salmah.johari@sach.org.sg",     "contactnumber": "98009003", "ward_idx": 8},
+    {"name": "Kavitha Raju",     "designation": "HCA", "email": "kavitha.raju@sach.org.sg",      "contactnumber": "98009004", "ward_idx": 8},
+    {"name": "Low Kah Seng",     "designation": "SSN", "email": "low.kahseng@sach.org.sg",       "contactnumber": "98009005", "ward_idx": 8},
+    {"name": "Yeoh Li Ping",     "designation": "RN",  "email": "yeoh.liping@sach.org.sg",       "contactnumber": "98009006", "ward_idx": 8},
+    {"name": "Faridah Omar",     "designation": "EN",  "email": "faridah.omar@sach.org.sg",      "contactnumber": "98009007", "ward_idx": 8},
+    # Ward 9 — TCF (Transitional Care, Bedok)
+    {"name": "Sia Geok Choo",    "designation": "RN",  "email": "sia.geokchoo@sach.org.sg",      "contactnumber": "98010001", "ward_idx": 9},
+    {"name": "Beh Teck Soon",    "designation": "EN",  "email": "beh.tecksoon@sach.org.sg",      "contactnumber": "98010002", "ward_idx": 9},
+    {"name": "Norma Samad",      "designation": "NA",  "email": "norma.samad@sach.org.sg",       "contactnumber": "98010003", "ward_idx": 9},
+    {"name": "Srinivas Rao",     "designation": "HCA", "email": "srinivas.rao@sach.org.sg",      "contactnumber": "98010004", "ward_idx": 9},
+    {"name": "Tan Geok Bee",     "designation": "SSN", "email": "tan.geokbee@sach.org.sg",       "contactnumber": "98010005", "ward_idx": 9},
+    {"name": "Koh Li Hua",       "designation": "RN",  "email": "koh.lihua@sach.org.sg",         "contactnumber": "98010006", "ward_idx": 9},
+    {"name": "Azizah Hamid",     "designation": "EN",  "email": "azizah.hamid@sach.org.sg",      "contactnumber": "98010007", "ward_idx": 9},
+]
 
 
 def seed_roles(session: Session) -> dict[str, Role]:
@@ -854,11 +936,7 @@ def seed_shift_requests(
                 if existing_req:
                     continue
 
-                # Current and future periods: always Pending; past periods: random mix
-                if period_idx <= 1:
-                    status = "Pending"
-                else:
-                    status = fake.random_element(statuses)
+                status = fake.random_element(statuses)
 
                 # If approved/rejected, set reviewer (manager or algorithm)
                 reviewed_by = None
@@ -1093,71 +1171,93 @@ def seed_notifications(
     channels = ["WhatsApp", "Email", "Both"]
 
     # Notification templates for nurses
-    period_range = f"{current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')}"
     nurse_templates = [
         {
-            "type": "ShiftRequest",
-            "subject": "Shift Request Period Open",
-            "body": f"Shift Request Period ({period_range}) is Now Open. Submit your preferences.",
-            "priority": "Normal",
-        },
-        {
-            "type": "RosterRelease",
+            "type": "ShiftUpdate",
             "subject": "Roster Released",
-            "body": f"{period_range} Roster Released.",
+            "body": f"{current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} Roster released.",
             "priority": "Normal",
         },
         {
-            "type": "ShiftRequest",
-            "subject": "Shift Request Period Closed",
-            "body": f"Shift Request Period ({period_range}) is Now Closed.",
+            "type": "ShiftUpdate",
+            "subject": "Roster Updated",
+            "body": "Your roster has been updated. Please check your schedule.",
             "priority": "Normal",
         },
         {
-            "type": "ShiftRequest",
+            "type": "SwapRequest",
+            "subject": "Shift Swap Approved",
+            "body": "Your shift swap request has been approved.",
+            "priority": "Normal",
+        },
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Finalized",
+            "body": "Roster finalized for the upcoming period.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveReminder",
             "subject": "Shift Request Period Open",
-            "body": f"Shift Request Period ({period_range}) is Now Open.",
+            "body": "Shift Request Period is Now Open. Submit your preferences.",
             "priority": "Normal",
+        },
+        {
+            "type": "LeaveApproval",
+            "subject": "Shift Request Approved",
+            "body": "Your shift request has been approved.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveApproval",
+            "subject": "Shift Request Rejected",
+            "body": "Your shift request has been rejected. Please contact your manager.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveReminder",
+            "subject": "Request Period Closing Soon",
+            "body": f"Reminder: Request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
+            "priority": "Urgent",
         },
     ]
 
     # Notification templates for managers
-    leave_date = current_period.startdate + timedelta(days=fake.random_int(min=1, max=12))
     manager_templates = [
         {
-            "type": "Roster",
-            "subject": "Roster Planning",
-            "body": f"Start Planning Roster for {period_range}",
+            "type": "ShiftUpdate",
+            "subject": "Roster Period Started",
+            "body": f"Roster period {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} has begun.",
             "priority": "Normal",
         },
         {
-            "type": "RosterRelease",
-            "subject": "Roster Finalisation",
-            "body": f"Reminder: Publish Roster due {current_period.requestclosedate.strftime('%d %b %Y')}",
+            "type": "LeaveReminder",
+            "subject": "Shift Requests Pending Review",
+            "body": "There are shift requests from your ward staff awaiting your review.",
+            "priority": "Normal",
+        },
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Finalized",
+            "body": "The roster for the upcoming period has been finalized.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveApproval",
+            "subject": "Leave Request Submitted",
+            "body": "A nurse in your ward has submitted a leave request. Please review.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveReminder",
+            "subject": "Request Window Closing Soon",
+            "body": f"Reminder: The shift request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
             "priority": "Urgent",
         },
         {
-            "type": "HRISReminder",
-            "subject": "HRIS Reminder",
-            "body": f"Reminder: Export Roster to HRIS system by {current_period.enddate.strftime('%d %b %Y')}",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveRequest",
-            "subject": "Leave Request",
-            "body": f"{fake.name()} applied for {fake.random_element(['AL', 'MC', 'CL', 'CCL'])} for {leave_date.strftime('%d %b %Y')}",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftRequest",
-            "subject": "Shift Request Review Open",
-            "body": f"Shift Requests Review for {period_range} is open",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftRequest",
-            "subject": "Shift Request Review Closed",
-            "body": f"Shift Requests Review for {period_range} is closed",
+            "type": "ShiftUpdate",
+            "subject": "Roster Released to Staff",
+            "body": f"The {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} roster has been released to ward staff.",
             "priority": "Normal",
         },
     ]
