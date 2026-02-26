@@ -43,4 +43,43 @@ export class LeaveRequestsService {
       },
     });
   }
+
+  /**
+   * Update a leave request's type. Only the owning nurse can update.
+   */
+  public static updateLeaveRequest(data: {
+    leaveId: number;
+    leavetype: string;
+  }): CancelablePromise<LeaveRequestPublic> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/shift-requests/leave-requests/{leave_id}",
+      path: { leave_id: data.leaveId },
+      body: { leavetype: data.leavetype },
+      mediaType: "application/json",
+      errors: {
+        403: "Forbidden",
+        404: "Not Found",
+        422: "Validation Error",
+      },
+    });
+  }
+
+  /**
+   * Withdraw/delete a leave request. Only the owning nurse can delete.
+   */
+  public static deleteLeaveRequest(data: {
+    leaveId: number;
+  }): CancelablePromise<void> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/shift-requests/leave-requests/{leave_id}",
+      path: { leave_id: data.leaveId },
+      errors: {
+        403: "Forbidden",
+        404: "Not Found",
+        422: "Validation Error",
+      },
+    });
+  }
 }

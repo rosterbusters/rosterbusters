@@ -147,6 +147,10 @@ class LeaveRequestPublic(SQLModel):
     requestedat: datetime
 
 
+class LeaveRequestUpdate(SQLModel):
+    leavetype: Optional[str] = None
+
+
 class LeaveRequest(SQLModel, table=True):
     __tablename__ = "leaverequest"
 

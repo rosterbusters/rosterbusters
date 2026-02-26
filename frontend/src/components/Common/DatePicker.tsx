@@ -26,7 +26,7 @@ export function DatePickerDemo({ selected, onSelect, placeholder = "Pick a date"
   }
 
   return (
-    <Popover.Root positioning={{placement:"bottom-start"}}>
+    <Popover.Root positioning={{ placement: "bottom-start", strategy: "fixed" }}>
       <Popover.Trigger asChild>
         <Button
           variant="outline"
@@ -38,7 +38,7 @@ export function DatePickerDemo({ selected, onSelect, placeholder = "Pick a date"
         </Button>
       </Popover.Trigger>
       <Portal>
-        <Popover.Positioner>
+        <Popover.Positioner style={{ zIndex: 1500 }}>
           <Popover.Content width={"fit-content"}>
             <Popover.Body width={"fit-content"} p={0}>
               <Calendar

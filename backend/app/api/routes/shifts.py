@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import or_, select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models.roster import LeaveRequest, LeaveRequestPublic, RosterPeriod, RosterPeriodPublic
+from app.models.roster import LeaveRequest, LeaveRequestPublic, LeaveRequestUpdate, RosterPeriod, RosterPeriodPublic
 from app.models.shifts import (
     ShiftCode,
     ShiftCodePublic,
@@ -13,6 +13,7 @@ from app.models.shifts import (
     ShiftRequestCreate,
     ShiftRequestPublic,
     ShiftRequestUpdate,
+    ShiftRequestReview,
 )
 from app.models.rbac import Nurse, NursePublic
 from app.rbac import get_rbac_user_by_email
@@ -212,6 +213,28 @@ def update_shift_request(
     return shift_request
 
 
+@router.patch("/{request_id}/review", response_model=ShiftRequestPublic)
+def review_shift_request(
+    request_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+    review_in: ShiftRequestReview,
+) -> Any:
+    """Approve or reject a shift request (nurse manager action)."""
+    shift_request = session.get(ShiftRequest, request_id)
+    if not shift_request:
+        raise HTTPException(status_code=404, detail="Shift request not found")
+
+    shift_request.status = review_in.status
+    if review_in.rejectionreason is not None:
+        shift_request.rejectionreason = review_in.rejectionreason
+
+    session.add(shift_request)
+    session.commit()
+    session.refresh(shift_request)
+    return shift_request
+
+
 @router.delete("/{request_id}", status_code=204)
 def delete_shift_request(
     request_id: int,
@@ -292,3 +315,51 @@ def get_ward_leave_requests(
         statement = statement.where(LeaveRequest.startdate <= end_date)
 
     return list(session.exec(statement).all())
+
+
+@router.patch("/leave-requests/{leave_id}", response_model=LeaveRequestPublic)
+def update_leave_request(
+    leave_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+    update_in: LeaveRequestUpdate,
+) -> Any:
+    """Update a leave request's type. Only the owning nurse can update."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user or not rbac_user.nurseid:
+        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+
+    leave_request = session.get(LeaveRequest, leave_id)
+    if not leave_request:
+        raise HTTPException(status_code=404, detail="Leave request not found")
+    if leave_request.nurseid != rbac_user.nurseid:
+        raise HTTPException(status_code=403, detail="Not authorized to update this request")
+
+    if update_in.leavetype is not None:
+        leave_request.leavetype = update_in.leavetype
+
+    session.add(leave_request)
+    session.commit()
+    session.refresh(leave_request)
+    return leave_request
+
+
+@router.delete("/leave-requests/{leave_id}", status_code=204)
+def delete_leave_request(
+    leave_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> None:
+    """Withdraw/delete a leave request. Only the owning nurse can delete."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user or not rbac_user.nurseid:
+        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+
+    leave_request = session.get(LeaveRequest, leave_id)
+    if not leave_request:
+        raise HTTPException(status_code=404, detail="Leave request not found")
+    if leave_request.nurseid != rbac_user.nurseid:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this request")
+
+    session.delete(leave_request)
+    session.commit()

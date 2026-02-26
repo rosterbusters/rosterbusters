@@ -386,6 +386,30 @@ export class ShiftRequestsService {
     }
     
     /**
+     * Review Shift Request
+     * Approve or reject a shift request (nurse manager action).
+     * @param data The data for the request.
+     * @param data.requestId
+     * @param data.requestBody
+     * @returns ShiftRequestPublic Successful Response
+     * @throws ApiError
+     */
+    public static reviewShiftRequest(data: ShiftRequestsReviewShiftRequestData): CancelablePromise<ShiftRequestsReviewShiftRequestResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/shift-requests/{request_id}/review',
+            path: {
+                request_id: data.requestId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
      * Get Ward Nurses
      * Get all nurses for a specific ward.
      * @param data The data for the request.

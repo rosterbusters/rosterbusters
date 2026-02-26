@@ -28,8 +28,8 @@ function formatNotificationDate(dateString: string): string {
 // Badge colors matching Ward Staff NotificationBanner
 const badgeColors: Record<NotificationType, string> = {
   Roster: "bg-[#06B6D4]",        // cyan.500
-  ShiftRequest: "bg-[#0891B2]",         // cyan.600 (shiftRequest)
-  LeaveRequest: "bg-[#0891B2]",         // cyan.600
+  ShiftRequest: "bg-[#0891B2]",  // cyan.600
+  LeaveRequest: "bg-[#0891B2]",  // cyan.600
   System: "bg-[#6B7280]",        // gray.500
   Probation: "bg-[#D97706]",     // amber.600
   ShiftUpdate: "bg-[#0891B2]",   // cyan.600
@@ -37,6 +37,7 @@ const badgeColors: Record<NotificationType, string> = {
   LeaveApproval: "bg-[#0891B2]", // cyan.600
   LeaveReminder: "bg-[#0891B2]", // cyan.600
   RosterRelease: "bg-[#06B6D4]", // cyan.500
+  HRISReminder: "bg-[#D97706]",  // amber.600
 };
 
 // Badge component matching Ward Staff style

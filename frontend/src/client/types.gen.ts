@@ -93,6 +93,11 @@ export type ShiftRequestUpdate = {
     preferreddate?: (string | null);
 };
 
+export type ShiftRequestReview = {
+    status: string;
+    rejectionreason?: (string | null);
+};
+
 export type UpdatePassword = {
     current_password: string;
     new_password: string;
@@ -273,6 +278,13 @@ export type ShiftRequestsDeleteShiftRequestData = {
 };
 
 export type ShiftRequestsDeleteShiftRequestResponse = (void);
+
+export type ShiftRequestsReviewShiftRequestData = {
+    requestBody: ShiftRequestReview;
+    requestId: number;
+};
+
+export type ShiftRequestsReviewShiftRequestResponse = (ShiftRequestPublic);
 
 export type ShiftRequestsGetWardNursesData = {
     wardId: number;

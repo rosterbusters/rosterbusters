@@ -9,32 +9,31 @@ import {
   Badge,
   Text,
   VStack,
+  HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/tooltip";
-import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { ShiftRequestsService } from "@/client";
+import { ShiftRequestsService, LeaveRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
 
 interface EditLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
   requestId: number;
-  initialShiftType: string;
-  initialDate: string; // YYYY-MM-DD
+  initialLeaveType: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
 }
 
 export const EditLeaveRequest = ({
   isOpen,
   onClose,
   requestId,
-  initialShiftType,
-  initialDate,
+  initialLeaveType,
+  startDate,
+  endDate,
 }: EditLeaveRequestProps) => {
-  const [leaveType, setLeaveType] = useState<string[]>([initialShiftType]);
-  const [requestDate, setRequestDate] = useState<Date | undefined>(
-    new Date(initialDate),
-  );
+  const [leaveType, setLeaveType] = useState<string[]>([initialLeaveType]);
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
@@ -57,24 +56,18 @@ export const EditLeaveRequest = ({
   );
 
   useEffect(() => {
-    setLeaveType([initialShiftType]);
-    setRequestDate(new Date(initialDate));
-  }, [initialShiftType, initialDate]);
+    setLeaveType([initialLeaveType]);
+  }, [initialLeaveType, isOpen]);
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      ShiftRequestsService.updateShiftRequest({
-        requestId,
-        requestBody: {
-          preferredshifttype: leaveType[0],
-          preferreddate: requestDate
-            ? `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`
-            : undefined,
-        },
+      LeaveRequestsService.updateLeaveRequest({
+        leaveId: requestId,
+        leavetype: leaveType[0],
       }),
     onSuccess: () => {
       showSuccessToast("Leave request updated!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -84,25 +77,22 @@ export const EditLeaveRequest = ({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => ShiftRequestsService.deleteShiftRequest({ requestId }),
+    mutationFn: () =>
+      LeaveRequestsService.deleteLeaveRequest({ leaveId: requestId }),
     onSuccess: () => {
-      showSuccessToast("Leave request deleted!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      showSuccessToast("Leave request withdrawn.");
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
       onClose();
     },
     onError: (error: unknown) => {
       const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to delete request");
+      showErrorToast(detail || "Failed to withdraw request");
     },
   });
 
   const handleSave = () => {
     if (leaveType.length === 0) {
       showErrorToast("Please select a leave type.");
-      return;
-    }
-    if (!requestDate) {
-      showErrorToast("Please select a date.");
       return;
     }
     updateMutation.mutate();
@@ -126,6 +116,16 @@ export const EditLeaveRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems="start" gap={4} maxWidth="225px">
+                <VStack alignItems="start" gap={1}>
+                  <HStack>
+                    <Text fontWeight="medium" color="foreground">From:</Text>
+                    <Text>{startDate}</Text>
+                  </HStack>
+                  <HStack>
+                    <Text fontWeight="medium" color="foreground">To:</Text>
+                    <Text>{endDate}</Text>
+                  </HStack>
+                </VStack>
                 <Select.Root
                   collection={leaveCollection}
                   size="sm"
@@ -158,13 +158,6 @@ export const EditLeaveRequest = ({
                     </Select.Positioner>
                   </Portal>
                 </Select.Root>
-                <VStack alignItems="start">
-                  <Text fontWeight="medium">Date Requesting</Text>
-                  <DatePickerDemo
-                    selected={requestDate}
-                    onSelect={(date) => setRequestDate(date)}
-                  />
-                </VStack>
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>

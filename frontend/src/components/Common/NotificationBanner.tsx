@@ -12,21 +12,23 @@ const getBadgeVariant = (notificationType: string): string => {
     "LeaveRequest": "leaveRequest",
     "LeaveApproval": "leaveRequest",
     "LeaveReminder": "leaveRequest",
+    "HRISReminder": "subtle",
     "System": "subtle"
   };
-  
+
   return variantMap[notificationType] || "subtle";
 };
 
 // Label mapping for notification types
 const notificationTypeLabels: Record<string, string> = {
   "Roster": "Roster",
-  "RosterRelease": "Roster",
+  "RosterRelease": "Roster Release",
   "ShiftUpdate": "Roster",
   "ShiftRequest": "Shift Request",
   "LeaveRequest": "Leave Request",
   "LeaveApproval": "Leave Approval",
   "LeaveReminder": "Leave Reminder",
+  "HRISReminder": "HRIS Reminder",
   "System": "System"
 };
 
