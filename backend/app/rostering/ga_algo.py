@@ -4,7 +4,7 @@ import numpy as np
 from copy import deepcopy
 
 
-def run_ga_pipeline(nurses, shifts, requests=None):
+def run_ga_pipeline(nurses, shifts, requests=None, hard_requests=None):
     """
     Main entry point for Genetic Algorithm nurse rostering.
     
@@ -17,7 +17,7 @@ def run_ga_pipeline(nurses, shifts, requests=None):
         Standardized roster dict with keys: nurses, metadata
     """
     # Parse inputs
-    parsed_data = parse_inputs(nurses, shifts, requests)
+    parsed_data = parse_inputs(nurses, shifts, requests, hard_requests)
     
     # Run GA solver
     best_individual, best_penalty = run_ga(
@@ -25,6 +25,7 @@ def run_ga_pipeline(nurses, shifts, requests=None):
         parsed_data['nurse_ranks'],
         parsed_data['demand'],
         parsed_data['nurse_requests'],
+        parsed_data['hard_requests'],
         parsed_data['num_days']
     )
     
@@ -41,7 +42,7 @@ def run_ga_pipeline(nurses, shifts, requests=None):
     return output
 
 
-def parse_inputs(nurses, shifts, requests=None, num_days=14):
+def parse_inputs(nurses, shifts, requests=None, hard_requests=None, num_days=14):
     """
     Parse JSON inputs into GA-compatible format.
     
@@ -53,6 +54,7 @@ def parse_inputs(nurses, shifts, requests=None, num_days=14):
         - num_days: Number of days
     """
     requests = requests or {}
+    hard_requests = hard_requests or {}
     
     # Shift codes (must match GA internal representation)
     OFF, AM, PM, NIGHT = 0, 1, 2, 3
@@ -105,17 +107,36 @@ def parse_inputs(nurses, shifts, requests=None, num_days=14):
             for day_idx, shift_name in req_list:
                 if 0 <= day_idx < num_days and shift_name in SHIFT_CODE:
                     nurse_requests[nurse_idx].append((day_idx, SHIFT_CODE[shift_name]))
+
+    # Parse hard DO requests; these are requests made by the system to ensure DO after a previous N in the last roster
+    do_requests = [[] for _ in range(num_nurses)]
+    
+    if hard_requests:
+        nurse_id_to_index = {
+            n["id"]: idx for idx, n in enumerate(nurses_sorted)
+        }
+        
+        for nurse_id, req_list in hard_requests.items():
+            if nurse_id not in nurse_id_to_index:
+                continue
+            
+            nurse_idx = nurse_id_to_index[nurse_id]
+            
+            for day_idx, shift_name in req_list:
+                if 0 <= day_idx < num_days and shift_name in SHIFT_CODE:
+                    do_requests[nurse_idx].append((day_idx, SHIFT_CODE[shift_name]))
     
     return {
         'nurse_names': nurse_names,
         'nurse_ranks': nurse_ranks,
         'demand': demand,
         'nurse_requests': nurse_requests,
+        'hard_requests': do_requests,
         'num_days': num_days
     }
 
 
-def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
+def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, hard_requests, num_days=14):
     """
     Run the genetic algorithm to generate a roster.
     
@@ -150,8 +171,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
     }
     PATTERN_NAMES = list(PATTERNS.keys())
 
-    # Nurse ranks (A > B > C). For demo we randomize ranks; you can supply them.
-    random.seed(1)
+    # random.seed(1) #uncomment this line for testing, if not leave this commented so good luck might be on our side.
     NURSE_RANKS = nurse_ranks
 
     # Example demand: for each day and shift, required minima for ranks (A,B,C).
@@ -176,13 +196,14 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
     #     return reqs
 
     NURSE_REQUESTS = nurse_requests
+    HARD_REQUESTS = hard_requests
 
     # Hours constraints (over 14 days)
     MIN_HOURS = 84
     MAX_HOURS = 88
 
     # Penalty weights (tune as needed)
-    HARD_PEN_NDO = 999999
+    HARD_PEN_NDO = 200000 # penalty for not starting with DO if the last week's roster ended with a Night shift.
     HARD_PEN_SHIFT = 150000  # missing required staff
     HARD_PEN_HOUR = 100000   # hours outside min/max
     HARD_PEN_DAYOFF = 160000 # missing required days-off (2 per week)
@@ -563,6 +584,12 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, num_days=14):
             for (d, s) in NURSE_REQUESTS[n]:
                 if d < 14 and schedule[n][d] != s: # Safety check for day index
                     penalty += SOFT_W_REQUEST
+    
+        # 5.5) This is for DO after last week's night shift on the last day.
+        for n in range(NUM_NURSES):
+            for (d,s) in HARD_REQUESTS[n]:
+                if schedule[n][d] != s:
+                    penalty += HARD_PEN_NDO
 
         # 6) Night fairness (soft): variance of night counts
         night_counts = [sum(1 for d in range(14) if schedule[n][d] == NIGHT) for n in range(NUM_NURSES)]
