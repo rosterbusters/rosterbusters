@@ -396,47 +396,63 @@ function addDays(dateStr: string, days: number): string {
   return date.toISOString().split("T")[0];
 }
 
-// Hook for CSV export
+// Map full designation strings to short acronyms for Excel export
+function designationToAcronym(designation: string): string {
+  const d = designation.toLowerCase().trim();
+
+  if (d.includes('senior nursing aide'))   return 'SNA';
+  if (d.includes('senior staff nurse'))    return 'SSN';
+  if (d.includes('senior enrolled nurse')) return 'SEN';
+  if (d.includes('staff nurse'))           return 'SN';
+  if (d.includes('enrolled nurse'))        return 'EN';
+  if (d.includes('registered nurse'))      return 'RN';
+  if (d.includes('nursing aide'))          return 'NA';
+  if (d.includes('healthcare assistant'))  return 'HCA';
+  if (d.includes('nurse clinician'))       return 'NC';
+  if (d.includes('nurse manager'))         return 'NM';
+  if (d.includes('assistant nurse'))       return 'ANC';
+
+  // Already an acronym (RN, EN, HCA, etc.) – return as-is
+  return designation;
+}
+
+// Hook for Excel export
 export function useRosterExport() {
   return {
-    exportToCSV: (data: RosterRow[], startDate: Date, viewMode: "week" | "twoWeeks") => {
+    exportToXLSX: async (data: RosterRow[], startDate: Date, viewMode: "week" | "twoWeeks") => {
+      const XLSX = await import("xlsx");
       const days = viewMode === "week" ? 7 : 14;
-      const headers = ["Name", "Designation", "Hours"];
-      
-      // Add day headers
-      for (let i = 0; i < days; i++) {
-        const date = moment(startDate).add(i, "days");
-        headers.push(date.format("ddd DD/MM"));
-      }
-      
-      const rows = data.map((row) => {
-        const rowData = [
-          row.name,
-          row.designation,
-          `${row.hours.worked}/${row.hours.contracted}`,
-        ];
-        
-        for (let i = 0; i < days; i++) {
+
+      // Header row: 2 blank cells + date strings in YYYY-MM-DD
+      const header = [
+        "",
+        "",
+        ...Array.from({ length: days }, (_, i) =>
+          moment(startDate).add(i, "days").format("YYYY-MM-DD")
+        ),
+      ];
+
+      // Data rows: designation (acronym), name, then shift code per day
+      const rows = data.map((row) => [
+        designationToAcronym(row.designation),
+        row.name,
+        ...Array.from({ length: days }, (_, i) => {
           const dateKey = moment(startDate).add(i, "days").format("YYYY-MM-DD");
-          const shift = row.shifts[dateKey];
-          rowData.push(shift?.shiftCode || "");
-        }
-        
-        return rowData;
-      });
-      
-      // Create CSV content
-      const csvContent = [
-        headers.join(","),
-        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
-      ].join("\n");
-      
-      // Download file
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `roster_${moment(startDate).format("YYYY-MM-DD")}.csv`;
-      link.click();
+          return row.shifts[dateKey]?.shiftCode ?? "";
+        }),
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+      ws["!cols"] = [
+        { wch: 10 }, // designation (acronym – narrower)
+        { wch: 20 }, // name
+        ...Array(days).fill({ wch: 12 }), // date columns
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Roster");
+      XLSX.writeFile(wb, `roster_${moment(startDate).format("YYYY-MM-DD")}.xlsx`);
     },
   };
 }

@@ -6,6 +6,8 @@ import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { NewShiftRequest } from "./NewShiftRequest";
 import { EditShiftRequest } from "./EditShiftRequest";
 import useAuth from "@/hooks/useAuth";
+import moment from "moment";
+
 interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
@@ -13,7 +15,6 @@ interface CustomWeekViewProps {
 
   [key: string]: unknown;
 }
-import moment from "moment";
 
 interface CustomWeekViewComponent {
   (props: CustomWeekViewProps): JSX.Element;
@@ -49,6 +50,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   startAccessor,
   endAccessor,
 }: CustomWeekViewProps) {
+  
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);

@@ -21,6 +21,7 @@ import {
   type ViewMode,
   type ShiftCode,
   type RosterRow,
+  type DailyStaffingGuideline,
 } from "@/components/NurseManager/RosterTable";
 import { RosterPlanningHeader, getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import {
@@ -78,11 +79,18 @@ function RosterPlanningPage() {
   // Algorithm generation state
   const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
 
+  // Staffing guidelines — initialised from ward data, editable via the summary table
+  const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(
+    () => getWardGuidelines(undefined),
+  );
+  // Per-date overrides — populated when user edits a specific day only
+  const [dateOverrides, setDateOverrides] = useState<Record<string, DailyStaffingGuideline>>({});
+
   // Data hooks
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
-  const { exportToCSV } = useRosterExport();
+  const { exportToXLSX } = useRosterExport();
   const publishRoster = usePublishRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
 
@@ -131,6 +139,18 @@ function RosterPlanningPage() {
       setSelectedWard(displayWards[0]);
     }
   }, [displayWards, selectedWard]);
+
+  // Reset guidelines and per-date overrides when the selected ward changes
+  useEffect(() => {
+    setGuidelines(getWardGuidelines(selectedWard?.wardName));
+    setDateOverrides({});
+  }, [selectedWard?.wardName]);
+
+  // Unmodified ward defaults — used by the dialog's "Reset to ward default" action
+  const originalGuidelines = useMemo(
+    () => getWardGuidelines(selectedWard?.wardName),
+    [selectedWard?.wardName],
+  );
 
   // Set default period if not set
   useEffect(() => {
@@ -943,8 +963,8 @@ const handleGenerateAlgorithm = useCallback(async () => {
   );
 
   const handleDownloadRoster = useCallback(() => {
-    exportToCSV(displayRosterData, currentStartDate, viewMode);
-  }, [displayRosterData, currentStartDate, viewMode, exportToCSV]);
+    exportToXLSX(displayRosterData, currentStartDate, viewMode);
+  }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
 
   const handlePublishClick = useCallback(() => {
     setIsPublishDialogOpen(true);
@@ -979,7 +999,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
       p={5}
     >
       {/* Header Section */}
-      <Box bgColor="white" p={4} rounded="lg" width="100%">
+      <Box bgColor="white" p={4} rounded="lg" width="100%" position="relative" zIndex={2}>
         <RosterPlanningHeader
           currentStartDate={currentStartDate}
           viewMode={viewMode}
@@ -1026,6 +1046,8 @@ const handleGenerateAlgorithm = useCallback(async () => {
             onShiftChange={handleShiftChange}
             showSummary={false}
             isLoading={generateAlgorithmRoster.isPending}
+            guidelines={guidelines}
+            isRosterGenerated={isAlgorithmGenerated}
           />
         </Box>
 
@@ -1035,7 +1057,13 @@ const handleGenerateAlgorithm = useCallback(async () => {
           viewMode={viewMode}
           currentStartDate={currentStartDate}
           isRosterGenerated={isAlgorithmGenerated}
-          guidelines={getWardGuidelines(selectedWard?.wardName)}
+          guidelines={guidelines}
+          dateOverrides={dateOverrides}
+          originalGuidelines={originalGuidelines}
+          onGuidelinesChange={setGuidelines}
+          onDateOverrideChange={(dateKey, updated) =>
+            setDateOverrides((prev) => ({ ...prev, [dateKey]: updated }))
+          }
         />
       </Box>
 
