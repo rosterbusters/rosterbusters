@@ -209,6 +209,24 @@ def generate_roster_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 def map_rank(designation: str) -> str:
-    """Helper to map 'Staff Nurse' to 'A', 'EN' to 'B', etc."""
-    mapping = {"RN": "A", "SSN": "A", "EN": "B", "NA": "B", "HCA": "C"}
-    return mapping.get(designation, "C")
+    """Map nurse designation to scheduling rank A/B/C."""
+    RANK_A = {
+        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
+        "STAFF NURSE I", "STAFF NURSE II",
+        # Legacy short codes
+        "RN", "SSN",
+    }
+    RANK_B = {
+        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
+        "NURSING AIDE I", "NURSING AIDE II",
+        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
+        "SNR PATIENT SERVICE ASST",
+        # Legacy short codes
+        "EN", "NA",
+    }
+    # Everything else (HCAs, PSAs, Senior HCAs) → Rank C
+    if designation in RANK_A:
+        return "A"
+    if designation in RANK_B:
+        return "B"
+    return "C"

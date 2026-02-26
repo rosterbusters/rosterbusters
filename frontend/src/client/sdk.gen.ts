@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse } from './types.gen';
+import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsReviewShiftRequestData, ShiftRequestsReviewShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse } from './types.gen';
 
 export class DefaultService {
     /**
@@ -385,6 +385,30 @@ export class ShiftRequestsService {
         });
     }
     
+    /**
+     * Review Shift Request
+     * Approve or reject a shift request (nurse manager action).
+     * @param data The data for the request.
+     * @param data.requestId
+     * @param data.requestBody
+     * @returns ShiftRequestPublic Successful Response
+     * @throws ApiError
+     */
+    public static reviewShiftRequest(data: ShiftRequestsReviewShiftRequestData): CancelablePromise<ShiftRequestsReviewShiftRequestResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/shift-requests/{request_id}/review',
+            path: {
+                request_id: data.requestId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * Get Ward Nurses
      * Get all nurses for a specific ward.

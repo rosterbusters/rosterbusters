@@ -57,6 +57,7 @@ from app.models.shifts import (
     ShiftRequest,
     ShiftRequestCreate,
     ShiftRequestPublic,
+    ShiftRequestReview,
 )
 
 # Notification models

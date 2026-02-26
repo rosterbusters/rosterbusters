@@ -127,8 +127,9 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
         nurseName: nurseMap.get(lr.nurseid) ?? `Nurse ${lr.nurseid}`,
         isOwn: lr.nurseid === currentNurseId,
         requestId: lr.leaveid,
-        preferredDate: lr.startdate,
         shiftType: lr.leavetype,
+        startDate: lr.startdate,
+        endDate: lr.enddate,
         status: lr.status,
       },
     }));
