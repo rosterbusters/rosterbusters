@@ -1007,29 +1007,26 @@ def seed_leave_requests(
     # All leave types (per updated chk_leavereq_type constraint)
     all_leaves = ["AL", "MC", "URG", "UPL", "CL", "CCL", "FCL", "BDL"]
 
-    # Select ~15% of nurses to have leave requests
-    num_nurses_with_leaves = max(1, len(nurses) * 15 // 100)
-    selected_nurses = fake.random_elements(nurses, length=num_nurses_with_leaves, unique=True)
+    days_in_period = (current_period.enddate - current_period.startdate).days
 
-    for nurse in selected_nurses:
-        # Check if leave requests already exist for this nurse
-        existing = session.exec(
+    for nurse in nurses:
+        # Count existing leave requests for this nurse in the current period
+        existing_requests = session.exec(
             select(LeaveRequest).where(
                 LeaveRequest.nurseid == nurse.nurseid,
+                LeaveRequest.startdate >= current_period.startdate,
+                LeaveRequest.startdate <= current_period.enddate,
             )
-        ).first()
+        ).all()
 
-        if existing:
-            logger.info(f"  Leave requests for nurse {nurse.name} already exist, skipping")
+        requests_needed = 3 - len(existing_requests)
+        if requests_needed <= 0:
+            logger.info(f"  Nurse {nurse.name} already has 3+ leave requests, skipping")
             continue
 
-        # Generate 1-2 leave requests per nurse
-        num_requests = fake.random_int(min=1, max=2)
-
-        for _ in range(num_requests):
+        for _ in range(requests_needed):
             # Random start date within the roster period
-            days_in_period = (current_period.enddate - current_period.startdate).days
-            random_day = fake.random_int(min=0, max=days_in_period - 1)
+            random_day = fake.random_int(min=0, max=max(0, days_in_period - 1))
             start_date = current_period.startdate + timedelta(days=random_day)
             # Leave duration: 1-3 days
             leave_duration = fake.random_int(min=1, max=3)
@@ -1053,7 +1050,7 @@ def seed_leave_requests(
 
         session.commit()
 
-    logger.info(f"  Created {count} leave requests for {len(selected_nurses)} nurses")
+    logger.info(f"  Created {count} leave requests for {len(nurses)} nurses (3 each)")
     return count
 
 

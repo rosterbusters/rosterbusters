@@ -31,8 +31,22 @@ export function AssignableStatus() {
     staleTime: 0,
   });
 
+  const { data: workingCodes } = useQuery({
+    queryKey: ["shift-codes", "working"],
+    queryFn: () => ShiftRequestsService.getWorkingShiftCodes(),
+  });
+
+  const workingCodeSet = useMemo(
+    () => new Set([...(workingCodes ?? []).map((c) => c.shiftcode), "DO", "RD"]),
+    [workingCodes],
+  );
+
   const count = activePeriod && userRequests
-    ? userRequests.filter((r) => r.periodid === activePeriod.periodid).length
+    ? userRequests.filter(
+        (r) =>
+          r.periodid === activePeriod.periodid &&
+          workingCodeSet.has(r.preferredshifttype),
+      ).length
     : 0;
 
   return (
