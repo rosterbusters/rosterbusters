@@ -1,20 +1,11 @@
 import { Calendar, momentLocalizer, View, Views } from 'react-big-calendar'
 import moment from 'moment'
 import { useState, useCallback, useMemo } from 'react'
-import { shiftCollection } from '@/models/Shift'
+import { useQuery } from '@tanstack/react-query'
 import { SHIFT_COLOR_MAP } from '@/components/NurseManager/RosterTable/types'
+import { HomeService } from '@/client'
 
 const localizer = momentLocalizer(moment);
-
-// Shift time ranges for calendar display
-const SHIFT_TIMES: Record<string, { startH: number; startM: number; endH: number; endM: number }> = {
-  A: { startH: 7, startM: 0, endH: 15, endM: 30 },
-  P: { startH: 13, startM: 0, endH: 21, endM: 30 },
-  N: { startH: 20, startM: 30, endH: 7, endM: 30 },
-  D: { startH: 7, startM: 0, endH: 19, endM: 0 },
-  DO: { startH: 0, startM: 0, endH: 23, endM: 59 },
-  AL: { startH: 0, startM: 0, endH: 23, endM: 59 },
-};
 
 interface ShiftEvent {
   start: Date;
@@ -23,35 +14,36 @@ interface ShiftEvent {
   shiftCode: string;
 }
 
-// Generate 1 shift per day for the current month
-function generateMonthShifts(): ShiftEvent[] {
-  const shiftItems = shiftCollection.items.filter(
-    (s) => SHIFT_TIMES[s.value]
-  );
-  const start = moment().startOf("month");
-  const end = moment().endOf("month");
-  const events: ShiftEvent[] = [];
-
-  for (let day = start.clone(); day.isSameOrBefore(end, "day"); day.add(1, "day")) {
-    const shift = shiftItems[day.date() % shiftItems.length];
-    const times = SHIFT_TIMES[shift.value];
-
-    events.push({
-      start: day.clone().hour(times.startH).minute(times.startM).toDate(),
-      end: day.clone().hour(Math.max(times.endH, times.startH)).minute(times.endM).toDate(),
-      title: `${shift.label}: ${shift.description}`,
-      shiftCode: shift.value,
-    });
-  }
-
-  return events;
-}
-
-
 export default function StaffCalendar() {
   const [view, setView] = useState<View>(Views.MONTH);
   const [date, setDate] = useState(new Date());
-  const events = useMemo(() => generateMonthShifts(), []);
+
+  const { data: shiftsData, isLoading } = useQuery({
+    queryKey: ['my-roster-shifts'],
+    queryFn: () => HomeService.getMyShifts(),
+  });
+
+  const events = useMemo((): ShiftEvent[] => {
+    if (!shiftsData) return [];
+
+    return shiftsData.map((shift) => {
+      const shiftDate = moment(shift.shiftdate);
+      const parseHM = (t: string | null) => {
+        if (!t) return { h: 0, m: 0 };
+        const [h, m] = t.split(':').map(Number);
+        return { h, m };
+      };
+      const startHM = parseHM(shift.starttime);
+      const endHM = parseHM(shift.endtime);
+
+      return {
+        start: shiftDate.clone().hour(startHM.h).minute(startHM.m).toDate(),
+        end: shiftDate.clone().hour(Math.max(endHM.h, startHM.h)).minute(endHM.m).toDate(),
+        title: shift.description ? `${shift.shiftcode}: ${shift.description}` : shift.shiftcode,
+        shiftCode: shift.shiftcode,
+      };
+    });
+  }, [shiftsData]);
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
   const onView = useCallback((newView: View) => setView(newView), []);
@@ -72,6 +64,14 @@ export default function StaffCalendar() {
       },
     };
   }, []);
+
+  if (isLoading) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p>Loading your shifts...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ height: '100%' }}>

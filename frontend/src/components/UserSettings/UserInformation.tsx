@@ -131,7 +131,7 @@ const UserInformation = () => {
           </Button>
           {editMode && (
             <Button
-              variant="subtle"
+              variant="ghost"
               colorPalette="gray"
               onClick={onCancel}
               disabled={isSubmitting}

@@ -81,7 +81,7 @@ const DeleteConfirmation = () => {
             <ButtonGroup>
               <DialogActionTrigger asChild>
                 <Button
-                  variant="subtle"
+                  variant="ghost"
                   colorPalette="gray"
                   disabled={isSubmitting}
                 >

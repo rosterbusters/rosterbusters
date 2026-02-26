@@ -1,0 +1,11 @@
+# CI-only override: expose ports so health checks can reach prod services
+services:
+  backend:
+    ports:
+      - "8000:8000"
+  frontend:
+    ports:
+      - "80:80"
+    build:
+      args:
+        - VITE_API_URL=http://localhost:8000

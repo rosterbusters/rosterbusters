@@ -15,6 +15,20 @@ class ShiftCode(SQLModel, table=True):
     defaultend: Optional[time] = None
     shiftdurationhours: Optional[Decimal] = None
 
+class ShiftCodePublic(SQLModel):
+    shiftcode: str
+    description: str
+    isworking: bool
+    shiftdurationhours: Optional[float] = None
+    defaultstart: Optional[time] = None
+    defaultend: Optional[time] = None
+
+class WardShiftCode(SQLModel, table=True):
+    __tablename__ = "ward_shiftcode"
+
+    wardid: int = Field(foreign_key="ward.wardid", primary_key=True)
+    shiftcode: str = Field(foreign_key="shiftcode.shiftcode", primary_key=True, max_length=10)
+
 class ShiftRequest(SQLModel, table=True):
     __tablename__ = "shiftrequest"
 
@@ -39,7 +53,6 @@ class ShiftRequestCreate(SQLModel):
     periodid: int
     preferreddate: date
     preferredshifttype: str
-    requestnumber: int = 1
     reason: str | None = None
     priority: int = 1
 
@@ -53,4 +66,8 @@ class ShiftRequestPublic(SQLModel):
     reason: str | None
     priority: int
     status: str
+
+class ShiftRequestUpdate(SQLModel):
+    preferredshifttype: Optional[str] = None
+    preferreddate: Optional[date] = None
 

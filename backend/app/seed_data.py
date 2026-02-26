@@ -15,14 +15,14 @@ from sqlmodel import Session, select
 from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
-from app.models import Ward, ShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
+from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
 from app.models.web import User
 
 
 # ============================================================================
 # CONFIGURATION - Adjust these to control seed data volume
 # ============================================================================
-NUM_NURSE_USERS = 5  # How many nurses get login accounts (for testing)
+NUM_NURSE_USERS = 70  # All nurses get login accounts (7 per ward × 10 wards)
 SEED = 42  # For reproducible fake data (set to None for random each time)
 
 # ============================================================================
@@ -212,9 +212,9 @@ WARDS_DATA = [
     # SACH Bedok wards
     {
         "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
-        "am_total": 5, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 2, "am_hca_min": 1, "am_hca_max": 1,
-        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 2, "pm_hca_min": 1, "pm_hca_max": 1,
-        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 2, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 0,
+        "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
+        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
+        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
@@ -557,6 +557,16 @@ def seed_manager_users(
             continue
 
         username = manager.email.split("@")[0]
+
+        existing_by_username = session.exec(
+            select(RBACUser).where(RBACUser.username == username)
+        ).first()
+
+        if existing_by_username:
+            logger.info(f"  Manager username '{username}' already exists, skipping")
+            users.append(existing_by_username)
+            continue
+
         user = RBACUser(
             username=username,
             email=manager.email,
@@ -611,6 +621,16 @@ def seed_nurse_users(
             continue
 
         username = nurse.email.split("@")[0]
+
+        existing_by_username = session.exec(
+            select(RBACUser).where(RBACUser.username == username)
+        ).first()
+
+        if existing_by_username:
+            logger.info(f"  Nurse username '{username}' already exists, skipping")
+            users.append(existing_by_username)
+            continue
+
         user = RBACUser(
             username=username,
             email=nurse.email,
@@ -623,12 +643,13 @@ def seed_nurse_users(
         session.commit()
         session.refresh(user)
 
-        # Assign Nurse role
+        # Assign Nurse role with ward assignment
         nurse_role = roles.get("Nurse")
         if nurse_role:
             user_role = UserRole(
                 userid=user.userid,
                 roleid=nurse_role.roleid,
+                wardid=nurse.wardid,
                 isactive=True,
                 assignedat=datetime.now(timezone.utc),
             )
@@ -642,55 +663,80 @@ def seed_nurse_users(
 
 
 def seed_roster_periods(session: Session) -> list[RosterPeriod]:
-    """Seed roster periods (current and next 2-week periods).
+    """Seed roster periods covering the previous calendar month and upcoming 2 weeks.
 
-    Period: Monday to Sunday (2 weeks = 14 days)
-    Request open: Friday, 2 weeks before roster starts (start - 10 days)
-    Request close: Friday, 1 week before roster starts (start - 3 days)
+    Periods are 2-week Mon–Sun blocks aligned to the current week's Monday.
+    Blocks step backward until the previous calendar month is fully covered,
+    then forward for the next 2-week block.
+
+    Returns the list with the current period at index 0 and the next period at
+    index 1 (preserving backward-compat for callers that use periods[0/1]),
+    followed by past periods in reverse-chronological order.
     """
     logger.info("Seeding roster periods...")
-    periods = []
 
     today = date.today()
-    # Start from Monday of current week
     current_monday = today - timedelta(days=today.weekday())
+    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
 
-    for i, period_label in enumerate(["Current", "Next"]):
-        # Period runs Monday to Sunday (14 days)
-        start_date = current_monday + timedelta(weeks=i * 2)
-        end_date = start_date + timedelta(days=13)  # Sunday of second week
+    # Collect all period start dates needed
+    period_starts: set[date] = set()
 
-        # Request open: Friday 2 weeks before (start - 10 days = Friday of that week)
-        request_open = start_date - timedelta(days=10)
-        # Request close: Friday 1 week before (start - 3 days = Friday before Monday)
-        request_close = start_date - timedelta(days=3)
+    # Current + next
+    period_starts.add(current_monday)
+    period_starts.add(current_monday + timedelta(weeks=2))
 
-        period_name = f"{period_label} Period {start_date.strftime('%b %d')}-{end_date.strftime('%b %d %Y')}"
+    # Step backward in 2-week blocks until the block's end date reaches
+    # before the first day of the previous month
+    p = current_monday - timedelta(weeks=2)
+    while True:
+        period_starts.add(p)
+        if p <= first_of_prev_month:
+            break
+        p -= timedelta(weeks=2)
+
+    all_periods: dict[date, RosterPeriod] = {}
+    for start in sorted(period_starts):
+        end = start + timedelta(days=13)
+        request_open = start - timedelta(days=10)
+        request_close = start - timedelta(days=3)
+
+        if start == current_monday:
+            label, status = "Current", "RequestOpen"
+        elif start > current_monday:
+            label, status = "Next", "RequestOpen"
+        else:
+            label, status = "Past", "Published"
+
+        period_name = f"{label} Period {start.strftime('%b %d')}-{end.strftime('%b %d %Y')}"
 
         existing = session.exec(
-            select(RosterPeriod).where(RosterPeriod.startdate == start_date)
+            select(RosterPeriod).where(RosterPeriod.startdate == start)
         ).first()
 
         if existing:
-            logger.info(f"  Roster period {start_date} already exists, skipping")
-            periods.append(existing)
-            continue
+            logger.info(f"  Roster period {start} already exists, skipping")
+            all_periods[start] = existing
+        else:
+            period = RosterPeriod(
+                name=period_name,
+                startdate=start,
+                enddate=end,
+                requestopendate=request_open,
+                requestclosedate=request_close,
+                status=status,
+            )
+            session.add(period)
+            session.commit()
+            session.refresh(period)
+            all_periods[start] = period
+            logger.info(f"  Created roster period: {period_name} (ID: {period.periodid})")
 
-        period = RosterPeriod(
-            name=period_name,
-            startdate=start_date,
-            enddate=end_date,
-            requestopendate=request_open,
-            requestclosedate=request_close,
-            status="RequestOpen" if i == 0 else "RequestOpen",
-        )
-        session.add(period)
-        session.commit()
-        session.refresh(period)
-        periods.append(period)
-        logger.info(f"  Created roster period: {period_name} (ID: {period.periodid})")
-
-    return periods
+    sorted_starts = sorted(all_periods.keys())
+    # current + future first (index 0 = current), then past in reverse-chron order
+    current_and_future = [all_periods[s] for s in sorted_starts if s >= current_monday]
+    past = [all_periods[s] for s in reversed(sorted_starts) if s < current_monday]
+    return current_and_future + past
 
 
 def seed_roster_entries(
@@ -700,11 +746,14 @@ def seed_roster_entries(
     periods: list[RosterPeriod],
     managers: list[NurseManager],
 ) -> int:
-    """Seed roster entries for all nurses in the current period.
+    """Seed roster entries for all nurses from the previous calendar month
+    through today + 14 days (upcoming 2 weeks).
 
-    - Populates starttime/endtime from shift code defaults
-    - Mix of Auto and Manual assignments
-    - assignedby is set for Manual assignments (manager ID)
+    - One entry per nurse per day over the full range
+    - starttime/endtime populated from shift code defaults
+    - Mix of Auto (70%) and Manual (30%) assignments
+    - Past dates are always Confirmed; future dates are Confirmed or Pending
+    - Shift pattern offset by nurse index for realistic variety across a ward
     """
     logger.info("Seeding roster entries...")
 
@@ -712,78 +761,95 @@ def seed_roster_entries(
         logger.warning("  No periods available, skipping roster entries")
         return 0
 
-    current_period = periods[0]
-    count = 0
+    today = date.today()
+    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    range_end = today + timedelta(days=14)
 
-    # Build shift code lookup for start/end times
+    # Build date → period mapping from all seeded periods
+    date_to_period: dict[date, RosterPeriod] = {}
+    for period in periods:
+        current = period.startdate
+        while current <= period.enddate:
+            date_to_period[current] = period
+            current += timedelta(days=1)
+
+    # Build shift code lookup
     shift_codes_db = session.exec(select(ShiftCode)).all()
     shift_lookup = {sc.shiftcode: sc for sc in shift_codes_db}
 
-    for nurse in nurses:
+    # 7-day rotating pattern; offset per nurse for variety
+    shift_pattern = ["D", "D", "N", "N", "DO", "DO", "D"]
+
+    count = 0
+    for nurse_idx, nurse in enumerate(nurses):
         ward = next((w for w in wards if w.wardid == nurse.wardid), None)
         if not ward:
             continue
 
-        # Find manager for this ward (if any)
-        ward_manager = managers[wards.index(ward)] if ward in wards and wards.index(ward) < len(managers) else None
+        ward_idx = wards.index(ward) if ward in wards else 0
+        ward_manager = managers[ward_idx] if ward_idx < len(managers) else None
 
-        # Generate 14 days of shifts
-        start_date = current_period.startdate
+        current_date = first_of_prev_month
+        day_offset = 0
+        nurse_count = 0
 
-        for day_offset in range(14):
-            shift_date = start_date + timedelta(days=day_offset)
+        while current_date <= range_end:
+            period = date_to_period.get(current_date)
+            if period is None:
+                current_date += timedelta(days=1)
+                day_offset += 1
+                continue
 
-            # Check if roster entry exists
             existing = session.exec(
                 select(Roster).where(
                     Roster.nurseid == nurse.nurseid,
-                    Roster.periodid == current_period.periodid,
-                    Roster.shiftdate == shift_date,
+                    Roster.shiftdate == current_date,
                 )
             ).first()
 
             if existing:
+                current_date += timedelta(days=1)
+                day_offset += 1
                 continue
 
-            # Simple rotation: D, D, N, N, DO, DO, D pattern
-            shift_idx = day_offset % 7
-            if shift_idx < 2:
-                shift_code = "D"
-            elif shift_idx < 4:
-                shift_code = "N"
-            elif shift_idx < 6:
-                shift_code = "DO"
-            else:
-                shift_code = "D"
-
-            # Get start/end times from shift code
+            shift_code = shift_pattern[(day_offset + nurse_idx * 3) % len(shift_pattern)]
             sc = shift_lookup.get(shift_code)
             start_time = sc.defaultstart if sc else None
             end_time = sc.defaultend if sc else None
 
-            # Mix of Auto (70%) and Manual (30%) assignments
             is_manual = fake.random_int(min=1, max=10) <= 3
             assignment_method = "Manual" if is_manual else "Auto"
             assigned_by = ward_manager.managerid if is_manual and ward_manager else None
 
+            # Past/today: always Confirmed; future: mostly Confirmed, some Pending
+            if current_date <= today:
+                status = "Confirmed"
+            else:
+                status = fake.random_element(["Confirmed", "Confirmed", "Confirmed", "Pending"])
+
             roster = Roster(
                 nurseid=nurse.nurseid,
                 wardid=ward.wardid,
-                periodid=current_period.periodid,
-                shiftdate=shift_date,
+                periodid=period.periodid,
+                shiftdate=current_date,
                 shiftcode=shift_code,
                 starttime=start_time,
                 endtime=end_time,
-                status="Confirmed",
+                status=status,
                 assignmentmethod=assignment_method,
                 assignedby=assigned_by,
             )
             session.add(roster)
             count += 1
+            nurse_count += 1
+
+            current_date += timedelta(days=1)
+            day_offset += 1
 
         session.commit()
+        logger.info(f"  {nurse.name}: {nurse_count} entries ({first_of_prev_month} → {range_end})")
 
-    logger.info(f"  Created {count} roster entries")
+    logger.info(f"  Total: {count} roster entries")
     return count
 
 
@@ -823,20 +889,19 @@ def seed_shift_requests(
         None,  # No reason given
     ]
 
-    # Density per period: current (index 0) is densest, next (index 1) is lighter
-    period_densities = [0.30, 0.10]
-
+    # Current period: ALL nurses get at least 1 request; next period: ~10%
     for period_idx, period in enumerate(periods):
-        density = period_densities[period_idx] if period_idx < len(period_densities) else 0.10
-
         # Build list of all dates in this period for round-robin distribution
         days_in_period = (period.enddate - period.startdate).days
         period_dates = [period.startdate + timedelta(days=d) for d in range(days_in_period + 1)]
         day_cursor = 0
 
-        # Select nurses based on density
-        num_nurses_with_requests = max(1, int(len(nurses) * density))
-        selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
+        # Current period: every nurse; next period: 10% sample
+        if period_idx == 0:
+            selected_nurses = list(nurses)
+        else:
+            num_nurses_with_requests = max(1, int(len(nurses) * 0.10))
+            selected_nurses = fake.random_elements(nurses, length=num_nurses_with_requests, unique=True)
 
         period_count = 0
         for nurse in selected_nurses:
@@ -859,6 +924,17 @@ def seed_shift_requests(
                 # Round-robin date assignment for even spread across days
                 preferred_date = period_dates[day_cursor % len(period_dates)]
                 day_cursor += 1
+
+                # Check if this specific request already exists
+                existing_req = session.exec(
+                    select(ShiftRequest).where(
+                        ShiftRequest.nurseid == nurse.nurseid,
+                        ShiftRequest.periodid == period.periodid,
+                        ShiftRequest.requestnumber == request_num,
+                    )
+                ).first()
+                if existing_req:
+                    continue
 
                 status = fake.random_element(statuses)
 
@@ -900,7 +976,7 @@ def seed_shift_requests(
 
             session.commit()
 
-        logger.info(f"  Period {period.periodid}: created {period_count} shift requests for {len(selected_nurses)} nurses ({int(density*100)}% density)")
+        logger.info(f"  Period {period.periodid}: created {period_count} shift requests for {len(selected_nurses)} nurses")
         count += period_count
 
     logger.info(f"  Total: {count} shift requests across {len(periods)} periods")
@@ -911,73 +987,159 @@ def seed_leave_requests(
     session: Session,
     nurses: list[Nurse],
     periods: list[RosterPeriod],
+    managers: list[NurseManager],
 ) -> int:
-    """Seed leave requests for nurses using LeaveRequest model.
+    """Seed leave requests spread across the current and next calendar month.
 
-    Uses leave type codes (AL, MC, etc.).
-    Only fills required columns.
+    - Each ward is guaranteed at least one leave request
+    - ~50% of nurses receive 1-3 leave requests
+    - Past-dated leaves are mostly Approved; future-dated are mostly Pending
+    - Full LeaveRequest fields are populated (status, approvedby, category, etc.)
     """
     logger.info("Seeding leave requests...")
 
-    if not periods or not nurses:
-        logger.warning("  No periods or nurses available, skipping leave requests")
+    if not nurses:
+        logger.warning("  No nurses available, skipping leave requests")
         return 0
 
-    current_period = periods[0]
+    today = date.today()
+    # Range: first of current month → last of next month
+    range_start = today.replace(day=1)
+    next_month_first = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    range_end = (next_month_first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    total_days = (range_end - range_start).days + 1
+
+    # leave type → (leavecategory, weight)
+    leave_type_meta = {
+        "AL":  ("PreApproved",          4),
+        "MC":  ("MedicalCertificate",   4),
+        "CL":  ("Urgent",               2),
+        "CCL": ("PreApproved",          2),
+        "FCL": ("PreApproved",          1),
+        "BDL": ("PreApproved",          1),
+        "URG": ("Urgent",               1),
+        "UPL": ("PreApproved",          1),
+    }
+    leave_types_weighted = [lt for lt, (_, w) in leave_type_meta.items() for _ in range(w)]
+
+    reasons_by_type = {
+        "AL":  ["Family holiday", "Personal rest", "Annual vacation", None],
+        "MC":  ["Fever and flu", "Medical appointment", "Doctor's visit", None],
+        "CL":  ["Bereavement", "Family emergency", None],
+        "CCL": ["Child's school event", "Childcare arrangement", None],
+        "FCL": ["Caring for elderly parent", "Family care needed", None],
+        "BDL": ["Birthday leave", None],
+        "URG": ["Family emergency", "Urgent personal matter", None],
+        "UPL": ["Personal matter", None],
+    }
+
+    rejection_reasons = [
+        "Staffing requirements not met",
+        "Insufficient notice period",
+        "Conflicts with another approved leave",
+        "Ward coverage cannot be maintained",
+    ]
+
+    manager_ids = [m.managerid for m in managers if m.managerid]
+
+    # Group nurses by ward
+    ward_to_nurses: dict[int, list[Nurse]] = {}
+    for nurse in nurses:
+        if nurse.wardid:
+            ward_to_nurses.setdefault(nurse.wardid, []).append(nurse)
+
     count = 0
+    nurses_with_requests: set[int] = set()
 
-    # Common leave types
-    common_leaves = ["AL", "MC"]
-    # All leave types (per updated chk_leavereq_type constraint)
-    all_leaves = ["AL", "MC", "URG", "UPL", "CL", "CCL", "FCL", "BDL"]
+    def _add_leave(nurse: Nurse, start: date, leave_type: str) -> bool:
+        """Create one leave request. Returns False if an overlapping request exists."""
+        category, _ = leave_type_meta[leave_type]
+        duration = fake.random_int(min=1, max=3)
+        end = min(start + timedelta(days=duration - 1), range_end)
 
-    # Select ~15% of nurses to have leave requests
-    num_nurses_with_leaves = max(1, len(nurses) * 15 // 100)
-    selected_nurses = fake.random_elements(nurses, length=num_nurses_with_leaves, unique=True)
-
-    for nurse in selected_nurses:
-        # Check if leave requests already exist for this nurse
-        existing = session.exec(
+        # Skip if this nurse already has an overlapping request
+        overlap = session.exec(
             select(LeaveRequest).where(
                 LeaveRequest.nurseid == nurse.nurseid,
+                LeaveRequest.startdate <= end,
+                LeaveRequest.enddate >= start,
             )
         ).first()
+        if overlap:
+            return False
 
-        if existing:
-            logger.info(f"  Leave requests for nurse {nurse.name} already exist, skipping")
-            continue
+        # Status: past → mostly Approved; today → Pending/Approved; future → mostly Pending
+        if start < today:
+            status = fake.random_element(["Approved", "Approved", "Approved", "Rejected", "Cancelled"])
+        elif start == today:
+            status = fake.random_element(["Pending", "Approved"])
+        else:
+            status = fake.random_element(["Pending", "Pending", "Approved"])
 
-        # Generate 1-2 leave requests per nurse
-        num_requests = fake.random_int(min=1, max=2)
+        approved_by = None
+        approved_at = None
+        rejection_reason = None
 
-        for _ in range(num_requests):
-            # Random start date within the roster period
-            days_in_period = (current_period.enddate - current_period.startdate).days
-            random_day = fake.random_int(min=0, max=days_in_period - 1)
-            start_date = current_period.startdate + timedelta(days=random_day)
-            # Leave duration: 1-3 days
-            leave_duration = fake.random_int(min=1, max=3)
-            end_date = min(start_date + timedelta(days=leave_duration - 1), current_period.enddate)
+        if status == "Approved" and manager_ids:
+            approved_by = fake.random_element(manager_ids)
+            approved_at = datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=1, max=14))
+        elif status == "Rejected":
+            rejection_reason = fake.random_element(rejection_reasons)
 
-            # Weight towards common leave types (70% common, 30% any)
-            if fake.random_int(min=1, max=10) <= 7:
-                leave_type = fake.random_element(common_leaves)
-            else:
-                leave_type = fake.random_element(all_leaves)
+        submitted_period = "AfterFinalization" if start <= today else "BeforeRoster"
 
-            # Only required fields
-            leave_request = LeaveRequest(
-                nurseid=nurse.nurseid,
-                startdate=start_date,
-                enddate=end_date,
-                leavetype=leave_type,
-            )
-            session.add(leave_request)
+        leave_req = LeaveRequest(
+            nurseid=nurse.nurseid,
+            startdate=start,
+            enddate=end,
+            leavetype=leave_type,
+            leavecategory=category,
+            submittedduringperiod=submitted_period,
+            requiresreplacement=fake.boolean(chance_of_getting_true=25),
+            reason=fake.random_element(reasons_by_type.get(leave_type, [None])),
+            requestedat=datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=0, max=21)),
+            status=status,
+            approvedby=approved_by,
+            approvedat=approved_at,
+            rejectionreason=rejection_reason,
+            notificationsent=status != "Pending",
+            impactsroster=status == "Approved",
+        )
+        session.add(leave_req)
+        return True
+
+    # Pass 1: guarantee at least one leave request per ward
+    for ward_id, ward_nurses in ward_to_nurses.items():
+        nurse = fake.random_element(ward_nurses)
+        day_offset = fake.random_int(min=0, max=total_days - 1)
+        start = range_start + timedelta(days=day_offset)
+        leave_type = fake.random_element(["AL", "MC", "CL"])
+        if _add_leave(nurse, start, leave_type):
+            nurses_with_requests.add(nurse.nurseid)
             count += 1
+            logger.info(f"  Ward {ward_id}: guaranteed leave → {nurse.name} ({leave_type}, {start})")
 
+    session.commit()
+
+    # Pass 2: ~50% of nurses get 1–3 additional leave requests
+    num_selected = max(1, len(nurses) // 2)
+    selected = fake.random_elements(nurses, length=min(num_selected, len(nurses)), unique=True)
+
+    for nurse in selected:
+        num_requests = fake.random_int(min=1, max=3)
+        for _ in range(num_requests):
+            day_offset = fake.random_int(min=0, max=total_days - 1)
+            start = range_start + timedelta(days=day_offset)
+            leave_type = fake.random_element(leave_types_weighted)
+            if _add_leave(nurse, start, leave_type):
+                nurses_with_requests.add(nurse.nurseid)
+                count += 1
         session.commit()
 
-    logger.info(f"  Created {count} leave requests for {len(selected_nurses)} nurses")
+    logger.info(
+        f"  Created {count} leave requests across {len(ward_to_nurses)} wards "
+        f"({len(nurses_with_requests)} nurses, {range_start} – {range_end})"
+    )
     return count
 
 
@@ -985,14 +1147,17 @@ def seed_notifications(
     session: Session,
     nurses: list[Nurse],
     periods: list[RosterPeriod],
+    managers: list[NurseManager],
 ) -> int:
-    """Seed notifications for ward staff using NotificationQueue.
+    """Seed notifications for ward staff and managers using NotificationQueue.
 
     Notification types:
     - ShiftUpdate: Roster released, roster changes
     - SwapRequest: Shift swap notifications
     - LeaveApproval: Request approved/rejected
     - LeaveReminder: Request period reminders
+
+    Every nurse and nurse manager receives at least 3 notifications.
     """
     logger.info("Seeding notifications...")
 
@@ -1003,8 +1168,10 @@ def seed_notifications(
     current_period = periods[0]
     count = 0
 
-    # Notification templates with subjects and message bodies
-    notification_templates = [
+    channels = ["WhatsApp", "Email", "Both"]
+
+    # Notification templates for nurses
+    nurse_templates = [
         {
             "type": "ShiftUpdate",
             "subject": "Roster Released",
@@ -1055,72 +1222,128 @@ def seed_notifications(
         },
     ]
 
-    channels = ["WhatsApp", "Email", "Both"]
+    # Notification templates for managers
+    manager_templates = [
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Period Started",
+            "body": f"Roster period {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} has begun.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveReminder",
+            "subject": "Shift Requests Pending Review",
+            "body": "There are shift requests from your ward staff awaiting your review.",
+            "priority": "Normal",
+        },
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Finalized",
+            "body": "The roster for the upcoming period has been finalized.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveApproval",
+            "subject": "Leave Request Submitted",
+            "body": "A nurse in your ward has submitted a leave request. Please review.",
+            "priority": "Normal",
+        },
+        {
+            "type": "LeaveReminder",
+            "subject": "Request Window Closing Soon",
+            "body": f"Reminder: The shift request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
+            "priority": "Urgent",
+        },
+        {
+            "type": "ShiftUpdate",
+            "subject": "Roster Released to Staff",
+            "body": f"The {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} roster has been released to ward staff.",
+            "priority": "Normal",
+        },
+    ]
 
-    # Create notifications for ~50% of ward staff (nurses)
-    num_nurses_with_notifications = max(1, len(nurses) // 2)
-    selected_nurses = fake.random_elements(nurses, length=num_nurses_with_notifications, unique=True)
+    def _make_notification(recipient_type: str, recipient_id: int, template: dict) -> NotificationQueue:
+        days_ago = fake.random_int(min=0, max=7)
+        created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
 
-    for nurse in selected_nurses:
-        # Check if notifications already exist for this nurse
-        existing = session.exec(
+        status_choice = fake.random_int(min=1, max=6)
+        if status_choice <= 2:
+            status = "Read"
+            sent_at = created_at + timedelta(minutes=1)
+            read_at = created_at + timedelta(hours=fake.random_int(min=1, max=24))
+        elif status_choice <= 5:
+            status = "Sent"
+            sent_at = created_at + timedelta(minutes=1)
+            read_at = None
+        else:
+            status = "Pending"
+            sent_at = None
+            read_at = None
+
+        return NotificationQueue(
+            recipienttype=recipient_type,
+            recipientid=recipient_id,
+            notificationtype=template["type"],
+            channel=fake.random_element(channels),
+            priority=template["priority"],
+            subject=template["subject"],
+            messagebody=template["body"],
+            relatedentitytype="RosterPeriod",
+            relatedentityid=current_period.periodid,
+            status=status,
+            scheduledat=created_at,
+            sentat=sent_at,
+            readat=read_at,
+            retrycount=0,
+            createdat=created_at,
+        )
+
+    # Create at least 3 notifications for every nurse
+    for nurse in nurses:
+        existing_count = session.exec(
             select(NotificationQueue).where(
                 NotificationQueue.recipientid == nurse.nurseid,
                 NotificationQueue.recipienttype == "Nurse",
             )
-        ).first()
+        ).all()
 
-        if existing:
+        if len(existing_count) >= 3:
             continue
 
-        # Generate 1-3 notifications per nurse
-        num_notifications = fake.random_int(min=1, max=3)
-
-        for _ in range(num_notifications):
-            template = fake.random_element(notification_templates)
-
-            # Random date within last 7 days
-            days_ago = fake.random_int(min=0, max=7)
-            created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
-
-            # Determine status: ~33% Read, ~50% Sent, ~17% Pending
-            status_choice = fake.random_int(min=1, max=6)
-            if status_choice <= 2:
-                status = "Read"
-                sent_at = created_at + timedelta(minutes=1)
-                read_at = created_at + timedelta(hours=fake.random_int(min=1, max=24))
-            elif status_choice <= 5:
-                status = "Sent"
-                sent_at = created_at + timedelta(minutes=1)
-                read_at = None
-            else:
-                status = "Pending"
-                sent_at = None
-                read_at = None
-
-            notification = NotificationQueue(
-                recipienttype="Nurse",
-                recipientid=nurse.nurseid,
-                notificationtype=template["type"],
-                channel=fake.random_element(channels),
-                priority=template["priority"],
-                subject=template["subject"],
-                messagebody=template["body"],
-                relatedentitytype="RosterPeriod",
-                relatedentityid=current_period.periodid,
-                status=status,
-                scheduledat=created_at,
-                sentat=sent_at,
-                readat=read_at,
-                retrycount=0,
-                createdat=created_at,
-            )
-            session.add(notification)
+        num_notifications = fake.random_int(min=3, max=5)
+        for i in range(num_notifications - len(existing_count)):
+            template = nurse_templates[i % len(nurse_templates)]
+            session.add(_make_notification("Nurse", nurse.nurseid, template))
             count += 1
 
     session.commit()
-    logger.info(f"  Created {count} notifications for {len(selected_nurses)} ward staff")
-    return count
+    logger.info(f"  Created {count} notifications for {len(nurses)} nurses")
+
+    # Create at least 3 notifications for every manager
+    manager_count = 0
+    for manager in managers:
+        existing_count = session.exec(
+            select(NotificationQueue).where(
+                NotificationQueue.recipientid == manager.managerid,
+                NotificationQueue.recipienttype == "NurseManager",
+            )
+        ).all()
+
+        if len(existing_count) >= 3:
+            continue
+
+        num_notifications = fake.random_int(min=3, max=5)
+        for i in range(num_notifications - len(existing_count)):
+            template = manager_templates[i % len(manager_templates)]
+            session.add(_make_notification("NurseManager", manager.managerid, template))
+            manager_count += 1
+
+    session.commit()
+    logger.info(f"  Created {manager_count} notifications for {len(managers)} managers")
+
+    total = count + manager_count
+    logger.info(f"  Total: {total} notifications created")
+    return total
 
 
 def seed_web_users(session: Session) -> int:
@@ -1164,6 +1387,44 @@ def seed_web_users(session: Session) -> int:
     return count
 
 
+def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
+    """Seed ward-specific shift code mappings.
+
+    All wards are mapped to: D, N, A, P plus all leave codes (isworking=False).
+    """
+    logger.info("Seeding ward shift code mappings...")
+    DEFAULT_BASE_WORKING = {"A", "P", "N"}
+    SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
+    SPECIAL_WARD_IDS = {9, 10} #CH and TCF
+    leave_codes = {
+        sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
+    }
+
+    for ward in wards:
+        if ward.wardid in SPECIAL_WARD_IDS:
+            base_working=SPECIAL_BASE_WORKING
+        else:
+            base_working=DEFAULT_BASE_WORKING
+        
+        ward_codes=base_working | leave_codes
+        for shiftcode in sorted(ward_codes):
+            existing = session.exec(
+                select(WardShiftCode).where(
+                    WardShiftCode.wardid == ward.wardid,
+                    WardShiftCode.shiftcode == shiftcode,
+                )
+            ).first()
+
+            if existing:
+                logger.info(f"  Mapping {ward.wardname} -> {shiftcode} already exists, skipping")
+            else:
+                mapping = WardShiftCode(wardid=ward.wardid, shiftcode=shiftcode)
+                session.add(mapping)
+                logger.info(f"  Mapped {ward.wardname} -> {shiftcode}")
+
+    session.commit()
+
+
 def seed_all() -> None:
     """Run all seed functions."""
     logger.info("=" * 60)
@@ -1175,6 +1436,7 @@ def seed_all() -> None:
         roles = seed_roles(session)
         seed_shift_codes(session)
         wards = seed_wards(session)
+        seed_ward_shiftcodes(session, wards)
         managers = seed_managers(session, wards)
         nurses = seed_nurses(session, wards)
 
@@ -1194,10 +1456,10 @@ def seed_all() -> None:
         seed_shift_requests(session, nurses, periods, managers)
 
         # Seed leave requests (~15% of nurses, leave-type shift codes)
-        seed_leave_requests(session, nurses, periods)
+        seed_leave_requests(session, nurses, periods, managers)
 
-        # Seed notifications for ward staff (~50% of nurses)
-        seed_notifications(session, nurses, periods)
+        # Seed notifications for all nurses and managers (at least 3 each)
+        seed_notifications(session, nurses, periods, managers)
 
     logger.info("=" * 60)
     logger.info("Database seeding completed!")

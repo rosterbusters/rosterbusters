@@ -1,6 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Box, Flex, Text, Table } from "@chakra-ui/react";
 import moment from "moment";
+import { Tooltip } from "@/components/ui/tooltip";
+import { ManpowerEditDialog } from "./ManpowerEditDialog";
 
 import type {
   RosterRow,
@@ -21,10 +23,18 @@ interface ShiftSummaryTableProps {
   viewMode: ViewMode;
   currentStartDate: Date;
   guidelines?: DailyStaffingGuideline;
+  /** Per-date overrides that take precedence over base guidelines for a specific day. */
+  dateOverrides?: Record<string, DailyStaffingGuideline>;
+  /** Original unmodified ward defaults — used to detect resets and clear the modified indicator. */
+  originalGuidelines?: DailyStaffingGuideline;
   /** Combined width of name + hours columns from RosterGrid (default: 260px) */
   labelColumnWidth?: string;
   /** When false, all cells are neutral (no color). When true, cells show green/red based on thresholds. */
   isRosterGenerated?: boolean;
+  /** Called when user saves new min/max for all days; parent should update guidelines state. */
+  onGuidelinesChange?: (updated: DailyStaffingGuideline) => void;
+  /** Called when user saves new min/max for a specific date only. */
+  onDateOverrideChange?: (dateKey: string, updated: DailyStaffingGuideline) => void;
 }
 
 // Generate day columns based on view mode and start date
@@ -49,7 +59,9 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
 export interface DayShiftCounts {
   RN: { A: number; P: number; N: number };
   EN: { A: number; P: number; N: number };
-  HCA: { A: number; P: number; N: number };
+  NA: { A: number; P: number; N: number };
+  HCA12: { A: number; P: number; N: number };
+  HCA3: { A: number; P: number; N: number };
 }
 
 // Calculate shift counts per day from roster data
@@ -65,7 +77,9 @@ export function calculateShiftCounts(
     counts.set(dateKey, {
       RN: { A: 0, P: 0, N: 0 },
       EN: { A: 0, P: 0, N: 0 },
-      HCA: { A: 0, P: 0, N: 0 },
+      NA: { A: 0, P: 0, N: 0 },
+      HCA12: { A: 0, P: 0, N: 0 },
+      HCA3: { A: 0, P: 0, N: 0 },
     });
   });
 
@@ -93,30 +107,50 @@ export function getCellStyle(
   count: number,
   minimum: number,
   isRosterGenerated: boolean,
+  maximum?: number,
 ): { bg: string; color: string } {
   if (!isRosterGenerated) {
-    return { bg: "transparent", color: "#4B8798" }; // Neutral - no color
+    return { bg: "transparent", color: "#65A30D" };
   }
   if (count < minimum) {
-    return { bg: "#C62828", color: "white" }; // Red - below minimum
+    return { bg: "#BE123C", color: "white" };          // Red — below minimum
   }
-  if (count > minimum) {
-    return { bg: "#5B8C3D", color: "white" }; // Green - exceeds minimum
+  if (maximum !== undefined && count > maximum) {
+    return { bg: "#65A30D", color: "white" };          // Green — above maximum (surplus)
   }
-  return { bg: "transparent", color: "#4B8798" }; // No color - within range
+  return { bg: "white", color: "#4B8798" };            // White — within [min, max]
 }
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
-const STAFF_ROLES: StaffRole[] = ["RN", "EN", "HCA"];
+const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
+const ROLE_LABEL: Record<StaffRole, string> = {
+  RN: "RN",
+  EN: "EN",
+  NA: "NA",
+  HCA12: "HCA1&2",
+  HCA3: "HCA3",
+};
 
 export function ShiftSummaryTable({
   data,
   viewMode,
   currentStartDate,
   guidelines = MOCK_STAFFING_GUIDELINES,
-  labelColumnWidth: labelColWidthProp = "260px",
+  dateOverrides = {},
+  originalGuidelines,
+  labelColumnWidth: labelColWidthProp = "160px",
   isRosterGenerated = false,
+  onGuidelinesChange,
+  onDateOverrideChange,
 }: ShiftSummaryTableProps) {
+  const [selectedCell, setSelectedCell] = useState<{
+    role: StaffRole;
+    shiftType: SummaryShiftType;
+    dateKey: string;
+    dateLabel: string;
+  } | null>(null);
+  const [modifiedCells, setModifiedCells] = useState<Set<string>>(new Set());
+
   // Generate day columns
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate, viewMode),
@@ -128,6 +162,47 @@ export function ShiftSummaryTable({
     () => calculateShiftCounts(data, dayColumns),
     [data, dayColumns],
   );
+
+  const handleSave = (min: number, max: number | undefined, applyToAllDays: boolean) => {
+    if (!selectedCell) return;
+    const { role, shiftType, dateKey } = selectedCell;
+
+    // Determine whether values are being reset to the original ward default
+    const orig = (originalGuidelines ?? guidelines)[role][shiftType];
+    const isRestoringDefault = min === orig.minimum && max === orig.maximum;
+    const cellKey = applyToAllDays
+      ? `${role}-${shiftType}`
+      : `${dateKey}-${role}-${shiftType}`;
+
+    if (applyToAllDays) {
+      if (!onGuidelinesChange) return;
+      onGuidelinesChange({
+        ...guidelines,
+        [role]: {
+          ...guidelines[role],
+          [shiftType]: { minimum: min, maximum: max },
+        },
+      });
+    } else {
+      if (!onDateOverrideChange) return;
+      const base = dateOverrides[dateKey] ?? guidelines;
+      onDateOverrideChange(dateKey, {
+        ...base,
+        [role]: {
+          ...base[role],
+          [shiftType]: { minimum: min, maximum: max },
+        },
+      });
+    }
+
+    // Add or remove the modified indicator depending on whether it's a reset
+    setModifiedCells((prev) => {
+      const next = new Set(prev);
+      if (isRestoringDefault) next.delete(cellKey);
+      else next.add(cellKey);
+      return next;
+    });
+  };
 
   // Column width calculation - must match RosterGrid
   const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
@@ -144,12 +219,13 @@ export function ShiftSummaryTable({
   };
 
   return (
+    <>
     <Box
       position="sticky"
       bottom={0}
       bg="white"
       border="2px solid"
-      borderColor="#7EC8D9"
+      borderColor="#06B6D4"
       boxShadow="0 -4px 6px -1px rgba(0, 0, 0, 0.1)"
       w="100%"
       flexShrink={0}
@@ -189,7 +265,7 @@ export function ShiftSummaryTable({
                       key={type}
                       fontSize="xs"
                       fontWeight="semibold"
-                      color="#4B8798"
+                      color="primary"
                       flex={1}
                       textAlign="center"
                       py={1}
@@ -211,7 +287,7 @@ export function ShiftSummaryTable({
               <Table.Cell
                 fontWeight="semibold"
                 fontSize="xs"
-                color="#4B8798"
+                color="primary"
                 borderRight="1px solid"
                 borderColor="gray.200"
                 py={1}
@@ -219,13 +295,15 @@ export function ShiftSummaryTable({
                 textAlign="right"
                 bg="white"
               >
-                {role}
+                {ROLE_LABEL[role]}
               </Table.Cell>
 
               {/* Shift counts for each day */}
               {dayColumns.map((col) => {
                 const dateKey = moment(col.date).format("YYYY-MM-DD");
                 const dayCounts = shiftCounts.get(dateKey);
+                // Per-date override takes precedence over base guidelines
+                const effectiveGuidelines = dateOverrides[dateKey] ?? guidelines;
 
                 return (
                   <Table.Cell
@@ -240,24 +318,68 @@ export function ShiftSummaryTable({
                         const count = dayCounts?.[role]?.[shiftType] ?? 0;
                         const style = getCellStyle(
                           count,
-                          guidelines[role][shiftType].minimum,
+                          effectiveGuidelines[role][shiftType].minimum,
                           isRosterGenerated,
+                          effectiveGuidelines[role][shiftType].maximum,
                         );
 
+                        const isEditable = !!onGuidelinesChange || !!onDateOverrideChange;
+                        const isModified =
+                          modifiedCells.has(`${role}-${shiftType}`) ||
+                          modifiedCells.has(`${dateKey}-${role}-${shiftType}`);
+
                         return (
-                          <Flex
+                          <Tooltip
                             key={shiftType}
-                            justify="center"
-                            align="center"
-                            bg={style.bg}
-                            color={style.color}
-                            flex={1}
-                            py={1}
-                            fontSize="xs"
-                            fontWeight="semibold"
+                            content={
+                              <Text fontSize="xs">
+                                Min: {effectiveGuidelines[role][shiftType].minimum}
+                                {effectiveGuidelines[role][shiftType].maximum !== undefined
+                                  ? `  Max: ${effectiveGuidelines[role][shiftType].maximum}`
+                                  : ""}
+                              </Text>
+                            }
+                            lazyMount={true}
+                            contentProps={{
+                              css: {
+                                "--tooltip-bg": "white",
+                                "box-shadow": "0px 0px 4px rgba(0,0,0,0.1)",
+                                color: "black",
+                              },
+                            }}
                           >
-                            {count}
-                          </Flex>
+                            <Flex
+                              justify="center"
+                              align="center"
+                              bg={style.bg}
+                              color={style.color}
+                              flex={1}
+                              py={1}
+                              fontSize="xs"
+                              fontWeight="semibold"
+                              cursor={isEditable ? "pointer" : "default"}
+                              outline={isModified ? "2px solid #4CAF50" : undefined}
+                              outlineOffset="-2px"
+                              _hover={
+                                isEditable
+                                  ? { opacity: 0.75, outline: "2px solid #4B8798", outlineOffset: "-2px" }
+                                  : undefined
+                              }
+                              onClick={
+                                isEditable
+                                  ? () =>
+                                      setSelectedCell({
+                                        role,
+                                        shiftType,
+                                        dateKey,
+                                        dateLabel: moment(col.date).format("ddd, MMM D"),
+                                      })
+                                  : undefined
+                              }
+                            >
+                              {count}
+                            </Flex>
+                          </Tooltip>
                         );
                       })}
                     </Flex>
@@ -268,18 +390,18 @@ export function ShiftSummaryTable({
           ))}
 
           {/* Total Row */}
-          <Table.Row bg="#4B8798">
+          <Table.Row bg="menuactive">
             {/* Total Label */}
             <Table.Cell
               fontWeight="bold"
               fontSize="xs"
-              color="#4B8798"
+              color="primary"
               borderRight="1px solid"
               borderColor="rgba(255,255,255,0.3)"
               py={1}
               px={2}
               textAlign="right"
-              bg="#ADD8E6"
+              bg="menuactive"
             >
               Total
             </Table.Cell>
@@ -295,7 +417,7 @@ export function ShiftSummaryTable({
                   borderRight="1px solid"
                   borderColor="rgba(255,255,255,0.3)"
                   p={0}
-                  bg="#ADD8E6"
+                  bg="menuactive"
                 >
                   <Flex>
                     {SHIFT_TYPES.map((shiftType) => {
@@ -309,7 +431,7 @@ export function ShiftSummaryTable({
                           py={1}
                           fontSize="xs"
                           fontWeight="bold"
-                          color="#4B8798"
+                          color="primary"
                         >
                           {total}
                         </Flex>
@@ -323,6 +445,30 @@ export function ShiftSummaryTable({
         </Table.Body>
       </Table.Root>
     </Box>
+
+    {selectedCell && (
+      <ManpowerEditDialog
+        isOpen={true}
+        onClose={() => setSelectedCell(null)}
+        role={selectedCell.role}
+        shiftType={selectedCell.shiftType}
+        dateLabel={selectedCell.dateLabel}
+        currentMin={
+          (dateOverrides[selectedCell.dateKey] ?? guidelines)[selectedCell.role][selectedCell.shiftType].minimum
+        }
+        currentMax={
+          (dateOverrides[selectedCell.dateKey] ?? guidelines)[selectedCell.role][selectedCell.shiftType].maximum
+        }
+        originalMin={
+          (originalGuidelines ?? guidelines)[selectedCell.role][selectedCell.shiftType].minimum
+        }
+        originalMax={
+          (originalGuidelines ?? guidelines)[selectedCell.role][selectedCell.shiftType].maximum
+        }
+        onSave={handleSave}
+      />
+    )}
+  </>
   );
 }
 

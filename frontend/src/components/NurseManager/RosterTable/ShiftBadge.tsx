@@ -1,4 +1,5 @@
 import { Box, Text, VStack } from "@chakra-ui/react";
+import { MessageSquare } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { type ShiftCode, type ViewMode, SHIFT_COLOR_MAP, SHIFT_CODE_MAP } from "./types";
 
@@ -8,6 +9,7 @@ interface ShiftBadgeProps {
   isEditable?: boolean;
   size?: "sm" | "md";
   viewMode?: ViewMode;
+  comment?: string;
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
@@ -27,12 +29,13 @@ function getTimeRange(shiftCode: ShiftCode): string | null {
   return `${formatTime(shiftInfo.defaultStart)}-${formatTime(shiftInfo.defaultEnd)}`;
 }
 
-export function ShiftBadge({ 
-  shiftCode, 
-  onClick, 
+export function ShiftBadge({
+  shiftCode,
+  onClick,
   isEditable = true,
   size = "md",
-  viewMode
+  viewMode,
+  comment
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
@@ -65,90 +68,152 @@ export function ShiftBadge({
   const isWorkingShift = shiftInfo?.isWorking ?? true;
   const timeRange = getTimeRange(shiftCode);
   const isWeekView = viewMode === "week";
-  const showTooltip = viewMode === "twoWeeks" && timeRange;
+  const hasComment = !!comment;
+
+  // Comment indicator icon (positioned absolutely)
+  const commentIcon = hasComment ? (
+    <Box
+      position="absolute"
+      top="-4px"
+      right="-4px"
+      bg="white"
+      borderRadius="full"
+      w={isWeekView ? "16px" : "14px"}
+      h={isWeekView ? "16px" : "14px"}
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      boxShadow="0 1px 3px rgba(0,0,0,0.2)"
+    >
+      <MessageSquare size={isWeekView ? 10 : 8} color="#4B8798" fill="#4B8798" />
+    </Box>
+  ) : null;
+
+  // Tooltip content for comment
+  const commentTooltipContent = hasComment ? (
+    <VStack gap={1} py={1} align="start">
+      {shiftInfo?.description && (
+        <Text fontSize="xs" fontWeight="medium">{shiftInfo.description}</Text>
+      )}
+      {timeRange && (
+        <Text fontSize="xs" color="whiteAlpha.800">{timeRange}</Text>
+      )}
+      <Box borderTop="1px solid" borderColor="whiteAlpha.300" w="100%" pt={1}>
+        <Text fontSize="xs" color="whiteAlpha.900" fontStyle="italic">
+          "{comment}"
+        </Text>
+      </Box>
+    </VStack>
+  ) : null;
 
   // Week view - all badges same size (with or without time)
   if (isWeekView) {
-    return (
+    const weekBadge = (
+      <Box position="relative" display="inline-block">
+        <Box
+          w="140px"
+          h="44px"
+          borderRadius="md"
+          bg={bgColor}
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          justifyContent="center"
+          cursor={isEditable ? "pointer" : "default"}
+          onClick={onClick}
+          _hover={isEditable ? {
+            opacity: 0.85,
+            transform: "scale(1.02)",
+          } : undefined}
+          transition="all 0.15s ease"
+          boxShadow={isWorkingShift ? "sm" : "none"}
+          title={!hasComment ? (shiftInfo?.description || shiftCode) : undefined}
+          py={1}
+        >
+          <Text
+            fontSize="sm"
+            fontWeight="semibold"
+            color="white"
+            letterSpacing="0.02em"
+            lineHeight="1.2"
+          >
+            {shiftCode}
+          </Text>
+          {timeRange && (
+            <Text
+              fontSize="9px"
+              fontWeight="medium"
+              color="whiteAlpha.900"
+              lineHeight="1.2"
+              mt="2px"
+            >
+              {timeRange}
+            </Text>
+          )}
+        </Box>
+        {commentIcon}
+      </Box>
+    );
+
+    if (hasComment) {
+      return (
+        <Tooltip content={commentTooltipContent} showArrow>
+          {weekBadge}
+        </Tooltip>
+      );
+    }
+
+    return weekBadge;
+  }
+
+  // 2-week view - compact badges with tooltip on hover
+  const showShiftTooltip = viewMode === "twoWeeks" && timeRange;
+
+  const twoWeekBadge = (
+    <Box position="relative" display="inline-block">
       <Box
-        w="140px"      // Week view width
-        h="44px"       // Week view height
+        w={size === "sm" ? "32px" : "60px"}
+        h={size === "sm" ? "24px" : "28px"}
         borderRadius="md"
         bg={bgColor}
         display="flex"
-        flexDirection="column"
         alignItems="center"
         justifyContent="center"
         cursor={isEditable ? "pointer" : "default"}
         onClick={onClick}
-        _hover={isEditable ? { 
+        _hover={isEditable ? {
           opacity: 0.85,
           transform: "scale(1.02)",
         } : undefined}
         transition="all 0.15s ease"
         boxShadow={isWorkingShift ? "sm" : "none"}
-        title={shiftInfo?.description || shiftCode}
-        py={1}
+        title={!showShiftTooltip && !hasComment ? (shiftInfo?.description || shiftCode) : undefined}
       >
-        <Text 
-          fontSize="sm" 
-          fontWeight="semibold" 
+        <Text
+          fontSize={size === "sm" ? "xs" : "sm"}
+          fontWeight="semibold"
           color="white"
           letterSpacing="0.02em"
-          lineHeight="1.2"
         >
           {shiftCode}
         </Text>
-        {timeRange && (
-          <Text 
-            fontSize="9px" 
-            fontWeight="medium" 
-            color="whiteAlpha.900"
-            lineHeight="1.2"
-            mt="2px"
-          >
-            {timeRange}
-          </Text>
-        )}
       </Box>
-    );
-  }
-
-  // 2-week view - compact badges with tooltip on hover
-  const badge = (
-    <Box
-      w={size === "sm" ? "32px" : "60px"}   // 2-week view width (increased from 48px)
-      h={size === "sm" ? "24px" : "28px"}   // 2-week view height
-      borderRadius="md"
-      bg={bgColor}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      cursor={isEditable ? "pointer" : "default"}
-      onClick={onClick}
-      _hover={isEditable ? { 
-        opacity: 0.85,
-        transform: "scale(1.02)",
-      } : undefined}
-      transition="all 0.15s ease"
-      boxShadow={isWorkingShift ? "sm" : "none"}
-      title={!showTooltip ? (shiftInfo?.description || shiftCode) : undefined}
-    >
-      <Text 
-        fontSize={size === "sm" ? "xs" : "sm"} 
-        fontWeight="semibold" 
-        color="white"
-        letterSpacing="0.02em"
-      >
-        {shiftCode}
-      </Text>
+      {commentIcon}
     </Box>
   );
 
-  // Wrap with tooltip for 2-week view
-  if (showTooltip) {
+  // Wrap with tooltip if comment exists or for 2-week shift info
+  if (hasComment) {
     return (
-      <Tooltip 
+      <Tooltip content={commentTooltipContent} showArrow>
+        {twoWeekBadge}
+      </Tooltip>
+    );
+  }
+
+  if (showShiftTooltip) {
+    return (
+      <Tooltip
         content={
           <VStack gap={0} py={1}>
             <Text fontSize="xs" fontWeight="medium">{shiftInfo?.description}</Text>
@@ -157,12 +222,12 @@ export function ShiftBadge({
         }
         showArrow
       >
-        {badge}
+        {twoWeekBadge}
       </Tooltip>
     );
   }
 
-  return badge;
+  return twoWeekBadge;
 }
 
 export default ShiftBadge;

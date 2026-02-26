@@ -123,7 +123,6 @@ class NotificationQueue(SQLModel, table=True):
     readat: Optional[datetime] = None
     failurereason: Optional[str] = None
     retrycount: int = Field(default=0)
-
     createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -134,6 +133,18 @@ class RosterPeriodPublic(SQLModel):
     startdate: date
     enddate: date
     status: str
+
+
+class LeaveRequestPublic(SQLModel):
+    leaveid: int
+    nurseid: int
+    startdate: date
+    enddate: date
+    leavetype: str
+    leavecategory: str
+    status: str
+    reason: Optional[str] = None
+    requestedat: datetime
 
 
 class LeaveRequest(SQLModel, table=True):

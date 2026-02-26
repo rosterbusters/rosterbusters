@@ -4,6 +4,8 @@ export { RosterHeader } from "./RosterHeader";
 export { ShiftBadge } from "./ShiftBadge";
 export { ShiftEditPopover } from "./ShiftEditPopover";
 export { ShiftSummaryTable } from "./ShiftSummaryTable";
+export { EditHistoryDialog } from "./EditHistoryDialog";
+export { ManpowerEditDialog } from "./ManpowerEditDialog";
 
 // Export hooks
 export {
@@ -16,6 +18,8 @@ export {
   useRosterPageData,
   useRosterExport,
   useGenerateAlgorithmRoster,
+  useShiftCodes,
+  getShiftDurationHours,
   transformRosterData,
 } from "./useRosterData";
 

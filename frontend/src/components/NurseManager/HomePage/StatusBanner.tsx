@@ -1,46 +1,44 @@
 import { Text } from "@chakra-ui/react";
+import useAuth from "@/hooks/useAuth";
+import { Ward } from "@/client/types.gen";
 
-interface WardManagementProps {
-  wardName: string;
-  currentTime: string;
-  currentDate: string;
+interface StatusBannerProps {
+  ward: Ward | null;
 }
 
-// TODO: Replace with actual backend data
-const userName = "{Name}";
-const wardInfo: WardManagementProps = {
-  wardName: "Cedar Ward",
-  currentTime: "9:00AM",
-  currentDate: "Tuesday, 13/11/2001",
-};
+export default function StatusBanner({ ward }: StatusBannerProps) {
+  const { user } = useAuth();
+  const managerName = (user as any)?.name ?? user?.full_name ?? "Name";
 
-export default function StatusBanner() {
+  const now = new Date();
+  const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const day = now.toLocaleDateString("en-US", { weekday: "long" });
+  const date = now.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+
   return (
     <>
-      <Text fontSize="2xl" color={"foreground"} fontWeight={"semibold"}>
+      <Text fontSize="2xl" color="foreground" fontWeight="semibold">
         Hi
-        <Text fontSize="2xl" as="span" fontWeight={"semibold"} color={"primary"}>
+        <Text fontSize="2xl" as="span" fontWeight="semibold" color="primary">
           {" "}
-          {userName},
+          {managerName},
         </Text>
       </Text>
-      <Text fontSize="2xl" color={"foreground"} fontWeight={"semibold"}>
+
+      <Text fontSize="2xl" color="foreground" fontWeight="semibold">
         You are currently managing{" "}
-        <Text as="span" fontSize="2xl" fontWeight={"semibold"} color={"primary"}>
-          {wardInfo.wardName}
+        <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
+          {ward?.wardname ?? "your ward"}
         </Text>
-        {" "}at
-        <Text as="span" fontSize="2xl" fontWeight={"semibold"} color={"primary"}>
-          {" "}{wardInfo.currentTime}
+        {" "}at{" "}
+        <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
+          {time}
         </Text>
         , on{" "}
-        <Text as="span" fontSize="2xl" fontWeight={"semibold"} color={"primary"}>
-          {wardInfo.currentDate}.
+        <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
+          {day}, {date}.
         </Text>
       </Text>
     </>
   );
 }
-
-
-

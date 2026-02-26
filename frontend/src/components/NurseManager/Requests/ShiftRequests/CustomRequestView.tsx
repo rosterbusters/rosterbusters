@@ -4,6 +4,10 @@ import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { NewShiftRequest } from "./NewShiftRequest";
+import { EditShiftRequest } from "./EditShiftRequest";
+import useAuth from "@/hooks/useAuth";
+import moment from "moment";
+
 interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
@@ -11,7 +15,6 @@ interface CustomWeekViewProps {
 
   [key: string]: unknown;
 }
-import moment from "moment";
 
 interface CustomWeekViewComponent {
   (props: CustomWeekViewProps): JSX.Element;
@@ -47,8 +50,15 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   startAccessor,
   endAccessor,
 }: CustomWeekViewProps) {
-  const [isOpen, setIsOpen] = useState(false); 
+  
+  const { user } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<{
+    requestId: number;
+    shiftType: string;
+    preferredDate: string;
+  } | null>(null);
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
@@ -102,10 +112,21 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
               >
                 {localizer.format(day, "D")} 
                 <Box mt={2}>
-                  {eventsForDay.length > 0 && 
-                    eventsForDay.map((ev, idx) => (
+                  {eventsForDay.length > 0 &&
+                    [...eventsForDay]
+                  .sort((a, b) => (b.resource?.isOwn ? 1 : 0) - (a.resource?.isOwn ? 1 : 0))
+                  .map((ev, idx) => (
                       <Box key={idx} pb={2} maxW="100%">
-                        <CalendarRequestBlock shift={ev.title}/>
+                        <CalendarRequestBlock
+                          shift={ev.title}
+                          nurseName={ev.resource?.nurseName}
+                          owned={ev.resource?.isOwn}
+                          onClick={ev.resource?.isOwn ? () => setSelectedRequest({
+                            requestId: ev.resource.requestId,
+                            shiftType: ev.resource.shiftType,
+                            preferredDate: ev.resource.preferredDate,
+                          }) : undefined}
+                        />
                       </Box>
                     ))
                   }
@@ -116,11 +137,22 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         </Grid>
       </VStack>
 
-      <NewShiftRequest 
+      <NewShiftRequest
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         selectedDate={selectedDay}
+        wardId={(user as any)?.wardid}
       />
+
+      {selectedRequest && (
+        <EditShiftRequest
+          isOpen={!!selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+          requestId={selectedRequest.requestId}
+          initialShiftType={selectedRequest.shiftType}
+          initialDate={selectedRequest.preferredDate}
+        />
+      )}
     </>
   )
 }
