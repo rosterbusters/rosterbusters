@@ -2,108 +2,193 @@
   "method": "GA",
   "roster": {
     "nurses": [
-      { "id": 1, "name": "Nurse 1", "rank": "A",
-        "schedule": ["N","N","DO","A","P","N","DO","A","P","N","DO","A","DO","P"],
+      {
+        "id": 1,
+        "name": "ARCH",
+        "rank": "A",
+        "schedule": ["DO","P","P","DO","A","A","P","A","A","A","DO","N","N","DO"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 2, "name": "Nurse 2", "rank": "A",
-        "schedule": ["DO","P","A","A","N","DO","N","DO","DO","P","P","P","P","N"],
+      {
+        "id": 2,
+        "name": "Angki",
+        "rank": "A",
+        "schedule": ["DO","N","DO","P","P","A","N","DO","A","P","N","DO","P","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 3, "name": "Nurse 3", "rank": "A",
-        "schedule": ["A","P","P","N","DO","DO","A","P","A","A","P","DO","N","DO"],
+      {
+        "id": 3,
+        "name": "BAISA",
+        "rank": "A",
+        "schedule": ["DO","P","A","N","DO","A","A","P","N","N","DO","DO","A","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 4, "name": "Nurse 4", "rank": "A",
-        "schedule": ["P","P","DO","A","N","DO","A","DO","P","DO","A","A","A","N"],
+      {
+        "id": 4,
+        "name": "BUNA",
+        "rank": "A",
+        "schedule": ["N","DO","A","A","A","DO","P","N","DO","N","DO","P","A","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 5, "name": "Nurse 5", "rank": "A",
-        "schedule": ["A","P","N","DO","DO","P","A","N","DO","P","A","DO","A","A"],
+      {
+        "id": 5,
+        "name": "Bellinna",
+        "rank": "A",
+        "schedule": ["DO","N","N","DO","A","P","A","P","DO","P","A","P","A","DO"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 6, "name": "Nurse 6", "rank": "A",
-        "schedule": ["A","A","P","N","DO","N","DO","P","DO","N","DO","A","A","A"],
+      {
+        "id": 6,
+        "name": "Enego",
+        "rank": "A",
+        "schedule": ["P","DO","A","A","A","N","DO","DO","N","DO","P","A","P","P"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 7, "name": "Nurse 7", "rank": "A",
-        "schedule": ["A","N","N","DO","DO","A","P","N","N","DO","DO","P","A","A"],
+      {
+        "id": 7,
+        "name": "LEW",
+        "rank": "A",
+        "schedule": ["P","P","N","DO","P","A","DO","DO","P","A","N","DO","P","P"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 8, "name": "Nurse 8", "rank": "A",
-        "schedule": ["A","A","A","P","A","DO","DO","DO","P","N","N","DO","A","P"],
+      {
+        "id": 8,
+        "name": "Loges",
+        "rank": "A",
+        "schedule": ["P","DO","A","A","DO","P","N","N","DO","A","A","DO","A","P"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 9, "name": "Nurse 9", "rank": "A",
-        "schedule": ["P","DO","A","DO","P","A","A","A","P","A","N","N","DO","DO"],
+      {
+        "id": 9,
+        "name": "Maila",
+        "rank": "A",
+        "schedule": ["DO","A","P","P","N","DO","N","DO","N","DO","P","P","P","N"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 10, "name": "Nurse 10", "rank": "A",
-        "schedule": ["P","P","DO","P","A","N","DO","DO","N","DO","A","A","P","A"],
+      {
+        "id": 10,
+        "name": "Nang",
+        "rank": "A",
+        "schedule": ["A","A","N","N","DO","DO","P","DO","A","P","A","A","DO","N"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 11, "name": "Nurse 11", "rank": "A",
-        "schedule": ["P","A","DO","N","DO","P","P","DO","A","A","N","N","DO","P"],
+      {
+        "id": 11,
+        "name": "Nurul F",
+        "rank": "A",
+        "schedule": ["A","DO","P","P","A","N","DO","A","P","DO","P","A","DO","N"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 12, "name": "Nurse 12", "rank": "B",
-        "schedule": ["A","DO","A","A","A","P","DO","A","DO","A","A","N","N","DO"],
+      {
+        "id": 12,
+        "name": "Aye P",
+        "rank": "B",
+        "schedule": ["A","P","DO","N","DO","P","N","DO","A","A","A","P","DO","P"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 13, "name": "Nurse 13", "rank": "B",
-        "schedule": ["A","DO","N","DO","P","A","P","P","A","N","DO","P","N","DO"],
+      {
+        "id": 13,
+        "name": "CHHAK",
+        "rank": "B",
+        "schedule": ["P","N","DO","A","N","DO","A","P","A","A","N","DO","N","DO"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 14, "name": "Nurse 14", "rank": "B",
-        "schedule": ["A","A","P","A","DO","N","DO","A","DO","A","A","A","N","DO"],
+      {
+        "id": 14,
+        "name": "LONG",
+        "rank": "B",
+        "schedule": ["A","N","DO","P","N","DO","A","A","A","DO","P","A","N","DO"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 15, "name": "Nurse 15", "rank": "B",
-        "schedule": ["DO","A","A","A","A","P","DO","A","DO","N","N","DO","P","A"],
+      {
+        "id": 15,
+        "name": "Lal",
+        "rank": "B",
+        "schedule": ["A","DO","A","A","N","DO","A","A","DO","N","N","DO","A","P"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 16, "name": "Nurse 16", "rank": "B",
-        "schedule": ["P","DO","A","P","A","DO","N","N","DO","A","P","DO","P","A"],
+      {
+        "id": 16,
+        "name": "Maril",
+        "rank": "B",
+        "schedule": ["N","DO","DO","P","P","P","N","N","DO","P","A","DO","P","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 17, "name": "Nurse 17", "rank": "B",
-        "schedule": ["N","DO","A","P","A","P","DO","P","N","DO","DO","P","P","A"],
+      {
+        "id": 17,
+        "name": "Merete",
+        "rank": "B",
+        "schedule": ["N","DO","A","P","DO","A","A","A","P","A","N","DO","N","DO"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 18, "name": "Nurse 18", "rank": "B",
-        "schedule": ["DO","A","P","P","P","N","DO","N","N","DO","P","P","P","DO"],
+      {
+        "id": 18,
+        "name": "Naw L",
+        "rank": "B",
+        "schedule": ["P","A","A","DO","P","N","DO","DO","P","P","N","N","DO","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 19, "name": "Nurse 19", "rank": "B",
-        "schedule": ["A","A","DO","N","DO","A","A","A","N","DO","P","A","DO","A"],
+      {
+        "id": 19,
+        "name": "Phyu P",
+        "rank": "B",
+        "schedule": ["A","A","A","DO","A","N","DO","A","P","N","DO","DO","P","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 20, "name": "Nurse 20", "rank": "B",
-        "schedule": ["DO","P","N","N","DO","A","N","DO","A","P","A","N","DO","P"],
+      {
+        "id": 20,
+        "name": "Sang",
+        "rank": "B",
+        "schedule": ["A","P","DO","A","P","DO","N","N","DO","DO","A","A","A","P"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 21, "name": "Nurse 21", "rank": "B",
-        "schedule": ["N","DO","A","A","DO","A","P","A","A","N","N","DO","DO","A"],
+      {
+        "id": 21,
+        "name": "Siingei",
+        "rank": "B",
+        "schedule": ["DO","A","P","P","DO","A","P","DO","N","N","DO","A","A","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 22, "name": "Nurse 22", "rank": "B",
-        "schedule": ["A","N","DO","A","N","DO","P","DO","A","N","N","DO","A","A"],
+      {
+        "id": 22,
+        "name": "Zirs",
+        "rank": "B",
+        "schedule": ["A","A","P","N","DO","P","DO","P","P","A","DO","A","N","DO"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 23, "name": "Nurse 23", "rank": "B",
-        "schedule": ["DO","A","P","A","N","DO","A","A","DO","P","A","A","N","DO"],
+      {
+        "id": 23,
+        "name": "Aye A",
+        "rank": "C",
+        "schedule": ["A","P","N","DO","P","N","DO","A","A","A","DO","P","N","DO"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 24, "name": "Nurse 24", "rank": "C",
-        "schedule": ["N","N","DO","P","P","DO","A","P","P","N","DO","A","DO","A"],
+      {
+        "id": 24,
+        "name": "Nant M",
+        "rank": "C",
+        "schedule": ["A","N","N","DO","A","DO","A","P","A","N","DO","P","DO","N"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 25, "name": "Nurse 25", "rank": "C",
-        "schedule": ["N","DO","N","DO","P","A","A","A","DO","N","N","DO","A","P"],
+      {
+        "id": 25,
+        "name": "Nish",
+        "rank": "C",
+        "schedule": ["N","DO","A","A","P","DO","P","N","DO","DO","A","A","P","A"],
         "stats": { "total_shifts": 10 }
       },
-      { "id": 26, "name": "Nurse 26", "rank": "C",
-        "schedule": ["N","DO","P","A","A","A","DO","A","DO","P","A","N","DO","N"],
+      {
+        "id": 26,
+        "name": "Saw H",
+        "rank": "C",
+        "schedule": ["A","N","DO","N","DO","P","A","A","A","N","N","DO","DO","P"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 27,
+        "name": "Saw T",
+        "rank": "C",
+        "schedule": ["DO","P","A","A","DO","N","N","DO","A","N","DO","P","P","P"],
         "stats": { "total_shifts": 10 }
       }
     ]

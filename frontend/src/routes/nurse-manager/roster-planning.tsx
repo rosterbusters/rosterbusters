@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import gaWard4 from "@/mockData/ga_ward4.json";
+import gaWard5 from "@/mockData/ga_ward5.json";
 import gaWard6 from "@/mockData/ga_ward6.json";
 import milpWard4 from "@/mockData/milp_ward4.json";
 import milpWard5 from "@/mockData/milp_ward5.json";
@@ -860,6 +861,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
   const handleLoadMockData = useCallback((mockKey: string) => {
     const mockMap: Record<string, typeof gaWard4> = {
       ga_ward4: gaWard4,
+      ga_ward5: gaWard5,
       ga_ward6: gaWard6,
       milp_ward4: milpWard4,
       milp_ward5: milpWard5,
