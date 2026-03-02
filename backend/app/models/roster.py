@@ -22,6 +22,7 @@ class Ward(SQLModel, table=True):
     wardname: str = Field(max_length=100)
     wardtype: Optional[str] = Field(default=None, max_length=50)
     location: Optional[str] = Field(default=None, max_length=100)
+    managerid: Optional[int] = Field(default=None)
     isactive: bool = Field(default=True)
     
     # Staffing requirements - AM shift

@@ -34,6 +34,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 //  Types
 // ---------------------------------------------------------------------------
 
+export interface WardInfo {
+  ward_id: number
+  ward_name: string
+}
+
 export interface AdminUser {
   userid: number
   username: string
@@ -42,6 +47,7 @@ export interface AdminUser {
   nurseid: number | null
   managerid: number | null
   roles: string[]
+  wards: WardInfo[]
 }
 
 export interface AdminUsersResponse {
@@ -55,6 +61,7 @@ export interface AdminUserCreate {
   password: string
   is_active?: boolean
   role?: string
+  ward_ids?: number[]
 }
 
 export interface AdminUserUpdate {
@@ -62,6 +69,16 @@ export interface AdminUserUpdate {
   email?: string
   password?: string
   is_active?: boolean
+  ward_ids?: number[]
+}
+
+export interface WardOption {
+  wardid: number
+  wardname: string
+  wardtype: string | null
+  location: string | null
+  isactive: boolean
+  managerid: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -95,5 +112,9 @@ export const AdminService = {
     return request(`/api/v1/admin/users/${userid}`, {
       method: "DELETE",
     })
+  },
+
+  listWards(): Promise<WardOption[]> {
+    return request(`/api/v1/wards/`)
   },
 }

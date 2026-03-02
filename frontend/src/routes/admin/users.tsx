@@ -8,6 +8,7 @@ import {
   type AdminUser,
   type AdminUserCreate,
   type AdminUserUpdate,
+  type WardOption,
 } from "@/client/adminService"
 import useCustomToast from "@/hooks/useCustomToast"
 import { emailPattern } from "@/utils"
@@ -59,11 +60,34 @@ function UserFormDialog({
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const isEdit = !!editUser
 
+  // Fetch wards for the dropdown
+  const { data: wards = [] } = useQuery<WardOption[]>({
+    queryKey: ["admin-wards"],
+    queryFn: () => AdminService.listWards(),
+    staleTime: 60_000,
+  })
+
+  const currentRole = isEdit ? (editUser.roles[0] ?? "") : ""
+
+  // Multi-ward selection state
+  const [selectedWardIds, setSelectedWardIds] = useState<number[]>(
+    isEdit ? editUser.wards.map((w) => w.ward_id) : [],
+  )
+
+  const toggleWard = (wardId: number) => {
+    setSelectedWardIds((prev) =>
+      prev.includes(wardId)
+        ? prev.filter((id) => id !== wardId)
+        : [...prev, wardId],
+    )
+  }
+
   const {
     register,
     handleSubmit,
     reset,
     getValues,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<UserFormData>({
     mode: "onBlur",
@@ -74,7 +98,7 @@ function UserFormDialog({
           password: "",
           confirm_password: "",
           is_active: editUser.isactive,
-          role: editUser.roles[0] ?? "Nurse",
+          role: currentRole,
         }
       : {
           username: "",
@@ -85,6 +109,8 @@ function UserFormDialog({
           role: "Nurse",
         },
   })
+
+  const selectedRole = watch("role")
 
   const createMutation = useMutation({
     mutationFn: (data: AdminUserCreate) => AdminService.createUser(data),
@@ -123,15 +149,23 @@ function UserFormDialog({
         is_active: data.is_active,
       }
       if (data.password) payload.password = data.password
+      // Only send ward_ids if this user is a nurse or manager
+      if (currentRole === "Nurse" || currentRole === "NurseManager") {
+        payload.ward_ids = selectedWardIds
+      }
       updateMutation.mutate(payload)
     } else {
-      createMutation.mutate({
+      const payload: AdminUserCreate = {
         username: data.username,
         email: data.email,
         password: data.password,
         is_active: data.is_active,
         role: data.role,
-      })
+      }
+      if (data.role === "Nurse" || data.role === "NurseManager") {
+        payload.ward_ids = selectedWardIds
+      }
+      createMutation.mutate(payload)
     }
   }
 
@@ -244,6 +278,78 @@ function UserFormDialog({
                   <option value="NurseManager">Nurse Manager</option>
                   <option value="Admin">Admin</option>
                 </select>
+              </div>
+            )}
+
+            {/* Role display (read-only on edit) */}
+            {isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <div className="flex flex-wrap gap-1 py-2">
+                  {editUser!.roles.map((role) => (
+                    <span
+                      key={role}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        role === "Admin"
+                          ? "bg-orange-100 text-orange-700"
+                          : role === "NurseManager"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {role === "NurseManager" ? "Nurse Manager" : role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Ward assignment — show for Nurse / NurseManager */}
+            {(isEdit
+              ? currentRole === "Nurse" || currentRole === "NurseManager"
+              : selectedRole === "Nurse" || selectedRole === "NurseManager"
+            ) && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {(isEdit ? currentRole : selectedRole) === "NurseManager"
+                    ? "Manages Wards"
+                    : "Assigned Wards"}
+                  {(isEdit ? currentRole : selectedRole) === "Nurse" && (
+                    <span className="text-gray-400 text-xs ml-1">(first = primary ward for scheduling)</span>
+                  )}
+                </label>
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
+                  {wards.filter((w) => w.isactive).length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-gray-400">No wards available</p>
+                  ) : (
+                    wards
+                      .filter((w) => w.isactive)
+                      .map((w) => (
+                        <label
+                          key={w.wardid}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedWardIds.includes(w.wardid)}
+                            onChange={() => toggleWard(w.wardid)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-gray-900">{w.wardname}</span>
+                          {w.location && (
+                            <span className="text-gray-400 text-xs">({w.location})</span>
+                          )}
+                        </label>
+                      ))
+                  )}
+                </div>
+                {selectedWardIds.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {selectedWardIds.length} ward{selectedWardIds.length !== 1 ? "s" : ""} selected
+                  </p>
+                )}
               </div>
             )}
 
@@ -434,6 +540,7 @@ function AdminUsers() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Username</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Roles</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Ward</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
                 </tr>
@@ -460,6 +567,22 @@ function AdminUsers() {
                             ))
                           : <span className="text-xs text-gray-400">No roles</span>}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {user.wards && user.wards.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {user.wards.map((w) => (
+                            <span
+                              key={w.ward_id}
+                              className="text-xs px-2 py-0.5 rounded-full font-medium bg-teal-100 text-teal-700"
+                            >
+                              {w.ward_name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -497,7 +620,7 @@ function AdminUsers() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-gray-500">
+                    <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
                       No users found.
                     </td>
                   </tr>

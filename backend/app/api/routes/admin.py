@@ -14,6 +14,8 @@ from sqlmodel import Field, SQLModel, func, select
 from app.api.deps import SessionDep, get_current_active_superuser
 from app.core.security import get_password_hash
 from app.models import Message, RBACUser, Role, UserRole
+from app.models.rbac import Nurse, NurseManager
+from app.models.roster import Ward
 from app.rbac import get_user_roles
 
 router = APIRouter(
@@ -27,6 +29,11 @@ router = APIRouter(
 #  Request / Response schemas
 # ---------------------------------------------------------------------------
 
+class WardInfo(SQLModel):
+    ward_id: int
+    ward_name: str
+
+
 class AdminUserPublic(SQLModel):
     userid: int
     username: str
@@ -35,6 +42,7 @@ class AdminUserPublic(SQLModel):
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
     roles: list[str] = []
+    wards: list[WardInfo] = []
 
 
 class AdminUsersPublic(SQLModel):
@@ -48,6 +56,7 @@ class AdminUserCreate(SQLModel):
     password: str = Field(min_length=8, max_length=128)
     is_active: bool = True
     role: str = Field(default="Nurse", description="Nurse | NurseManager | Admin")
+    ward_ids: list[int] = []
 
 
 class AdminUserUpdate(SQLModel):
@@ -55,6 +64,7 @@ class AdminUserUpdate(SQLModel):
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
+    ward_ids: Optional[list[int]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +74,24 @@ class AdminUserUpdate(SQLModel):
 def _enrich(session, user: RBACUser) -> AdminUserPublic:
     """Convert an RBACUser row to the public response model."""
     roles = get_user_roles(session, user.email)
+    ward_list: list[WardInfo] = []
+
+    # Resolve ward for nurses (single primary ward via nurse.wardid)
+    if user.nurseid:
+        nurse = session.get(Nurse, user.nurseid)
+        if nurse and nurse.wardid:
+            ward = session.get(Ward, nurse.wardid)
+            if ward:
+                ward_list.append(WardInfo(ward_id=ward.wardid, ward_name=ward.wardname))
+
+    # Resolve wards for managers (multiple — every ward where ward.managerid matches)
+    if user.managerid:
+        managed_wards = session.exec(
+            select(Ward).where(Ward.managerid == user.managerid)
+        ).all()
+        for w in managed_wards:
+            ward_list.append(WardInfo(ward_id=w.wardid, ward_name=w.wardname))
+
     return AdminUserPublic(
         userid=user.userid,
         username=user.username,
@@ -72,6 +100,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         nurseid=user.nurseid,
         managerid=user.managerid,
         roles=roles,
+        wards=ward_list,
     )
 
 
@@ -122,6 +151,11 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
             detail=f"Unknown role: {body.role}. Must be Nurse, NurseManager, or Admin.",
         )
 
+    # Validate all ward_ids
+    for wid in body.ward_ids:
+        if not session.get(Ward, wid):
+            raise HTTPException(status_code=400, detail=f"Ward {wid} not found.")
+
     user = RBACUser(
         username=body.username,
         email=body.email,
@@ -132,6 +166,49 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    # Create linked Nurse/NurseManager record and assign wards
+    if body.role == "Nurse":
+        nurse = Nurse(
+            name=body.username,
+            designation="RN",
+            email=body.email,
+            contactnumber="",
+            wardid=body.ward_ids[0] if body.ward_ids else None,
+            employmenttype="Full-time",
+            isactive=True,
+        )
+        session.add(nurse)
+        session.commit()
+        session.refresh(nurse)
+        user.nurseid = nurse.nurseid
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    elif body.role == "NurseManager":
+        manager = NurseManager(
+            name=body.username,
+            email=body.email,
+            contactnumber="",
+            isactive=True,
+            createdat=datetime.now(timezone.utc),
+        )
+        session.add(manager)
+        session.commit()
+        session.refresh(manager)
+        user.managerid = manager.managerid
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        # Assign all selected wards to this manager
+        for wid in body.ward_ids:
+            ward = session.get(Ward, wid)
+            if ward:
+                ward.managerid = manager.managerid
+                session.add(ward)
+        session.commit()
 
     # Assign role
     user_role = UserRole(
@@ -148,7 +225,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
 
 @router.patch("/users/{userid}", response_model=AdminUserPublic)
 def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
-    """Update an RBACUser (username, email, password, active status)."""
+    """Update an RBACUser (username, email, password, active status, wards)."""
     user = session.get(RBACUser, userid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -172,6 +249,40 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    # Handle multi-ward assignment changes
+    if body.ward_ids is not None:
+        # Validate all ward_ids
+        for wid in body.ward_ids:
+            if not session.get(Ward, wid):
+                raise HTTPException(status_code=400, detail=f"Ward {wid} not found.")
+
+        # For nurses: set nurse.wardid to first selected ward (primary ward for scheduling)
+        if user.nurseid:
+            nurse = session.get(Nurse, user.nurseid)
+            if nurse:
+                nurse.wardid = body.ward_ids[0] if body.ward_ids else None
+                session.add(nurse)
+                session.commit()
+
+        # For managers: replace ward assignments
+        if user.managerid:
+            # Un-assign all current wards
+            old_wards = session.exec(
+                select(Ward).where(Ward.managerid == user.managerid)
+            ).all()
+            for ow in old_wards:
+                ow.managerid = None
+                session.add(ow)
+
+            # Assign new wards
+            for wid in body.ward_ids:
+                ward = session.get(Ward, wid)
+                if ward:
+                    ward.managerid = user.managerid
+                    session.add(ward)
+            session.commit()
+
     return _enrich(session, user)
 
 
