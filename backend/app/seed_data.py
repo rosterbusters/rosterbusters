@@ -16,6 +16,7 @@ from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
+from app.models.enums import NotificationType
 from app.models.web import User
 
 
@@ -1151,12 +1152,7 @@ def seed_notifications(
 ) -> int:
     """Seed notifications for ward staff and managers using NotificationQueue.
 
-    Notification types:
-    - ShiftUpdate: Roster released, roster changes
-    - SwapRequest: Shift swap notifications
-    - LeaveApproval: Request approved/rejected
-    - LeaveReminder: Request period reminders
-
+    Uses NotificationType enum values so every seeded row has a valid type.
     Every nurse and nurse manager receives at least 3 notifications.
     """
     logger.info("Seeding notifications...")
@@ -1170,99 +1166,33 @@ def seed_notifications(
 
     channels = ["WhatsApp", "Email", "Both"]
 
-    # Notification templates for nurses
-    nurse_templates = [
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Released",
-            "body": f"{current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} Roster released.",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Updated",
-            "body": "Your roster has been updated. Please check your schedule.",
-            "priority": "Normal",
-        },
-        {
-            "type": "SwapRequest",
-            "subject": "Shift Swap Approved",
-            "body": "Your shift swap request has been approved.",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Finalized",
-            "body": "Roster finalized for the upcoming period.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Shift Request Period Open",
-            "body": "Shift Request Period is Now Open. Submit your preferences.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveApproval",
-            "subject": "Shift Request Approved",
-            "body": "Your shift request has been approved.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveApproval",
-            "subject": "Shift Request Rejected",
-            "body": "Your shift request has been rejected. Please contact your manager.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Request Period Closing Soon",
-            "body": f"Reminder: Request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
-            "priority": "Urgent",
-        },
+    period_name = current_period.name
+    close_date = str(current_period.requestclosedate)
+    end_date = str(current_period.enddate)
+
+    # Each entry: (NotificationType, template_vars_dict, priority)
+    nurse_templates: list[tuple[NotificationType, dict, str]] = [
+        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},  "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},  "Normal"),
+        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},  "Normal"),
+        (NotificationType.SHIFT_REQUEST_REJECTED,      {"roster_period": period_name},  "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_CLOSED, {"roster_period": period_name},  "Urgent"),
+        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},  "Normal"),
+        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},  "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},  "Normal"),
     ]
 
-    # Notification templates for managers
-    manager_templates = [
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Period Started",
-            "body": f"Roster period {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} has begun.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Shift Requests Pending Review",
-            "body": "There are shift requests from your ward staff awaiting your review.",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Finalized",
-            "body": "The roster for the upcoming period has been finalized.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveApproval",
-            "subject": "Leave Request Submitted",
-            "body": "A nurse in your ward has submitted a leave request. Please review.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Request Window Closing Soon",
-            "body": f"Reminder: The shift request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
-            "priority": "Urgent",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Released to Staff",
-            "body": f"The {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} roster has been released to ward staff.",
-            "priority": "Normal",
-        },
+    manager_templates: list[tuple[NotificationType, dict, str]] = [
+        (NotificationType.ROSTER_PLANNING,         {"roster_period": period_name},                                              "Normal"),
+        (NotificationType.SHIFT_REQUEST_REVIEW_OPEN, {"roster_period": period_name},                                           "Normal"),
+        (NotificationType.ROSTER_FINALISATION,     {"roster_planning_end_date": close_date},                                   "Normal"),
+        (NotificationType.LEAVE_REQUEST,           {"nurse_name": "Ward Staff", "leave_code": "AL", "request_date": close_date}, "Urgent"),
+        (NotificationType.ROSTER_FINALISATION,     {"roster_planning_end_date": close_date},                                   "Urgent"),
+        (NotificationType.HRIS_REMINDER,           {"roster_end_date": end_date},                                              "Normal"),
     ]
 
-    def _make_notification(recipient_type: str, recipient_id: int, template: dict) -> NotificationQueue:
+    def _make_notification(recipient_type: str, recipient_id: int, template: tuple) -> NotificationQueue:
+        ntype, tvars, priority = template
         days_ago = fake.random_int(min=0, max=7)
         created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
 
@@ -1283,11 +1213,11 @@ def seed_notifications(
         return NotificationQueue(
             recipienttype=recipient_type,
             recipientid=recipient_id,
-            notificationtype=template["type"],
+            notificationtype=ntype.value,
             channel=fake.random_element(channels),
-            priority=template["priority"],
-            subject=template["subject"],
-            messagebody=template["body"],
+            priority=priority,
+            subject=ntype.value,
+            messagebody=ntype.template.format(**tvars),
             relatedentitytype="RosterPeriod",
             relatedentityid=current_period.periodid,
             status=status,

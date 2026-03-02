@@ -31,7 +31,7 @@ export class LeaveRequestsService {
   ): CancelablePromise<LeaveRequestPublic[]> {
     return __request(OpenAPI, {
       method: "GET",
-      url: "/api/v1/shift-requests/ward/{ward_id}/leave-requests",
+      url: "/api/v1/leave/ward/{ward_id}",
       path: { ward_id: data.wardId },
       query: {
         start_date: data.startDate,
@@ -53,7 +53,7 @@ export class LeaveRequestsService {
   }): CancelablePromise<LeaveRequestPublic> {
     return __request(OpenAPI, {
       method: "PATCH",
-      url: "/api/v1/shift-requests/leave-requests/{leave_id}",
+      url: "/api/v1/leave/{leave_id}",
       path: { leave_id: data.leaveId },
       body: { leavetype: data.leavetype },
       mediaType: "application/json",
@@ -73,7 +73,7 @@ export class LeaveRequestsService {
   }): CancelablePromise<void> {
     return __request(OpenAPI, {
       method: "DELETE",
-      url: "/api/v1/shift-requests/leave-requests/{leave_id}",
+      url: "/api/v1/leave/{leave_id}",
       path: { leave_id: data.leaveId },
       errors: {
         403: "Forbidden",
