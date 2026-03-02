@@ -4,14 +4,13 @@ import { useState } from "react"
 import { useForm, type SubmitHandler } from "react-hook-form"
 import { z } from "zod"
 import {
-  type UserPublic,
-  type UserCreate,
-  type UserUpdate,
-  UsersService,
-} from "@/client"
-import type { ApiError } from "@/client/core/ApiError"
+  AdminService,
+  type AdminUser,
+  type AdminUserCreate,
+  type AdminUserUpdate,
+} from "@/client/adminService"
 import useCustomToast from "@/hooks/useCustomToast"
-import { emailPattern, handleError } from "@/utils"
+import { emailPattern } from "@/utils"
 import {
   Users,
   Plus,
@@ -38,8 +37,13 @@ export const Route = createFileRoute("/admin/users")({
 /*  Add / Edit user dialog                                            */
 /* ------------------------------------------------------------------ */
 
-interface UserFormData extends UserCreate {
+interface UserFormData {
+  username: string
+  email: string
+  password: string
   confirm_password: string
+  is_active: boolean
+  role: string
 }
 
 function UserFormDialog({
@@ -49,10 +53,10 @@ function UserFormDialog({
 }: {
   open: boolean
   onClose: () => void
-  editUser?: UserPublic | null
+  editUser?: AdminUser | null
 }) {
   const queryClient = useQueryClient()
-  const { showSuccessToast } = useCustomToast()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
   const isEdit = !!editUser
 
   const {
@@ -65,64 +69,69 @@ function UserFormDialog({
     mode: "onBlur",
     defaultValues: isEdit
       ? {
+          username: editUser.username,
           email: editUser.email,
-          full_name: editUser.full_name ?? "",
           password: "",
           confirm_password: "",
-          is_superuser: editUser.is_superuser ?? false,
-          is_active: editUser.is_active ?? true,
+          is_active: editUser.isactive,
+          role: editUser.roles[0] ?? "Nurse",
         }
       : {
+          username: "",
           email: "",
-          full_name: "",
           password: "",
           confirm_password: "",
-          is_superuser: false,
           is_active: true,
+          role: "Nurse",
         },
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: UserCreate) =>
-      UsersService.createUser({ requestBody: data }),
+    mutationFn: (data: AdminUserCreate) => AdminService.createUser(data),
     onSuccess: () => {
       showSuccessToast("User created successfully.")
       reset()
       onClose()
     },
-    onError: (err: ApiError) => handleError(err),
+    onError: (err: any) => {
+      showErrorToast(err.body?.detail ?? err.message ?? "Failed to create user.")
+    },
     onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: ["users"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: UserUpdate) =>
-      UsersService.updateUser({
-        userId: editUser!.id,
-        requestBody: data,
-      }),
+    mutationFn: (data: AdminUserUpdate) =>
+      AdminService.updateUser(editUser!.userid, data),
     onSuccess: () => {
       showSuccessToast("User updated successfully.")
       reset()
       onClose()
     },
-    onError: (err: ApiError) => handleError(err),
+    onError: (err: any) => {
+      showErrorToast(err.body?.detail ?? err.message ?? "Failed to update user.")
+    },
     onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: ["users"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
   })
 
   const onSubmit: SubmitHandler<UserFormData> = (data) => {
     if (isEdit) {
-      const payload: UserUpdate = {
+      const payload: AdminUserUpdate = {
+        username: data.username,
         email: data.email,
-        full_name: data.full_name,
-        is_superuser: data.is_superuser,
         is_active: data.is_active,
       }
       if (data.password) payload.password = data.password
       updateMutation.mutate(payload)
     } else {
-      createMutation.mutate(data)
+      createMutation.mutate({
+        username: data.username,
+        email: data.email,
+        password: data.password,
+        is_active: data.is_active,
+        role: data.role,
+      })
     }
   }
 
@@ -142,6 +151,22 @@ function UserFormDialog({
 
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="p-6 space-y-4">
+            {/* Username */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Username <span className="text-red-500">*</span>
+              </label>
+              <input
+                {...register("username", { required: "Username is required" })}
+                type="text"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="johndoe"
+              />
+              {errors.username && (
+                <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
+              )}
+            </div>
+
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -157,23 +182,8 @@ function UserFormDialog({
                 placeholder="user@example.com"
               />
               {errors.email && (
-                <p className="text-red-500 text-xs mt-1">
-                  {errors.email.message}
-                </p>
+                <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
               )}
-            </div>
-
-            {/* Full Name */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Full Name
-              </label>
-              <input
-                {...register("full_name")}
-                type="text"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="John Doe"
-              />
             </div>
 
             {/* Password */}
@@ -182,29 +192,20 @@ function UserFormDialog({
                 Password{" "}
                 {!isEdit && <span className="text-red-500">*</span>}
                 {isEdit && (
-                  <span className="text-gray-400 text-xs">
-                    (leave blank to keep current)
-                  </span>
+                  <span className="text-gray-400 text-xs">(leave blank to keep current)</span>
                 )}
               </label>
               <input
                 {...register("password", {
-                  ...(!isEdit && {
-                    required: "Password is required",
-                  }),
-                  minLength: {
-                    value: 8,
-                    message: "Password must be at least 8 characters",
-                  },
+                  ...(!isEdit && { required: "Password is required" }),
+                  minLength: { value: 8, message: "Password must be at least 8 characters" },
                 })}
                 type="password"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="********"
               />
               {errors.password && (
-                <p className="text-red-500 text-xs mt-1">
-                  {errors.password.message}
-                </p>
+                <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>
               )}
             </div>
 
@@ -225,31 +226,36 @@ function UserFormDialog({
                 placeholder="********"
               />
               {errors.confirm_password && (
-                <p className="text-red-500 text-xs mt-1">
-                  {errors.confirm_password.message}
-                </p>
+                <p className="text-red-500 text-xs mt-1">{errors.confirm_password.message}</p>
               )}
             </div>
 
-            {/* Toggles */}
-            <div className="flex gap-6">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  {...register("is_superuser")}
-                  className="rounded border-gray-300"
-                />
-                Superuser
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  {...register("is_active")}
-                  className="rounded border-gray-300"
-                />
-                Active
-              </label>
-            </div>
+            {/* Role (only on create) */}
+            {!isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register("role")}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Nurse">Nurse</option>
+                  <option value="NurseManager">Nurse Manager</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+            )}
+
+            {/* Active toggle */}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                {...register("is_active")}
+                className="rounded border-gray-300"
+              />
+              Active
+            </label>
           </div>
 
           <div className="flex justify-end gap-3 p-6 border-t">
@@ -285,22 +291,24 @@ function DeleteDialog({
 }: {
   open: boolean
   onClose: () => void
-  user: UserPublic | null
+  user: AdminUser | null
 }) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [deleting, setDeleting] = useState(false)
 
   const mutation = useMutation({
-    mutationFn: (id: string) => UsersService.deleteUser({ userId: id }),
+    mutationFn: (id: number) => AdminService.deleteUser(id),
     onSuccess: () => {
       showSuccessToast("User deleted successfully.")
       onClose()
     },
-    onError: () => showErrorToast("Failed to delete user."),
+    onError: (err: any) => {
+      showErrorToast(err.body?.detail ?? "Failed to delete user.")
+    },
     onSettled: () => {
       setDeleting(false)
-      queryClient.invalidateQueries({ queryKey: ["users"] })
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] })
     },
   })
 
@@ -309,13 +317,10 @@ function DeleteDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">
-          Delete User
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete User</h2>
         <p className="text-sm text-gray-600 mb-6">
           Are you sure you want to delete{" "}
-          <strong>{user.full_name || user.email}</strong>? This action cannot be
-          undone.
+          <strong>{user.username || user.email}</strong>? This action cannot be undone.
         </p>
         <div className="flex justify-end gap-3">
           <button
@@ -327,7 +332,7 @@ function DeleteDialog({
           <button
             onClick={() => {
               setDeleting(true)
-              mutation.mutate(user.id)
+              mutation.mutate(user.userid)
             }}
             disabled={deleting}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
@@ -344,24 +349,24 @@ function DeleteDialog({
 /*  Main page                                                         */
 /* ------------------------------------------------------------------ */
 
+const ROLE_COLORS: Record<string, string> = {
+  Admin: "bg-orange-100 text-orange-700",
+  NurseManager: "bg-purple-100 text-purple-700",
+  Nurse: "bg-blue-100 text-blue-700",
+}
+
 function AdminUsers() {
   const navigate = useNavigate({ from: Route.fullPath })
   const { page } = Route.useSearch()
-  const queryClient = useQueryClient()
-  const currentUser = queryClient.getQueryData<UserPublic>(["currentUser"])
 
   const [search, setSearch] = useState("")
   const [formOpen, setFormOpen] = useState(false)
-  const [editUser, setEditUser] = useState<UserPublic | null>(null)
-  const [deleteUser, setDeleteUser] = useState<UserPublic | null>(null)
+  const [editUser, setEditUser] = useState<AdminUser | null>(null)
+  const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ["users", { page }],
-    queryFn: () =>
-      UsersService.readUsers({
-        skip: (page - 1) * PER_PAGE,
-        limit: PER_PAGE,
-      }),
+    queryKey: ["admin-users", { page }],
+    queryFn: () => AdminService.listUsers((page - 1) * PER_PAGE, PER_PAGE),
     placeholderData: (prev) => prev,
   })
 
@@ -373,7 +378,7 @@ function AdminUsers() {
     ? users.filter(
         (u) =>
           u.email.toLowerCase().includes(search.toLowerCase()) ||
-          (u.full_name ?? "").toLowerCase().includes(search.toLowerCase()),
+          u.username.toLowerCase().includes(search.toLowerCase()),
       )
     : users
 
@@ -389,9 +394,7 @@ function AdminUsers() {
             <Users className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">
-              Users Management
-            </h1>
+            <h1 className="text-xl font-bold text-gray-900">Users Management</h1>
             <p className="text-sm text-gray-500">{count} total users</p>
           </div>
         </div>
@@ -428,64 +431,45 @@ function AdminUsers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    Name
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    Email
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    Role
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    Status
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">
-                    Actions
-                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Username</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Roles</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="border-b last:border-0 hover:bg-gray-50"
-                  >
+                  <tr key={user.userid} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">
-                          {user.full_name || "N/A"}
-                        </span>
-                        {currentUser?.id === user.id && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                            You
-                          </span>
-                        )}
-                      </div>
+                      <span className="font-medium text-gray-900">{user.username}</span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">
                       {user.email}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          user.is_superuser
-                            ? "bg-orange-100 text-orange-700"
-                            : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {user.is_superuser ? "Superuser" : "User"}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles.length > 0
+                          ? user.roles.map((role) => (
+                              <span
+                                key={role}
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role] ?? "bg-gray-100 text-gray-700"}`}
+                              >
+                                {role}
+                              </span>
+                            ))
+                          : <span className="text-xs text-gray-400">No roles</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span
                         className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          user.is_active
+                          user.isactive
                             ? "bg-green-100 text-green-700"
                             : "bg-red-100 text-red-700"
                         }`}
                       >
-                        {user.is_active ? "Active" : "Inactive"}
+                        {user.isactive ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -502,8 +486,7 @@ function AdminUsers() {
                         </button>
                         <button
                           onClick={() => setDeleteUser(user)}
-                          disabled={currentUser?.id === user.id}
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30"
+                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="Delete user"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -514,10 +497,7 @@ function AdminUsers() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="px-4 py-12 text-center text-gray-500"
-                    >
+                    <td colSpan={5} className="px-4 py-12 text-center text-gray-500">
                       No users found.
                     </td>
                   </tr>
@@ -530,9 +510,7 @@ function AdminUsers() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t">
-            <p className="text-sm text-gray-500">
-              Page {page} of {totalPages}
-            </p>
+            <p className="text-sm text-gray-500">Page {page} of {totalPages}</p>
             <div className="flex gap-1">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
@@ -555,7 +533,7 @@ function AdminUsers() {
 
       {/* Dialogs */}
       <UserFormDialog
-        key={editUser?.id ?? "new"}
+        key={editUser?.userid ?? "new"}
         open={formOpen}
         onClose={() => {
           setFormOpen(false)

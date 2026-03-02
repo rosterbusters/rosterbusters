@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import React from "react"
-import { UsersService, WardsService } from "@/client"
+import { WardsService } from "@/client"
+import { AdminService } from "@/client/adminService"
 import {
   Users,
   Building2,
@@ -43,8 +44,8 @@ function StatCard({
 
 function AdminDashboard() {
   const { data: usersData, isLoading: usersLoading } = useQuery({
-    queryKey: ["users", { page: 1 }],
-    queryFn: () => UsersService.readUsers({ skip: 0, limit: 1000 }),
+    queryKey: ["admin-users", { page: 1 }],
+    queryFn: () => AdminService.listUsers(0, 1000),
   })
 
   const { data: wardsData, isLoading: wardsLoading } = useQuery({
@@ -55,8 +56,8 @@ function AdminDashboard() {
   const totalUsers = usersData?.count ?? 0
   const activeWards = wardsData?.filter((w) => w.isactive !== false).length ?? 0
   const totalWards = wardsData?.length ?? 0
-  const superusers =
-    usersData?.data.filter((u) => u.is_superuser).length ?? 0
+  const admins =
+    usersData?.data.filter((u) => u.roles.includes("Admin")).length ?? 0
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -88,8 +89,8 @@ function AdminDashboard() {
           color="bg-purple-500"
         />
         <StatCard
-          title="Superusers"
-          value={usersLoading ? "..." : superusers}
+          title="Admins"
+          value={usersLoading ? "..." : admins}
           icon={ShieldCheck}
           color="bg-orange-500"
         />

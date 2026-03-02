@@ -71,10 +71,12 @@ const useAuth = () => {
 
   
   const logout = () => {
+    // Cancel in-flight queries before removing the token to avoid 401s
+    queryClient.cancelQueries()
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")
-    // Reset queries to clear cached data
-    queryClient.resetQueries()
+    // Clear cached data without triggering refetches
+    queryClient.clear()
     navigate({ to: "/login" })
   }
 

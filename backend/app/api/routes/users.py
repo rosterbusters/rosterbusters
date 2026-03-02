@@ -195,9 +195,12 @@ def read_user_by_id(
     Get a specific user by id.
     """
     user = session.get(User, user_id)
-    if user == current_user:
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.email == current_user.email:
         return user
-    if not current_user.is_superuser:
+    from app.rbac import user_has_role
+    if not user_has_role(session, current_user.email, "Admin"):
         raise HTTPException(
             status_code=403,
             detail="The user doesn't have enough privileges",
@@ -247,7 +250,7 @@ def delete_user(
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user == current_user:
+    if user.email == current_user.email:
         raise HTTPException(
             status_code=403, detail="Super users are not allowed to delete themselves"
         )
