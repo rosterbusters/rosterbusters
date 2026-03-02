@@ -17,10 +17,12 @@ export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
     if (isLoggedIn()) {
-      let to: "/nurse-manager/home" | "/ward-staff/home" = "/ward-staff/home"
+      let to: "/admin/dashboard" | "/nurse-manager/home" | "/ward-staff/home" = "/ward-staff/home"
       try {
         const user = await UsersService.readUserMe()
-        if (user.managerid) {
+        if (user.is_superuser) {
+          to = "/admin/dashboard"
+        } else if (user.managerid) {
           to = "/nurse-manager/home"
         }
       } catch {

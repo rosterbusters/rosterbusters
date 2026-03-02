@@ -127,8 +127,10 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
     Get current user (using RBAC authentication).
     """
+    from app.rbac import user_has_role
     wardid = None
     name = None
+    is_superuser = user_has_role(session, current_user.email, "Admin")
     if current_user.nurseid:
         # Nurse: look up their ward from the Nurse table
         nurse = session.exec(
@@ -153,6 +155,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         nurseid=current_user.nurseid,
         managerid=current_user.managerid,
         isactive=current_user.isactive,
+        is_superuser=is_superuser,
         wardid=wardid,
         name=name,
     )

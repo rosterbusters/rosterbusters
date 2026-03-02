@@ -15,10 +15,12 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as NurseManagerRouteImport } from './routes/nurse-manager'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WardStaffIndexRouteImport } from './routes/ward-staff/index'
 import { Route as NurseManagerIndexRouteImport } from './routes/nurse-manager/index'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as WardStaffStaffrosterscheduleRouteImport } from './routes/ward-staff/staffrosterschedule'
 import { Route as WardStaffShiftRequestRouteImport } from './routes/ward-staff/shift-request'
 import { Route as WardStaffSettingsRouteImport } from './routes/ward-staff/settings'
@@ -34,6 +36,9 @@ import { Route as NurseManagerRequestApplicationRouteImport } from './routes/nur
 import { Route as NurseManagerLeaveOverviewRouteImport } from './routes/nurse-manager/leave-overview'
 import { Route as NurseManagerHomeRouteImport } from './routes/nurse-manager/home'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
+import { Route as AdminWardsRouteImport } from './routes/admin/wards'
+import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 
@@ -67,6 +72,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
@@ -85,6 +95,11 @@ const NurseManagerIndexRoute = NurseManagerIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => NurseManagerRoute,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
 } as any)
 const WardStaffStaffrosterscheduleRoute =
   WardStaffStaffrosterscheduleRouteImport.update({
@@ -169,6 +184,21 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminWardsRoute = AdminWardsRouteImport.update({
+  id: '/wards',
+  path: '/wards',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDashboardRoute = AdminDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AdminRoute,
+} as any)
 const LayoutItemsRoute = LayoutItemsRouteImport.update({
   id: '/items',
   path: '/items',
@@ -182,14 +212,17 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof LayoutAdminRoute
   '/login': typeof LoginRoute
   '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/ward-staff': typeof WardStaffRouteWithChildren
-  '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/admin/wards': typeof AdminWardsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/nurse-manager/home': typeof NurseManagerHomeRoute
   '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
@@ -205,6 +238,7 @@ export interface FileRoutesByFullPath {
   '/ward-staff/settings': typeof WardStaffSettingsRoute
   '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
   '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
+  '/admin/': typeof AdminIndexRoute
   '/nurse-manager/': typeof NurseManagerIndexRoute
   '/ward-staff/': typeof WardStaffIndexRoute
 }
@@ -214,8 +248,11 @@ export interface FileRoutesByTo {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/admin': typeof LayoutAdminRoute
+  '/admin': typeof AdminIndexRoute
   '/items': typeof LayoutItemsRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/admin/wards': typeof AdminWardsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/nurse-manager/home': typeof NurseManagerHomeRoute
   '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
@@ -238,6 +275,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
+  '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
   '/nurse-manager': typeof NurseManagerRouteWithChildren
   '/recover-password': typeof RecoverPasswordRoute
@@ -246,6 +284,9 @@ export interface FileRoutesById {
   '/ward-staff': typeof WardStaffRouteWithChildren
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/items': typeof LayoutItemsRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/admin/wards': typeof AdminWardsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/nurse-manager/home': typeof NurseManagerHomeRoute
   '/nurse-manager/leave-overview': typeof NurseManagerLeaveOverviewRoute
@@ -261,6 +302,7 @@ export interface FileRoutesById {
   '/ward-staff/settings': typeof WardStaffSettingsRoute
   '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
   '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
+  '/admin/': typeof AdminIndexRoute
   '/nurse-manager/': typeof NurseManagerIndexRoute
   '/ward-staff/': typeof WardStaffIndexRoute
 }
@@ -268,14 +310,17 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/login'
     | '/nurse-manager'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
     | '/ward-staff'
-    | '/admin'
     | '/items'
+    | '/admin/dashboard'
+    | '/admin/users'
+    | '/admin/wards'
     | '/auth/callback'
     | '/nurse-manager/home'
     | '/nurse-manager/leave-overview'
@@ -291,6 +336,7 @@ export interface FileRouteTypes {
     | '/ward-staff/settings'
     | '/ward-staff/shift-request'
     | '/ward-staff/staffrosterschedule'
+    | '/admin/'
     | '/nurse-manager/'
     | '/ward-staff/'
   fileRoutesByTo: FileRoutesByTo
@@ -302,6 +348,9 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin'
     | '/items'
+    | '/admin/dashboard'
+    | '/admin/users'
+    | '/admin/wards'
     | '/auth/callback'
     | '/nurse-manager/home'
     | '/nurse-manager/leave-overview'
@@ -323,6 +372,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_layout'
+    | '/admin'
     | '/login'
     | '/nurse-manager'
     | '/recover-password'
@@ -331,6 +381,9 @@ export interface FileRouteTypes {
     | '/ward-staff'
     | '/_layout/admin'
     | '/_layout/items'
+    | '/admin/dashboard'
+    | '/admin/users'
+    | '/admin/wards'
     | '/auth/callback'
     | '/nurse-manager/home'
     | '/nurse-manager/leave-overview'
@@ -346,6 +399,7 @@ export interface FileRouteTypes {
     | '/ward-staff/settings'
     | '/ward-staff/shift-request'
     | '/ward-staff/staffrosterschedule'
+    | '/admin/'
     | '/nurse-manager/'
     | '/ward-staff/'
   fileRoutesById: FileRoutesById
@@ -353,6 +407,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
+  AdminRoute: typeof AdminRouteWithChildren
   LoginRoute: typeof LoginRoute
   NurseManagerRoute: typeof NurseManagerRouteWithChildren
   RecoverPasswordRoute: typeof RecoverPasswordRoute
@@ -406,6 +461,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout': {
       id: '/_layout'
       path: ''
@@ -433,6 +495,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/nurse-manager/'
       preLoaderRoute: typeof NurseManagerIndexRouteImport
       parentRoute: typeof NurseManagerRoute
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/ward-staff/staffrosterschedule': {
       id: '/ward-staff/staffrosterschedule'
@@ -539,6 +608,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/wards': {
+      id: '/admin/wards'
+      path: '/wards'
+      fullPath: '/admin/wards'
+      preLoaderRoute: typeof AdminWardsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/dashboard': {
+      id: '/admin/dashboard'
+      path: '/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/_layout/items': {
       id: '/_layout/items'
       path: '/items'
@@ -568,6 +658,22 @@ const LayoutRouteChildren: LayoutRouteChildren = {
 
 const LayoutRouteWithChildren =
   LayoutRoute._addFileChildren(LayoutRouteChildren)
+
+interface AdminRouteChildren {
+  AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+  AdminWardsRoute: typeof AdminWardsRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminDashboardRoute: AdminDashboardRoute,
+  AdminUsersRoute: AdminUsersRoute,
+  AdminWardsRoute: AdminWardsRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface NurseManagerRouteChildren {
   NurseManagerHomeRoute: typeof NurseManagerHomeRoute
@@ -624,6 +730,7 @@ const WardStaffRouteWithChildren = WardStaffRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
+  AdminRoute: AdminRouteWithChildren,
   LoginRoute: LoginRoute,
   NurseManagerRoute: NurseManagerRouteWithChildren,
   RecoverPasswordRoute: RecoverPasswordRoute,

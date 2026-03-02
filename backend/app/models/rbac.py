@@ -48,6 +48,7 @@ class RBACUserPublic(SQLModel):
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
     isactive: bool
+    is_superuser: bool = False
     name: Optional[str] = None
     wardid: Optional[int] = None
 

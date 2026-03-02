@@ -56,7 +56,9 @@ const useAuth = () => {
       // Fetch current user to determine role-based redirect
       const currentUser = await UsersService.readUserMe()
       queryClient.setQueryData(["currentUser"], currentUser)
-      if (currentUser.managerid) {
+      if (currentUser.is_superuser) {
+        navigate({ to: "/admin/dashboard" })
+      } else if (currentUser.managerid) {
         navigate({ to: "/nurse-manager/home" })
       } else {
         navigate({ to: "/ward-staff/home" })

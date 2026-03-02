@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsReviewShiftRequestData, ShiftRequestsReviewShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse } from './types.gen';
+import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsReviewShiftRequestData, ShiftRequestsReviewShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse, Ward } from './types.gen';
 
 export class DefaultService {
     /**
@@ -673,6 +673,92 @@ export class WardsService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/wards/'
+        });
+    }
+
+    /**
+     * Get Ward
+     * Get a single ward by ID.
+     * @param data The data for the request.
+     * @param data.wardId
+     * @returns Ward Successful Response
+     * @throws ApiError
+     */
+    public static getWard(data: { wardId: number }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/wards/{ward_id}',
+            path: {
+                ward_id: data.wardId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Create Ward
+     * Create a new ward (admin only).
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns Ward Successful Response
+     * @throws ApiError
+     */
+    public static createWard(data: { requestBody: Ward }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/wards/',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Ward
+     * Update ward details (admin only).
+     * @param data The data for the request.
+     * @param data.wardId
+     * @param data.requestBody
+     * @returns Ward Successful Response
+     * @throws ApiError
+     */
+    public static updateWard(data: { wardId: number; requestBody: Partial<Ward> }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/wards/{ward_id}',
+            path: {
+                ward_id: data.wardId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Delete Ward
+     * Delete a ward (admin only).
+     * @param data The data for the request.
+     * @param data.wardId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deleteWard(data: { wardId: number }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/wards/{ward_id}',
+            path: {
+                ward_id: data.wardId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
         });
     }
 }
