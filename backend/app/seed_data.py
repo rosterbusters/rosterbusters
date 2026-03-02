@@ -3,7 +3,7 @@ Database seeding script for RBAC data.
 Run: docker compose exec backend python app/seed_data.py
 
 Uses hardcoded mock data for managers and nurses to guarantee consistency
-across all tables (nurse, nursemanager, RBACUser, web_user, userrole).
+across all tables (nurse, nursemanager, RBACUser, userrole).
 """
 import logging
 from datetime import date, datetime, time, timedelta, timezone
@@ -16,7 +16,7 @@ from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
-from app.models.web import User
+
 
 
 # ============================================================================
@@ -1346,47 +1346,6 @@ def seed_notifications(
     return total
 
 
-def seed_web_users(session: Session) -> int:
-    """Create web_user entries for all RBAC users so they can login.
-
-    This syncs RBACUser table with web_user table used for authentication.
-    Uses the same email and password hash from RBAC users.
-    """
-    logger.info("Seeding web users (for login)...")
-    count = 0
-
-    # Get all RBAC users
-    rbac_users = session.exec(select(RBACUser)).all()
-
-    for rbac_user in rbac_users:
-        # Check if web_user already exists with this email
-        existing = session.exec(
-            select(User).where(User.email == rbac_user.email)
-        ).first()
-
-        if existing:
-            logger.info(f"  Web user '{rbac_user.email}' already exists, skipping")
-            continue
-
-        # Determine if user should be superuser (Admin role)
-        is_superuser = rbac_user.email == "admin@sach.org.sg"
-
-        web_user = User(
-            email=rbac_user.email,
-            hashed_password=rbac_user.passwordhash,
-            is_active=rbac_user.isactive,
-            is_superuser=is_superuser,
-            full_name=rbac_user.username,
-        )
-        session.add(web_user)
-        count += 1
-        logger.info(f"  Created web user: {rbac_user.email}")
-
-    session.commit()
-    logger.info(f"  Created {count} web users")
-    return count
-
-
 def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     """Seed ward-specific shift code mappings.
 
@@ -1444,9 +1403,6 @@ def seed_all() -> None:
         seed_admin_user(session, roles)
         seed_manager_users(session, managers, wards, roles)
         seed_nurse_users(session, nurses, roles)
-
-        # Create web_user entries for login
-        seed_web_users(session)
 
         # Seed roster data
         periods = seed_roster_periods(session)

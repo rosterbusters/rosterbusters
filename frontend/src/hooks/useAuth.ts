@@ -6,11 +6,22 @@ import {
   type Body_login_access_token as AccessToken,
   type ApiError,
   DefaultService,
-  type UserPublic,
-  type UserRegister,
   UsersService,
 } from "@/client"
 import { handleError } from "@/utils"
+
+/** Matches RBACUserPublic from the backend */
+export interface CurrentUser {
+  userid: number
+  username: string
+  email: string
+  nurseid?: number | null
+  managerid?: number | null
+  isactive: boolean
+  is_superuser: boolean
+  wardid?: number | null
+  name?: string | null
+}
 
 const isLoggedIn = () => {
   return localStorage.getItem("access_token") !== null
@@ -20,27 +31,12 @@ const useAuth = () => {
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { data: user } = useQuery<UserPublic | null, Error>({
+  const { data: user } = useQuery<CurrentUser | null, Error>({
     queryKey: ["currentUser"],
-    queryFn: UsersService.readUserMe,
+    queryFn: UsersService.readUserMe as () => Promise<CurrentUser>,
     enabled: isLoggedIn(),
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
-  })
-
-  const signUpMutation = useMutation({
-    mutationFn: (data: UserRegister) =>
-      UsersService.registerUser({ requestBody: data }),
-
-    onSuccess: () => {
-      navigate({ to: "/login" })
-    },
-    onError: (err: ApiError) => {
-      handleError(err)
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] })
-    },
   })
 
   const login = async (data: AccessToken) => {
@@ -81,7 +77,6 @@ const useAuth = () => {
   }
 
   return {
-    signUpMutation,
     loginMutation,
     logout,
     user,

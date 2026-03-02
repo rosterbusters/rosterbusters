@@ -234,22 +234,6 @@ function Login() {
                   </RouterLink>
                 </Flex>
 
-                {/* Sign Up */}
-                <Flex justify="center" align="center" gap={2} pt={2}>
-                  <Text fontSize="sm" color="gray.500">
-                    Don't have an account?
-                  </Text>
-                  <RouterLink 
-                    to="/signup" 
-                    style={{ 
-                      fontSize: "13px", 
-                      fontWeight: 600,
-                      textDecoration: "none"
-                    }}
-                  >
-                    Sign Up
-                  </RouterLink>
-                </Flex>
               </VStack>
             </Box>
 

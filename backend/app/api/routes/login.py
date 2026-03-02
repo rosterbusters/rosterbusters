@@ -58,21 +58,6 @@ async def auth_google_callback(
                     detail=f"Only {', '.join(allowed_domains)} email addresses are allowed",
                 )
 
-        statement = select(User).where(User.email == email)
-        user = session.exec(statement).first()
-
-        if not user:
-            user = User(
-                email=email,
-                full_name=user_info.get("name", ""),
-                hashed_password=get_password_hash(security.generate_random_password()),
-                is_active=True,
-                is_superuser=False,
-            )
-            session.add(user)
-            session.commit()
-            session.refresh(user)
-
         from app.models import Nurse, NurseManager, RBACUser, Role, UserRole
 
         rbac_statement = select(RBACUser).where(RBACUser.email == email)

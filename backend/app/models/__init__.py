@@ -6,27 +6,13 @@ Re-exports all models for backwards compatibility with `from app.models import .
 
 from sqlmodel import SQLModel
 
-# Web authentication models
+# Web schemas (no more User/Item models)
 from app.models.web import (
-    Item,
-    ItemBase,
-    ItemCreate,
-    ItemPublic,
-    ItemsPublic,
-    ItemUpdate,
     Message,
     NewPassword,
     Token,
     TokenPayload,
     UpdatePassword,
-    User,
-    UserBase,
-    UserCreate,
-    UserPublic,
-    UserRegister,
-    UsersPublic,
-    UserUpdate,
-    UserUpdateMe,
 )
 
 # RBAC models
@@ -71,26 +57,12 @@ from app.models.notification_models import (
 __all__ = [
     # SQLModel base
     "SQLModel",
-    # Web auth
-    "Item",
-    "ItemBase",
-    "ItemCreate",
-    "ItemPublic",
-    "ItemsPublic",
-    "ItemUpdate",
+    # Web schemas
     "Message",
     "NewPassword",
     "Token",
     "TokenPayload",
     "UpdatePassword",
-    "User",
-    "UserBase",
-    "UserCreate",
-    "UserPublic",
-    "UserRegister",
-    "UsersPublic",
-    "UserUpdate",
-    "UserUpdateMe",
     # RBAC
     "Nurse",
     "NurseManager",
