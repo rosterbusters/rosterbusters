@@ -16,7 +16,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import RequestCalendar from "@/components/NurseManager/Requests/ShiftRequests/RequestCalendar";
-import LeaveRequestCalendar from "@/components/WardStaff/Requests/LeaveRequests/LeaveRequestCalendar";
+import LeaveRequestCalendar from "@/components/NurseManager/Requests/LeaveRequests/LeaveRequestCalendar";
 import { WardsService, type Ward } from "@/client";
 
 export const Route = createFileRoute("/nurse-manager/request-application")({

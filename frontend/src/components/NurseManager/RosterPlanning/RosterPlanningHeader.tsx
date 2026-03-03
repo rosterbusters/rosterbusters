@@ -29,8 +29,9 @@ import {
 import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge";
 
 const MOCK_DATA_OPTIONS = [
-  { value: "", label: "— Load mock data —" },
+  { value: "", label: "Load mock data" },
   { value: "ga_ward4", label: "GA Ward 4" },
+  { value: "ga_ward5", label: "GA Ward 5" },
   { value: "ga_ward6", label: "GA Ward 6" },
   { value: "milp_ward4", label: "MILP Ward 4" },
   { value: "milp_ward5", label: "MILP Ward 5" },

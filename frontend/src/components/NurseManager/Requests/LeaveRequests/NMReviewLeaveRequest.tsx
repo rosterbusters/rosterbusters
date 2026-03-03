@@ -9,6 +9,7 @@ import {
   Badge,
   Text,
   VStack,
+  HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -16,23 +17,27 @@ import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
 
-interface EditLeaveRequestProps {
+interface NMReviewLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
   requestId: number;
-  initialLeaveType: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  nurseName: string;
+  currentStatus: string;
 }
 
-export const EditLeaveRequest = ({
+export const NMReviewLeaveRequest = ({
   isOpen,
   onClose,
   requestId,
-  initialLeaveType,
+  leaveType,
   startDate,
-}: EditLeaveRequestProps) => {
-  const [leaveType, setLeaveType] = useState<string[]>([initialLeaveType]);
+  endDate,
+  nurseName,
+}: NMReviewLeaveRequestProps) => {
+  const [selectedLeaveType, setSelectedLeaveType] = useState<string[]>([leaveType]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     new Date(startDate),
   );
@@ -58,9 +63,9 @@ export const EditLeaveRequest = ({
   );
 
   useEffect(() => {
-    setLeaveType([initialLeaveType]);
+    setSelectedLeaveType([leaveType]);
     setRequestDate(new Date(startDate));
-  }, [initialLeaveType, startDate, isOpen]);
+  }, [leaveType, startDate, isOpen]);
 
   const toDateStr = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -69,14 +74,13 @@ export const EditLeaveRequest = ({
     mutationFn: () =>
       LeaveRequestsService.updateLeaveRequest({
         leaveId: requestId,
-        leavetype: leaveType[0],
+        leavetype: selectedLeaveType[0],
         startdate: requestDate ? toDateStr(requestDate) : undefined,
         enddate: requestDate ? toDateStr(requestDate) : undefined,
       }),
     onSuccess: () => {
       showSuccessToast("Leave request updated!");
       queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -91,7 +95,6 @@ export const EditLeaveRequest = ({
     onSuccess: () => {
       showSuccessToast("Leave request withdrawn.");
       queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -101,7 +104,7 @@ export const EditLeaveRequest = ({
   });
 
   const handleSave = () => {
-    if (leaveType.length === 0) {
+    if (selectedLeaveType.length === 0) {
       showErrorToast("Please select a leave type.");
       return;
     }
@@ -130,11 +133,15 @@ export const EditLeaveRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems="start" gap={4} maxWidth="225px">
+                <HStack>
+                  <Text fontWeight="medium" color="foreground">Nurse:</Text>
+                  <Text>{nurseName}</Text>
+                </HStack>
                 <Select.Root
                   collection={leaveCollection}
                   size="sm"
-                  value={leaveType}
-                  onValueChange={(e) => setLeaveType(e.value)}
+                  value={selectedLeaveType}
+                  onValueChange={(e) => setSelectedLeaveType(e.value)}
                 >
                   <Select.Label>Leave Type</Select.Label>
                   <Select.Control>

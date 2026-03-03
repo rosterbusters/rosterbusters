@@ -73,7 +73,7 @@ function NotificationDropdown({ role }: { role?: "nurse" | "manager" }) {
   // Map API response: use subject as the display description
   const notifications: NotificationItem[] = (data?.notifications ?? []).map((n) => ({
     ...n,
-    description: n.subject,
+    description: n.messagebody,
   }));
 
   // Sort notifications by date (most recent first)

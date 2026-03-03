@@ -3,7 +3,7 @@ import { Flex, VStack } from "@chakra-ui/react";
 import { RequestsOverviewTable } from "@/components/NurseManager/Requests/RequestsOverviewTable";
 import useAuth from "@/hooks/useAuth";
 
-export const Route = createFileRoute("/nurse-manager/shift-overview")({
+export const Route = createFileRoute("/nurse-manager/request-overview")({
   component: ShiftOverviewPage,
 });
 
