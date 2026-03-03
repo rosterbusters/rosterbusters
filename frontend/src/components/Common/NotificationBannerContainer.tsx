@@ -3,10 +3,17 @@ import { useQuery } from "@tanstack/react-query";
 import { NotificationsService } from "@/client/NotificationsService";
 import NotificationBanner from "@/components/Common/NotificationBanner";
 
-export default function NurseManagerNotificationBanner() {
+interface NotificationBannerContainerProps {
+  role: "nurse" | "manager";
+}
+
+export default function NotificationBannerContainer({ role }: NotificationBannerContainerProps) {
   const { data: notificationsData, isLoading, error } = useQuery({
-    queryKey: ["managerNotifications"],
-    queryFn: () => NotificationsService.getManagerNotifications({ limit: 20, offset: 0 }),
+    queryKey: [role === "manager" ? "managerNotifications" : "staffNotifications"],
+    queryFn: () =>
+      role === "manager"
+        ? NotificationsService.getManagerNotifications({ limit: 20, offset: 0 })
+        : NotificationsService.getNurseNotifications({ limit: 20, offset: 0 }),
     refetchInterval: 60000,
   });
 

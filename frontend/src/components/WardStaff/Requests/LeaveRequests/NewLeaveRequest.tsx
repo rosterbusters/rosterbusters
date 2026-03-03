@@ -13,7 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
+import { LeaveRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
 
 interface NewLeaveRequestProps {
@@ -36,21 +36,16 @@ export const NewLeaveRequest = ({
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
-  const { data: periods } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-  });
-
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
-    queryFn: () => ShiftRequestsService.getLeaveCodes(),
+    queryFn: () => LeaveRequestsService.getLeaveCodes(),
     staleTime: 5 * 60 * 1000,
   });
 
   const leaveCollection = useMemo(
     () =>
       createListCollection({
-        items: (leaveCodes ?? []).filter((lc) => lc.shiftcode !== "DO" && lc.shiftcode !== "RD").map((lc) => ({
+        items: (leaveCodes ?? []).map((lc) => ({
           value: lc.shiftcode,
           label: lc.shiftcode,
           description: lc.description,
@@ -60,11 +55,12 @@ export const NewLeaveRequest = ({
   );
 
   const mutation = useMutation({
-    mutationFn: (data: ShiftRequestCreate) =>
-      ShiftRequestsService.createShiftRequest({ requestBody: data }),
+    mutationFn: (data: { startdate: string; enddate: string; leavetype: string }) =>
+      LeaveRequestsService.createLeaveRequest(data),
     onSuccess: () => {
       showSuccessToast("Leave request created!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -81,20 +77,6 @@ export const NewLeaveRequest = ({
   }, [isOpen]);
 
   const handleSubmit = () => {
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const activePeriod =
-      periods?.find(
-        (p) =>
-          p.status === "RequestOpen" &&
-          p.startdate <= todayStr &&
-          p.enddate >= todayStr,
-      ) ?? periods?.find((p) => p.status === "RequestOpen");
-
-    if (!activePeriod) {
-      showErrorToast("There is no open request period available.");
-      return;
-    }
     if (leaveType.length === 0) {
       showErrorToast("Please select a leave type.");
       return;
@@ -104,10 +86,12 @@ export const NewLeaveRequest = ({
       return;
     }
 
+    const dateStr = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`;
+
     mutation.mutate({
-      periodid: activePeriod.periodid,
-      preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
-      preferredshifttype: leaveType[0],
+      startdate: dateStr,
+      enddate: dateStr,
+      leavetype: leaveType[0],
     });
   };
 

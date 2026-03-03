@@ -851,7 +851,7 @@ def seed_roster_entries(
         logger.info(f"  {nurse.name}: {nurse_count} entries ({first_of_prev_month} → {range_end})")
 
     logger.info(f"  Total: {count} roster entries")
-    return count
+    return count  # Changed from: return roster
 
 
 def seed_shift_requests(
@@ -1170,18 +1170,32 @@ def seed_notifications(
     close_date = str(current_period.requestclosedate)
     end_date = str(current_period.enddate)
 
+    # Get a random recent shift to use for SHIFT_UPDATED template
+    recent_rosters = session.exec(
+        select(Roster).where(
+            Roster.periodid == current_period.periodid
+        ).limit(10)
+    ).all()
+    
+    # Format the shift date properly - use strftime for consistent date format
+    if recent_rosters:
+        recent_shift_date = recent_rosters[0].shiftdate.strftime("%Y-%m-%d")
+    else:
+        recent_shift_date = date.today().strftime("%Y-%m-%d")
+
     # Each entry: (NotificationType, template_vars_dict, priority)
     nurse_templates: list[tuple[NotificationType, dict, str]] = [
-        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},  "Normal"),
-        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},  "Normal"),
-        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},  "Normal"),
-        (NotificationType.SHIFT_REQUEST_REJECTED,      {"roster_period": period_name},  "Normal"),
-        (NotificationType.SHIFT_REQUEST_PERIOD_CLOSED, {"roster_period": period_name},  "Urgent"),
-        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},  "Normal"),
-        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},  "Normal"),
-        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},  "Normal"),
+        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_REJECTED,      {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_CLOSED, {"roster_period": period_name},          "Urgent"),
+        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_UPDATED,               {"start_date": recent_shift_date},       "Normal"),
     ]
-
+    
     manager_templates: list[tuple[NotificationType, dict, str]] = [
         (NotificationType.ROSTER_PLANNING,         {"roster_period": period_name},                                              "Normal"),
         (NotificationType.SHIFT_REQUEST_REVIEW_OPEN, {"roster_period": period_name},                                           "Normal"),
@@ -1228,7 +1242,7 @@ def seed_notifications(
             createdat=created_at,
         )
 
-    # Create at least 3 notifications for every nurse
+    # Create one notification per template for every nurse
     for nurse in nurses:
         existing_count = session.exec(
             select(NotificationQueue).where(
@@ -1237,12 +1251,11 @@ def seed_notifications(
             )
         ).all()
 
-        if len(existing_count) >= 3:
+        if len(existing_count) >= len(nurse_templates):
             continue
 
-        num_notifications = fake.random_int(min=3, max=5)
-        for i in range(num_notifications - len(existing_count)):
-            template = nurse_templates[i % len(nurse_templates)]
+        for i in range(len(existing_count), len(nurse_templates)):
+            template = nurse_templates[i]
             session.add(_make_notification("Nurse", nurse.nurseid, template))
             count += 1
 
@@ -1380,7 +1393,7 @@ def seed_all() -> None:
 
         # Seed roster data
         periods = seed_roster_periods(session)
-        seed_roster_entries(session, nurses, wards, periods, managers)
+        rosters=seed_roster_entries(session, nurses, wards, periods, managers)
 
         # Seed shift requests (~20% of nurses, mixed statuses)
         seed_shift_requests(session, nurses, periods, managers)

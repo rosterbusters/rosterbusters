@@ -61,3 +61,5 @@ class LeaveRequestCreate(SQLModel):
 
 class LeaveRequestUpdate(SQLModel):
     leavetype: Optional[str] = None
+    startdate: Optional[date] = None
+    enddate: Optional[date] = None

@@ -40,6 +40,11 @@ class NotificationType(str, Enum):
         "Your Shift Request for {roster_period} has been Rejected.",
     )
 
+    SHIFT_UPDATED = (
+        "ShiftUpdated",
+        "Your Shift for {start_date} has been changed.",
+    )
+
     # ------------------------------------------------------------------ #
     # Nurse Manager notifications                                          #
     # ------------------------------------------------------------------ #

@@ -189,12 +189,6 @@ def get_my_shifts(
 # SHIFT CODE ENDPOINTS
 # ─────────────────────────────────────────────
 
-@router.get("/leave-codes", response_model=list[ShiftCodePublic])
-def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
-    """Get all shift codes where isworking is false (leave/off codes)."""
-    statement = select(ShiftCode).where(ShiftCode.isworking == False)  # noqa: E712
-    return list(session.exec(statement).all())
-
 
 @router.get("/shift-codes", response_model=list[ShiftCodePublic])
 def get_all_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:

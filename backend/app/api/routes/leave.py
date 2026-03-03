@@ -9,10 +9,37 @@ from app.api.deps import CurrentUser, SessionDep
 from app.models.enums import NotificationType
 from app.models.leave import LeaveRequest, LeaveRequestCreate, LeaveRequestPublic, LeaveRequestUpdate
 from app.models.rbac import Nurse, RBACUser, Role, UserRole
-from app.rbac import get_rbac_user_by_email
+from app.models.shifts import ShiftCode, ShiftCodePublic
 
 # tag "leave-requests" generates LeaveRequestsService in the client
 router = APIRouter(prefix="/leave", tags=["leave-requests"])
+
+
+OFF_DAY_CODES = ["DO", "RD", "HOL", "FD", "SD", "OFF", "REST"]
+
+
+@router.get("/leave-codes", response_model=list[ShiftCodePublic])
+def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
+    """Get leave request codes, excluding off-day codes (DO, RD, etc.)."""
+    statement = select(ShiftCode).where(
+        ShiftCode.isworking == False,  # noqa: E712
+        ShiftCode.shiftcode.notin_(OFF_DAY_CODES),  # type: ignore[attr-defined]
+    )
+    return list(session.exec(statement).all())
+
+@router.get("/me", response_model=list[LeaveRequestPublic])
+def get_my_leave_requests(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Get all leave requests for the logged-in nurse."""
+    if not current_user.nurseid:
+        return []
+    return list(
+        session.exec(
+            select(LeaveRequest).where(LeaveRequest.nurseid == current_user.nurseid)
+        ).all()
+    )
 
 
 @router.post("/", response_model=LeaveRequestPublic)
@@ -22,15 +49,14 @@ def create_leave_request(
     leave_in: LeaveRequestCreate,
 ) -> Any:
     """Submit a new leave request for the logged-in nurse."""
-    rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
+    if not current_user.nurseid:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
-    nurse = session.get(Nurse, rbac_user.nurseid)
+    nurse = session.get(Nurse, current_user.nurseid)
     if not nurse:
         raise HTTPException(status_code=404, detail="Nurse profile not found")
 
-    leave = LeaveRequest(**leave_in.model_dump(), nurseid=rbac_user.nurseid)
+    leave = LeaveRequest(**leave_in.model_dump(), nurseid=current_user.nurseid)
     session.add(leave)
     session.commit()
     session.refresh(leave)
@@ -89,6 +115,28 @@ def get_ward_leave_requests(
     return list(session.exec(statement).all())
 
 
+@router.patch("/{leave_id}/review", response_model=LeaveRequestPublic)
+def review_leave_request(
+    leave_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+    status: str,
+) -> Any:
+    """Approve or reject a leave request. Only a NurseManager can review."""
+    if status not in ("Approved", "Rejected"):
+        raise HTTPException(status_code=422, detail="status must be Approved or Rejected")
+
+    leave_request = session.get(LeaveRequest, leave_id)
+    if not leave_request:
+        raise HTTPException(status_code=404, detail="Leave request not found")
+
+    leave_request.status = status
+    session.add(leave_request)
+    session.commit()
+    session.refresh(leave_request)
+    return leave_request
+
+
 @router.patch("/{leave_id}", response_model=LeaveRequestPublic)
 def update_leave_request(
     leave_id: int,
@@ -97,18 +145,21 @@ def update_leave_request(
     update_in: LeaveRequestUpdate,
 ) -> Any:
     """Update a leave request's type. Only the owning nurse can update."""
-    rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
+    if not current_user.nurseid:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")
-    if leave_request.nurseid != rbac_user.nurseid:
+    if leave_request.nurseid != current_user.nurseid:
         raise HTTPException(status_code=403, detail="Not authorized to update this request")
 
     if update_in.leavetype is not None:
         leave_request.leavetype = update_in.leavetype
+    if update_in.startdate is not None:
+        leave_request.startdate = update_in.startdate
+    if update_in.enddate is not None:
+        leave_request.enddate = update_in.enddate
 
     session.add(leave_request)
     session.commit()
@@ -123,14 +174,13 @@ def delete_leave_request(
     current_user: CurrentUser,
 ) -> None:
     """Withdraw/delete a leave request. Only the owning nurse can delete."""
-    rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
+    if not current_user.nurseid:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")
-    if leave_request.nurseid != rbac_user.nurseid:
+    if leave_request.nurseid != current_user.nurseid:
         raise HTTPException(status_code=403, detail="Not authorized to delete this request")
 
     session.delete(leave_request)

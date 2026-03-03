@@ -3,8 +3,8 @@ import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
-import { EditLeaveRequest } from "./EditLeaveRequest";
-import { NewLeaveRequest } from "./NewLeaveRequest";
+import { NMReviewLeaveRequest } from "./NMReviewLeaveRequest";
+import { NewLeaveRequest } from "@/components/WardStaff/Requests/LeaveRequests/NewLeaveRequest";
 import moment from "moment";
 
 interface CustomMonthViewProps {
@@ -52,6 +52,8 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
     leaveType: string;
     startDate: string;
     endDate: string;
+    nurseName: string;
+    status: string;
   } | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
@@ -134,16 +136,15 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               shift={ev.title}
                               nurseName={ev.resource?.nurseName}
                               owned={ev.resource?.isOwn}
-                              onClick={
-                                ev.resource?.isOwn
-                                  ? () =>
-                                      setSelectedRequest({
-                                        requestId: ev.resource.requestId,
-                                        leaveType: ev.resource.shiftType,
-                                        startDate: ev.resource.startDate,
-                                        endDate: ev.resource.endDate,
-                                      })
-                                  : undefined
+                              onClick={() =>
+                                setSelectedRequest({
+                                  requestId: ev.resource.requestId,
+                                  leaveType: ev.resource.shiftType,
+                                  startDate: ev.resource.startDate,
+                                  endDate: ev.resource.endDate,
+                                  nurseName: ev.resource.nurseName,
+                                  status: ev.resource.status,
+                                })
                               }
                             />
                           </Box>
@@ -157,13 +158,15 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
       </VStack>
 
       {selectedRequest && (
-        <EditLeaveRequest
+        <NMReviewLeaveRequest
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
           requestId={selectedRequest.requestId}
-          initialLeaveType={selectedRequest.leaveType}
+          leaveType={selectedRequest.leaveType}
           startDate={selectedRequest.startDate}
           endDate={selectedRequest.endDate}
+          nurseName={selectedRequest.nurseName}
+          currentStatus={selectedRequest.status}
         />
       )}
 
