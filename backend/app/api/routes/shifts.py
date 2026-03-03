@@ -2,10 +2,10 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import or_, select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models.roster import RosterPeriod, RosterPeriodPublic
+from app.models.roster import LeaveRequest, LeaveRequestPublic, RosterPeriod, RosterPeriodPublic
 from app.models.shifts import (
     ShiftCode,
     ShiftCodePublic,
@@ -131,7 +131,7 @@ def create_shift_request(
     if not rbac_user or not rbac_user.nurseid:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
-    # Count existing requests for this nurse in this period (max 3 allowed)
+    # Count existing requests for this nurse in this period (for request number assignment)
     existing_requests = list(
         session.exec(
             select(ShiftRequest).where(
@@ -141,11 +141,29 @@ def create_shift_request(
         ).all()
     )
 
-    if len(existing_requests) >= 3:
-        raise HTTPException(
-            status_code=400,
-            detail="You have reached the maximum of 3 shift requests per roster period",
+    # Enforce 3-request cap for working shifts and DO/RD (leave requests are unlimited)
+    _CAPPED_CODES = {"DO", "RD"}
+    shift_code = session.exec(
+        select(ShiftCode).where(ShiftCode.shiftcode == request_in.preferredshifttype)
+    ).first()
+
+    if shift_code and (shift_code.isworking or shift_code.shiftcode in _CAPPED_CODES):
+        existing_capped = list(
+            session.exec(
+                select(ShiftRequest)
+                .join(ShiftCode, ShiftRequest.preferredshifttype == ShiftCode.shiftcode)
+                .where(
+                    ShiftRequest.nurseid == rbac_user.nurseid,
+                    ShiftRequest.periodid == request_in.periodid,
+                    or_(ShiftCode.isworking == True, ShiftCode.shiftcode.in_(list(_CAPPED_CODES))),  # noqa: E712
+                )
+            ).all()
         )
+        if len(existing_capped) >= 3:
+            raise HTTPException(
+                status_code=400,
+                detail="You have reached the maximum of 3 shift requests per roster period",
+            )
 
     # NOTE: Per-date uniqueness is NOT enforced — the DB schema enforces uniqueness on
     # (NurseID, PeriodID, RequestNumber) only. Multiple requests on the same date
@@ -153,7 +171,7 @@ def create_shift_request(
 
     # Determine the next request number
     used_numbers = {r.requestnumber for r in existing_requests}
-    next_number = next(n for n in [1, 2, 3] if n not in used_numbers)
+    next_number = next(n for n in range(1, len(existing_requests) + 2) if n not in used_numbers)
 
     shift_request = ShiftRequest(
         **request_in.model_dump(),
@@ -249,4 +267,28 @@ def get_ward_nurses(
 ) -> Any:
     """Get all nurses for a specific ward."""
     statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    return list(session.exec(statement).all())
+
+
+@router.get("/ward/{ward_id}/leave-requests", response_model=list[LeaveRequestPublic])
+def get_ward_leave_requests(
+    ward_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+) -> Any:
+    """Get all leave requests for nurses in a specific ward, optionally filtered by date range."""
+    nurse_ids = list(
+        session.exec(select(Nurse.nurseid).where(Nurse.wardid == ward_id)).all()
+    )
+    if not nurse_ids:
+        return []
+
+    statement = select(LeaveRequest).where(LeaveRequest.nurseid.in_(nurse_ids))  # type: ignore[attr-defined]
+    if start_date is not None:
+        statement = statement.where(LeaveRequest.enddate >= start_date)
+    if end_date is not None:
+        statement = statement.where(LeaveRequest.startdate <= end_date)
+
     return list(session.exec(statement).all())

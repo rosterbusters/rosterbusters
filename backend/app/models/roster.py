@@ -135,6 +135,18 @@ class RosterPeriodPublic(SQLModel):
     status: str
 
 
+class LeaveRequestPublic(SQLModel):
+    leaveid: int
+    nurseid: int
+    startdate: date
+    enddate: date
+    leavetype: str
+    leavecategory: str
+    status: str
+    reason: Optional[str] = None
+    requestedat: datetime
+
+
 class LeaveRequest(SQLModel, table=True):
     __tablename__ = "leaverequest"
 

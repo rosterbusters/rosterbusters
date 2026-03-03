@@ -12,9 +12,8 @@ import {
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
-import { AssignableStatus } from "@/components/NurseManager/Requests/AssignableStatus";
-import RequestCalendar from "@/components/NurseManager/Requests/RequestCalendar";
-import { NewShiftRequest } from "@/components/WardStaff/Requests/NewShiftRequest";
+import RequestCalendar from "@/components/NurseManager/Requests/ShiftRequests/RequestCalendar";
+import { NewShiftRequest } from "@/components/WardStaff/Requests/ShiftRequests/NewShiftRequest";
 import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/nurse-manager/leave-overview")({
@@ -72,11 +71,9 @@ function LeaveOverviewPage() {
             Click on a date to create/edit shift request.
           </Text>
           <HStack justifySelf="end">
-            <AssignableStatus />
           </HStack>
         </Grid>
         <Box h="100%" w="100%">
-          <RequestCalendar wardId={(user as any)?.wardid} />
         </Box>
       </VStack>
       <NewShiftRequest

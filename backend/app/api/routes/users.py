@@ -128,6 +128,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     Get current user (using RBAC authentication).
     """
     wardid = None
+    name = None
     if current_user.nurseid:
         # Nurse: look up their ward from the Nurse table
         nurse = session.exec(
@@ -135,11 +136,15 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         ).first()
         if nurse:
             wardid = nurse.wardid
+            name = nurse.name
     elif current_user.managerid:
-        # Nurse Manager: they manage multiple wards so wardid stays None.
-        # The manager's ward context is resolved separately on pages that need it
-        # (e.g., leave-overview uses the manager's own ward selector).
-        wardid = None
+        # Nurse Manager: look up their display name from the NurseManager table.
+        # They manage multiple wards so wardid stays None.
+        manager = session.exec(
+            select(NurseManager).where(NurseManager.managerid == current_user.managerid)
+        ).first()
+        if manager:
+            name = manager.name
 
     return RBACUserPublic(
         userid=current_user.userid,
@@ -149,6 +154,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         managerid=current_user.managerid,
         isactive=current_user.isactive,
         wardid=wardid,
+        name=name,
     )
 
 

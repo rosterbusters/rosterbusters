@@ -110,12 +110,15 @@ export function getCellStyle(
   maximum?: number,
 ): { bg: string; color: string } {
   if (!isRosterGenerated) {
-    return { bg: "transparent", color: "#4B8798" };
+    return { bg: "transparent", color: "#65A30D" };
   }
   if (count < minimum) {
-    return { bg: "#C62828", color: "white" };          // Red — below minimum
+    return { bg: "#BE123C", color: "white" };          // Red — below minimum
   }
-  return { bg: "white", color: "#4B8798" };            // No colour — sufficient or excess
+  if (maximum !== undefined && count > maximum) {
+    return { bg: "#65A30D", color: "white" };          // Green — above maximum (surplus)
+  }
+  return { bg: "white", color: "#4B8798" };            // White — within [min, max]
 }
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
@@ -225,7 +228,7 @@ export function ShiftSummaryTable({
       bottom={0}
       bg="white"
       border="2px solid"
-      borderColor="#7EC8D9"
+      borderColor="#06B6D4"
       boxShadow="0 -4px 6px -1px rgba(0, 0, 0, 0.1)"
       w="100%"
       flexShrink={0}
@@ -265,7 +268,7 @@ export function ShiftSummaryTable({
                       key={type}
                       fontSize="xs"
                       fontWeight="semibold"
-                      color="#4B8798"
+                      color="primary"
                       flex={1}
                       textAlign="center"
                       py={1}
@@ -287,7 +290,7 @@ export function ShiftSummaryTable({
               <Table.Cell
                 fontWeight="semibold"
                 fontSize="xs"
-                color="#4B8798"
+                color="primary"
                 borderRight="1px solid"
                 borderColor="gray.200"
                 py={1}
@@ -479,18 +482,18 @@ export function ShiftSummaryTable({
           </Table.Row>
 
           {/* Total Row */}
-          <Table.Row bg="#4B8798">
+          <Table.Row bg="menuactive">
             {/* Total Label */}
             <Table.Cell
               fontWeight="bold"
               fontSize="xs"
-              color="#4B8798"
+              color="primary"
               borderRight="1px solid"
               borderColor="rgba(255,255,255,0.3)"
               py={1}
               px={2}
               textAlign="right"
-              bg="#ADD8E6"
+              bg="menuactive"
             >
               Total
             </Table.Cell>
@@ -506,7 +509,7 @@ export function ShiftSummaryTable({
                   borderRight="1px solid"
                   borderColor="rgba(255,255,255,0.3)"
                   p={0}
-                  bg="#ADD8E6"
+                  bg="menuactive"
                 >
                   <Flex>
                     {SHIFT_TYPES.map((shiftType) => {
@@ -520,7 +523,7 @@ export function ShiftSummaryTable({
                           py={1}
                           fontSize="xs"
                           fontWeight="bold"
-                          color="#4B8798"
+                          color="primary"
                         >
                           {total}
                         </Flex>

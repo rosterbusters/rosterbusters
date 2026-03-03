@@ -32,7 +32,7 @@ export const system = createSystem(defaultConfig, {
     semanticTokens: {
       colors: {
         danger: { value: "#BE123C" },
-        success: { value: "lime-600" },
+        success: { value: "#65A30D" },
         alert:{value:"#EAB308"},
         faintforeground: { value: "neutral-400" },
         menuactive: { value: "#DDE8EA" },

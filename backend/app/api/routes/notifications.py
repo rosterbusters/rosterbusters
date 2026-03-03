@@ -116,30 +116,30 @@ def get_manager_notifications(
     
     # Build query
     query = select(NotificationQueue).where(
-        NotificationQueue.recipienttype == "Manager",
+        NotificationQueue.recipienttype == "NurseManager",
         NotificationQueue.recipientid == manager_id
     )
-    
+
     if status:
         query = query.where(NotificationQueue.status == status)
     if notification_type:
         query = query.where(NotificationQueue.notificationtype == notification_type)
-    
+
     # Get total count
     count_query = select(func.count()).select_from(NotificationQueue).where(
-        NotificationQueue.recipienttype == "Manager",
+        NotificationQueue.recipienttype == "NurseManager",
         NotificationQueue.recipientid == manager_id
     )
     if status:
         count_query = count_query.where(NotificationQueue.status == status)
     if notification_type:
         count_query = count_query.where(NotificationQueue.notificationtype == notification_type)
-    
+
     total = db.exec(count_query).one()
-    
+
     # Get unread count
     unread_query = select(func.count()).select_from(NotificationQueue).where(
-        NotificationQueue.recipienttype == "Manager",
+        NotificationQueue.recipienttype == "NurseManager",
         NotificationQueue.recipientid == manager_id,
         NotificationQueue.status != "Read"
     )
@@ -170,7 +170,7 @@ def mark_notifications_read(
     if not nurse_id and not manager_id:
         raise HTTPException(status_code=404, detail="User record not found")
     
-    recipient_type = "Nurse" if nurse_id else "Manager"
+    recipient_type = "Nurse" if nurse_id else "NurseManager"
     recipient_id = nurse_id if nurse_id else manager_id
     
     for notification_id in request.notification_ids:
@@ -205,7 +205,7 @@ def mark_notifications_unread(
     if not nurse_id and not manager_id:
         raise HTTPException(status_code=404, detail="User record not found")
     
-    recipient_type = "Nurse" if nurse_id else "Manager"
+    recipient_type = "Nurse" if nurse_id else "NurseManager"
     recipient_id = nurse_id if nurse_id else manager_id
     
     for notification_id in request.notification_ids:
@@ -239,7 +239,7 @@ def get_notification_stats(
     if not nurse_id and not manager_id:
         raise HTTPException(status_code=404, detail="User record not found")
     
-    recipient_type = "Nurse" if nurse_id else "Manager"
+    recipient_type = "Nurse" if nurse_id else "NurseManager"
     recipient_id = nurse_id if nurse_id else manager_id
     
     # Get total count

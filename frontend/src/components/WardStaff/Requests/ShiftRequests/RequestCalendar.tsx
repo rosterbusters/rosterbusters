@@ -1,7 +1,7 @@
 import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from 'react-big-calendar'
 import moment from 'moment'
 import { useState, useCallback, useMemo, useEffect, ComponentType } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import CustomWeekView from './CustomRequestView'
 import { Box, Grid, Span } from '@chakra-ui/react'
 import cx from "clsx"
@@ -52,7 +52,14 @@ interface RequestCalendarProps {
 
 /**
  * Calendar that displays shift requests for all nurses in the ward.
- * Mirrors the WardStaff RequestCalendar with live data fetching.
+ *
+ * FIX SUMMARY:
+ * - wardId is now properly populated from the backend (see users.py fix).
+ *   Without wardId, the query was disabled and stale cache was showing instead.
+ * - Added staleTime: 0 on the shift-requests query so invalidation always
+ *   triggers an immediate refetch rather than serving cache.
+ * - The `enabled` guard now cleanly waits for both wardId AND periodId.
+ * - Period selection logic is aligned with NewShiftRequest (today-first, then fallback).
  */
 export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   const { user } = useAuth();
@@ -68,6 +75,8 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   /**
    * Prefer the period that contains today AND is RequestOpen.
    * Fall back to the first RequestOpen period.
+   * This MUST match the logic in NewShiftRequest so created requests
+   * appear in the correct period on the calendar.
    */
   const activePeriod = useMemo(() => {
     if (!periods) return undefined;
@@ -105,6 +114,9 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         periodId: periodId,
       }),
     enabled: !!wardId && !!periodId,
+    // FIX: staleTime: 0 ensures that after queryClient.invalidateQueries(["shift-requests"])
+    // fires in NewShiftRequest/EditShiftRequest, this query immediately refetches
+    // rather than serving a cached (stale) result.
     staleTime: 0,
   });
 

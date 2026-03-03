@@ -521,9 +521,10 @@ export function RosterGrid({
           <Text fontSize="sm" fontWeight="medium">
             {row.name}
           </Text>
-          {row.hasWarning && (
+          {/* {row.hasWarning && (
             <Icon as={AlertCircle} boxSize={4} color="danger" />
-          )}
+          )} */}
+          
         </HStack>
       </Table.Cell>
 

@@ -225,6 +225,7 @@ function NurseManagerHome() {
 
   const handleWardChange = useCallback((ward: Ward) => {
     setSelectedWard(ward);
+    localStorage.setItem("selectedWardId", String(ward.wardid));
   }, []);
 
   const handlePeriodChange = useCallback((period: RosterPeriod) => {
@@ -297,11 +298,10 @@ function NurseManagerHome() {
     },
     [localRosterData]
   );
-
   const handleExportXLSX = useCallback(() => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
   }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
-
+  
   const handleViewEditHistory = useCallback(() => {
     setIsEditHistoryOpen(true);
   }, []);
@@ -335,22 +335,14 @@ function NurseManagerHome() {
     ];
   }, [periods]);
 
-  // Generate mock wards if API wards are empty
-  const displayWards = useMemo(() => {
-    if (wards.length > 0) return wards;
-    return [
-      { wardid: 4, wardname: "Ward 4", wardtype: "Dementia", location: "Main" },
-      { wardid: 5, wardname: "Ward 5", wardtype: "Rehab", location: "Main" },
-      { wardid: 6, wardname: "Ward 6", wardtype: "Rehab", location: "Main" },
-    ] as Ward[];
-  }, [wards]);
-
-  // Set default ward if not set
+  // Set default ward if not set, restoring from localStorage if available
   useEffect(() => {
-    if (displayWards.length > 0 && !selectedWard) {
-      setSelectedWard(displayWards[0]);
+    if (wards.length > 0 && !selectedWard) {
+      const savedId = localStorage.getItem("selectedWardId");
+      const restored = savedId ? wards.find(w => String(w.wardid) === savedId) : null;
+      setSelectedWard(restored ?? wards[0]);
     }
-  }, [displayWards, selectedWard]);
+  }, [wards, selectedWard]);
 
   // Set default period if not set
   useEffect(() => {
@@ -383,7 +375,7 @@ function NurseManagerHome() {
           alignItems="start"
           justifyContent="center"
         >
-          <StatusBanner />
+          <StatusBanner ward={selectedWard} />
         </Stack>
 
         <Stack
@@ -406,7 +398,7 @@ function NurseManagerHome() {
         display="flex"
         flexDirection="column"
       >
-        <Box p={4} pb={0} position="relative" zIndex={2}>
+        <Box p={4} pb={0}>
           <RosterHeader
             currentStartDate={currentStartDate}
             viewMode={viewMode}

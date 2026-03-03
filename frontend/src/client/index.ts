@@ -5,3 +5,5 @@ export { OpenAPI, type OpenAPIConfig } from './core/OpenAPI';
 export * from './sdk.gen';
 export * from './types.gen';
 export { NotificationsService } from './NotificationsService';
+export { LeaveRequestsService } from './LeaveRequestsService';
+export type { LeaveRequestPublic } from './LeaveRequestsService';
