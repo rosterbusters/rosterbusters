@@ -33,7 +33,7 @@ function AdminNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { user, logout } = useAuth()
 
-  const userName = user?.full_name || user?.email || "Admin"
+  const userName = user?.name || user?.email || "Admin"
 
   const isActive = (path: string) => location.pathname === path
 
