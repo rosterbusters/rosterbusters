@@ -122,7 +122,10 @@ export function getCellStyle(
 }
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
-const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
+/** All roles — used for total row calculation only. */
+const ALL_STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
+/** Roles rendered as individual rows (HCA12 + HCA3 are merged into one combined row). */
+const DISPLAY_ROLES: StaffRole[] = ["RN", "EN"];
 const ROLE_LABEL: Record<StaffRole, string> = {
   RN: "RN",
   EN: "EN",
@@ -212,7 +215,7 @@ export function ShiftSummaryTable({
   const getTotal = (dateKey: string, shiftType: SummaryShiftType): number => {
     const dayCounts = shiftCounts.get(dateKey);
     if (!dayCounts) return 0;
-    return STAFF_ROLES.reduce(
+    return ALL_STAFF_ROLES.reduce(
       (sum, role) => sum + dayCounts[role][shiftType],
       0,
     );
@@ -280,8 +283,8 @@ export function ShiftSummaryTable({
         </Table.Header>
 
         <Table.Body>
-          {/* Role Rows (RN, EN, HCA) */}
-          {STAFF_ROLES.map((role) => (
+          {/* Role Rows: RN, EN (individual) */}
+          {DISPLAY_ROLES.map((role) => (
             <Table.Row key={role}>
               {/* Role Label */}
               <Table.Cell
@@ -388,6 +391,95 @@ export function ShiftSummaryTable({
               })}
             </Table.Row>
           ))}
+
+          {/* Combined HCA Row (HCA1&2 + HCA3) */}
+          <Table.Row key="HCA">
+            <Table.Cell
+              fontWeight="semibold"
+              fontSize="xs"
+              color="#4B8798"
+              borderRight="1px solid"
+              borderColor="gray.200"
+              py={1}
+              px={2}
+              textAlign="right"
+              bg="white"
+            >
+              HCA
+            </Table.Cell>
+
+            {dayColumns.map((col) => {
+              const dateKey = moment(col.date).format("YYYY-MM-DD");
+              const dayCounts = shiftCounts.get(dateKey);
+              const effectiveGuidelines = dateOverrides[dateKey] ?? guidelines;
+
+              return (
+                <Table.Cell
+                  key={col.field}
+                  textAlign="center"
+                  borderRight="1px solid"
+                  borderColor="gray.100"
+                  p={0}
+                >
+                  <Flex>
+                    {SHIFT_TYPES.map((shiftType) => {
+                      const count =
+                        (dayCounts?.["HCA12"]?.[shiftType] ?? 0) +
+                        (dayCounts?.["HCA3"]?.[shiftType] ?? 0);
+                      const combinedMin =
+                        effectiveGuidelines["HCA12"][shiftType].minimum +
+                        effectiveGuidelines["HCA3"][shiftType].minimum;
+                      const hca12Max = effectiveGuidelines["HCA12"][shiftType].maximum;
+                      const hca3Max = effectiveGuidelines["HCA3"][shiftType].maximum;
+                      const combinedMax =
+                        hca12Max !== undefined && hca3Max !== undefined
+                          ? hca12Max + hca3Max
+                          : undefined;
+                      const style = getCellStyle(
+                        count,
+                        combinedMin,
+                        isRosterGenerated,
+                        combinedMax,
+                      );
+
+                      return (
+                        <Tooltip
+                          key={shiftType}
+                          content={
+                            <Text fontSize="xs">
+                              Min: {combinedMin}
+                              {combinedMax !== undefined ? `  Max: ${combinedMax}` : ""}
+                            </Text>
+                          }
+                          lazyMount={true}
+                          contentProps={{
+                            css: {
+                              "--tooltip-bg": "white",
+                              "box-shadow": "0px 0px 4px rgba(0,0,0,0.1)",
+                              color: "black",
+                            },
+                          }}
+                        >
+                          <Flex
+                            justify="center"
+                            align="center"
+                            bg={style.bg}
+                            color={style.color}
+                            flex={1}
+                            py={1}
+                            fontSize="xs"
+                            fontWeight="semibold"
+                          >
+                            {count}
+                          </Flex>
+                        </Tooltip>
+                      );
+                    })}
+                  </Flex>
+                </Table.Cell>
+              );
+            })}
+          </Table.Row>
 
           {/* Total Row */}
           <Table.Row bg="menuactive">
