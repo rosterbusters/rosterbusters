@@ -70,40 +70,32 @@ export function ShiftBadge({
   const isWeekView = viewMode === "week";
   const hasComment = !!comment;
 
-  // Comment indicator icon (positioned absolutely)
-  const commentIcon = hasComment ? (
-    <Box
-      position="absolute"
-      top="-4px"
-      right="-4px"
-      bg="white"
-      borderRadius="full"
-      w={isWeekView ? "16px" : "14px"}
-      h={isWeekView ? "16px" : "14px"}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      boxShadow="0 1px 3px rgba(0,0,0,0.2)"
-    >
-      <MessageSquare size={isWeekView ? 10 : 8} color="#4B8798" fill="#4B8798" />
-    </Box>
-  ) : null;
-
   // Tooltip content for comment
   const commentTooltipContent = hasComment ? (
-    <VStack gap={1} py={1} align="start">
-      {shiftInfo?.description && (
-        <Text fontSize="xs" fontWeight="medium">{shiftInfo.description}</Text>
-      )}
-      {timeRange && (
-        <Text fontSize="xs" color="whiteAlpha.800">{timeRange}</Text>
-      )}
-      <Box borderTop="1px solid" borderColor="whiteAlpha.300" w="100%" pt={1}>
-        <Text fontSize="xs" color="whiteAlpha.900" fontStyle="italic">
-          "{comment}"
-        </Text>
+    <Text fontSize="xs" color="whiteAlpha.900" fontStyle="italic" py={1}>
+      "{comment}"
+    </Text>
+  ) : null;
+
+  // Comment indicator icon (positioned absolutely), wrapped in Tooltip
+  const commentIcon = hasComment ? (
+    <Tooltip content={commentTooltipContent} showArrow>
+      <Box
+        position="absolute"
+        top="-4px"
+        right="-4px"
+        bg="#edc001"
+        borderRadius="full"
+        w={isWeekView ? "20px" : "18px"}
+        h={isWeekView ? "20px" : "18px"}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        boxShadow="0 0 0 1.5px white, 0 1px 3px rgba(0,0,0,0.2)"
+      >
+        <MessageSquare size={isWeekView ? 12 : 10} color="white" fill="white" />
       </Box>
-    </VStack>
+    </Tooltip>
   ) : null;
 
   // Week view - all badges same size (with or without time)
@@ -155,14 +147,6 @@ export function ShiftBadge({
       </Box>
     );
 
-    if (hasComment) {
-      return (
-        <Tooltip content={commentTooltipContent} showArrow>
-          {weekBadge}
-        </Tooltip>
-      );
-    }
-
     return weekBadge;
   }
 
@@ -202,15 +186,7 @@ export function ShiftBadge({
     </Box>
   );
 
-  // Wrap with tooltip if comment exists or for 2-week shift info
-  if (hasComment) {
-    return (
-      <Tooltip content={commentTooltipContent} showArrow>
-        {twoWeekBadge}
-      </Tooltip>
-    );
-  }
-
+  // Wrap with tooltip for 2-week shift info (comment tooltip is on the icon itself)
   if (showShiftTooltip) {
     return (
       <Tooltip

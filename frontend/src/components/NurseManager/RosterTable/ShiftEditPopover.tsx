@@ -9,7 +9,7 @@ import {
   Textarea,
   Input,
 } from "@chakra-ui/react";
-import { X, ChevronDown, MessageSquarePlus, Check } from "lucide-react";
+import { X, ChevronDown, MessageSquarePlus } from "lucide-react";
 
 import { usePopoverContext } from "@chakra-ui/react";
 import {
@@ -227,7 +227,6 @@ export function ShiftEditPopover({
     currentShift?.comment || "",
   );
   const [showCommentInput, setShowCommentInput] = useState(false);
-  const [commentSaved, setCommentSaved] = useState(false);
 
   // Reset state when popover opens with new data
   useEffect(() => {
@@ -235,7 +234,6 @@ export function ShiftEditPopover({
       setSelectedShift(currentShift?.shiftCode || null);
       setComment(currentShift?.comment || "");
       setShowCommentInput(!!currentShift?.comment);
-      setCommentSaved(false);
     }
   }, [isOpen, currentShift?.shiftCode, currentShift?.comment]);
 
@@ -255,9 +253,8 @@ export function ShiftEditPopover({
   const handleCommentSave = () => {
     if (onCommentChange) {
       onCommentChange(comment);
-      setCommentSaved(true);
-      setTimeout(() => setCommentSaved(false), 2000);
     }
+    onClose();
   };
 
   const CloseButton = () => {
@@ -282,8 +279,8 @@ export function ShiftEditPopover({
         placement: "bottom",
       }}
     >
-      <Popover.Positioner zIndex={1400}>
-        <Popover.Content w="300px" borderRadius="lg" boxShadow="lg">
+      <Popover.Positioner zIndex={1400} overflow="visible">
+        <Popover.Content w="300px" borderRadius="lg" boxShadow="lg" overflow="auto" maxH="90vh">
           {/* Header */}
           <Popover.Header
             p={3}
@@ -392,18 +389,17 @@ export function ShiftEditPopover({
                         fontSize="xs"
                         fontWeight="medium"
                         color="white"
-                        bg={commentSaved ? "#16a34a" : "#4B8798"}
+                        bg="#4B8798"
                         borderRadius="md"
                         cursor="pointer"
-                        _hover={{ bg: commentSaved ? "#16a34a" : "#155E75" }}
+                        _hover={{ bg: "#155E75" }}
                         transition="all 0.2s ease"
                         onClick={handleCommentSave}
                         display="flex"
                         alignItems="center"
                         gap={1}
                       >
-                        {commentSaved && <Check size={12} />}
-                        {commentSaved ? "Saved" : "Save"}
+                        Save
                       </Box>
                     </Flex>
                   </Box>
