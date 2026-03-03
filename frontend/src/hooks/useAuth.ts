@@ -5,12 +5,25 @@ import { useState } from "react"
 import {
   type Body_login_access_token as AccessToken,
   type ApiError,
-  DefaultService,
   type UserPublic,
-  type UserRegister,
+  DefaultService,
   UsersService,
 } from "@/client"
 import { handleError } from "@/utils"
+
+/** Matches RBACUserPublic from the backend */
+export interface CurrentUser {
+  userid: number
+  username: string
+  email: string | null
+  nurseid?: number | null
+  managerid?: number | null
+  isactive: boolean
+  is_superuser: boolean
+  must_change_password?: boolean
+  wardid?: number | null
+  name?: string | null
+}
 
 const isLoggedIn = () => {
   return localStorage.getItem("access_token") !== null
@@ -20,27 +33,12 @@ const useAuth = () => {
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { data: user } = useQuery<UserPublic | null, Error>({
+  const { data: user } = useQuery<CurrentUser | null, Error>({
     queryKey: ["currentUser"],
-    queryFn: UsersService.readUserMe,
+    queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
     enabled: isLoggedIn(),
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
-  })
-
-  const signUpMutation = useMutation({
-    mutationFn: (data: UserRegister) =>
-      UsersService.registerUser({ requestBody: data }),
-
-    onSuccess: () => {
-      navigate({ to: "/login" })
-    },
-    onError: (err: ApiError) => {
-      handleError(err)
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] })
-    },
   })
 
   const login = async (data: AccessToken) => {
@@ -54,9 +52,18 @@ const useAuth = () => {
     mutationFn: login,
     onSuccess: async () => {
       // Fetch current user to determine role-based redirect
-      const currentUser = await UsersService.readUserMe()
+      const currentUser = (await UsersService.readUserMe()) as unknown as CurrentUser
       queryClient.setQueryData(["currentUser"], currentUser)
-      if (currentUser.managerid) {
+
+      // Force password change on first login
+      if (currentUser.must_change_password) {
+        navigate({ to: "/first-login-setup" })
+        return
+      }
+
+      if (currentUser.is_superuser) {
+        navigate({ to: "/admin/dashboard" })
+      } else if (currentUser.managerid) {
         navigate({ to: "/nurse-manager/home" })
       } else {
         navigate({ to: "/ward-staff/home" })
@@ -69,15 +76,16 @@ const useAuth = () => {
 
   
   const logout = () => {
+    // Cancel in-flight queries before removing the token to avoid 401s
+    queryClient.cancelQueries()
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")
-    // Reset queries to clear cached data
-    queryClient.resetQueries()
+    // Clear cached data without triggering refetches
+    queryClient.clear()
     navigate({ to: "/login" })
   }
 
   return {
-    signUpMutation,
     loginMutation,
     logout,
     user,

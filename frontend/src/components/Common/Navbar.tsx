@@ -38,7 +38,7 @@ function Navbar() {
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
   const { user, logout } = useAuth();
 
-  const userName = (user as any)?.name || user?.full_name || user?.email || "Staff Name";
+  const userName = user?.name || user?.email || "Staff Name";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {

@@ -865,7 +865,7 @@ CREATE INDEX idx_audit_entity ON AuditLog(EntityType, EntityID);
 CREATE TABLE "User" (
   UserID SERIAL PRIMARY KEY,
   Username VARCHAR(100) NOT NULL UNIQUE,
-  Email VARCHAR(100) NOT NULL UNIQUE,
+  Email VARCHAR(100) UNIQUE,
   PasswordHash VARCHAR(255) NOT NULL,
   
   -- Link to entity based on role

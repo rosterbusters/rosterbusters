@@ -38,7 +38,7 @@ function NurseManagerNavbar() {
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
   const { user, logout } = useAuth();
 
-  const userName = (user as any)?.name || user?.full_name || user?.email || "Manager";
+  const userName = user?.name || user?.email || "Manager";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {

@@ -8,10 +8,13 @@ def get_user_roles(session: Session, email: str) -> list[str]:
     rbac_user = get_rbac_user_by_email(session, email)
     if not rbac_user:
         return []
-    
-    # MODIFIED: Changed user_id to userid to match the model definition
+    return get_user_roles_by_userid(session, rbac_user.userid)
+
+
+def get_user_roles_by_userid(session: Session, userid: int) -> list[str]:
+    """Look up roles by userid directly (works even when email is None)."""
     statement = select(Role.rolename).join(UserRole, Role.roleid == UserRole.roleid).where(  # type: ignore[arg-type]
-        UserRole.userid == rbac_user.userid,
+        UserRole.userid == userid,
         UserRole.isactive == True  # noqa: E712
     )
     return list(session.exec(statement).all())

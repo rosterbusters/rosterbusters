@@ -1,15 +1,16 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 
-import NurseManagerNavbar from "@/components/NurseManager/NurseManagerNavbar"
+import AdminNavbar from "@/components/Admin/AdminNavbar"
 import { isLoggedIn } from "@/hooks/useAuth"
 
-export const Route = createFileRoute("/nurse-manager")({
-  component: NurseManagerLayout,
+export const Route = createFileRoute("/admin")({
+  component: AdminLayout,
   beforeLoad: async () => {
     if (!isLoggedIn()) {
       throw redirect({ to: "/login" })
     }
 
+    // Check that the logged-in user actually has admin privileges
     const token = localStorage.getItem("access_token")
     const BASE = import.meta.env.VITE_API_URL || ""
     try {
@@ -18,26 +19,24 @@ export const Route = createFileRoute("/nurse-manager")({
       })
       if (!res.ok) throw redirect({ to: "/login" })
       const user = await res.json()
-      if (user.is_superuser) {
-        throw redirect({ to: "/admin/dashboard" })
-      }
-      if (!user.managerid) {
-        throw redirect({ to: "/ward-staff/home" })
+      if (!user.is_superuser) {
+        // Send non-admin users to their appropriate home page
+        throw redirect({
+          to: user.managerid ? "/nurse-manager/home" : "/ward-staff/home",
+        })
       }
     } catch (e) {
+      // Re-throw redirects; treat anything else as an auth failure
       if (e && typeof e === "object" && "to" in e) throw e
       throw redirect({ to: "/login" })
     }
   },
 })
 
-function NurseManagerLayout() {
+function AdminLayout() {
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Navbar only - NO sidebar for nurseManager routes */}
-      <NurseManagerNavbar />
-
-      {/* Main content area */}
+      <AdminNavbar />
       <main className="flex-1">
         <Outlet />
       </main>
@@ -45,4 +44,4 @@ function NurseManagerLayout() {
   )
 }
 
-export default NurseManagerLayout
+export default AdminLayout

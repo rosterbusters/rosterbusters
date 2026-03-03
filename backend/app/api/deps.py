@@ -61,10 +61,11 @@ def get_current_user(session: SessionDep, token: TokenDep) -> RBACUser:
 CurrentUser = Annotated[RBACUser, Depends(get_current_user)]
 
 
-def get_current_active_superuser(current_user: CurrentUser) -> RBACUser:
-    # Check if user has Admin role - for now just check if active
-    # TODO: Implement proper role checking via UserRole table
-    if not current_user.isactive:
+def get_current_active_superuser(
+    session: SessionDep, current_user: CurrentUser
+) -> RBACUser:
+    """Only allow users with the Admin role."""
+    if not user_has_role(session, current_user.email, "Admin"):
         raise HTTPException(
             status_code=403, detail="The user doesn't have enough privileges"
         )
