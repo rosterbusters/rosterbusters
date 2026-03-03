@@ -13,11 +13,9 @@ import {
 } from "@chakra-ui/react";
 import { Check, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
-import {
-  RequestReviewModal,
-  type UnifiedRequest,
-  type RequestStatus,
-} from "./RequestReviewModal";
+import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
+import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
+import { ReviewLeaveRequest } from "./LeaveRequests/ReviewLeaveRequest";
 
 // ─── Mock shift request data (used when no wardId / no API data) ─────────────
 const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
@@ -196,19 +194,85 @@ function TypeCell({ type }: { type: "ShiftRequest" | "LeaveRequest" }) {
   );
 }
 
+// ─── Code → badge colour (mirrors SHIFT_COLOR_MAP in RosterTable/types) ──────
+const ALL_BADGE_COLORS: Record<string, string> = {
+  // Shift types
+  D: "#0891b2",
+  A: "#06b6d4",
+  P: "#0e7490",
+  N: "#164e63",
+  "N-12": "#164e63",
+  // Leave types
+  AL: "#94a3b8",
+  MC: "#fbbf24",
+  URG: "#f87171",
+  BCL: "#a78bfa",
+  CCL: "#34d399",
+  ML: "#f472b6",
+  CL: "#60a5fa",
+  EML: "#c084fc",
+  DO: "#a3a3a3",
+};
+
+// Fallback: resolve code from full name (covers both shift and leave)
+const NAME_TO_CODE: Record<string, string> = {
+  // Shift
+  "Day Shift": "D",
+  "AM Shift": "A",
+  "PM Shift": "P",
+  "Night Shift": "N",
+  "Night 12h": "N-12",
+  // Leave
+  "Annual Leave": "AL",
+  "Medical Certificate": "MC",
+  "Urgent Leave": "URG",
+  "Birthday Leave": "BCL",
+  "Childcare Leave": "CCL",
+  "Marriage Leave": "ML",
+  "Compassionate Leave": "CL",
+  "Extended Marriage Leave": "EML",
+  "Day Off": "DO",
+};
+
 // ─── Request type badge ───────────────────────────────────────────────────────
-function RequestTypeBadge({ name }: { name: string }) {
-  // Shift types get teal/dark bg; leave types get lighter warm colors
-  const isShift = [
-    "AM Shift",
-    "PM Shift",
-    "Night Shift",
-    "Day Shift",
-    "Rest Day",
-  ].includes(name);
+function RequestTypeBadge({
+  name,
+  shiftCode,
+}: {
+  name: string;
+  shiftCode?: string | null;
+}) {
+  const code = shiftCode ?? NAME_TO_CODE[name] ?? null;
+  const color = code ? ALL_BADGE_COLORS[code] : null;
+
+  if (code && color) {
+    return (
+      <HStack gap={2} align="center">
+        <Badge
+          bg={color}
+          color="white"
+          fontWeight="bold"
+          fontSize="xs"
+          px={2}
+          py={0.5}
+          rounded="md"
+          minW="22px"
+          textAlign="center"
+          textTransform="none"
+        >
+          {code}
+        </Badge>
+        <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
+          {name}
+        </Text>
+      </HStack>
+    );
+  }
+
+  // Unknown type fallback
   return (
     <Badge
-      bg={isShift ? "#4B8798" : "#9db8c0"}
+      bg="#9db8c0"
       color="white"
       fontWeight="medium"
       fontSize="xs"
@@ -241,10 +305,10 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
-  const [selectedRequest, setSelectedRequest] = useState<UnifiedRequest | null>(
-    null,
-  );
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedShiftRequest, setSelectedShiftRequest] =
+    useState<UnifiedRequest | null>(null);
+  const [selectedLeaveRequest, setSelectedLeaveRequest] =
+    useState<UnifiedRequest | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<number>>(
     new Set(),
   );
@@ -259,6 +323,11 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
   // Local overrides for optimistic status updates
   const [statusOverrides, setStatusOverrides] = useState<
     Record<number, RequestStatus>
+  >({});
+
+  // Local overrides for comments written in the review modal
+  const [commentOverrides, setCommentOverrides] = useState<
+    Record<number, string>
   >({});
 
   // ── Fetch shift requests ──────────────────────────────────────────────────
@@ -277,11 +346,25 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
     staleTime: 5 * 60_000,
   });
 
+  // ── Fetch ward nurses for nurse name display ──────────────────────────────
+  const { data: wardNurses = [] } = useQuery({
+    queryKey: ["ward-nurses", wardId],
+    queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
+    enabled: !!wardId,
+    staleTime: 5 * 60_000,
+  });
+
   const shiftCodeMap = useMemo(() => {
     const map = new Map<string, string>();
     shiftCodes.forEach((sc) => map.set(sc.shiftcode, sc.description));
     return map;
   }, [shiftCodes]);
+
+  const nurseMap = useMemo(() => {
+    const map = new Map<number, string>();
+    wardNurses.forEach((n) => map.set(n.nurseid, n.name));
+    return map;
+  }, [wardNurses]);
 
   // ── Build unified list ────────────────────────────────────────────────────
   const allRequests: UnifiedRequest[] = useMemo(() => {
@@ -292,10 +375,12 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
           type: "ShiftRequest" as const,
           requestTypeName:
             shiftCodeMap.get(sr.preferredshifttype) || sr.preferredshifttype,
+          shiftCode: sr.preferredshifttype,
           requestedDates: formatDate(sr.preferreddate),
           status: (statusOverrides[sr.requestid] ?? sr.status) as RequestStatus,
           applicationDate: formatDate(sr.preferreddate),
           comments: sr.reason,
+          nurseName: nurseMap.get(sr.nurseid) ?? null,
         }))
       : MOCK_SHIFT_REQUESTS.map((sr) => ({
           ...sr,
@@ -308,7 +393,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
     }));
 
     return [...fromShift, ...fromLeave];
-  }, [wardId, shiftRequests, shiftCodeMap, statusOverrides]);
+  }, [wardId, shiftRequests, shiftCodeMap, nurseMap, statusOverrides]);
 
   // ── Filter by tab ─────────────────────────────────────────────────────────
   const filteredRequests = useMemo(() => {
@@ -363,16 +448,22 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
   };
 
   const handleOpenModal = (request: UnifiedRequest) => {
-    setSelectedRequest(request);
-    setIsModalOpen(true);
+    if (request.type === "ShiftRequest") {
+      setSelectedShiftRequest(request);
+    } else {
+      setSelectedLeaveRequest(request);
+    }
   };
 
-  const handleModalSubmit = (
+  const handleAction = (
     requestId: number,
     action: "Approved" | "Rejected",
-    _comment: string,
+    comment: string,
   ) => {
     setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
+    if (comment.trim()) {
+      setCommentOverrides((prev) => ({ ...prev, [requestId]: comment.trim() }));
+    }
   };
 
   const isLoading = shiftLoading;
@@ -552,7 +643,10 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                     {/* Request Type badge */}
                     <Table.Cell py={2} px={4}>
                       <Flex justify="flex-start">
-                        <RequestTypeBadge name={req.requestTypeName} />
+                        <RequestTypeBadge
+                          name={req.requestTypeName}
+                          shiftCode={req.shiftCode}
+                        />
                       </Flex>
                     </Table.Cell>
 
@@ -577,39 +671,43 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
 
                     {/* Comments */}
                     <Table.Cell py={2} px={4} maxW="160px">
-                      {req.comments ? (
-                        <Text
-                          fontSize="sm"
-                          color="#4A4A4A"
-                          cursor="pointer"
-                          whiteSpace={
-                            expandedComments.has(req.id) ? "normal" : "nowrap"
-                          }
-                          overflow={
-                            expandedComments.has(req.id) ? "visible" : "hidden"
-                          }
-                          textOverflow={
-                            expandedComments.has(req.id) ? "clip" : "ellipsis"
-                          }
-                          onClick={() => toggleComment(req.id)}
-                          title={
-                            expandedComments.has(req.id)
-                              ? "Click to collapse"
-                              : "Click to expand"
-                          }
-                          _hover={{ color: "#4B8798" }}
-                        >
-                          {expandedComments.has(req.id)
-                            ? req.comments
-                            : req.comments.length > 10
-                              ? req.comments.slice(0, 10) + "..."
-                              : req.comments}
-                        </Text>
-                      ) : (
-                        <Text fontSize="sm" color="gray.300">
-                          –
-                        </Text>
-                      )}
+                      {(() => {
+                        const displayComment =
+                          commentOverrides[req.id] ?? req.comments ?? null;
+                        return displayComment ? (
+                          <Text
+                            fontSize="sm"
+                            color="#4A4A4A"
+                            cursor="pointer"
+                            whiteSpace={
+                              expandedComments.has(req.id) ? "normal" : "nowrap"
+                            }
+                            overflow={
+                              expandedComments.has(req.id) ? "visible" : "hidden"
+                            }
+                            textOverflow={
+                              expandedComments.has(req.id) ? "clip" : "ellipsis"
+                            }
+                            onClick={() => toggleComment(req.id)}
+                            title={
+                              expandedComments.has(req.id)
+                                ? "Click to collapse"
+                                : "Click to expand"
+                            }
+                            _hover={{ color: "#4B8798" }}
+                          >
+                            {expandedComments.has(req.id)
+                              ? displayComment
+                              : displayComment.length > 10
+                                ? displayComment.slice(0, 10) + "..."
+                                : displayComment}
+                          </Text>
+                        ) : (
+                          <Text fontSize="sm" color="gray.300">
+                            –
+                          </Text>
+                        );
+                      })()}
                     </Table.Cell>
 
                     {/* Action */}
@@ -702,13 +800,35 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
         </Flex>
       )}
 
-      {/* Review modal */}
-      <RequestReviewModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        request={selectedRequest}
-        onSubmit={handleModalSubmit}
-      />
+      {/* Shift review dialog */}
+      {selectedShiftRequest && (
+        <ReviewShiftRequest
+          isOpen={!!selectedShiftRequest}
+          onClose={() => setSelectedShiftRequest(null)}
+          requestId={selectedShiftRequest.id}
+          nurseName={selectedShiftRequest.nurseName ?? null}
+          shiftCode={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
+          date={selectedShiftRequest.requestedDates}
+          status={selectedShiftRequest.status}
+          comment={selectedShiftRequest.comments}
+          onAction={handleAction}
+        />
+      )}
+
+      {/* Leave review dialog */}
+      {selectedLeaveRequest && (
+        <ReviewLeaveRequest
+          isOpen={!!selectedLeaveRequest}
+          onClose={() => setSelectedLeaveRequest(null)}
+          requestId={selectedLeaveRequest.id}
+          nurseName={selectedLeaveRequest.nurseName ?? null}
+          leaveType={selectedLeaveRequest.requestTypeName}
+          date={selectedLeaveRequest.requestedDates}
+          status={selectedLeaveRequest.status}
+          comment={selectedLeaveRequest.comments}
+          onAction={handleAction}
+        />
+      )}
     </VStack>
   );
 }
