@@ -69,7 +69,7 @@ export default function NotificationBanner({ items }: NotificationBannerProps) {
                   </Badge>
                 </Table.Cell>
                 <Table.Cell color="foreground">
-                  {item.subject}
+                  {item.messagebody}
                 </Table.Cell>
                 <Table.Cell color="foreground" fontWeight="semibold">
                   {formatDate(item.createdat)}
