@@ -88,8 +88,13 @@ export interface WardOption {
 // ---------------------------------------------------------------------------
 
 export const AdminService = {
-  listUsers(skip = 0, limit = 100): Promise<AdminUsersResponse> {
-    return request(`/api/v1/admin/users?skip=${skip}&limit=${limit}`)
+  listUsers(skip = 0, limit = 100, search = ""): Promise<AdminUsersResponse> {
+    const params = new URLSearchParams({
+      skip: String(skip),
+      limit: String(limit),
+    })
+    if (search) params.set("search", search)
+    return request(`/api/v1/admin/users?${params.toString()}`)
   },
 
   getUser(userid: number): Promise<AdminUser> {

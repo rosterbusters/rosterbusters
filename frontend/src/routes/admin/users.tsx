@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm, type SubmitHandler } from "react-hook-form"
 import { z } from "zod"
 import {
@@ -101,7 +101,7 @@ function UserFormDialog({
     defaultValues: isEdit
       ? {
           username: editUser.username,
-          email: editUser.email,
+          email: editUser.email ?? "",
           password: "",
           confirm_password: "",
           is_active: editUser.isactive,
@@ -196,7 +196,7 @@ function UserFormDialog({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit as SubmitHandler<UserFormData>)}>
           <div className="p-6 space-y-4">
             {/* Username */}
             <div>
@@ -482,28 +482,34 @@ function AdminUsers() {
   const { page } = Route.useSearch()
 
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [formOpen, setFormOpen] = useState(false)
   const [editUser, setEditUser] = useState<AdminUser | null>(null)
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
   const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
 
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      // Reset to page 1 when search changes
+      if (page !== 1) {
+        navigate({ search: (prev: any) => ({ ...prev, page: 1 }) })
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-users", { page }],
-    queryFn: () => AdminService.listUsers((page - 1) * PER_PAGE, PER_PAGE),
+    queryKey: ["admin-users", { page, search: debouncedSearch }],
+    queryFn: () =>
+      AdminService.listUsers((page - 1) * PER_PAGE, PER_PAGE, debouncedSearch),
     placeholderData: (prev) => prev,
   })
 
   const users = data?.data ?? []
   const count = data?.count ?? 0
   const totalPages = Math.ceil(count / PER_PAGE)
-
-  const filtered = search
-    ? users.filter(
-        (u) =>
-          (u.email ?? "").toLowerCase().includes(search.toLowerCase()) ||
-          u.username.toLowerCase().includes(search.toLowerCase()),
-      )
-    : users
 
   const setPage = (p: number) =>
     navigate({ search: (prev: any) => ({ ...prev, page: p }) })
@@ -563,7 +569,7 @@ function AdminUsers() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((user) => (
+                {users.map((user) => (
                   <tr key={user.userid} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <span className="font-medium text-gray-900">{user.username}</span>
@@ -635,7 +641,7 @@ function AdminUsers() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
+                {users.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
                       No users found.

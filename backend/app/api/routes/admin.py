@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import EmailStr
-from sqlmodel import Field, SQLModel, func, select
+from sqlmodel import Field, SQLModel, func, or_, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
 from app.core.security import generate_random_password, get_password_hash
@@ -112,10 +112,24 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
 # ---------------------------------------------------------------------------
 
 @router.get("/users", response_model=AdminUsersPublic)
-def list_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
+def list_users(
+    session: SessionDep, skip: int = 0, limit: int = 100, search: str = ""
+) -> Any:
     """List all RBACUsers with their roles."""
-    count = session.exec(select(func.count()).select_from(RBACUser)).one()
-    users = session.exec(select(RBACUser).offset(skip).limit(limit)).all()
+    query = select(RBACUser)
+    count_query = select(func.count()).select_from(RBACUser)
+
+    if search:
+        pattern = f"%{search}%"
+        search_filter = or_(
+            RBACUser.username.ilike(pattern),  # type: ignore[union-attr]
+            RBACUser.email.ilike(pattern),  # type: ignore[union-attr]
+        )
+        query = query.where(search_filter)
+        count_query = count_query.where(search_filter)
+
+    count = session.exec(count_query).one()
+    users = session.exec(query.offset(skip).limit(limit)).all()
     return AdminUsersPublic(
         data=[_enrich(session, u) for u in users],
         count=count,
