@@ -47,14 +47,21 @@ interface UserFormData {
   role: string
 }
 
+interface CreatedUserInfo {
+  username: string
+  generated_password?: string | null
+}
+
 function UserFormDialog({
   open,
   onClose,
   editUser,
+  onCreated,
 }: {
   open: boolean
   onClose: () => void
   editUser?: AdminUser | null
+  onCreated?: (info: CreatedUserInfo) => void
 }) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -114,8 +121,14 @@ function UserFormDialog({
 
   const createMutation = useMutation({
     mutationFn: (data: AdminUserCreate) => AdminService.createUser(data),
-    onSuccess: () => {
+    onSuccess: (result) => {
       showSuccessToast("User created successfully.")
+      if (result.generated_password) {
+        onCreated?.({
+          username: result.username,
+          generated_password: result.generated_password,
+        })
+      }
       reset()
       onClose()
     },
@@ -157,11 +170,11 @@ function UserFormDialog({
     } else {
       const payload: AdminUserCreate = {
         username: data.username,
-        email: data.email,
-        password: data.password,
         is_active: data.is_active,
         role: data.role,
       }
+      if (data.email) payload.email = data.email
+      if (data.password) payload.password = data.password
       if (data.role === "Nurse" || data.role === "NurseManager") {
         payload.ward_ids = selectedWardIds
       }
@@ -204,11 +217,13 @@ function UserFormDialog({
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email <span className="text-red-500">*</span>
+                Email{" "}
+                {!isEdit && (
+                  <span className="text-gray-400 text-xs">(optional — user can add on first login)</span>
+                )}
               </label>
               <input
                 {...register("email", {
-                  required: "Email is required",
                   pattern: emailPattern,
                 })}
                 type="email"
@@ -224,14 +239,15 @@ function UserFormDialog({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Password{" "}
-                {!isEdit && <span className="text-red-500">*</span>}
+                {!isEdit && (
+                  <span className="text-gray-400 text-xs">(leave blank to auto-generate)</span>
+                )}
                 {isEdit && (
                   <span className="text-gray-400 text-xs">(leave blank to keep current)</span>
                 )}
               </label>
               <input
                 {...register("password", {
-                  ...(!isEdit && { required: "Password is required" }),
                   minLength: { value: 8, message: "Password must be at least 8 characters" },
                 })}
                 type="password"
@@ -469,6 +485,7 @@ function AdminUsers() {
   const [formOpen, setFormOpen] = useState(false)
   const [editUser, setEditUser] = useState<AdminUser | null>(null)
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
+  const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-users", { page }],
@@ -483,7 +500,7 @@ function AdminUsers() {
   const filtered = search
     ? users.filter(
         (u) =>
-          u.email.toLowerCase().includes(search.toLowerCase()) ||
+          (u.email ?? "").toLowerCase().includes(search.toLowerCase()) ||
           u.username.toLowerCase().includes(search.toLowerCase()),
       )
     : users
@@ -552,7 +569,7 @@ function AdminUsers() {
                       <span className="font-medium text-gray-900">{user.username}</span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">
-                      {user.email}
+                      {user.email || <span className="text-gray-400 italic">Not set</span>}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -663,12 +680,59 @@ function AdminUsers() {
           setEditUser(null)
         }}
         editUser={editUser}
+        onCreated={setCreatedUserInfo}
       />
       <DeleteDialog
         open={!!deleteUser}
         onClose={() => setDeleteUser(null)}
         user={deleteUser}
       />
+
+      {/* Generated password dialog */}
+      {createdUserInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">User Created</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Share these credentials with{" "}
+              <strong>{createdUserInfo.username}</strong>. They will be required
+              to change their password on first login.
+            </p>
+            <div className="bg-gray-50 rounded-lg p-4 space-y-2 mb-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Username:</span>
+                <span className="font-mono font-medium text-gray-900">
+                  {createdUserInfo.username}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Password:</span>
+                <span className="font-mono font-medium text-gray-900">
+                  {createdUserInfo.generated_password}
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Username: ${createdUserInfo.username}\nPassword: ${createdUserInfo.generated_password}`,
+                  )
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Copy
+              </button>
+              <button
+                onClick={() => setCreatedUserInfo(null)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -42,12 +42,14 @@ export interface WardInfo {
 export interface AdminUser {
   userid: number
   username: string
-  email: string
+  email: string | null
   isactive: boolean
   nurseid: number | null
   managerid: number | null
+  must_change_password: boolean
   roles: string[]
   wards: WardInfo[]
+  generated_password?: string | null
 }
 
 export interface AdminUsersResponse {
@@ -57,8 +59,8 @@ export interface AdminUsersResponse {
 
 export interface AdminUserCreate {
   username: string
-  email: string
-  password: string
+  email?: string
+  password?: string
   is_active?: boolean
   role?: string
   ward_ids?: number[]
@@ -116,5 +118,12 @@ export const AdminService = {
 
   listWards(): Promise<WardOption[]> {
     return request(`/api/v1/wards/`)
+  },
+
+  firstLoginSetup(data: { new_password: string; email?: string }): Promise<{ message: string }> {
+    return request(`/api/v1/users/me/first-login-setup`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
   },
 }

@@ -14,11 +14,12 @@ import { handleError } from "@/utils"
 export interface CurrentUser {
   userid: number
   username: string
-  email: string
+  email: string | null
   nurseid?: number | null
   managerid?: number | null
   isactive: boolean
   is_superuser: boolean
+  must_change_password?: boolean
   wardid?: number | null
   name?: string | null
 }
@@ -50,8 +51,15 @@ const useAuth = () => {
     mutationFn: login,
     onSuccess: async () => {
       // Fetch current user to determine role-based redirect
-      const currentUser = await UsersService.readUserMe()
+      const currentUser = (await UsersService.readUserMe()) as unknown as CurrentUser
       queryClient.setQueryData(["currentUser"], currentUser)
+
+      // Force password change on first login
+      if (currentUser.must_change_password) {
+        navigate({ to: "/first-login-setup" })
+        return
+      }
+
       if (currentUser.is_superuser) {
         navigate({ to: "/admin/dashboard" })
       } else if (currentUser.managerid) {

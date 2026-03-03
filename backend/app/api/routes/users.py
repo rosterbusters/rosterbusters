@@ -1,7 +1,8 @@
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
-from sqlmodel import select
+from pydantic import EmailStr
+from sqlmodel import Field, SQLModel, select
 
 from app.api.deps import (
     CurrentUser,
@@ -18,6 +19,12 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+# Schema for first-login setup
+class FirstLoginSetup(SQLModel):
+    new_password: str = Field(min_length=8, max_length=128)
+    email: Optional[EmailStr] = Field(default=None, max_length=255)
 
 
 @router.patch("/me/password", response_model=Message)
@@ -40,15 +47,71 @@ def update_password_me(
     return Message(message="Password updated successfully")
 
 
+@router.post("/me/first-login-setup", response_model=Message)
+def first_login_setup(
+    *, session: SessionDep, body: FirstLoginSetup, current_user: CurrentUser
+) -> Any:
+    """
+    First-time login setup: set a new password, and optionally provide an email.
+    Only allowed when the user's must_change_password flag is True.
+    """
+    if not current_user.must_change_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Password change is not required for this account.",
+        )
+
+    # Set new password
+    current_user.passwordhash = get_password_hash(body.new_password)
+    current_user.must_change_password = False
+
+    # Optionally set email
+    if body.email:
+        # Check duplicate
+        existing = session.exec(
+            select(RBACUser).where(
+                RBACUser.email == body.email, RBACUser.userid != current_user.userid
+            )
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=400, detail="A user with this email already exists."
+            )
+        current_user.email = body.email
+
+        # Also update the linked nurse/manager email
+        if current_user.nurseid:
+            nurse = session.exec(
+                select(Nurse).where(Nurse.nurseid == current_user.nurseid)
+            ).first()
+            if nurse:
+                nurse.email = body.email
+                session.add(nurse)
+        if current_user.managerid:
+            manager = session.exec(
+                select(NurseManager).where(
+                    NurseManager.managerid == current_user.managerid
+                )
+            ).first()
+            if manager:
+                manager.email = body.email
+                session.add(manager)
+
+    session.add(current_user)
+    session.commit()
+    return Message(message="Account setup completed successfully.")
+
+
 @router.get("/me", response_model=RBACUserPublic)
 def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
     Get current user (using RBAC authentication).
     """
-    from app.rbac import user_has_role
+    from app.rbac import get_user_roles_by_userid
     wardid = None
     name = None
-    is_superuser = user_has_role(session, current_user.email, "Admin")
+    roles = get_user_roles_by_userid(session, current_user.userid)
+    is_superuser = "Admin" in roles
     if current_user.nurseid:
         # Nurse: look up their ward from the Nurse table
         nurse = session.exec(
@@ -74,6 +137,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         managerid=current_user.managerid,
         isactive=current_user.isactive,
         is_superuser=is_superuser,
+        must_change_password=current_user.must_change_password,
         wardid=wardid,
         name=name,
     )

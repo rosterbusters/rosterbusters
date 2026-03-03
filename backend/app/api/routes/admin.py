@@ -12,11 +12,11 @@ from pydantic import EmailStr
 from sqlmodel import Field, SQLModel, func, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
-from app.core.security import get_password_hash
+from app.core.security import generate_random_password, get_password_hash
 from app.models import Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
-from app.rbac import get_user_roles
+from app.rbac import get_user_roles, get_user_roles_by_userid
 
 router = APIRouter(
     prefix="/admin",
@@ -37,12 +37,14 @@ class WardInfo(SQLModel):
 class AdminUserPublic(SQLModel):
     userid: int
     username: str
-    email: str
+    email: Optional[str] = None
     isactive: bool
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
+    must_change_password: bool = False
     roles: list[str] = []
     wards: list[WardInfo] = []
+    generated_password: Optional[str] = None  # Only returned on create
 
 
 class AdminUsersPublic(SQLModel):
@@ -52,8 +54,8 @@ class AdminUsersPublic(SQLModel):
 
 class AdminUserCreate(SQLModel):
     username: str = Field(min_length=1, max_length=255)
-    email: EmailStr = Field(max_length=255)
-    password: str = Field(min_length=8, max_length=128)
+    email: Optional[EmailStr] = Field(default=None, max_length=255)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: bool = True
     role: str = Field(default="Nurse", description="Nurse | NurseManager | Admin")
     ward_ids: list[int] = []
@@ -73,7 +75,7 @@ class AdminUserUpdate(SQLModel):
 
 def _enrich(session, user: RBACUser) -> AdminUserPublic:
     """Convert an RBACUser row to the public response model."""
-    roles = get_user_roles(session, user.email)
+    roles = get_user_roles_by_userid(session, user.userid)
     ward_list: list[WardInfo] = []
 
     # Resolve ward for nurses (single primary ward via nurse.wardid)
@@ -99,6 +101,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         isactive=user.isactive,
         nurseid=user.nurseid,
         managerid=user.managerid,
+        must_change_password=user.must_change_password,
         roles=roles,
         wards=ward_list,
     )
@@ -131,14 +134,25 @@ def get_user(session: SessionDep, userid: int) -> Any:
 @router.post("/users", response_model=AdminUserPublic, status_code=201)
 def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     """Create a new RBACUser and assign a role."""
-    # Check duplicate email
-    existing = session.exec(
-        select(RBACUser).where(RBACUser.email == body.email)
+    # Check duplicate email (only if email provided)
+    if body.email:
+        existing = session.exec(
+            select(RBACUser).where(RBACUser.email == body.email)
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="A user with this email already exists.",
+            )
+
+    # Check duplicate username
+    existing_username = session.exec(
+        select(RBACUser).where(RBACUser.username == body.username)
     ).first()
-    if existing:
+    if existing_username:
         raise HTTPException(
             status_code=400,
-            detail="A user with this email already exists.",
+            detail="A user with this username already exists.",
         )
 
     # Validate role
@@ -156,11 +170,15 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
         if not session.get(Ward, wid):
             raise HTTPException(status_code=400, detail=f"Ward {wid} not found.")
 
+    # Auto-generate password if not provided
+    raw_password = body.password if body.password else generate_random_password()
+
     user = RBACUser(
         username=body.username,
         email=body.email,
-        passwordhash=get_password_hash(body.password),
+        passwordhash=get_password_hash(raw_password),
         isactive=body.is_active,
+        must_change_password=True,
         createdat=datetime.now(timezone.utc),
     )
     session.add(user)
@@ -172,7 +190,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
         nurse = Nurse(
             name=body.username,
             designation="RN",
-            email=body.email,
+            email=body.email or "",
             contactnumber="",
             wardid=body.ward_ids[0] if body.ward_ids else None,
             employmenttype="Full-time",
@@ -189,7 +207,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     elif body.role == "NurseManager":
         manager = NurseManager(
             name=body.username,
-            email=body.email,
+            email=body.email or "",
             contactnumber="",
             isactive=True,
             createdat=datetime.now(timezone.utc),
@@ -220,7 +238,11 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     session.add(user_role)
     session.commit()
 
-    return _enrich(session, user)
+    result = _enrich(session, user)
+    # Return the generated password so admin can share it with the user
+    if not body.password:
+        result.generated_password = raw_password
+    return result
 
 
 @router.patch("/users/{userid}", response_model=AdminUserPublic)
