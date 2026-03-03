@@ -158,7 +158,7 @@ function UserFormDialog({
     if (isEdit) {
       const payload: AdminUserUpdate = {
         username: data.username,
-        email: data.email,
+        email: data.email || undefined,
         is_active: data.is_active,
       }
       if (data.password) payload.password = data.password
