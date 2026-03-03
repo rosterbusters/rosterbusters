@@ -778,8 +778,41 @@ def seed_roster_entries(
     shift_codes_db = session.exec(select(ShiftCode)).all()
     shift_lookup = {sc.shiftcode: sc for sc in shift_codes_db}
 
-    # 7-day rotating pattern; offset per nurse for variety
-    shift_pattern = ["D", "D", "N", "N", "DO", "DO", "D"]
+    # 14-day realistic patterns derived from ga_ward6.json mock data.
+    # Each pattern tiles across the full date range per nurse.
+    ROSTER_PATTERNS = [
+        ["A","P","DO","N","N","DO","A","N","N","DO","A","DO","P","P"],
+        ["A","N","N","DO","DO","A","P","P","DO","N","N","DO","P","P"],
+        ["DO","N","DO","P","P","A","P","N","DO","N","DO","A","A","P"],
+        ["DO","N","DO","P","P","A","N","DO","N","DO","P","A","A","A"],
+        ["P","A","DO","A","DO","A","N","N","DO","A","A","P","DO","P"],
+        ["N","DO","A","A","A","P","DO","A","A","A","DO","N","DO","N"],
+        ["N","DO","P","P","A","P","DO","DO","P","P","N","DO","A","A"],
+        ["DO","A","A","A","DO","N","N","DO","A","P","A","A","A","DO"],
+        ["A","P","A","N","N","DO","DO","DO","N","DO","A","P","A","A"],
+        ["A","A","N","DO","N","DO","P","DO","P","A","N","N","DO","A"],
+        ["P","A","DO","P","N","N","DO","A","A","A","DO","P","N","DO"],
+        ["P","P","A","P","DO","N","DO","P","DO","DO","P","P","A","N"],
+        ["N","DO","P","A","A","DO","A","DO","P","P","A","P","N","DO"],
+        ["N","N","DO","A","A","P","DO","P","N","DO","DO","A","P","A"],
+        ["P","P","N","DO","P","DO","P","A","A","P","A","DO","N","DO"],
+        ["A","N","DO","P","DO","A","A","P","A","P","DO","DO","A","N"],
+        ["A","A","N","DO","P","P","DO","A","P","DO","P","N","DO","P"],
+        ["N","DO","P","A","A","DO","A","P","A","N","DO","P","P","DO"],
+        ["DO","N","N","DO","A","A","A","N","DO","A","P","N","DO","P"],
+        ["N","DO","P","A","A","DO","A","P","N","N","DO","A","DO","A"],
+        ["DO","A","P","P","N","N","DO","A","P","P","P","DO","N","DO"],
+        ["P","A","DO","N","DO","P","N","N","DO","A","DO","P","A","A"],
+        ["P","DO","A","N","DO","A","A","N","DO","DO","P","P","P","A"],
+        ["DO","A","P","N","N","DO","P","A","N","DO","P","N","DO","A"],
+        ["A","DO","A","N","DO","A","P","P","DO","N","DO","A","A","P"],
+        ["P","DO","A","A","N","DO","P","N","N","DO","P","DO","P","A"],
+        ["DO","A","A","A","P","DO","N","DO","P","A","P","A","N","DO"],
+        ["DO","A","N","DO","P","P","N","DO","A","A","P","N","DO","N"],
+        ["A","N","N","DO","A","A","DO","N","DO","N","DO","A","P","A"],
+        ["DO","N","DO","A","A","A","P","A","A","P","N","DO","DO","A"],
+        ["P","A","DO","P","N","DO","N","DO","A","P","A","N","N","DO"],
+    ]
 
     count = 0
     for nurse_idx, nurse in enumerate(nurses):
@@ -813,7 +846,8 @@ def seed_roster_entries(
                 day_offset += 1
                 continue
 
-            shift_code = shift_pattern[(day_offset + nurse_idx * 3) % len(shift_pattern)]
+            pattern = ROSTER_PATTERNS[nurse_idx % len(ROSTER_PATTERNS)]
+            shift_code = pattern[day_offset % len(pattern)]
             sc = shift_lookup.get(shift_code)
             start_time = sc.defaultstart if sc else None
             end_time = sc.defaultend if sc else None

@@ -4,21 +4,22 @@ import numpy as np
 from copy import deepcopy
 
 
-def run_ga_pipeline(nurses, shifts, requests=None, hard_requests=None):
+def run_ga_pipeline(nurses, shifts, requests=None, hard_requests=None, progress_callback=None):
     """
     Main entry point for Genetic Algorithm nurse rostering.
-    
+
     Args:
         nurses: List of nurse dicts with keys: id, name, rank
         shifts: List of shift requirement dicts (one per day)
         requests: Dict mapping nurse_id to list of (day_idx, shift_name) tuples
-    
+        progress_callback: Optional callable(gen, total_gens, best_score) called every 25 generations
+
     Returns:
         Standardized roster dict with keys: nurses, metadata
     """
     # Parse inputs
     parsed_data = parse_inputs(nurses, shifts, requests, hard_requests)
-    
+
     # Run GA solver
     best_individual, best_penalty = run_ga(
         parsed_data['nurse_names'],
@@ -26,7 +27,8 @@ def run_ga_pipeline(nurses, shifts, requests=None, hard_requests=None):
         parsed_data['demand'],
         parsed_data['nurse_requests'],
         parsed_data['hard_requests'],
-        parsed_data['num_days']
+        parsed_data['num_days'],
+        progress_callback=progress_callback,
     )
     
     # Convert to standardized output
@@ -136,7 +138,7 @@ def parse_inputs(nurses, shifts, requests=None, hard_requests=None, num_days=14)
     }
 
 
-def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, hard_requests, num_days=14):
+def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, hard_requests, num_days=14, progress_callback=None):
     """
     Run the genetic algorithm to generate a roster.
     
@@ -921,6 +923,8 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, hard_requests, num_
                 f"best_so_far={best_score:.2f} "
                 f"mut_rate={mutation_rate:.2f}"
             )
+            if progress_callback:
+                progress_callback(gen, generations, best_score)
     return best, best_score
 
 OFF, AM, PM, NIGHT = 0, 1, 2, 3

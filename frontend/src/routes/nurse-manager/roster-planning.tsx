@@ -14,6 +14,7 @@ import {
   ShiftSummaryTable,
   useWards,
   useRosterPeriods,
+  useWardStatistics,
   usePublishRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
@@ -77,10 +78,11 @@ function RosterPlanningPage() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
-  const [rosterData, setRosterData] = useState<RosterRow[]>(() => generateEmptyRosterData());
+  const [rosterData, setRosterData] = useState<RosterRow[]>([]);
   
   // Algorithm generation state
   const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
 
   // Staffing guidelines — initialised from ward data, editable via the summary table
   const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(
@@ -92,6 +94,7 @@ function RosterPlanningPage() {
   // Data hooks
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
+  const { data: wardStatistics } = useWardStatistics(selectedWard?.wardId ?? null);
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToXLSX } = useRosterExport();
   const publishRoster = usePublishRoster();
@@ -162,12 +165,26 @@ function RosterPlanningPage() {
     }
   }, [displayPeriods, selectedPeriod]);
 
-  // Reset to empty data when view mode changes (only if not algorithm generated)
+  // Populate roster rows with real nurses from the selected ward whenever the ward changes
   useEffect(() => {
-    if (!isAlgorithmGenerated) {
-      setRosterData(generateEmptyRosterData());
+    if (isAlgorithmGenerated) return;
+    const nurses = wardStatistics?.nurses;
+    if (nurses && nurses.length > 0) {
+      setRosterData(
+        nurses.map((nurse) => ({
+          nurseId: nurse.nurseId,
+          name: nurse.name,
+          designation: nurse.designation,
+          hours: { worked: 0, contracted: 44 },
+          shifts: {},
+          hasOvertime: false,
+          hasWarning: false,
+        }))
+      );
+    } else {
+      setRosterData([]);
     }
-  }, [viewMode, isAlgorithmGenerated]);
+  }, [wardStatistics, isAlgorithmGenerated]);
 
   // Derive roster data with hours calculated from the visible date window only
   const displayRosterData = useMemo(() => {
@@ -201,659 +218,28 @@ const handleGenerateAlgorithm = useCallback(async () => {
     showErrorToast("Please select a ward and period first");
     return;
   }
-  const mockData = {
-  "method": "GA",
-  "roster": {
-    "nurses": [
-      {
-        "id": 1,
-        "name": "Nurse 1",
-        "rank": "A",
-        "schedule": [
-          "DO",
-          "A",
-          "A",
-          "P",
-          "P",
-          "N",
-          "DO",
-          "A",
-          "P",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 2,
-        "name": "Nurse 2",
-        "rank": "A",
-        "schedule": [
-          "DO",
-          "A",
-          "P",
-          "DO",
-          "P",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "P",
-          "N",
-          "DO",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 3,
-        "name": "Nurse 3",
-        "rank": "A",
-        "schedule": [
-          "P",
-          "DO",
-          "P",
-          "P",
-          "A",
-          "DO",
-          "P",
-          "A",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 4,
-        "name": "Nurse 4",
-        "rank": "A",
-        "schedule": [
-          "P",
-          "P",
-          "DO",
-          "A",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "P",
-          "N",
-          "DO",
-          "A",
-          "P",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 5,
-        "name": "Nurse 5",
-        "rank": "A",
-        "schedule": [
-          "A",
-          "P",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "N",
-          "DO",
-          "N",
-          "DO",
-          "A",
-          "P",
-          "N",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 6,
-        "name": "Nurse 6",
-        "rank": "A",
-        "schedule": [
-          "N",
-          "DO",
-          "A",
-          "DO",
-          "A",
-          "A",
-          "P",
-          "P",
-          "DO",
-          "P",
-          "N",
-          "N",
-          "DO",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 7,
-        "name": "Nurse 7",
-        "rank": "A",
-        "schedule": [
-          "P",
-          "N",
-          "N",
-          "DO",
-          "DO",
-          "P",
-          "A",
-          "P",
-          "A",
-          "DO",
-          "P",
-          "A",
-          "DO",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 8,
-        "name": "Nurse 8",
-        "rank": "A",
-        "schedule": [
-          "DO",
-          "P",
-          "N",
-          "N",
-          "DO",
-          "P",
-          "A",
-          "A",
-          "A",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 9,
-        "name": "Nurse 9",
-        "rank": "A",
-        "schedule": [
-          "DO",
-          "DO",
-          "P",
-          "A",
-          "P",
-          "A",
-          "N",
-          "N",
-          "DO",
-          "P",
-          "A",
-          "A",
-          "N",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 10,
-        "name": "Nurse 10",
-        "rank": "A",
-        "schedule": [
-          "A",
-          "P",
-          "N",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "N",
-          "DO",
-          "DO",
-          "A",
-          "P",
-          "A",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 11,
-        "name": "Nurse 11",
-        "rank": "A",
-        "schedule": [
-          "P",
-          "DO",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "N",
-          "N",
-          "DO",
-          "P",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 12,
-        "name": "Nurse 12",
-        "rank": "B",
-        "schedule": [
-          "N",
-          "DO",
-          "P",
-          "A",
-          "A",
-          "DO",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "P",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 13,
-        "name": "Nurse 13",
-        "rank": "B",
-        "schedule": [
-          "N",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "DO",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 14,
-        "name": "Nurse 14",
-        "rank": "B",
-        "schedule": [
-          "P",
-          "A",
-          "N",
-          "DO",
-          "P",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 15,
-        "name": "Nurse 15",
-        "rank": "B",
-        "schedule": [
-          "A",
-          "A",
-          "A",
-          "P",
-          "DO",
-          "DO",
-          "N",
-          "DO",
-          "N",
-          "DO",
-          "P",
-          "P",
-          "A",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 16,
-        "name": "Nurse 16",
-        "rank": "B",
-        "schedule": [
-          "DO",
-          "DO",
-          "P",
-          "A",
-          "P",
-          "P",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "P",
-          "N",
-          "DO",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 17,
-        "name": "Nurse 17",
-        "rank": "B",
-        "schedule": [
-          "A",
-          "A",
-          "DO",
-          "P",
-          "P",
-          "DO",
-          "N",
-          "DO",
-          "N",
-          "DO",
-          "P",
-          "P",
-          "A",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 18,
-        "name": "Nurse 18",
-        "rank": "B",
-        "schedule": [
-          "A",
-          "N",
-          "DO",
-          "P",
-          "DO",
-          "P",
-          "A",
-          "P",
-          "A",
-          "P",
-          "N",
-          "DO",
-          "DO",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 19,
-        "name": "Nurse 19",
-        "rank": "B",
-        "schedule": [
-          "N",
-          "N",
-          "DO",
-          "A",
-          "DO",
-          "A",
-          "P",
-          "A",
-          "DO",
-          "P",
-          "N",
-          "DO",
-          "P",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 20,
-        "name": "Nurse 20",
-        "rank": "B",
-        "schedule": [
-          "P",
-          "P",
-          "DO",
-          "A",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "DO",
-          "A",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 21,
-        "name": "Nurse 21",
-        "rank": "B",
-        "schedule": [
-          "DO",
-          "P",
-          "A",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "P",
-          "P",
-          "N",
-          "N",
-          "DO",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 22,
-        "name": "Nurse 22",
-        "rank": "B",
-        "schedule": [
-          "P",
-          "P",
-          "DO",
-          "P",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "P",
-          "DO",
-          "A",
-          "A",
-          "P"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 23,
-        "name": "Nurse 23",
-        "rank": "B",
-        "schedule": [
-          "A",
-          "P",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "DO",
-          "P",
-          "P",
-          "A",
-          "P",
-          "N",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 24,
-        "name": "Nurse 24",
-        "rank": "C",
-        "schedule": [
-          "N",
-          "DO",
-          "P",
-          "P",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "P",
-          "N",
-          "DO",
-          "A",
-          "N",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 25,
-        "name": "Nurse 25",
-        "rank": "C",
-        "schedule": [
-          "P",
-          "A",
-          "P",
-          "N",
-          "DO",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "DO",
-          "A",
-          "N",
-          "DO",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 26,
-        "name": "Nurse 26",
-        "rank": "C",
-        "schedule": [
-          "P",
-          "A",
-          "P",
-          "N",
-          "DO",
-          "A",
-          "DO",
-          "P",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "P",
-          "DO"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      }
-    ]
-  }
-}; //Put mock data in here
-
+  setGenerationProgress(0);
   try {
     const result = await generateAlgorithmRoster.mutateAsync({
-      wardId: selectedWard.wardId,     // CamelCase to match hook params
-      periodId: selectedPeriod.periodId, 
-      startDate: currentStartDate,    // Pass the actual Date object
-      mockData,
+      wardId: selectedWard.wardId,
+      periodId: selectedPeriod.periodId,
+      startDate: currentStartDate,
+      onProgress: (percent) => setGenerationProgress(percent),
     });
 
-    // The hook now returns exactly what we need
+    setGenerationProgress(100);
     setRosterData(result.rosterData);
     setIsAlgorithmGenerated(true);
     showSuccessToast("Algorithm roster generated successfully!");
   } catch (error) {
     console.error("Failed:", error);
+    setGenerationProgress(0);
     showErrorToast("Failed to generate roster.");
   }
 }, [selectedWard, selectedPeriod, currentStartDate, generateAlgorithmRoster, showSuccessToast, showErrorToast]);
 
-  // Clear roster and return to manual mode
+  // Clear roster and return to manual mode — ward nurses repopulate via the wardStatistics effect
   const handleClearRoster = useCallback(() => {
-    setRosterData(generateEmptyRosterData());
     setIsAlgorithmGenerated(false);
   }, []);
 
@@ -1015,6 +401,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
           periods={displayPeriods}
           isAlgorithmGenerated={isAlgorithmGenerated}
           isGenerating={generateAlgorithmRoster.isPending}
+          generationProgress={generationProgress}
           onDateChange={handleDateChange}
           onViewModeChange={handleViewModeChange}
           onWardChange={handleWardChange}

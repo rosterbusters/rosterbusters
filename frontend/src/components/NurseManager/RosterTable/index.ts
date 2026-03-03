@@ -20,12 +20,14 @@ export {
   useRosterExport,
   useGenerateAlgorithmRoster,
   useShiftCodes,
+  useRosterChangelog,
+  useCreateChangelog,
   getShiftDurationHours,
   transformRosterData,
 } from "./useRosterData";
 
 // Export API response types
-export type { AlgorithmRosterResponse } from "./useRosterData";
+export type { AlgorithmRosterResponse, ChangelogEntry, ChangelogCreatePayload } from "./useRosterData";
 
 // Export types
 export * from "./types";
