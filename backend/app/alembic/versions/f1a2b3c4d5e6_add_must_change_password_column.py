@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision: str = "f1a2b3c4d5e6"
@@ -18,15 +19,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "User",
-        sa.Column(
-            "mustchangepassword",
-            sa.Boolean(),
-            server_default=sa.text("false"),
-            nullable=False,
-        ),
-    )
+    bind = op.get_bind()
+    insp = inspect(bind)
+    columns = [c["name"] for c in insp.get_columns("User")]
+
+    if "mustchangepassword" not in columns:
+        op.add_column(
+            "User",
+            sa.Column(
+                "mustchangepassword",
+                sa.Boolean(),
+                server_default=sa.text("false"),
+                nullable=False,
+            ),
+        )
+
     # Make email column nullable (optional for admin-created users)
     op.alter_column(
         "User",
