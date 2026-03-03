@@ -10,6 +10,7 @@ interface ShiftBadgeProps {
   size?: "sm" | "md";
   viewMode?: ViewMode;
   comment?: string;
+  onCommentIconClick?: (e: React.MouseEvent) => void;
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
@@ -35,7 +36,8 @@ export function ShiftBadge({
   isEditable = true,
   size = "md",
   viewMode,
-  comment
+  comment,
+  onCommentIconClick,
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
@@ -92,6 +94,11 @@ export function ShiftBadge({
         alignItems="center"
         justifyContent="center"
         boxShadow="0 0 0 1.5px white, 0 1px 3px rgba(0,0,0,0.2)"
+        cursor="pointer"
+        onClick={(e) => {
+          e.stopPropagation();
+          onCommentIconClick?.(e);
+        }}
       >
         <MessageSquare size={isWeekView ? 12 : 10} color="white" fill="white" />
       </Box>

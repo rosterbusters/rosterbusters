@@ -18,6 +18,7 @@ import moment from "moment";
 
 import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
+import { ShiftCommentPopover } from "./ShiftCommentPopover";
 import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
 import { MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
 import type {
@@ -122,6 +123,23 @@ export function RosterGrid({
     anchorEl: null,
   });
 
+  // Comment-only popover state
+  const [commentPopoverState, setCommentPopoverState] = useState<{
+    isOpen: boolean;
+    nurseId: number | null;
+    date: string;
+    nurseName: string;
+    currentComment: string;
+    anchorEl: HTMLElement | null;
+  }>({
+    isOpen: false,
+    nurseId: null,
+    date: "",
+    nurseName: "",
+    currentComment: "",
+    anchorEl: null,
+  });
+
   // Collapsed groups state - all groups start expanded
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
@@ -182,6 +200,42 @@ export function RosterGrid({
       }
     },
     [popoverState.nurseId, popoverState.date, onCommentChange],
+  );
+
+  // Handle comment icon click — open comment-only popover (suppresses Edit Shift popover)
+  const handleCommentIconClick = useCallback(
+    (
+      nurseId: number,
+      nurseName: string,
+      date: string,
+      shift: ShiftAssignment | null,
+      event: React.MouseEvent,
+    ) => {
+      setCommentPopoverState({
+        isOpen: true,
+        nurseId,
+        date,
+        nurseName,
+        currentComment: shift?.comment || "",
+        anchorEl: event.currentTarget as HTMLElement,
+      });
+    },
+    [],
+  );
+
+  // Handle comment popover close
+  const handleCommentPopoverClose = useCallback(() => {
+    setCommentPopoverState((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // Handle comment save from comment-only popover
+  const handleCommentSaveFromIcon = useCallback(
+    (comment: string) => {
+      if (commentPopoverState.nurseId !== null && onCommentChange) {
+        onCommentChange(commentPopoverState.nurseId, commentPopoverState.date, comment);
+      }
+    },
+    [commentPopoverState.nurseId, commentPopoverState.date, onCommentChange],
   );
 
   // Toggle group collapse
@@ -497,6 +551,9 @@ export function RosterGrid({
                   isEditable={true}
                   viewMode={viewMode}
                   comment={shift?.comment}
+                  onCommentIconClick={(e) =>
+                    handleCommentIconClick(row.nurseId, row.name, dateKey, shift, e)
+                  }
                 />
               </Box>
             </Flex>
@@ -574,6 +631,21 @@ export function RosterGrid({
         onShiftChange={handleShiftChange}
         onCommentChange={handleCommentChange}
         anchorEl={popoverState.anchorEl}
+      />
+
+      {/* Comment-only Popover (opened via comment icon click) */}
+      <ShiftCommentPopover
+        isOpen={commentPopoverState.isOpen}
+        onClose={handleCommentPopoverClose}
+        currentComment={commentPopoverState.currentComment}
+        nurseName={commentPopoverState.nurseName}
+        date={
+          commentPopoverState.date
+            ? moment(commentPopoverState.date).format("ddd, MMM DD")
+            : ""
+        }
+        onCommentChange={handleCommentSaveFromIcon}
+        anchorEl={commentPopoverState.anchorEl}
       />
 
       {/* Loading Overlay */}
