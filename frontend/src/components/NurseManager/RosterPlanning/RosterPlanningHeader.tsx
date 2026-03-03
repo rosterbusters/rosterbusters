@@ -47,6 +47,7 @@ interface RosterPlanningHeaderProps {
   periods: RosterPeriod[];
   isAlgorithmGenerated?: boolean;
   isGenerating?: boolean;
+  generationProgress?: number;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
@@ -67,6 +68,7 @@ export function RosterPlanningHeader({
   periods,
   isAlgorithmGenerated = false,
   isGenerating = false,
+  generationProgress = 0,
   onDateChange,
   onViewModeChange,
   onWardChange,
@@ -347,6 +349,18 @@ export function RosterPlanningHeader({
         {/* Algorithm Generation Buttons */}
         {!isAlgorithmGenerated ? (
           // Generate + Mock Data row
+          <Flex direction="column" align="center" gap={2} w="full">
+            {/* Progress bar — visible only while generating */}
+            {isGenerating && (
+              <Box w="320px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
+                <Box
+                  h="full"
+                  bg="#4B8798"
+                  borderRadius="full"
+                  style={{ width: `${generationProgress}%`, transition: "width 0.4s ease" }}
+                />
+              </Box>
+            )}
           <HStack gap={4} flexWrap="wrap" justify="center">
             <Button
               size="md"
@@ -365,7 +379,7 @@ export function RosterPlanningHeader({
               {isGenerating ? (
                 <HStack gap={2}>
                   <Spinner size="sm" />
-                  <Text>Generating...</Text>
+                  <Text>Generating… {generationProgress}%</Text>
                 </HStack>
               ) : (
                 <HStack gap={2}>
@@ -416,6 +430,7 @@ export function RosterPlanningHeader({
               </HStack>
             )}
           </HStack>
+          </Flex>
         ) : (
           // Regenerate / Clear Buttons (after generation)
           <HStack gap={3}>

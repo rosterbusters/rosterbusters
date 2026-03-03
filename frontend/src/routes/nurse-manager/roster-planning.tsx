@@ -82,6 +82,7 @@ function RosterPlanningPage() {
   
   // Algorithm generation state
   const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
 
   // Staffing guidelines — initialised from ward data, editable via the summary table
   const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(
@@ -217,19 +218,22 @@ const handleGenerateAlgorithm = useCallback(async () => {
     showErrorToast("Please select a ward and period first");
     return;
   }
+  setGenerationProgress(0);
   try {
     const result = await generateAlgorithmRoster.mutateAsync({
       wardId: selectedWard.wardId,
       periodId: selectedPeriod.periodId,
       startDate: currentStartDate,
+      onProgress: (percent) => setGenerationProgress(percent),
     });
 
-    // The hook now returns exactly what we need
+    setGenerationProgress(100);
     setRosterData(result.rosterData);
     setIsAlgorithmGenerated(true);
     showSuccessToast("Algorithm roster generated successfully!");
   } catch (error) {
     console.error("Failed:", error);
+    setGenerationProgress(0);
     showErrorToast("Failed to generate roster.");
   }
 }, [selectedWard, selectedPeriod, currentStartDate, generateAlgorithmRoster, showSuccessToast, showErrorToast]);
@@ -397,6 +401,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
           periods={displayPeriods}
           isAlgorithmGenerated={isAlgorithmGenerated}
           isGenerating={generateAlgorithmRoster.isPending}
+          generationProgress={generationProgress}
           onDateChange={handleDateChange}
           onViewModeChange={handleViewModeChange}
           onWardChange={handleWardChange}

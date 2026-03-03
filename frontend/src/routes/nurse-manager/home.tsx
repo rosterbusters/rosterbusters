@@ -11,6 +11,8 @@ import {
   useRosterPageData,
   useRosterExport,
   useShiftCodes,
+  useRosterChangelog,
+  useCreateChangelog,
   getShiftDurationHours,
   type RosterPeriod,
   type ViewMode,
@@ -29,67 +31,6 @@ export const Route = createFileRoute("/nurse-manager/home")({
   component: NurseManagerHome,
 });
 
-// Initial mock edit history data for demonstration
-const INITIAL_EDIT_HISTORY: EditHistoryEntry[] = [
-  {
-    id: 1,
-    modifiedDate: "2025-10-04T14:56:00",
-    changeType: "shift_change",
-    previousShiftCode: "A",
-    newShiftCode: "P",
-    shiftDate: "2025-10-04T14:56:00",
-    nurseName: "Mary Susan",
-    modifiedBy: "Grace",
-  },
-  {
-    id: 2,
-    modifiedDate: "2025-10-04T14:56:00",
-    changeType: "shift_change",
-    previousShiftCode: "A",
-    newShiftCode: "P",
-    shiftDate: "2025-10-04T14:56:00",
-    nurseName: "Tonnie Marti",
-    modifiedBy: "Grace",
-  },
-  {
-    id: 3,
-    modifiedDate: "2025-10-04T14:56:00",
-    changeType: "comment",
-    comment: "hduehud",
-    shiftDate: "2025-10-04T14:56:00",
-    nurseName: "Mary Lamb",
-    modifiedBy: "Tonnie Marti",
-  },
-  {
-    id: 4,
-    modifiedDate: "2025-10-03T09:30:00",
-    changeType: "shift_change",
-    previousShiftCode: "D",
-    newShiftCode: "N",
-    shiftDate: "2025-10-03T09:30:00",
-    nurseName: "Sarah Johnson",
-    modifiedBy: "Grace",
-  },
-  {
-    id: 5,
-    modifiedDate: "2025-10-03T08:15:00",
-    changeType: "shift_change",
-    previousShiftCode: "DO",
-    newShiftCode: "A",
-    shiftDate: "2025-10-03T08:15:00",
-    nurseName: "Emily Chen",
-    modifiedBy: "Grace",
-  },
-  {
-    id: 6,
-    modifiedDate: "2025-10-02T16:45:00",
-    changeType: "comment",
-    comment: "Nurse requested swap due to family emergency",
-    shiftDate: "2025-10-02T16:45:00",
-    nurseName: "David Wong",
-    modifiedBy: "Grace",
-  },
-];
 
 function NurseManagerHome() {
   // State management
@@ -100,13 +41,23 @@ function NurseManagerHome() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
-  const [editHistory, setEditHistory] = useState<EditHistoryEntry[]>(INITIAL_EDIT_HISTORY);
+
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToXLSX } = useRosterExport();
 
   const { rows: apiRows, isLoading: rosterLoading } = useRosterPageData(
+    selectedWard?.wardid ?? null,
+    selectedPeriod?.periodId ?? null
+  );
+
+  const { data: changelogEntries = [] } = useRosterChangelog(
+    selectedWard?.wardid ?? null,
+    selectedPeriod?.periodId ?? null
+  );
+
+  const { mutate: createChangelog } = useCreateChangelog(
     selectedWard?.wardid ?? null,
     selectedPeriod?.periodId ?? null
   );
@@ -132,6 +83,21 @@ function NurseManagerHome() {
       setSelectedPeriod(currentPeriod);
     }
   }, [periods, selectedPeriod]);
+
+  // Map API changelog entries to the EditHistoryEntry shape the dialog expects
+  const editHistory = useMemo<EditHistoryEntry[]>(() => {
+    return changelogEntries.map((entry) => ({
+      id: entry.changeid,
+      modifiedDate: entry.changedat,
+      changeType: entry.changetype === "comment" ? "comment" : "shift_change",
+      previousShiftCode: entry.oldshiftcode as ShiftCode | undefined,
+      newShiftCode: entry.newshiftcode as ShiftCode | undefined,
+      comment: entry.reason ?? undefined,
+      shiftDate: entry.shiftdate ?? entry.changedat,
+      nurseName: entry.nursename,
+      modifiedBy: entry.modifiedby,
+    }));
+  }, [changelogEntries]);
 
   // Derive roster data with hours calculated from the visible date window only
   const displayRosterData = useMemo(() => {
@@ -177,16 +143,21 @@ function NurseManagerHome() {
 
   const handleShiftChange = useCallback(
     (nurseId: number, date: string, newShiftCode: ShiftCode) => {
+      // Capture old values before updating state
+      const row = localRosterData.find(r => r.nurseId === nurseId);
+      const oldShiftCode = row?.shifts[date]?.shiftCode ?? null;
+      const rosterId = row?.shifts[date]?.rosterId ?? null;
+
       setLocalRosterData(prevData =>
-        prevData.map(row => {
-          if (row.nurseId === nurseId) {
+        prevData.map(r => {
+          if (r.nurseId === nurseId) {
             return {
-              ...row,
+              ...r,
               shifts: {
-                ...row.shifts,
+                ...r.shifts,
                 [date]: {
-                  ...(row.shifts[date] || {}),
-                  rosterId: row.shifts[date]?.rosterId || 0,
+                  ...(r.shifts[date] || {}),
+                  rosterId: r.shifts[date]?.rosterId || 0,
                   nurseId,
                   shiftDate: date,
                   shiftCode: newShiftCode,
@@ -195,49 +166,57 @@ function NurseManagerHome() {
               },
             };
           }
-          return row;
+          return r;
         })
       );
+
+      // Persist to changelog
+      createChangelog({
+        rosterid: rosterId,
+        oldnurseid: nurseId,
+        oldshiftcode: oldShiftCode,
+        newshiftcode: newShiftCode,
+        changetype: "shift_change",
+        changesource: "Manual",
+      });
     },
-    []
+    [localRosterData, createChangelog]
   );
 
   const handleCommentChange = useCallback(
     (nurseId: number, date: string, comment: string) => {
-      const nurse = localRosterData.find(r => r.nurseId === nurseId);
+      const row = localRosterData.find(r => r.nurseId === nurseId);
+      const rosterId = row?.shifts[date]?.rosterId ?? null;
+
       setLocalRosterData(prevData =>
-        prevData.map(row => {
-          if (row.nurseId === nurseId && row.shifts[date]) {
+        prevData.map(r => {
+          if (r.nurseId === nurseId && r.shifts[date]) {
             return {
-              ...row,
+              ...r,
               shifts: {
-                ...row.shifts,
+                ...r.shifts,
                 [date]: {
-                  ...row.shifts[date],
+                  ...r.shifts[date],
                   comment: comment || undefined,
                 },
               },
             };
           }
-          return row;
+          return r;
         })
       );
+
       if (comment) {
-        setEditHistory(prev => [
-          {
-            id: Date.now(),
-            modifiedDate: moment().toISOString(),
-            changeType: "comment",
-            comment,
-            shiftDate: date,
-            nurseName: nurse?.name || "Unknown",
-            modifiedBy: "Current User",
-          },
-          ...prev,
-        ]);
+        createChangelog({
+          rosterid: rosterId,
+          oldnurseid: nurseId,
+          changetype: "comment",
+          reason: comment,
+          changesource: "Manual",
+        });
       }
     },
-    [localRosterData]
+    [localRosterData, createChangelog]
   );
   const handleExportXLSX = useCallback(() => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
@@ -246,6 +225,19 @@ function NurseManagerHome() {
   const handleViewEditHistory = useCallback(() => {
     setIsEditHistoryOpen(true);
   }, []);
+
+  const handleUndo = useCallback(
+    (entryId: number) => {
+      const entry = editHistory.find(e => e.id === entryId);
+      if (!entry || entry.changeType !== "shift_change" || !entry.previousShiftCode) return;
+
+      const nurseRow = localRosterData.find(r => r.name === entry.nurseName);
+      if (!nurseRow) return;
+
+      handleShiftChange(nurseRow.nurseId, entry.shiftDate, entry.previousShiftCode);
+    },
+    [editHistory, localRosterData, handleShiftChange]
+  );
 
   // Set default ward if not set, restoring from localStorage if available
   useEffect(() => {
@@ -348,6 +340,7 @@ function NurseManagerHome() {
         isOpen={isEditHistoryOpen}
         onClose={() => setIsEditHistoryOpen(false)}
         entries={editHistory}
+        onUndo={handleUndo}
       />
     </Flex>
   );

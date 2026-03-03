@@ -3,7 +3,7 @@ from app.rostering.milp_algo import run_milp_pipeline, MILPError
 from app.rostering.ga_algo import run_ga_pipeline
 
 
-def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT"):
+def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress_callback=None):
     """
     Generate a nurse roster using MILP (primary) or GA (fallback).
 
@@ -80,7 +80,7 @@ def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT"):
         print(f"MILP failed: {e}")
 
     # ── Fallback: GA ───────────────────────────────────────────────────────
-    roster = run_ga_pipeline(nurses, shifts, requests)
+    roster = run_ga_pipeline(nurses, shifts, requests, progress_callback=progress_callback)
     return {"method": "GA", "roster": roster}
 
 

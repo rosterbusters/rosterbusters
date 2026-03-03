@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Box,
   Button,
@@ -59,6 +59,23 @@ export function EditHistoryDialog({
       return true;
     });
   }, [entries, filterModifiedBy, filterShiftDate]);
+
+  const handleKeyboardUndo = useCallback(() => {
+    if (!onUndo || filteredEntries.length === 0) return;
+    onUndo(filteredEntries[0].id);
+  }, [onUndo, filteredEntries]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        handleKeyboardUndo();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, handleKeyboardUndo]);
 
   const toggleFilter = (column: string) => {
     setActiveFilter(activeFilter === column ? null : column);
@@ -343,7 +360,7 @@ export function EditHistoryDialog({
                           variant="outline"
                           colorScheme="red"
                           onClick={() => onUndo?.(entry.id)}
-                          disabled={!onUndo}
+                          disabled={!onUndo || entry.changeType !== "shift_change" || !entry.previousShiftCode}
                         >
                           Undo
                         </Button>

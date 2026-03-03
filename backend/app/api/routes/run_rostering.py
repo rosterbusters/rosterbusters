@@ -1,12 +1,30 @@
+import json
+import queue
+import threading
+
+from datetime import datetime, timezone
+from typing import Any, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from app.api.deps import get_db
-from app.models.rbac import Nurse
-from app.models.roster import Roster, RosterPeriod, Ward
+from app.api.deps import CurrentUser, SessionDep, get_db
+from app.models.rbac import Nurse, NurseManager
+from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
 from app.models.shifts import ShiftRequest
 from app.rostering.algo_scheduler import generate_roster
+
+
+class ChangelogCreateRequest(BaseModel):
+    rosterid: Optional[int] = None
+    oldnurseid: Optional[int] = None
+    oldshiftcode: Optional[str] = None
+    newshiftcode: Optional[str] = None
+    changetype: str  # "shift_change" | "comment"
+    reason: Optional[str] = None
+    changesource: str = "Manual"
 
 
 class RosterGenerationRequest(BaseModel):
@@ -80,6 +98,137 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
             for e in entries
         ],
     }
+
+
+@router.post("/changelog", response_model=RosterChangeLogPublic)
+def create_changelog_entry(
+    request: ChangelogCreateRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Record a roster change made by the currently logged-in manager."""
+    manager_id = current_user.managerid
+
+    # Resolve manager display name
+    manager_name = "Unknown"
+    if manager_id:
+        mgr = session.get(NurseManager, manager_id)
+        if mgr:
+            manager_name = mgr.name
+
+    # Resolve nurse display name (prefer explicit oldnurseid, else via roster)
+    nurse_name = "Unknown"
+    shift_date = None
+    nurse_id = request.oldnurseid
+
+    if request.rosterid:
+        roster_entry = session.get(Roster, request.rosterid)
+        if roster_entry:
+            shift_date = roster_entry.shiftdate
+            if not nurse_id:
+                nurse_id = roster_entry.nurseid
+
+    if nurse_id:
+        nurse = session.get(Nurse, nurse_id)
+        if nurse:
+            nurse_name = nurse.name
+
+    changelog = RosterChangeLog(
+        rosterid=request.rosterid,
+        changedbymanagerid=manager_id,
+        changedat=datetime.now(timezone.utc),
+        changetype=request.changetype,
+        oldnurseid=nurse_id,
+        oldshiftcode=request.oldshiftcode,
+        newshiftcode=request.newshiftcode,
+        reason=request.reason,
+        changesource=request.changesource,
+    )
+    session.add(changelog)
+    session.commit()
+    session.refresh(changelog)
+
+    return RosterChangeLogPublic(
+        changeid=changelog.changeid,
+        rosterid=changelog.rosterid,
+        changedat=changelog.changedat,
+        changetype=changelog.changetype,
+        oldshiftcode=changelog.oldshiftcode,
+        newshiftcode=changelog.newshiftcode,
+        reason=changelog.reason,
+        changesource=changelog.changesource,
+        shiftdate=shift_date,
+        nursename=nurse_name,
+        modifiedby=manager_name,
+    )
+
+
+@router.get("/changelog", response_model=list[RosterChangeLogPublic])
+def get_roster_changelog(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Get all changelog entries for a ward+period, newest first."""
+    # Collect roster IDs for this ward+period
+    roster_ids = [
+        r.rosterid
+        for r in session.exec(
+            select(Roster).where(
+                Roster.wardid == ward_id,
+                Roster.periodid == period_id,
+            )
+        ).all()
+        if r.rosterid is not None
+    ]
+
+    if not roster_ids:
+        return []
+
+    changelog_entries = session.exec(
+        select(RosterChangeLog)
+        .where(RosterChangeLog.rosterid.in_(roster_ids))  # type: ignore[attr-defined]
+        .order_by(RosterChangeLog.changedat.desc())
+    ).all()
+
+    # Build lookup maps for names
+    nurse_ids = {e.oldnurseid for e in changelog_entries if e.oldnurseid}
+    manager_ids = {e.changedbymanagerid for e in changelog_entries if e.changedbymanagerid}
+    roster_map = {r.rosterid: r for r in session.exec(
+        select(Roster).where(Roster.rosterid.in_(roster_ids))  # type: ignore[attr-defined]
+    ).all()}
+
+    nurse_map: dict[int, str] = {}
+    if nurse_ids:
+        for nurse in session.exec(select(Nurse).where(Nurse.nurseid.in_(list(nurse_ids)))).all():  # type: ignore[attr-defined]
+            nurse_map[nurse.nurseid] = nurse.name
+
+    manager_map: dict[int, str] = {}
+    if manager_ids:
+        for mgr in session.exec(select(NurseManager).where(NurseManager.managerid.in_(list(manager_ids)))).all():  # type: ignore[attr-defined]
+            manager_map[mgr.managerid] = mgr.name
+
+    result = []
+    for entry in changelog_entries:
+        roster = roster_map.get(entry.rosterid) if entry.rosterid else None
+        nurse_name = nurse_map.get(entry.oldnurseid, "Unknown") if entry.oldnurseid else "Unknown"
+        manager_name = manager_map.get(entry.changedbymanagerid, "Unknown") if entry.changedbymanagerid else "System"
+        result.append(RosterChangeLogPublic(
+            changeid=entry.changeid,
+            rosterid=entry.rosterid,
+            changedat=entry.changedat,
+            changetype=entry.changetype,
+            oldshiftcode=entry.oldshiftcode,
+            newshiftcode=entry.newshiftcode,
+            reason=entry.reason,
+            changesource=entry.changesource,
+            shiftdate=roster.shiftdate if roster else None,
+            nursename=nurse_name,
+            modifiedby=manager_name,
+        ))
+
+    return result
 
 
 @router.get("/ward/{ward_id}/shift-requirements")
@@ -157,6 +306,71 @@ def generate_roster_endpoint(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate-algorithm-stream")
+def generate_roster_stream(
+    request_data: RosterGenerationRequest,
+    db: Session = Depends(get_db),
+):
+    """Run the MILP/GA rostering algorithm and stream SSE progress events."""
+    # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
+    ward = db.get(Ward, request_data.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    daily_req = {
+        "AM": {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
+        "PM": {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
+        "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
+    }
+    shifts_data = [daily_req for _ in range(14)]
+
+    nurses_db = db.exec(
+        select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
+    ).all()
+    nurses_data = [
+        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+        for n in nurses_db
+    ]
+
+    q: queue.Queue = queue.Queue()
+
+    def _run():
+        try:
+            def on_progress(gen: int, total_gens: int, best_score: float) -> None:
+                q.put({
+                    "type": "progress",
+                    "generation": gen,
+                    "total": total_gens,
+                    "percent": round(gen / total_gens * 100),
+                    "best_score": round(best_score, 2),
+                })
+
+            result = generate_roster(
+                nurses=nurses_data,
+                shifts=shifts_data,
+                requests=None,
+                progress_callback=on_progress,
+            )
+            q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
+        except Exception as exc:
+            q.put({"type": "error", "message": str(exc)})
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    def _event_stream():
+        while True:
+            try:
+                item = q.get(timeout=600)  # 10-minute hard cap
+                yield f"data: {json.dumps(item)}\n\n"
+                if item["type"] in ("complete", "error"):
+                    break
+            except queue.Empty:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Timed out'})}\n\n"
+                break
+
+    return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
 def _map_rank(designation: str) -> str:
