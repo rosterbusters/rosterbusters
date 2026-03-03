@@ -8,7 +8,7 @@ interface StatusBannerProps {
 
 export default function StatusBanner({ ward }: StatusBannerProps) {
   const { user } = useAuth();
-  const managerName = (user as any)?.name ?? user?.full_name ?? "Name";
+  const managerName = user?.full_name ?? "Name";
 
   const now = new Date();
   const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });

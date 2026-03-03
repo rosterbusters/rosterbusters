@@ -5,23 +5,13 @@ import { useState } from "react"
 import {
   type Body_login_access_token as AccessToken,
   type ApiError,
+  type UserPublic,
   DefaultService,
   UsersService,
 } from "@/client"
 import { handleError } from "@/utils"
 
-/** Matches RBACUserPublic from the backend */
-export interface CurrentUser {
-  userid: number
-  username: string
-  email: string
-  nurseid?: number | null
-  managerid?: number | null
-  isactive: boolean
-  is_superuser: boolean
-  wardid?: number | null
-  name?: string | null
-}
+export type CurrentUser = UserPublic
 
 const isLoggedIn = () => {
   return localStorage.getItem("access_token") !== null
@@ -33,7 +23,7 @@ const useAuth = () => {
   const queryClient = useQueryClient()
   const { data: user } = useQuery<CurrentUser | null, Error>({
     queryKey: ["currentUser"],
-    queryFn: UsersService.readUserMe as () => Promise<CurrentUser>,
+    queryFn: () => UsersService.readUserMe() as Promise<CurrentUser>,
     enabled: isLoggedIn(),
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
