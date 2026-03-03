@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_db
 from app.models.rbac import Nurse
-from app.models.roster import Ward
+from app.models.roster import Roster, RosterPeriod, Ward
 from app.models.shifts import ShiftRequest
 from app.rostering.algo_scheduler import generate_roster
 
@@ -15,6 +15,71 @@ class RosterGenerationRequest(BaseModel):
 
 
 router = APIRouter()
+
+
+@router.get("/manager/statistics")
+def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
+    """Get nurses list for a ward (used by roster grid)."""
+    ward = db.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    nurses = db.exec(
+        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    ).all()
+
+    return {
+        "ward": {"wardId": ward.wardid, "wardName": ward.wardname},
+        "nurses": [
+            {
+                "nurseId": n.nurseid,
+                "name": n.name,
+                "designation": n.designation,
+                "employmentType": n.employmenttype,
+            }
+            for n in nurses
+        ],
+        "total_nurses": len(nurses),
+    }
+
+
+@router.get("/ward/{ward_id}")
+def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db)):
+    """Get roster entries for a ward within a roster period."""
+    ward = db.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = db.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    entries = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).all()
+
+    return {
+        "ward": {"wardId": ward.wardid, "wardName": ward.wardname, "wardType": ward.wardtype},
+        "period": {
+            "periodId": period.periodid,
+            "startDate": str(period.startdate),
+            "endDate": str(period.enddate),
+        },
+        "roster_entries": [
+            {
+                "roster_id": e.rosterid,
+                "nurse_id": e.nurseid,
+                "shift_date": str(e.shiftdate),
+                "shift_code": e.shiftcode,
+                "status": e.status,
+                "assignment_method": e.assignmentmethod,
+            }
+            for e in entries
+        ],
+    }
 
 
 @router.get("/ward/{ward_id}/shift-requirements")

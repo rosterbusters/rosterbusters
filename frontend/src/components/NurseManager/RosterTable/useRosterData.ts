@@ -50,29 +50,19 @@ export function useWards() {
   });
 }
 
-// Hook to fetch roster periods
+// Hook to fetch roster periods from the API
 export function useRosterPeriods() {
   return useQuery<RosterPeriod[]>({
     queryKey: ["roster", "periods"],
     queryFn: async () => {
-      // For now, generate mock periods since we don't have a dedicated endpoint
-      // In production, this would fetch from /api/v1/roster/periods
-      const today = moment();
-      const periods: RosterPeriod[] = [];
-      
-      for (let i = -2; i <= 2; i++) {
-        const startDate = moment(today).add(i * 14, "days").startOf("isoWeek");
-        const endDate = moment(startDate).add(13, "days");
-        periods.push({
-          periodId: i + 3,
-          name: `${startDate.format("MMM DD")} - ${endDate.format("MMM DD YYYY")}`,
-          startDate: startDate.format("YYYY-MM-DD"),
-          endDate: endDate.format("YYYY-MM-DD"),
-          status: i < 0 ? "Finalized" : i === 0 ? "RequestOpen" : "RequestOpen",
-        });
-      }
-      
-      return periods;
+      const data = await fetchWithAuth("/api/v1/shift-requests/periods");
+      return data.map((p: Record<string, unknown>) => ({
+        periodId: p.periodid as number,
+        name: p.name as string,
+        startDate: p.startdate as string,
+        endDate: p.enddate as string,
+        status: p.status as RosterPeriod["status"],
+      }));
     },
     staleTime: 10 * 60 * 1000, // 10 minutes
   });

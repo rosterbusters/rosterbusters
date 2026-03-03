@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import {
   Box,
+  Button,
   Flex,
   Text,
   Table,
@@ -24,6 +25,7 @@ interface EditHistoryDialogProps {
   isOpen: boolean;
   onClose: () => void;
   entries: EditHistoryEntry[];
+  onUndo?: (entryId: number) => void;
 }
 
 function formatDateTime(dateStr: string): string {
@@ -34,6 +36,7 @@ export function EditHistoryDialog({
   isOpen,
   onClose,
   entries,
+  onUndo,
 }: EditHistoryDialogProps) {
   const [filterModifiedBy, setFilterModifiedBy] = useState("");
   const [filterShiftDate, setFilterShiftDate] = useState("");
@@ -235,13 +238,26 @@ export function EditHistoryDialog({
                       />
                     )}
                   </Table.ColumnHeader>
+                  <Table.ColumnHeader
+                    px={5}
+                    py={3}
+                    fontSize="xs"
+                    fontWeight="semibold"
+                    color="gray.600"
+                    textTransform="uppercase"
+                    letterSpacing="wider"
+                    borderBottom="2px solid"
+                    borderColor="gray.200"
+                    bg="gray.50"
+                    w="100px"
+                  />
                 </Table.Row>
               </Table.Header>
 
               <Table.Body>
                 {filteredEntries.length === 0 ? (
                   <Table.Row>
-                    <Table.Cell colSpan={5} textAlign="center" py={8}>
+                    <Table.Cell colSpan={6} textAlign="center" py={8}>
                       <Text color="gray.400" fontSize="sm">
                         No edit history found
                       </Text>
@@ -318,6 +334,19 @@ export function EditHistoryDialog({
                         <Text fontSize="sm" color="gray.700">
                           {entry.modifiedBy}
                         </Text>
+                      </Table.Cell>
+
+                      {/* Actions */}
+                      <Table.Cell px={5} py={4}>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          colorScheme="red"
+                          onClick={() => onUndo?.(entry.id)}
+                          disabled={!onUndo}
+                        >
+                          Undo
+                        </Button>
                       </Table.Cell>
                     </Table.Row>
                   ))
