@@ -5,6 +5,7 @@ import { useState } from "react"
 import {
   type Body_login_access_token as AccessToken,
   type ApiError,
+  type UserPublic,
   DefaultService,
   UsersService,
 } from "@/client"
@@ -34,7 +35,7 @@ const useAuth = () => {
   const queryClient = useQueryClient()
   const { data: user } = useQuery<CurrentUser | null, Error>({
     queryKey: ["currentUser"],
-    queryFn: UsersService.readUserMe as () => Promise<CurrentUser>,
+    queryFn: () => UsersService.readUserMe() as Promise<CurrentUser>,
     enabled: isLoggedIn(),
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
