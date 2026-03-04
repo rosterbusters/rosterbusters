@@ -498,43 +498,43 @@ def seed_nurses(session: Session, wards: list[Ward]) -> list[Nurse]:
     return nurses
 
 
-# def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
-#     """Seed admin user."""
-#     # logger.info("Seeding admin user...")
+def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
+    """Seed admin user."""
+    logger.info("Seeding admin user...")
 
-#     # existing = session.exec(
-#     #     select(RBACUser).where(RBACUser.email == "admin@sach.org.sg")
-#     # ).first()
+    existing = session.exec(
+        select(RBACUser).where(RBACUser.email == "admin@sach.org.sg")
+    ).first()
 
-#     # if existing:
-#     #     logger.info("  Admin user already exists, skipping")
-#     #     return existing
+    if existing:
+        logger.info("  Admin user already exists, skipping")
+        return existing
 
-#     # admin = RBACUser(
-#     #     username="admin",
-#     #     email="admin@sach.org.sg",
-#     #     passwordhash=get_password_hash("changethis"),
-#     #     isactive=True,
-#     #     createdat=datetime.now(timezone.utc),
-#     # )
-#     session.add(admin)
-#     session.commit()
-#     session.refresh(admin)
+    admin = RBACUser(
+        username="admin",
+        email="admin@sach.org.sg",
+        passwordhash=get_password_hash("changethis"),
+        isactive=True,
+        createdate=datetime.now(timezone.utc),
+    )
+    session.add(admin)
+    session.commit()
+    session.refresh(admin)
 
-#     # Assign admin role
-#     admin_role = roles.get("Admin")
-#     if admin_role:
-#         user_role = UserRole(
-#             userid=admin.userid,
-#             roleid=admin_role.roleid,
-#             isactive=True,
-#             assignedat=datetime.now(timezone.utc),
-#         )
-#         session.add(user_role)
-#         session.commit()
+    # Assign admin role
+    admin_role = roles.get("Admin")
+    if admin_role:
+        user_role = UserRole(
+            userid=admin.userid,
+            roleid=admin_role.roleid,
+            isactive=True,
+            assignedat=datetime.now(timezone.utc),
+        )
+        session.add(user_role)
+        session.commit()
 
-#     logger.info("  Created admin user: admin@sach.org.sg / changethis")
-#     return admin
+    logger.info("  Created admin user: admin@sach.org.sg / changethis")
+    return admin
 
 
 def seed_manager_users(

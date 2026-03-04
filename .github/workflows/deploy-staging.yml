@@ -63,8 +63,6 @@ jobs:
           GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_OAUTH_ALLOWED_DOMAINS=${{ secrets.GOOGLE_OAUTH_ALLOWED_DOMAINS }}
           USERS_OPEN_REGISTRATION=True
-          FIRST_SUPERUSER=${{ secrets.FIRST_SUPERUSER }}
-          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
           SMTP_HOST=${{ secrets.SMTP_HOST }}
           SMTP_USER=${{ secrets.SMTP_USER }}
           SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
@@ -108,7 +106,7 @@ jobs:
 
           # Build and start the app in production mode
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
-            docker compose -f docker-compose.yml -f docker-compose.staging.yml build
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml build
           docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
 
           # Seed database
