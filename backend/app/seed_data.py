@@ -503,7 +503,9 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
     logger.info("Seeding admin user...")
 
     existing = session.exec(
-        select(RBACUser).where(RBACUser.email == "admin@sach.org.sg")
+        select(RBACUser).where(
+            (RBACUser.email == "admin@sach.org.sg") | (RBACUser.username == "admin")
+        )
     ).first()
 
     if existing:
