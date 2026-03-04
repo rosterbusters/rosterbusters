@@ -38,7 +38,7 @@ function NurseManagerNavbar() {
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
   const { user, logout } = useAuth();
 
-  const userName = (user as any)?.name || user?.full_name || user?.email || "Manager";
+  const userName = user?.name || user?.email || "Manager";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
@@ -50,7 +50,7 @@ function NurseManagerNavbar() {
     return paths.some((path) => location.pathname === path);
   };
 
-  const leaveShiftPaths = ["/nurse-manager/leave-overview", "/nurse-manager/shift-overview"];
+  const leaveShiftPaths = ["/nurse-manager/request-application", "/nurse-manager/request-overview"];
   const isLeaveShiftActive = isSectionActive(leaveShiftPaths);
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
@@ -148,10 +148,10 @@ function NurseManagerNavbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/nurse-manager/leave-overview"
+                          to="/nurse-manager/request-application"
                           className={cn(
                             "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/nurse-manager/leave-overview")
+                            isActive("/nurse-manager/request-application")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
@@ -164,10 +164,10 @@ function NurseManagerNavbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/nurse-manager/shift-overview"
+                          to="/nurse-manager/request-overview"
                           className={cn(
                             "w-full inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/nurse-manager/shift-overview")
+                            isActive("/nurse-manager/request-overview")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
@@ -384,13 +384,13 @@ function NurseManagerNavbar() {
                 {leaveShiftExpanded && (
                   <div className="ml-8 mt-2 flex flex-col gap-1.5 pl-4">
                     <Link
-                      to="/nurse-manager/leave-overview"
+                      to="/nurse-manager/request-application"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
                         className={cn(
                           "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                          isActive("/nurse-manager/leave-overview")
+                          isActive("/nurse-manager/request-application")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
                         )}
@@ -400,13 +400,13 @@ function NurseManagerNavbar() {
                       </span>
                     </Link>
                     <Link
-                      to="/nurse-manager/shift-overview"
+                      to="/nurse-manager/request-overview"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
                         className={cn(
                           "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                          isActive("/nurse-manager/shift-overview")
+                          isActive("/nurse-manager/request-overview")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
                         )}

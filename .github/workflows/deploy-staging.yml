@@ -96,6 +96,10 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans 2>/dev/null || true
           docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
 
+          # Clean up unused images and build cache to free disk space
+          docker image prune -a -f
+          docker builder prune -a -f
+
           # Create the external network for Traefik (idempotent)
           docker network create traefik-public 2>/dev/null || true
 

@@ -3,9 +3,8 @@ import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
-import { NewLeaveRequest } from "./NewLeaveRequest";
 import { EditLeaveRequest } from "./EditLeaveRequest";
-import useAuth from "@/hooks/useAuth";
+import { NewLeaveRequest } from "./NewLeaveRequest";
 import moment from "moment";
 
 interface CustomMonthViewProps {
@@ -48,14 +47,13 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   localizer,
   events,
 }: CustomMonthViewProps) {
-  const { user } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<{
     requestId: number;
-    shiftType: string;
-    preferredDate: string;
+    leaveType: string;
+    startDate: string;
+    endDate: string;
   } | null>(null);
+  const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
   const currRange = useMemo(
     () => CustomMonthView.range(date, { localizer }),
@@ -71,11 +69,6 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   }, [currRange]);
 
   const currentMonth = moment(date).month();
-
-  const handleDayClicked = (day: Date) => {
-    setSelectedDay(day);
-    setIsOpen(true);
-  };
 
   return (
     <>
@@ -121,10 +114,10 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                   color={isCurrentMonth ? "foreground" : "gray.400"}
                   p={2}
                   minH="120px"
-                  onClick={() => handleDayClicked(day)}
-                  cursor="pointer"
                   borderColor="border"
                   borderWidth="1px"
+                  cursor="pointer"
+                  onClick={() => setNewLeaveDate(day)}
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
@@ -136,7 +129,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                             (a.resource?.isOwn ? 1 : 0),
                         )
                         .map((ev, idx) => (
-                          <Box key={idx} pb={2} maxW="100%">
+                          <Box key={idx} pb={2} maxW="100%" onClick={(e) => e.stopPropagation()}>
                             <CalendarRequestBlock
                               shift={ev.title}
                               nurseName={ev.resource?.nurseName}
@@ -146,8 +139,9 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                                   ? () =>
                                       setSelectedRequest({
                                         requestId: ev.resource.requestId,
-                                        shiftType: ev.resource.shiftType,
-                                        preferredDate: ev.resource.preferredDate,
+                                        leaveType: ev.resource.shiftType,
+                                        startDate: ev.resource.startDate,
+                                        endDate: ev.resource.endDate,
                                       })
                                   : undefined
                               }
@@ -162,22 +156,22 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         ))}
       </VStack>
 
-      <NewLeaveRequest
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        selectedDate={selectedDay}
-        wardId={(user as any)?.wardid}
-      />
-
       {selectedRequest && (
         <EditLeaveRequest
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
           requestId={selectedRequest.requestId}
-          initialShiftType={selectedRequest.shiftType}
-          initialDate={selectedRequest.preferredDate}
+          initialLeaveType={selectedRequest.leaveType}
+          startDate={selectedRequest.startDate}
+          endDate={selectedRequest.endDate}
         />
       )}
+
+      <NewLeaveRequest
+        isOpen={!!newLeaveDate}
+        onClose={() => setNewLeaveDate(null)}
+        selectedDate={newLeaveDate}
+      />
     </>
   );
 };

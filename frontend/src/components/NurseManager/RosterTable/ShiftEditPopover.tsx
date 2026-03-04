@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Flex,
@@ -9,7 +9,7 @@ import {
   Textarea,
   Input,
 } from "@chakra-ui/react";
-import { X, ChevronDown, MessageSquarePlus, Check } from "lucide-react";
+import { X, ChevronDown, MessageSquarePlus, Trash2 } from "lucide-react";
 
 import { usePopoverContext } from "@chakra-ui/react";
 import {
@@ -227,17 +227,55 @@ export function ShiftEditPopover({
     currentShift?.comment || "",
   );
   const [showCommentInput, setShowCommentInput] = useState(false);
-  const [commentSaved, setCommentSaved] = useState(false);
 
-  // Reset state when popover opens with new data
+  // Snapshot of state at the moment the popover was opened — used for Ctrl+Z revert
+  const originalShiftRef = useRef<ShiftCode | null>(null);
+  const originalCommentRef = useRef<string>("");
+
+  // Reset state when popover opens with new data and capture the original snapshot
   useEffect(() => {
     if (isOpen) {
-      setSelectedShift(currentShift?.shiftCode || null);
-      setComment(currentShift?.comment || "");
+      const origShift = currentShift?.shiftCode || null;
+      const origComment = currentShift?.comment || "";
+      setSelectedShift(origShift);
+      setComment(origComment);
       setShowCommentInput(!!currentShift?.comment);
-      setCommentSaved(false);
+      // Capture snapshot for Ctrl+Z
+      originalShiftRef.current = origShift;
+      originalCommentRef.current = origComment;
     }
   }, [isOpen, currentShift?.shiftCode, currentShift?.comment]);
+
+  // Ctrl+Z: revert all in-session changes back to the snapshot taken when popover opened
+  const handleUndoAll = useCallback(() => {
+    const origShift = originalShiftRef.current;
+    const origComment = originalCommentRef.current;
+
+    setComment(origComment);
+    setShowCommentInput(!!origComment);
+
+    if (selectedShift !== origShift) {
+      setSelectedShift(origShift);
+      // Revert the live grid preview too
+      if (origShift) {
+        onShiftChange(origShift);
+      }
+    }
+
+  }, [selectedShift, onShiftChange]);
+
+  // Listen for Ctrl+Z while the popover is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        handleUndoAll();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, handleUndoAll]);
 
   // Determine which category the current selection belongs to
   const isWorkingShift = selectedShift
@@ -255,9 +293,8 @@ export function ShiftEditPopover({
   const handleCommentSave = () => {
     if (onCommentChange) {
       onCommentChange(comment);
-      setCommentSaved(true);
-      setTimeout(() => setCommentSaved(false), 2000);
     }
+    onClose();
   };
 
   const CloseButton = () => {
@@ -282,8 +319,8 @@ export function ShiftEditPopover({
         placement: "bottom",
       }}
     >
-      <Popover.Positioner>
-        <Popover.Content w="300px" borderRadius="lg" boxShadow="lg">
+      <Popover.Positioner zIndex={1400} overflow="visible">
+        <Popover.Content w="300px" borderRadius="lg" boxShadow="lg" overflow="auto" maxH="90vh">
           {/* Header */}
           <Popover.Header
             p={3}
@@ -354,59 +391,82 @@ export function ShiftEditPopover({
                     >
                       Comment
                     </Text>
-                    <Textarea
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      placeholder="Add a comment..."
-                      size="sm"
-                      borderRadius="md"
-                      borderColor="gray.200"
-                      _focus={{ borderColor: "#4B8798", boxShadow: "0 0 0 1px #4B8798" }}
-                      resize="none"
-                      rows={3}
-                      fontSize="sm"
-                    />
-                    <Flex justify="flex-end" gap={2} mt={2}>
-                      <Box
-                        as="button"
-                        px={3}
-                        py={1}
-                        fontSize="xs"
-                        fontWeight="medium"
-                        color="gray.500"
-                        cursor="pointer"
-                        _hover={{ color: "gray.700" }}
-                        onClick={() => {
-                          setComment(currentShift?.comment || "");
-                          if (!currentShift?.comment) {
-                            setShowCommentInput(false);
-                          }
-                        }}
-                      >
-                        Cancel
-                      </Box>
-                      <Box
-                        as="button"
-                        px={3}
-                        py={1}
-                        fontSize="xs"
-                        fontWeight="medium"
-                        color="white"
-                        bg={commentSaved ? "#16a34a" : "#4B8798"}
+                    <Box position="relative">
+                      <Textarea
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        placeholder="Add a comment..."
+                        size="sm"
                         borderRadius="md"
-                        cursor="pointer"
-                        _hover={{ bg: commentSaved ? "#16a34a" : "#155E75" }}
-                        transition="all 0.2s ease"
-                        onClick={handleCommentSave}
+                        borderColor="gray.200"
+                        _focus={{ borderColor: "#4B8798", boxShadow: "0 0 0 1px #4B8798" }}
+                        resize="none"
+                        rows={3}
+                        fontSize="sm"
+                        pb="24px"
+                      />
+                      <Box
+                        as="button"
+                        position="absolute"
+                        bottom="12px"
+                        right="8px"
                         display="flex"
                         alignItems="center"
-                        gap={1}
+                        cursor="pointer"
+                        color="gray.400"
+                        _hover={{ color: "red.400" }}
+                        transition="color 0.15s ease"
+                        onClick={() => setComment("")}
+                        title="Clear comment"
+                        zIndex={1}
                       >
-                        {commentSaved && <Check size={12} />}
-                        {commentSaved ? "Saved" : "Save"}
+                        <Trash2 size={13} />
                       </Box>
+                    </Box>
+                    <Flex justify="flex-end" align="center" mt={2}>
+                      {/* Cancel + Save */}
+                      <Flex gap={2}>
+                        <Box
+                          as="button"
+                          px={3}
+                          py={1}
+                          fontSize="xs"
+                          fontWeight="medium"
+                          color="gray.500"
+                          cursor="pointer"
+                          _hover={{ color: "gray.700" }}
+                          onClick={() => {
+                            setComment(currentShift?.comment || "");
+                            if (!currentShift?.comment) {
+                              setShowCommentInput(false);
+                            }
+                          }}
+                        >
+                          Cancel
+                        </Box>
+                        <Box
+                          as="button"
+                          px={3}
+                          py={1}
+                          fontSize="xs"
+                          fontWeight="medium"
+                          color="white"
+                          bg="#4B8798"
+                          borderRadius="md"
+                          cursor="pointer"
+                          _hover={{ bg: "#155E75" }}
+                          transition="all 0.2s ease"
+                          onClick={handleCommentSave}
+                          display="flex"
+                          alignItems="center"
+                          gap={1}
+                        >
+                          Save
+                        </Box>
+                      </Flex>
                     </Flex>
                   </Box>
+
                 )}
               </Box>
             </VStack>

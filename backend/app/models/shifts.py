@@ -71,3 +71,7 @@ class ShiftRequestUpdate(SQLModel):
     preferredshifttype: Optional[str] = None
     preferreddate: Optional[date] = None
 
+class ShiftRequestReview(SQLModel):
+    status: str  # "Approved" or "Rejected"
+    rejectionreason: Optional[str] = None
+

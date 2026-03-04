@@ -29,10 +29,13 @@ import {
 import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge";
 
 const MOCK_DATA_OPTIONS = [
-  { value: "", label: "— Load mock data —" },
-  { value: "ga_sched_1", label: "GA Schedule 1" },
-  { value: "ga_sched_2", label: "GA Schedule 2" },
-  { value: "milp_sched_1", label: "MILP Schedule 1" },
+  { value: "", label: "Load mock data" },
+  { value: "ga_ward4", label: "GA Ward 4" },
+  { value: "ga_ward5", label: "GA Ward 5" },
+  { value: "ga_ward6", label: "GA Ward 6" },
+  { value: "milp_ward4", label: "MILP Ward 4" },
+  { value: "milp_ward5", label: "MILP Ward 5" },
+  { value: "milp_ward6", label: "MILP Ward 6" },
 ];
 
 interface RosterPlanningHeaderProps {
@@ -44,6 +47,7 @@ interface RosterPlanningHeaderProps {
   periods: RosterPeriod[];
   isAlgorithmGenerated?: boolean;
   isGenerating?: boolean;
+  generationProgress?: number;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
@@ -64,6 +68,7 @@ export function RosterPlanningHeader({
   periods,
   isAlgorithmGenerated = false,
   isGenerating = false,
+  generationProgress = 0,
   onDateChange,
   onViewModeChange,
   onWardChange,
@@ -344,6 +349,18 @@ export function RosterPlanningHeader({
         {/* Algorithm Generation Buttons */}
         {!isAlgorithmGenerated ? (
           // Generate + Mock Data row
+          <Flex direction="column" align="center" gap={2} w="full">
+            {/* Progress bar — visible only while generating */}
+            {isGenerating && (
+              <Box w="320px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
+                <Box
+                  h="full"
+                  bg="#4B8798"
+                  borderRadius="full"
+                  style={{ width: `${generationProgress}%`, transition: "width 0.4s ease" }}
+                />
+              </Box>
+            )}
           <HStack gap={4} flexWrap="wrap" justify="center">
             <Button
               size="md"
@@ -362,7 +379,7 @@ export function RosterPlanningHeader({
               {isGenerating ? (
                 <HStack gap={2}>
                   <Spinner size="sm" />
-                  <Text>Generating...</Text>
+                  <Text>Generating… {generationProgress}%</Text>
                 </HStack>
               ) : (
                 <HStack gap={2}>
@@ -413,6 +430,7 @@ export function RosterPlanningHeader({
               </HStack>
             )}
           </HStack>
+          </Flex>
         ) : (
           // Regenerate / Clear Buttons (after generation)
           <HStack gap={3}>

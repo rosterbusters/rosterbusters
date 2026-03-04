@@ -1,123 +1,243 @@
-# from fastapi import APIRouter, HTTPException
-# from pydantic import BaseModel
-# from typing import List, Dict, Optional
-# from app.rostering.algo_scheduler import generate_roster
+import json
+import queue
+import threading
 
-# router = APIRouter()
+from datetime import datetime, timezone
+from typing import Any, Optional
 
-# class Nurse(BaseModel):
-#     id: int
-#     name: str
-#     rank: str  # "A" for RN, "B" for EN, "C" for HCA
-
-# class ShiftRequirement(BaseModel):
-#     AM: Dict[str, int]     # {"A": 2, "B": 4, "C": 1}
-#     PM: Dict[str, int]     # {"A": 2, "B": 2, "C": 1}
-#     NIGHT: Dict[str, int]  # {"A": 1, "B": 1, "C": 1}
-
-# class RosterRequest(BaseModel):
-#     nurses: List[Nurse]
-#     shifts: List[ShiftRequirement]  # One dict per day (14 days)
-#     requests: Optional[Dict[int, List[List]]] = None  # {nurse_id: [[day_idx, "AM"], [day_idx, "NIGHT"]]}
-
-# class RosterResponse(BaseModel):
-#     method: str  # "MILP" or "GA"
-#     roster: Dict
-
-# @router.post("/generate-roster", response_model=RosterResponse)
-# def generate_roster_endpoint(data: RosterRequest):
-#     """
-#     Generate a nurse roster using MILP algorithm (with GA fallback).
-    
-#     Example request:
-#     {
-#         "nurses": [
-#             {"id": 1, "name": "Alice", "rank": "A"},
-#             {"id": 2, "name": "Bob", "rank": "B"}
-#         ],
-#         "shifts": [
-#             {
-#                 "AM": {"A": 2, "B": 4, "C": 1},
-#                 "PM": {"A": 2, "B": 2, "C": 1},
-#                 "NIGHT": {"A": 1, "B": 1, "C": 1}
-#             }
-#             // ... repeat for 14 days
-#         ],
-#         "requests": {
-#             1: [[0, "AM"], [3, "NIGHT"]],
-#             2: [[5, "PM"]]
-#         }
-#     }
-#     """
-#     try:
-#         # Convert Pydantic models to dicts for the algorithm
-#         nurses_data = [nurse.dict() for nurse in data.nurses]
-#         shifts_data = [shift.dict() for shift in data.shifts]
-        
-#         # Call the algorithm
-#         result = generate_roster(
-#             nurses=nurses_data,
-#             shifts=shifts_data,
-#             requests=data.requests,
-#         )
-        
-#         return {
-#             "method": result["method"],  # "MILP" or "GA"
-#             "roster": result["roster"]
-#         }
-        
-#     except ValueError as e:
-#         # Input validation errors
-#         raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)}")
-#     except Exception as e:
-#         # Algorithm errors (MILP/GA failures)
-#         raise HTTPException(status_code=500, detail=f"Roster generation failed: {str(e)}")
-
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlmodel import Session, select
-from app.api.deps import get_db # Your database session dependency
-from app.models.roster import Ward, RosterPeriod
-from app.models.rbac import Nurse
+
+from app.api.deps import CurrentUser, SessionDep, get_db
+from app.models.rbac import Nurse, NurseManager
+from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
 from app.models.shifts import ShiftRequest
 from app.rostering.algo_scheduler import generate_roster
-from pydantic import BaseModel
 
-# 1. Define what the frontend should send (Just the IDs!)
+
+class ChangelogCreateRequest(BaseModel):
+    rosterid: Optional[int] = None
+    oldnurseid: Optional[int] = None
+    oldshiftcode: Optional[str] = None
+    newshiftcode: Optional[str] = None
+    changetype: str  # "shift_change" | "comment"
+    reason: Optional[str] = None
+    changesource: str = "Manual"
+
+
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
 
+
 router = APIRouter()
 
-# --- NEW: Satisfies GET /api/v1/roster/wards ---
-@router.get("/wards")
-def get_all_wards(db: Session = Depends(get_db)):
-    wards = db.exec(select(Ward)).all()
-    return wards
 
-# --- NEW: Satisfies GET /api/v1/roster/ward/{ward_id}/nurses ---
-@router.get("/ward/{ward_id}/nurses")
-def get_ward_nurses(ward_id: int, db: Session = Depends(get_db)):
-    # Look for active nurses assigned to this ward
-    statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)
-    nurses = db.exec(statement).all()
-    
-    if not nurses:
-        # Return empty list instead of 404 so the frontend doesn't crash
-        return []
-        
-    return nurses
-
-@router.get("/ward/{ward_id}/shift-requirements")
-def get_shift_requirements(ward_id: int, period_id: int, db: Session = Depends(get_db)):
-    # 1. Fetch the ward to get its staffing targets
+@router.get("/manager/statistics")
+def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
+    """Get nurses list for a ward (used by roster grid)."""
     ward = db.get(Ward, ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    # 2. Your frontend hook expects an array (one object per day).
-    # Typically, rosters are 14 days. We will repeat the ward's 
-    # requirements for every day in the period.
+    nurses = db.exec(
+        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    ).all()
+
+    return {
+        "ward": {"wardId": ward.wardid, "wardName": ward.wardname},
+        "nurses": [
+            {
+                "nurseId": n.nurseid,
+                "name": n.name,
+                "designation": n.designation,
+                "employmentType": n.employmenttype,
+            }
+            for n in nurses
+        ],
+        "total_nurses": len(nurses),
+    }
+
+
+@router.get("/ward/{ward_id}")
+def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db)):
+    """Get roster entries for a ward within a roster period."""
+    ward = db.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = db.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    entries = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).all()
+
+    return {
+        "ward": {"wardId": ward.wardid, "wardName": ward.wardname, "wardType": ward.wardtype},
+        "period": {
+            "periodId": period.periodid,
+            "startDate": str(period.startdate),
+            "endDate": str(period.enddate),
+        },
+        "roster_entries": [
+            {
+                "roster_id": e.rosterid,
+                "nurse_id": e.nurseid,
+                "shift_date": str(e.shiftdate),
+                "shift_code": e.shiftcode,
+                "status": e.status,
+                "assignment_method": e.assignmentmethod,
+            }
+            for e in entries
+        ],
+    }
+
+
+@router.post("/changelog", response_model=RosterChangeLogPublic)
+def create_changelog_entry(
+    request: ChangelogCreateRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Record a roster change made by the currently logged-in manager."""
+    manager_id = current_user.managerid
+
+    # Resolve manager display name
+    manager_name = "Unknown"
+    if manager_id:
+        mgr = session.get(NurseManager, manager_id)
+        if mgr:
+            manager_name = mgr.name
+
+    # Resolve nurse display name (prefer explicit oldnurseid, else via roster)
+    nurse_name = "Unknown"
+    shift_date = None
+    nurse_id = request.oldnurseid
+
+    if request.rosterid:
+        roster_entry = session.get(Roster, request.rosterid)
+        if roster_entry:
+            shift_date = roster_entry.shiftdate
+            if not nurse_id:
+                nurse_id = roster_entry.nurseid
+
+    if nurse_id:
+        nurse = session.get(Nurse, nurse_id)
+        if nurse:
+            nurse_name = nurse.name
+
+    changelog = RosterChangeLog(
+        rosterid=request.rosterid,
+        changedbymanagerid=manager_id,
+        changedat=datetime.now(timezone.utc),
+        changetype=request.changetype,
+        oldnurseid=nurse_id,
+        oldshiftcode=request.oldshiftcode,
+        newshiftcode=request.newshiftcode,
+        reason=request.reason,
+        changesource=request.changesource,
+    )
+    session.add(changelog)
+    session.commit()
+    session.refresh(changelog)
+
+    return RosterChangeLogPublic(
+        changeid=changelog.changeid,
+        rosterid=changelog.rosterid,
+        changedat=changelog.changedat,
+        changetype=changelog.changetype,
+        oldshiftcode=changelog.oldshiftcode,
+        newshiftcode=changelog.newshiftcode,
+        reason=changelog.reason,
+        changesource=changelog.changesource,
+        shiftdate=shift_date,
+        nursename=nurse_name,
+        modifiedby=manager_name,
+    )
+
+
+@router.get("/changelog", response_model=list[RosterChangeLogPublic])
+def get_roster_changelog(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Get all changelog entries for a ward+period, newest first."""
+    # Collect roster IDs for this ward+period
+    roster_ids = [
+        r.rosterid
+        for r in session.exec(
+            select(Roster).where(
+                Roster.wardid == ward_id,
+                Roster.periodid == period_id,
+            )
+        ).all()
+        if r.rosterid is not None
+    ]
+
+    if not roster_ids:
+        return []
+
+    changelog_entries = session.exec(
+        select(RosterChangeLog)
+        .where(RosterChangeLog.rosterid.in_(roster_ids))  # type: ignore[attr-defined]
+        .order_by(RosterChangeLog.changedat.desc())
+    ).all()
+
+    # Build lookup maps for names
+    nurse_ids = {e.oldnurseid for e in changelog_entries if e.oldnurseid}
+    manager_ids = {e.changedbymanagerid for e in changelog_entries if e.changedbymanagerid}
+    roster_map = {r.rosterid: r for r in session.exec(
+        select(Roster).where(Roster.rosterid.in_(roster_ids))  # type: ignore[attr-defined]
+    ).all()}
+
+    nurse_map: dict[int, str] = {}
+    if nurse_ids:
+        for nurse in session.exec(select(Nurse).where(Nurse.nurseid.in_(list(nurse_ids)))).all():  # type: ignore[attr-defined]
+            nurse_map[nurse.nurseid] = nurse.name
+
+    manager_map: dict[int, str] = {}
+    if manager_ids:
+        for mgr in session.exec(select(NurseManager).where(NurseManager.managerid.in_(list(manager_ids)))).all():  # type: ignore[attr-defined]
+            manager_map[mgr.managerid] = mgr.name
+
+    result = []
+    for entry in changelog_entries:
+        roster = roster_map.get(entry.rosterid) if entry.rosterid else None
+        nurse_name = nurse_map.get(entry.oldnurseid, "Unknown") if entry.oldnurseid else "Unknown"
+        manager_name = manager_map.get(entry.changedbymanagerid, "Unknown") if entry.changedbymanagerid else "System"
+        result.append(RosterChangeLogPublic(
+            changeid=entry.changeid,
+            rosterid=entry.rosterid,
+            changedat=entry.changedat,
+            changetype=entry.changetype,
+            oldshiftcode=entry.oldshiftcode,
+            newshiftcode=entry.newshiftcode,
+            reason=entry.reason,
+            changesource=entry.changesource,
+            shiftdate=roster.shiftdate if roster else None,
+            nursename=nurse_name,
+            modifiedby=manager_name,
+        ))
+
+    return result
+
+
+@router.get("/ward/{ward_id}/shift-requirements")
+def get_shift_requirements(ward_id: int, period_id: int, db: Session = Depends(get_db)):
+    """Get daily shift staffing requirements for a ward (repeated for 14 days)."""
+    ward = db.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
     daily_requirement = {
         "am_rn": ward.am_rn or 0,
         "am_en": ward.am_en_na_min or 0,
@@ -129,86 +249,146 @@ def get_shift_requirements(ward_id: int, period_id: int, db: Session = Depends(g
         "night_en": ward.nd_en_na_min or 0,
         "night_hca": ward.nd_hca_min or 0,
     }
+    return [daily_requirement for _ in range(14)]
 
-    # Create a 14-day list (or however many days your period is)
-    # The frontend hook uses this to build its 'shifts' object
-    requirements_list = [daily_requirement for _ in range(14)]
-    
-    return requirements_list
 
 @router.get("/ward/{ward_id}/requests")
 def get_ward_requests(ward_id: int, period_id: int, db: Session = Depends(get_db)):
-    # 1. We need to find requests for nurses that actually belong to this ward
-    # So we join the Nurse table with the ShiftRequest table
+    """Get formatted shift requests for nurses in a ward for the rostering algorithm."""
     statement = (
         select(ShiftRequest)
         .join(Nurse, Nurse.nurseid == ShiftRequest.nurseid)
         .where(Nurse.wardid == ward_id)
         .where(ShiftRequest.periodid == period_id)
     )
-    
     results = db.exec(statement).all()
 
-    # 2. Format the data to match what your frontend hook expects:
-    # { nurse_id, date, shift }
-    formatted_requests = []
-    for req in results:
-        formatted_requests.append({
+    return [
+        {
             "nurse_id": req.nurseid,
-            "date": req.preferreddate.isoformat(), # The frontend needs a string date
-            "shift": req.preferredshifttype # e.g., "AM", "PM", "NIGHT"
-        })
-        
-    return formatted_requests
+            "date": req.preferreddate.isoformat(),
+            "shift": req.preferredshifttype,
+        }
+        for req in results
+    ]
 
-# 2. Update your endpoint to use this model
+
 @router.post("/generate-algorithm")
 def generate_roster_endpoint(
-    request_data: RosterGenerationRequest, # FastAPI will now look in the JSON body
-    db: Session = Depends(get_db)
+    request_data: RosterGenerationRequest,
+    db: Session = Depends(get_db),
 ):
+    """Run the MILP/GA rostering algorithm for a ward and roster period."""
     try:
-        # Use the IDs from the request_data object
-        ward_id = request_data.ward_id
-        period_id = request_data.period_id
-
-        # --- Your existing logic to fetch from DB ---
-        ward = db.get(Ward, ward_id)
+        ward = db.get(Ward, request_data.ward_id)
         if not ward:
             raise HTTPException(status_code=404, detail="Ward not found")
 
-        # Format requirements for the algorithm (assuming a 14-day period)
         daily_req = {
             "AM": {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
             "PM": {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
             "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
         }
-        shifts_data = [daily_req for _ in range(14)] # Repeat for 14 days
+        shifts_data = [daily_req for _ in range(14)]
 
-        # 2. FETCH NURSES
-        nurses_db = db.exec(select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)).all()
+        nurses_db = db.exec(
+            select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
+        ).all()
         nurses_data = [
-            {"id": n.nurseid, "name": n.name, "rank": map_rank(n.designation)} 
+            {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
             for n in nurses_db
         ]
 
-        # 3. FETCH SHIFT REQUESTS
-        requests_db = db.exec(select(ShiftRequest).where(ShiftRequest.periodid == period_id)).all()
-        # (You would add logic here to format requests into the {id: [[day, shift]]} format)
-
-        # 4. RUN THE ALGORITHM
-        result = generate_roster(
-            nurses=nurses_data,
-            shifts=shifts_data,
-            requests=None # pass your formatted requests here
-        )
-
+        result = generate_roster(nurses=nurses_data, shifts=shifts_data, requests=None)
         return {"method": result["method"], "roster": result["roster"]}
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def map_rank(designation: str) -> str:
-    """Helper to map 'Staff Nurse' to 'A', 'EN' to 'B', etc."""
-    mapping = {"RN": "A", "SSN": "A", "EN": "B", "NA": "B", "HCA": "C"}
-    return mapping.get(designation, "C")
+
+@router.post("/generate-algorithm-stream")
+def generate_roster_stream(
+    request_data: RosterGenerationRequest,
+    db: Session = Depends(get_db),
+):
+    """Run the MILP/GA rostering algorithm and stream SSE progress events."""
+    # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
+    ward = db.get(Ward, request_data.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    daily_req = {
+        "AM": {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
+        "PM": {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
+        "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
+    }
+    shifts_data = [daily_req for _ in range(14)]
+
+    nurses_db = db.exec(
+        select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
+    ).all()
+    nurses_data = [
+        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+        for n in nurses_db
+    ]
+
+    q: queue.Queue = queue.Queue()
+
+    def _run():
+        try:
+            def on_progress(gen: int, total_gens: int, best_score: float) -> None:
+                q.put({
+                    "type": "progress",
+                    "generation": gen,
+                    "total": total_gens,
+                    "percent": round(gen / total_gens * 100),
+                    "best_score": round(best_score, 2),
+                })
+
+            result = generate_roster(
+                nurses=nurses_data,
+                shifts=shifts_data,
+                requests=None,
+                progress_callback=on_progress,
+            )
+            q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
+        except Exception as exc:
+            q.put({"type": "error", "message": str(exc)})
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    def _event_stream():
+        while True:
+            try:
+                item = q.get(timeout=600)  # 10-minute hard cap
+                yield f"data: {json.dumps(item)}\n\n"
+                if item["type"] in ("complete", "error"):
+                    break
+            except queue.Empty:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Timed out'})}\n\n"
+                break
+
+    return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
+
+def _map_rank(designation: str) -> str:
+    """Map nurse designation to scheduling rank A/B/C."""
+    RANK_A = {
+        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
+        "STAFF NURSE I", "STAFF NURSE II",
+        "RN", "SSN",
+    }
+    RANK_B = {
+        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
+        "NURSING AIDE I", "NURSING AIDE II",
+        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
+        "SNR PATIENT SERVICE ASST",
+        "EN", "NA",
+    }
+    if designation in RANK_A:
+        return "A"
+    if designation in RANK_B:
+        return "B"
+    return "C"

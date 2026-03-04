@@ -13,34 +13,35 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { ShiftRequestsService } from "@/client";
+import { LeaveRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
 
 interface EditLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
   requestId: number;
-  initialShiftType: string;
-  initialDate: string; // YYYY-MM-DD
+  initialLeaveType: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
 }
 
 export const EditLeaveRequest = ({
   isOpen,
   onClose,
   requestId,
-  initialShiftType,
-  initialDate,
+  initialLeaveType,
+  startDate,
 }: EditLeaveRequestProps) => {
-  const [leaveType, setLeaveType] = useState<string[]>([initialShiftType]);
+  const [leaveType, setLeaveType] = useState<string[]>([initialLeaveType]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    new Date(initialDate),
+    new Date(startDate),
   );
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
-    queryFn: () => ShiftRequestsService.getLeaveCodes(),
+    queryFn: () => LeaveRequestsService.getLeaveCodes(),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -57,24 +58,25 @@ export const EditLeaveRequest = ({
   );
 
   useEffect(() => {
-    setLeaveType([initialShiftType]);
-    setRequestDate(new Date(initialDate));
-  }, [initialShiftType, initialDate]);
+    setLeaveType([initialLeaveType]);
+    setRequestDate(new Date(startDate));
+  }, [initialLeaveType, startDate, isOpen]);
+
+  const toDateStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      ShiftRequestsService.updateShiftRequest({
-        requestId,
-        requestBody: {
-          preferredshifttype: leaveType[0],
-          preferreddate: requestDate
-            ? `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`
-            : undefined,
-        },
+      LeaveRequestsService.updateLeaveRequest({
+        leaveId: requestId,
+        leavetype: leaveType[0],
+        startdate: requestDate ? toDateStr(requestDate) : undefined,
+        enddate: requestDate ? toDateStr(requestDate) : undefined,
       }),
     onSuccess: () => {
       showSuccessToast("Leave request updated!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -84,15 +86,17 @@ export const EditLeaveRequest = ({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => ShiftRequestsService.deleteShiftRequest({ requestId }),
+    mutationFn: () =>
+      LeaveRequestsService.deleteLeaveRequest({ leaveId: requestId }),
     onSuccess: () => {
-      showSuccessToast("Leave request deleted!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      showSuccessToast("Leave request withdrawn.");
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
       onClose();
     },
     onError: (error: unknown) => {
       const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to delete request");
+      showErrorToast(detail || "Failed to withdraw request");
     },
   });
 

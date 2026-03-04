@@ -85,8 +85,10 @@ export const NewShiftRequest = ({
   }, [isOpen]);
 
   const handleSubmit = () => {
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const activePeriod =
-      periods?.find(p => p.status === "RequestOpen" && new Date(p.startdate) <= new Date() && new Date(p.enddate) >= new Date())
+      periods?.find(p => p.status === "RequestOpen" && p.startdate <= todayStr && p.enddate >= todayStr)
       ?? periods?.find(p => p.status === "RequestOpen");
     if (!activePeriod) {
       showErrorToast("There is no open request period available.");

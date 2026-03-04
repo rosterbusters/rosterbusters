@@ -3,7 +3,7 @@ Database seeding script for RBAC data.
 Run: docker compose exec backend python app/seed_data.py
 
 Uses hardcoded mock data for managers and nurses to guarantee consistency
-across all tables (nurse, nursemanager, RBACUser, web_user, userrole).
+across all tables (nurse, nursemanager, RBACUser, userrole).
 """
 import logging
 from datetime import date, datetime, time, timedelta, timezone
@@ -16,7 +16,8 @@ from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
-from app.models.web import User
+from app.models.enums import NotificationType
+# from app.models.web import User
 
 
 # ============================================================================
@@ -777,8 +778,41 @@ def seed_roster_entries(
     shift_codes_db = session.exec(select(ShiftCode)).all()
     shift_lookup = {sc.shiftcode: sc for sc in shift_codes_db}
 
-    # 7-day rotating pattern; offset per nurse for variety
-    shift_pattern = ["D", "D", "N", "N", "DO", "DO", "D"]
+    # 14-day realistic patterns derived from ga_ward6.json mock data.
+    # Each pattern tiles across the full date range per nurse.
+    ROSTER_PATTERNS = [
+        ["A","P","DO","N","N","DO","A","N","N","DO","A","DO","P","P"],
+        ["A","N","N","DO","DO","A","P","P","DO","N","N","DO","P","P"],
+        ["DO","N","DO","P","P","A","P","N","DO","N","DO","A","A","P"],
+        ["DO","N","DO","P","P","A","N","DO","N","DO","P","A","A","A"],
+        ["P","A","DO","A","DO","A","N","N","DO","A","A","P","DO","P"],
+        ["N","DO","A","A","A","P","DO","A","A","A","DO","N","DO","N"],
+        ["N","DO","P","P","A","P","DO","DO","P","P","N","DO","A","A"],
+        ["DO","A","A","A","DO","N","N","DO","A","P","A","A","A","DO"],
+        ["A","P","A","N","N","DO","DO","DO","N","DO","A","P","A","A"],
+        ["A","A","N","DO","N","DO","P","DO","P","A","N","N","DO","A"],
+        ["P","A","DO","P","N","N","DO","A","A","A","DO","P","N","DO"],
+        ["P","P","A","P","DO","N","DO","P","DO","DO","P","P","A","N"],
+        ["N","DO","P","A","A","DO","A","DO","P","P","A","P","N","DO"],
+        ["N","N","DO","A","A","P","DO","P","N","DO","DO","A","P","A"],
+        ["P","P","N","DO","P","DO","P","A","A","P","A","DO","N","DO"],
+        ["A","N","DO","P","DO","A","A","P","A","P","DO","DO","A","N"],
+        ["A","A","N","DO","P","P","DO","A","P","DO","P","N","DO","P"],
+        ["N","DO","P","A","A","DO","A","P","A","N","DO","P","P","DO"],
+        ["DO","N","N","DO","A","A","A","N","DO","A","P","N","DO","P"],
+        ["N","DO","P","A","A","DO","A","P","N","N","DO","A","DO","A"],
+        ["DO","A","P","P","N","N","DO","A","P","P","P","DO","N","DO"],
+        ["P","A","DO","N","DO","P","N","N","DO","A","DO","P","A","A"],
+        ["P","DO","A","N","DO","A","A","N","DO","DO","P","P","P","A"],
+        ["DO","A","P","N","N","DO","P","A","N","DO","P","N","DO","A"],
+        ["A","DO","A","N","DO","A","P","P","DO","N","DO","A","A","P"],
+        ["P","DO","A","A","N","DO","P","N","N","DO","P","DO","P","A"],
+        ["DO","A","A","A","P","DO","N","DO","P","A","P","A","N","DO"],
+        ["DO","A","N","DO","P","P","N","DO","A","A","P","N","DO","N"],
+        ["A","N","N","DO","A","A","DO","N","DO","N","DO","A","P","A"],
+        ["DO","N","DO","A","A","A","P","A","A","P","N","DO","DO","A"],
+        ["P","A","DO","P","N","DO","N","DO","A","P","A","N","N","DO"],
+    ]
 
     count = 0
     for nurse_idx, nurse in enumerate(nurses):
@@ -812,7 +846,8 @@ def seed_roster_entries(
                 day_offset += 1
                 continue
 
-            shift_code = shift_pattern[(day_offset + nurse_idx * 3) % len(shift_pattern)]
+            pattern = ROSTER_PATTERNS[nurse_idx % len(ROSTER_PATTERNS)]
+            shift_code = pattern[day_offset % len(pattern)]
             sc = shift_lookup.get(shift_code)
             start_time = sc.defaultstart if sc else None
             end_time = sc.defaultend if sc else None
@@ -850,7 +885,7 @@ def seed_roster_entries(
         logger.info(f"  {nurse.name}: {nurse_count} entries ({first_of_prev_month} → {range_end})")
 
     logger.info(f"  Total: {count} roster entries")
-    return count
+    return count  # Changed from: return roster
 
 
 def seed_shift_requests(
@@ -987,70 +1022,159 @@ def seed_leave_requests(
     session: Session,
     nurses: list[Nurse],
     periods: list[RosterPeriod],
+    managers: list[NurseManager],
 ) -> int:
-    """Seed leave requests for nurses using LeaveRequest model.
+    """Seed leave requests spread across the current and next calendar month.
 
-    Uses leave type codes (AL, MC, etc.).
-    Only fills required columns.
+    - Each ward is guaranteed at least one leave request
+    - ~50% of nurses receive 1-3 leave requests
+    - Past-dated leaves are mostly Approved; future-dated are mostly Pending
+    - Full LeaveRequest fields are populated (status, approvedby, category, etc.)
     """
     logger.info("Seeding leave requests...")
 
-    if not periods or not nurses:
-        logger.warning("  No periods or nurses available, skipping leave requests")
+    if not nurses:
+        logger.warning("  No nurses available, skipping leave requests")
         return 0
 
-    current_period = periods[0]
-    count = 0
+    today = date.today()
+    # Range: first of current month → last of next month
+    range_start = today.replace(day=1)
+    next_month_first = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    range_end = (next_month_first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    total_days = (range_end - range_start).days + 1
 
-    # Common leave types
-    common_leaves = ["AL", "MC"]
-    # All leave types (per updated chk_leavereq_type constraint)
-    all_leaves = ["AL", "MC", "URG", "UPL", "CL", "CCL", "FCL", "BDL"]
+    # leave type → (leavecategory, weight)
+    leave_type_meta = {
+        "AL":  ("PreApproved",          4),
+        "MC":  ("MedicalCertificate",   4),
+        "CL":  ("Urgent",               2),
+        "CCL": ("PreApproved",          2),
+        "FCL": ("PreApproved",          1),
+        "BDL": ("PreApproved",          1),
+        "URG": ("Urgent",               1),
+        "UPL": ("PreApproved",          1),
+    }
+    leave_types_weighted = [lt for lt, (_, w) in leave_type_meta.items() for _ in range(w)]
 
-    days_in_period = (current_period.enddate - current_period.startdate).days
+    reasons_by_type = {
+        "AL":  ["Family holiday", "Personal rest", "Annual vacation", None],
+        "MC":  ["Fever and flu", "Medical appointment", "Doctor's visit", None],
+        "CL":  ["Bereavement", "Family emergency", None],
+        "CCL": ["Child's school event", "Childcare arrangement", None],
+        "FCL": ["Caring for elderly parent", "Family care needed", None],
+        "BDL": ["Birthday leave", None],
+        "URG": ["Family emergency", "Urgent personal matter", None],
+        "UPL": ["Personal matter", None],
+    }
 
+    rejection_reasons = [
+        "Staffing requirements not met",
+        "Insufficient notice period",
+        "Conflicts with another approved leave",
+        "Ward coverage cannot be maintained",
+    ]
+
+    manager_ids = [m.managerid for m in managers if m.managerid]
+
+    # Group nurses by ward
+    ward_to_nurses: dict[int, list[Nurse]] = {}
     for nurse in nurses:
-        # Count existing leave requests for this nurse in the current period
-        existing_requests = session.exec(
+        if nurse.wardid:
+            ward_to_nurses.setdefault(nurse.wardid, []).append(nurse)
+
+    count = 0
+    nurses_with_requests: set[int] = set()
+
+    def _add_leave(nurse: Nurse, start: date, leave_type: str) -> bool:
+        """Create one leave request. Returns False if an overlapping request exists."""
+        category, _ = leave_type_meta[leave_type]
+        duration = fake.random_int(min=1, max=3)
+        end = min(start + timedelta(days=duration - 1), range_end)
+
+        # Skip if this nurse already has an overlapping request
+        overlap = session.exec(
             select(LeaveRequest).where(
                 LeaveRequest.nurseid == nurse.nurseid,
-                LeaveRequest.startdate >= current_period.startdate,
-                LeaveRequest.startdate <= current_period.enddate,
+                LeaveRequest.startdate <= end,
+                LeaveRequest.enddate >= start,
             )
-        ).all()
+        ).first()
+        if overlap:
+            return False
 
-        requests_needed = 3 - len(existing_requests)
-        if requests_needed <= 0:
-            logger.info(f"  Nurse {nurse.name} already has 3+ leave requests, skipping")
-            continue
+        # Status: past → mostly Approved; today → Pending/Approved; future → mostly Pending
+        if start < today:
+            status = fake.random_element(["Approved", "Approved", "Approved", "Rejected", "Cancelled"])
+        elif start == today:
+            status = fake.random_element(["Pending", "Approved"])
+        else:
+            status = fake.random_element(["Pending", "Pending", "Approved"])
 
-        for _ in range(requests_needed):
-            # Random start date within the roster period
-            random_day = fake.random_int(min=0, max=max(0, days_in_period - 1))
-            start_date = current_period.startdate + timedelta(days=random_day)
-            # Leave duration: 1-3 days
-            leave_duration = fake.random_int(min=1, max=3)
-            end_date = min(start_date + timedelta(days=leave_duration - 1), current_period.enddate)
+        approved_by = None
+        approved_at = None
+        rejection_reason = None
 
-            # Weight towards common leave types (70% common, 30% any)
-            if fake.random_int(min=1, max=10) <= 7:
-                leave_type = fake.random_element(common_leaves)
-            else:
-                leave_type = fake.random_element(all_leaves)
+        if status == "Approved" and manager_ids:
+            approved_by = fake.random_element(manager_ids)
+            approved_at = datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=1, max=14))
+        elif status == "Rejected":
+            rejection_reason = fake.random_element(rejection_reasons)
 
-            # Only required fields
-            leave_request = LeaveRequest(
-                nurseid=nurse.nurseid,
-                startdate=start_date,
-                enddate=end_date,
-                leavetype=leave_type,
-            )
-            session.add(leave_request)
+        submitted_period = "AfterFinalization" if start <= today else "BeforeRoster"
+
+        leave_req = LeaveRequest(
+            nurseid=nurse.nurseid,
+            startdate=start,
+            enddate=end,
+            leavetype=leave_type,
+            leavecategory=category,
+            submittedduringperiod=submitted_period,
+            requiresreplacement=fake.boolean(chance_of_getting_true=25),
+            reason=fake.random_element(reasons_by_type.get(leave_type, [None])),
+            requestedat=datetime.now(timezone.utc) - timedelta(days=fake.random_int(min=0, max=21)),
+            status=status,
+            approvedby=approved_by,
+            approvedat=approved_at,
+            rejectionreason=rejection_reason,
+            notificationsent=status != "Pending",
+            impactsroster=status == "Approved",
+        )
+        session.add(leave_req)
+        return True
+
+    # Pass 1: guarantee at least one leave request per ward
+    for ward_id, ward_nurses in ward_to_nurses.items():
+        nurse = fake.random_element(ward_nurses)
+        day_offset = fake.random_int(min=0, max=total_days - 1)
+        start = range_start + timedelta(days=day_offset)
+        leave_type = fake.random_element(["AL", "MC", "CL"])
+        if _add_leave(nurse, start, leave_type):
+            nurses_with_requests.add(nurse.nurseid)
             count += 1
+            logger.info(f"  Ward {ward_id}: guaranteed leave → {nurse.name} ({leave_type}, {start})")
 
+    session.commit()
+
+    # Pass 2: ~50% of nurses get 1–3 additional leave requests
+    num_selected = max(1, len(nurses) // 2)
+    selected = fake.random_elements(nurses, length=min(num_selected, len(nurses)), unique=True)
+
+    for nurse in selected:
+        num_requests = fake.random_int(min=1, max=3)
+        for _ in range(num_requests):
+            day_offset = fake.random_int(min=0, max=total_days - 1)
+            start = range_start + timedelta(days=day_offset)
+            leave_type = fake.random_element(leave_types_weighted)
+            if _add_leave(nurse, start, leave_type):
+                nurses_with_requests.add(nurse.nurseid)
+                count += 1
         session.commit()
 
-    logger.info(f"  Created {count} leave requests for {len(nurses)} nurses (3 each)")
+    logger.info(
+        f"  Created {count} leave requests across {len(ward_to_nurses)} wards "
+        f"({len(nurses_with_requests)} nurses, {range_start} – {range_end})"
+    )
     return count
 
 
@@ -1062,12 +1186,7 @@ def seed_notifications(
 ) -> int:
     """Seed notifications for ward staff and managers using NotificationQueue.
 
-    Notification types:
-    - ShiftUpdate: Roster released, roster changes
-    - SwapRequest: Shift swap notifications
-    - LeaveApproval: Request approved/rejected
-    - LeaveReminder: Request period reminders
-
+    Uses NotificationType enum values so every seeded row has a valid type.
     Every nurse and nurse manager receives at least 3 notifications.
     """
     logger.info("Seeding notifications...")
@@ -1081,99 +1200,47 @@ def seed_notifications(
 
     channels = ["WhatsApp", "Email", "Both"]
 
-    # Notification templates for nurses
-    nurse_templates = [
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Released",
-            "body": f"{current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} Roster released.",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Updated",
-            "body": "Your roster has been updated. Please check your schedule.",
-            "priority": "Normal",
-        },
-        {
-            "type": "SwapRequest",
-            "subject": "Shift Swap Approved",
-            "body": "Your shift swap request has been approved.",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Finalized",
-            "body": "Roster finalized for the upcoming period.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Shift Request Period Open",
-            "body": "Shift Request Period is Now Open. Submit your preferences.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveApproval",
-            "subject": "Shift Request Approved",
-            "body": "Your shift request has been approved.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveApproval",
-            "subject": "Shift Request Rejected",
-            "body": "Your shift request has been rejected. Please contact your manager.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Request Period Closing Soon",
-            "body": f"Reminder: Request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
-            "priority": "Urgent",
-        },
+    period_name = current_period.name
+    close_date = str(current_period.requestclosedate)
+    end_date = str(current_period.enddate)
+
+    # Get a random recent shift to use for SHIFT_UPDATED template
+    recent_rosters = session.exec(
+        select(Roster).where(
+            Roster.periodid == current_period.periodid
+        ).limit(10)
+    ).all()
+    
+    # Format the shift date properly - use strftime for consistent date format
+    if recent_rosters:
+        recent_shift_date = recent_rosters[0].shiftdate.strftime("%Y-%m-%d")
+    else:
+        recent_shift_date = date.today().strftime("%Y-%m-%d")
+
+    # Each entry: (NotificationType, template_vars_dict, priority)
+    nurse_templates: list[tuple[NotificationType, dict, str]] = [
+        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_REJECTED,      {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_CLOSED, {"roster_period": period_name},          "Urgent"),
+        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_UPDATED,               {"start_date": recent_shift_date},       "Normal"),
+    ]
+    
+    manager_templates: list[tuple[NotificationType, dict, str]] = [
+        (NotificationType.ROSTER_PLANNING,         {"roster_period": period_name},                                              "Normal"),
+        (NotificationType.SHIFT_REQUEST_REVIEW_OPEN, {"roster_period": period_name},                                           "Normal"),
+        (NotificationType.ROSTER_FINALISATION,     {"roster_planning_end_date": close_date},                                   "Normal"),
+        (NotificationType.LEAVE_REQUEST,           {"nurse_name": "Ward Staff", "leave_code": "AL", "request_date": close_date}, "Urgent"),
+        (NotificationType.ROSTER_FINALISATION,     {"roster_planning_end_date": close_date},                                   "Urgent"),
+        (NotificationType.HRIS_REMINDER,           {"roster_end_date": end_date},                                              "Normal"),
     ]
 
-    # Notification templates for managers
-    manager_templates = [
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Period Started",
-            "body": f"Roster period {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} has begun.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Shift Requests Pending Review",
-            "body": "There are shift requests from your ward staff awaiting your review.",
-            "priority": "Normal",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Finalized",
-            "body": "The roster for the upcoming period has been finalized.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveApproval",
-            "subject": "Leave Request Submitted",
-            "body": "A nurse in your ward has submitted a leave request. Please review.",
-            "priority": "Normal",
-        },
-        {
-            "type": "LeaveReminder",
-            "subject": "Request Window Closing Soon",
-            "body": f"Reminder: The shift request window closes on {current_period.requestclosedate.strftime('%d %b %Y')}.",
-            "priority": "Urgent",
-        },
-        {
-            "type": "ShiftUpdate",
-            "subject": "Roster Released to Staff",
-            "body": f"The {current_period.startdate.strftime('%d %b')} - {current_period.enddate.strftime('%d %b')} roster has been released to ward staff.",
-            "priority": "Normal",
-        },
-    ]
-
-    def _make_notification(recipient_type: str, recipient_id: int, template: dict) -> NotificationQueue:
+    def _make_notification(recipient_type: str, recipient_id: int, template: tuple) -> NotificationQueue:
+        ntype, tvars, priority = template
         days_ago = fake.random_int(min=0, max=7)
         created_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
 
@@ -1194,11 +1261,11 @@ def seed_notifications(
         return NotificationQueue(
             recipienttype=recipient_type,
             recipientid=recipient_id,
-            notificationtype=template["type"],
+            notificationtype=ntype.value,
             channel=fake.random_element(channels),
-            priority=template["priority"],
-            subject=template["subject"],
-            messagebody=template["body"],
+            priority=priority,
+            subject=ntype.value,
+            messagebody=ntype.template.format(**tvars),
             relatedentitytype="RosterPeriod",
             relatedentityid=current_period.periodid,
             status=status,
@@ -1209,7 +1276,7 @@ def seed_notifications(
             createdat=created_at,
         )
 
-    # Create at least 3 notifications for every nurse
+    # Create one notification per template for every nurse
     for nurse in nurses:
         existing_count = session.exec(
             select(NotificationQueue).where(
@@ -1218,12 +1285,11 @@ def seed_notifications(
             )
         ).all()
 
-        if len(existing_count) >= 3:
+        if len(existing_count) >= len(nurse_templates):
             continue
 
-        num_notifications = fake.random_int(min=3, max=5)
-        for i in range(num_notifications - len(existing_count)):
-            template = nurse_templates[i % len(nurse_templates)]
+        for i in range(len(existing_count), len(nurse_templates)):
+            template = nurse_templates[i]
             session.add(_make_notification("Nurse", nurse.nurseid, template))
             count += 1
 
@@ -1255,47 +1321,6 @@ def seed_notifications(
     total = count + manager_count
     logger.info(f"  Total: {total} notifications created")
     return total
-
-
-def seed_web_users(session: Session) -> int:
-    """Create web_user entries for all RBAC users so they can login.
-
-    This syncs RBACUser table with web_user table used for authentication.
-    Uses the same email and password hash from RBAC users.
-    """
-    logger.info("Seeding web users (for login)...")
-    count = 0
-
-    # Get all RBAC users
-    rbac_users = session.exec(select(RBACUser)).all()
-
-    for rbac_user in rbac_users:
-        # Check if web_user already exists with this email
-        existing = session.exec(
-            select(User).where(User.email == rbac_user.email)
-        ).first()
-
-        if existing:
-            logger.info(f"  Web user '{rbac_user.email}' already exists, skipping")
-            continue
-
-        # Determine if user should be superuser (Admin role)
-        is_superuser = rbac_user.email == "admin@sach.org.sg"
-
-        web_user = User(
-            email=rbac_user.email,
-            hashed_password=rbac_user.passwordhash,
-            is_active=rbac_user.isactive,
-            is_superuser=is_superuser,
-            full_name=rbac_user.username,
-        )
-        session.add(web_user)
-        count += 1
-        logger.info(f"  Created web user: {rbac_user.email}")
-
-    session.commit()
-    logger.info(f"  Created {count} web users")
-    return count
 
 
 def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
@@ -1356,18 +1381,15 @@ def seed_all() -> None:
         seed_manager_users(session, managers, wards, roles)
         seed_nurse_users(session, nurses, roles)
 
-        # Create web_user entries for login
-        seed_web_users(session)
-
         # Seed roster data
         periods = seed_roster_periods(session)
-        seed_roster_entries(session, nurses, wards, periods, managers)
+        rosters=seed_roster_entries(session, nurses, wards, periods, managers)
 
         # Seed shift requests (~20% of nurses, mixed statuses)
         seed_shift_requests(session, nurses, periods, managers)
 
         # Seed leave requests (~15% of nurses, leave-type shift codes)
-        seed_leave_requests(session, nurses, periods)
+        seed_leave_requests(session, nurses, periods, managers)
 
         # Seed notifications for all nurses and managers (at least 3 each)
         seed_notifications(session, nurses, periods, managers)

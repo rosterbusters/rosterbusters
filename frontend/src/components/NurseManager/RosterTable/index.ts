@@ -3,8 +3,10 @@ export { RosterGrid } from "./RosterGrid";
 export { RosterHeader } from "./RosterHeader";
 export { ShiftBadge } from "./ShiftBadge";
 export { ShiftEditPopover } from "./ShiftEditPopover";
+export { ShiftCommentPopover } from "./ShiftCommentPopover";
 export { ShiftSummaryTable } from "./ShiftSummaryTable";
 export { EditHistoryDialog } from "./EditHistoryDialog";
+export { ManpowerEditDialog } from "./ManpowerEditDialog";
 
 // Export hooks
 export {
@@ -18,12 +20,14 @@ export {
   useRosterExport,
   useGenerateAlgorithmRoster,
   useShiftCodes,
+  useRosterChangelog,
+  useCreateChangelog,
   getShiftDurationHours,
   transformRosterData,
 } from "./useRosterData";
 
 // Export API response types
-export type { AlgorithmRosterResponse } from "./useRosterData";
+export type { AlgorithmRosterResponse, ChangelogEntry, ChangelogCreatePayload } from "./useRosterData";
 
 // Export types
 export * from "./types";

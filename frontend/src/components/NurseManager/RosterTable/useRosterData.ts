@@ -50,29 +50,19 @@ export function useWards() {
   });
 }
 
-// Hook to fetch roster periods
+// Hook to fetch roster periods from the API
 export function useRosterPeriods() {
   return useQuery<RosterPeriod[]>({
     queryKey: ["roster", "periods"],
     queryFn: async () => {
-      // For now, generate mock periods since we don't have a dedicated endpoint
-      // In production, this would fetch from /api/v1/roster/periods
-      const today = moment();
-      const periods: RosterPeriod[] = [];
-      
-      for (let i = -2; i <= 2; i++) {
-        const startDate = moment(today).add(i * 14, "days").startOf("isoWeek");
-        const endDate = moment(startDate).add(13, "days");
-        periods.push({
-          periodId: i + 3,
-          name: `${startDate.format("MMM DD")} - ${endDate.format("MMM DD YYYY")}`,
-          startDate: startDate.format("YYYY-MM-DD"),
-          endDate: endDate.format("YYYY-MM-DD"),
-          status: i < 0 ? "Finalized" : i === 0 ? "RequestOpen" : "RequestOpen",
-        });
-      }
-      
-      return periods;
+      const data = await fetchWithAuth("/api/v1/shift-requests/periods");
+      return data.map((p: Record<string, unknown>) => ({
+        periodId: p.periodid as number,
+        name: p.name as string,
+        startDate: p.startdate as string,
+        endDate: p.enddate as string,
+        status: p.status as RosterPeriod["status"],
+      }));
     },
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
@@ -290,21 +280,55 @@ export function useGenerateAlgorithmRoster() {
       wardId,
       periodId,
       startDate,
-      mockData,
+      onProgress,
     }: {
       wardId: number;
       periodId: number;
-      startDate: Date; // Keep it as a Date object for easier math
-      mockData?: any;
+      startDate: Date;
+      onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
-      //Check if mock data is available - if mock data is not available then fetch.
-        const response = /*mockData ??*/ await fetchWithAuth(
-        "/api/v1/roster/generate-algorithm",
-        {
-          method: "POST",
-          body: JSON.stringify({ ward_id: wardId, period_id: periodId }),
+      // 1. Stream the SSE endpoint to get real-time progress + final result
+      const token = localStorage.getItem("access_token") || "";
+      const response = await fetch(`${API_BASE}/api/v1/roster/generate-algorithm-stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ward_id: wardId, period_id: periodId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let algorithmResult: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "progress") {
+            onProgress?.(event.percent, event.generation, event.total, event.best_score);
+          } else if (event.type === "complete") {
+            algorithmResult = event;
+          } else if (event.type === "error") {
+            throw new Error(event.message);
+          }
         }
-      );
+      }
+
+      if (!algorithmResult) throw new Error("Algorithm did not return a result");
 
       // 2. Fetch shift codes for accurate duration calculation
       let shiftDurationMap: Map<string, number> = new Map();
@@ -320,10 +344,8 @@ export function useGenerateAlgorithmRoster() {
         // Fall back to static SHIFT_CODE_MAP via getShiftDurationHours
       }
 
-      // 3. Transform the backend format into the RosterRow format the Grid expects
-      // Backend: n.schedule = ["AM", "OFF", ...]
-      // Frontend: n.shifts = { "2026-02-16": { ... } }
-      const rosterData: RosterRow[] = response.roster.nurses.map((nurse: any) => {
+      // 3. Transform backend format → RosterRow[]
+      const rosterData: RosterRow[] = algorithmResult.roster.nurses.map((nurse: any) => {
         const shiftsObject: Record<string, any> = {};
 
         nurse.schedule.forEach((shiftCode: string, index: number) => {
@@ -336,7 +358,6 @@ export function useGenerateAlgorithmRoster() {
           };
         });
 
-        // Calculate worked hours from the actual schedule using API durations
         const workedHours = nurse.schedule.reduce(
           (sum: number, shiftCode: string) =>
             sum + getShiftDurationHours(shiftCode, shiftDurationMap),
@@ -348,10 +369,7 @@ export function useGenerateAlgorithmRoster() {
           nurseId: nurse.id,
           name: nurse.name,
           designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
-          hours: {
-            worked: workedHours,
-            contracted: contractedHours,
-          },
+          hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,
           hasWarning: workedHours > contractedHours * 1.2,
@@ -360,7 +378,7 @@ export function useGenerateAlgorithmRoster() {
 
       return {
         rosterData,
-        algorithm: response.method,
+        algorithm: algorithmResult.method,
       };
     },
     onSuccess: (data, variables) => {
@@ -396,47 +414,125 @@ function addDays(dateStr: string, days: number): string {
   return date.toISOString().split("T")[0];
 }
 
-// Hook for CSV export
+// Map full designation strings to short acronyms for Excel export
+function designationToAcronym(designation: string): string {
+  const d = designation.toLowerCase().trim();
+
+  if (d.includes('senior nursing aide'))   return 'SNA';
+  if (d.includes('senior staff nurse'))    return 'SSN';
+  if (d.includes('senior enrolled nurse')) return 'SEN';
+  if (d.includes('staff nurse'))           return 'SN';
+  if (d.includes('enrolled nurse'))        return 'EN';
+  if (d.includes('registered nurse'))      return 'RN';
+  if (d.includes('nursing aide'))          return 'NA';
+  if (d.includes('healthcare assistant'))  return 'HCA';
+  if (d.includes('nurse clinician'))       return 'NC';
+  if (d.includes('nurse manager'))         return 'NM';
+  if (d.includes('assistant nurse'))       return 'ANC';
+
+  // Already an acronym (RN, EN, HCA, etc.) – return as-is
+  return designation;
+}
+
+// ─────────────────────────────────────────────
+// Roster Changelog
+// ─────────────────────────────────────────────
+
+export interface ChangelogEntry {
+  changeid: number;
+  rosterid: number | null;
+  changedat: string;
+  changetype: string;
+  oldshiftcode: string | null;
+  newshiftcode: string | null;
+  reason: string | null;
+  changesource: string;
+  shiftdate: string | null;
+  nursename: string;
+  modifiedby: string;
+}
+
+export interface ChangelogCreatePayload {
+  rosterid?: number | null;
+  oldnurseid?: number | null;
+  oldshiftcode?: string | null;
+  newshiftcode?: string | null;
+  changetype: string;
+  reason?: string | null;
+  changesource?: string;
+}
+
+/** Fetch all changelog entries for a ward + period. */
+export function useRosterChangelog(wardId: number | null, periodId: number | null) {
+  return useQuery<ChangelogEntry[]>({
+    queryKey: ["roster", "changelog", wardId, periodId],
+    queryFn: async () => {
+      if (!wardId || !periodId) return [];
+      return fetchWithAuth(
+        `/api/v1/roster/changelog?ward_id=${wardId}&period_id=${periodId}`
+      );
+    },
+    enabled: !!wardId && !!periodId,
+    staleTime: 30 * 1000, // 30 seconds
+  });
+}
+
+/** Post a new changelog entry when a manager edits a shift or adds a comment. */
+export function useCreateChangelog(wardId: number | null, periodId: number | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: ChangelogCreatePayload) => {
+      return fetchWithAuth("/api/v1/roster/changelog", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "changelog", wardId, periodId],
+      });
+    },
+  });
+}
+
+// Hook for Excel export
 export function useRosterExport() {
   return {
-    exportToCSV: (data: RosterRow[], startDate: Date, viewMode: "week" | "twoWeeks") => {
+    exportToXLSX: async (data: RosterRow[], startDate: Date, viewMode: "week" | "twoWeeks") => {
+      const XLSX = await import("xlsx");
       const days = viewMode === "week" ? 7 : 14;
-      const headers = ["Name", "Designation", "Hours"];
-      
-      // Add day headers
-      for (let i = 0; i < days; i++) {
-        const date = moment(startDate).add(i, "days");
-        headers.push(date.format("ddd DD/MM"));
-      }
-      
-      const rows = data.map((row) => {
-        const rowData = [
-          row.name,
-          row.designation,
-          `${row.hours.worked}/${row.hours.contracted}`,
-        ];
-        
-        for (let i = 0; i < days; i++) {
+
+      // Header row: 2 blank cells + date strings in YYYY-MM-DD
+      const header = [
+        "",
+        "",
+        ...Array.from({ length: days }, (_, i) =>
+          moment(startDate).add(i, "days").format("YYYY-MM-DD")
+        ),
+      ];
+
+      // Data rows: designation (acronym), name, then shift code per day
+      const rows = data.map((row) => [
+        designationToAcronym(row.designation),
+        row.name,
+        ...Array.from({ length: days }, (_, i) => {
           const dateKey = moment(startDate).add(i, "days").format("YYYY-MM-DD");
-          const shift = row.shifts[dateKey];
-          rowData.push(shift?.shiftCode || "");
-        }
-        
-        return rowData;
-      });
-      
-      // Create CSV content
-      const csvContent = [
-        headers.join(","),
-        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
-      ].join("\n");
-      
-      // Download file
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `roster_${moment(startDate).format("YYYY-MM-DD")}.csv`;
-      link.click();
+          return row.shifts[dateKey]?.shiftCode ?? "";
+        }),
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+      ws["!cols"] = [
+        { wch: 10 }, // designation (acronym – narrower)
+        { wch: 20 }, // name
+        ...Array(days).fill({ wch: 12 }), // date columns
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Roster");
+      XLSX.writeFile(wb, `roster_${moment(startDate).format("YYYY-MM-DD")}.xlsx`);
     },
   };
 }

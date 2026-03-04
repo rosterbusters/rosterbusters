@@ -5,6 +5,7 @@ import {
   Button,
   HStack,
   Select,
+  Portal,
   createListCollection,
 } from "@chakra-ui/react";
 import { ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
@@ -136,15 +137,17 @@ export function RosterHeader({
                 <Select.Indicator />
               </Select.IndicatorGroup>
             </Select.Control>
-            <Select.Positioner>
-              <Select.Content>
-                {wardCollection.items.map((ward) => (
-                  <Select.Item key={ward.wardid} item={ward}>
-                    {ward.wardname}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Positioner>
+            <Portal>
+              <Select.Positioner zIndex={1500}>
+                <Select.Content>
+                  {wardCollection.items.map((ward) => (
+                    <Select.Item key={ward.wardid} item={ward}>
+                      {ward.wardname}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Positioner>
+            </Portal>
           </Select.Root>
         </HStack>
       </Flex>
@@ -218,16 +221,18 @@ export function RosterHeader({
                 <Select.Indicator />
               </Select.IndicatorGroup>
             </Select.Control>
-            <Select.Positioner>
-              <Select.Content>
-                {periodCollection.items.map((period) => (
-                  <Select.Item key={period.periodId} item={period}>
-                    {period.name ||
-                      `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Positioner>
+            <Portal>
+              <Select.Positioner zIndex={1500}>
+                <Select.Content>
+                  {periodCollection.items.map((period) => (
+                    <Select.Item key={period.periodId} item={period}>
+                      {period.name ||
+                        `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Positioner>
+            </Portal>
           </Select.Root>
         </HStack>
 
@@ -279,7 +284,7 @@ export function RosterHeader({
             onClick={onExportCSV}
           >
             <Download />
-            Export to CSV
+            Export to Excel
           </Button>
         </HStack>
       </Flex>
