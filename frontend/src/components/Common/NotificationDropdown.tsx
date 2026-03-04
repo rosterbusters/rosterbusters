@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   notificationTypeLabels,
+  notificationTypeBadgeVariant,
   getNotificationRoute,
   type NotificationItem,
   type NotificationType,
@@ -25,31 +26,29 @@ function formatNotificationDate(dateString: string): string {
   return `${day}/${month}/${year}`;
 }
 
-// Badge colors matching Ward Staff NotificationBanner
-const badgeColors: Record<NotificationType, string> = {
-  Roster: "bg-[#06B6D4]",        // cyan.500
-  ShiftRequest: "bg-[#0891B2]",  // cyan.600
-  LeaveRequest: "bg-[#0891B2]",  // cyan.600
-  System: "bg-[#6B7280]",        // gray.500
-  Probation: "bg-[#D97706]",     // amber.600
-  ShiftUpdate: "bg-[#0891B2]",   // cyan.600
-  SwapRequest: "bg-[#0891B2]",   // cyan.600
-  LeaveApproval: "bg-[#0891B2]", // cyan.600
-  LeaveReminder: "bg-[#0891B2]", // cyan.600
-  RosterRelease: "bg-[#06B6D4]", // cyan.500
-  HRISReminder: "bg-[#D97706]",  // amber.600
+// Map the generic color names from notificationTypeBadgeVariant → Tailwind bg classes
+const colorClassMap: Record<string, string> = {
+  blue:   "bg-[#3B82F6]",  // blue.500
+  cyan:   "bg-[#06B6D4]",  // cyan.500
+  yellow: "bg-[#EAB308]",  // yellow.500
+  green:  "bg-[#22C55E]",  // green.500
+  purple: "bg-[#A855F7]",  // purple.500
+  orange: "bg-[#F97316]",  // orange.500
+  gray:   "bg-[#6B7280]",  // gray.500
+  red:    "bg-[#EF4444]",  // red.500
 };
 
-// Badge component matching Ward Staff style
+// Badge component — colour driven by notificationTypeBadgeVariant from types/notifications
 function NotificationBadge({ type }: { type: NotificationType }) {
+  const colorName = notificationTypeBadgeVariant[type] ?? "gray";
   return (
     <span
       className={cn(
         "inline-flex items-center justify-center rounded px-2 py-0.5 text-xs font-medium text-white whitespace-nowrap w-fit",
-        badgeColors[type] || "bg-[#0891B2]"
+        colorClassMap[colorName] ?? "bg-[#6B7280]"
       )}
     >
-      {notificationTypeLabels[type]}
+      {notificationTypeLabels[type] ?? type}
     </span>
   );
 }
