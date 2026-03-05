@@ -3,7 +3,7 @@ from app.rostering.milp_algo import run_milp_pipeline, MILPError
 from app.rostering.ga_algo import run_ga_pipeline
 
 
-def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress_callback=None):
+def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress_callback=None, milp_config=None):
     """
     Generate a nurse roster using MILP (primary) or GA (fallback).
 
@@ -31,6 +31,10 @@ def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress
     ward_name : str, optional
         Key into WARD_CONFIG (e.g. "WARD 04", "WARD 08").
         Defaults to "DEFAULT" if omitted or unrecognised.
+
+    milp_config : dict, optional
+        WARD_CONFIG-compatible override dict derived from staffing_json.
+        When provided, the MILP solver uses this instead of WARD_CONFIG[ward_name].
 
     Returns
     -------
@@ -73,7 +77,7 @@ def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress
 
     # ── Primary: MILP ──────────────────────────────────────────────────────
     try:
-        roster = run_milp_pipeline(nurses, shifts, requests, ward_name=ward_name)
+        roster = run_milp_pipeline(nurses, shifts, requests, ward_name=ward_name, milp_config=milp_config)
         return {"method": "MILP", "roster": roster}
 
     except MILPError as e:

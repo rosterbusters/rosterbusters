@@ -1,8 +1,10 @@
 import { Stack, Table, Badge } from "@chakra-ui/react";
+import { useNavigate } from "@tanstack/react-router";
 import type { NotificationResponse } from "@/client/NotificationsService";
 import {
   notificationTypeLabels,
   notificationTypeBadgeVariant,
+  getNotificationRoute,
 } from "@/types/notifications";
 
 // Format date as D/M/YYYY
@@ -14,11 +16,20 @@ const formatDate = (dateString: string) => {
   return `${day}/${month}/${year}`;
 };
 
+const rolePrefix: Record<string, string> = {
+  manager: "/nurse-manager",
+  nurse: "/ward-staff",
+};
+
 interface NotificationBannerProps {
   items: NotificationResponse[];
+  role: "nurse" | "manager";
 }
 
-export default function NotificationBanner({ items }: NotificationBannerProps) {
+export default function NotificationBanner({ items, role }: NotificationBannerProps) {
+  const navigate = useNavigate();
+  const prefix = rolePrefix[role] ?? "";
+
   return (
     <Stack width="full" gap="5">
       <Table.ScrollArea maxHeight="216px">
@@ -32,7 +43,12 @@ export default function NotificationBanner({ items }: NotificationBannerProps) {
           </Table.Header>
           <Table.Body>
             {items.map((item) => (
-              <Table.Row lineHeight="36px" key={item.notificationid}>
+              <Table.Row
+                lineHeight="36px"
+                key={item.notificationid}
+                cursor="pointer"
+                onClick={() => navigate({ to: `${prefix}${getNotificationRoute(item.notificationtype)}` })}
+              >
                 <Table.Cell lineHeight="36px">
                   <Badge
                     width="fit-content"

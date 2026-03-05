@@ -183,6 +183,7 @@ export function transformRosterData(
       shiftDate: entry.shift_date,
       shiftCode: entry.shift_code as ShiftCode,
       status: entry.status as ShiftAssignment["status"],
+      comment: entry.comment ?? undefined,
     });
   }
 
@@ -474,6 +475,24 @@ export function useRosterChangelog(wardId: number | null, periodId: number | nul
     },
     enabled: !!wardId && !!periodId,
     staleTime: 30 * 1000, // 30 seconds
+  });
+}
+
+/** PATCH the comment on a single roster entry. */
+export function useUpdateRosterComment() {
+  return useMutation({
+    mutationFn: async ({
+      rosterId,
+      comment,
+    }: {
+      rosterId: number;
+      comment: string | null;
+    }) => {
+      return fetchWithAuth(`/api/v1/roster/roster/${rosterId}/comment`, {
+        method: "PATCH",
+        body: JSON.stringify({ comment }),
+      });
+    },
   });
 }
 

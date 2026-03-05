@@ -16,27 +16,48 @@ import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { ShiftRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
 
+export interface ShiftRequestEntry {
+  requestId: number;
+  nurseName: string;
+  initialShiftType: string;
+  initialDate: string;
+}
+
 interface EditShiftRequestProps {
   isOpen: boolean;
   onClose: () => void;
-  requestId: number;
-  initialShiftType: string;
-  initialDate: string; // YYYY-MM-DD
+  requests: ShiftRequestEntry[];
   wardId?: number | null;
 }
 
 export const EditShiftRequest = ({
   isOpen,
   onClose,
-  requestId,
-  initialShiftType,
-  initialDate,
+  requests,
   wardId,
 }: EditShiftRequestProps) => {
-  const [shiftType, setShiftType] = useState<string[]>([initialShiftType]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  // Reset to first entry whenever the dialog opens or requests change
+  useEffect(() => {
+    if (isOpen) setSelectedIdx(0);
+  }, [isOpen, requests]);
+
+  const active = requests[selectedIdx] ?? requests[0];
+
+  const [shiftType, setShiftType] = useState<string[]>([active?.initialShiftType ?? ""]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    new Date(initialDate),
+    active ? new Date(active.initialDate) : undefined,
   );
+
+  // Sync form fields when selected nurse changes
+  useEffect(() => {
+    if (active) {
+      setShiftType([active.initialShiftType]);
+      setRequestDate(new Date(active.initialDate));
+    }
+  }, [selectedIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
@@ -60,18 +81,23 @@ export const EditShiftRequest = ({
     [shiftCodes],
   );
 
-  useEffect(() => {
-    setShiftType([initialShiftType]);
-    setRequestDate(new Date(initialDate));
-  }, [initialShiftType, initialDate]);
+  const nurseCollection = useMemo(
+    () =>
+      createListCollection({
+        items: requests.map((r, i) => ({ value: String(i), label: r.nurseName })),
+      }),
+    [requests],
+  );
 
   const updateMutation = useMutation({
     mutationFn: () =>
       ShiftRequestsService.updateShiftRequest({
-        requestId,
+        requestId: active.requestId,
         requestBody: {
           preferredshifttype: shiftType[0],
-          preferreddate: requestDate ? `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}` : undefined,
+          preferreddate: requestDate
+            ? `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`
+            : undefined,
         },
       }),
     onSuccess: () => {
@@ -87,7 +113,7 @@ export const EditShiftRequest = ({
 
   const deleteMutation = useMutation({
     mutationFn: () =>
-      ShiftRequestsService.deleteShiftRequest({ requestId }),
+      ShiftRequestsService.deleteShiftRequest({ requestId: active.requestId }),
     onSuccess: () => {
       showSuccessToast("Shift request deleted!");
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
@@ -111,6 +137,8 @@ export const EditShiftRequest = ({
     updateMutation.mutate();
   };
 
+  if (!active) return null;
+
   return (
     <Dialog.Root
       placement={"center"}
@@ -129,6 +157,37 @@ export const EditShiftRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems={"start"} gap={4} maxWidth={"225px"}>
+                {requests.length > 1 && (
+                  <Select.Root
+                    collection={nurseCollection}
+                    size="sm"
+                    value={[String(selectedIdx)]}
+                    onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
+                  >
+                    <Select.Label>Nurse</Select.Label>
+                    <Select.Control>
+                      <Select.Trigger>
+                        <Select.ValueText placeholder="Select nurse" />
+                      </Select.Trigger>
+                      <Select.IndicatorGroup>
+                        <Select.Indicator />
+                      </Select.IndicatorGroup>
+                    </Select.Control>
+                    <Portal>
+                      <Select.Positioner>
+                        <Select.Content>
+                          {nurseCollection.items.map((item) => (
+                            <Select.Item item={item.value} key={item.value}>
+                              {item.label}
+                              <Select.ItemIndicator />
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Positioner>
+                    </Portal>
+                  </Select.Root>
+                )}
+
                 <Select.Root
                   collection={shiftCollection}
                   size="sm"
@@ -161,6 +220,7 @@ export const EditShiftRequest = ({
                     </Select.Positioner>
                   </Portal>
                 </Select.Root>
+
                 <VStack alignItems={"start"}>
                   <Text fontWeight={"medium"}>Date Requesting</Text>
                   <DatePickerDemo
@@ -171,16 +231,15 @@ export const EditShiftRequest = ({
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
-              
               <VStack gap={2} flexDirection="row">
-                <Button variant="outline" onClick={() => deleteMutation.mutate()}
-                loading={deleteMutation.isPending}>
+                <Button
+                  variant="outline"
+                  onClick={() => deleteMutation.mutate()}
+                  loading={deleteMutation.isPending}
+                >
                   Withdraw
                 </Button>
-                <Button
-                  onClick={handleSave}
-                  loading={updateMutation.isPending}
-                >
+                <Button onClick={handleSave} loading={updateMutation.isPending}>
                   Save
                 </Button>
               </VStack>

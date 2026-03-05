@@ -21,9 +21,6 @@ export const Route = createFileRoute("/ward-staff")({
       if (user.is_superuser) {
         throw redirect({ to: "/admin/dashboard" })
       }
-      if (user.managerid) {
-        throw redirect({ to: "/nurse-manager/home" })
-      }
     } catch (e) {
       if (e && typeof e === "object" && "to" in e) throw e
       throw redirect({ to: "/login" })

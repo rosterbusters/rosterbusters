@@ -206,19 +206,22 @@ def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days):
 def _solve(
     rn_list, en_list, hca_list,
     dept_name="DEFAULT",
+    milp_config=None,
     hard_requests_rn=None,  soft_requests_rn=None,
     annual_leave_rn=None,   prev_week_roster_rn=None,
     hard_requests_en=None,  soft_requests_en=None,
     annual_leave_en=None,   prev_week_roster_en=None,
     hard_requests_hca=None, soft_requests_hca=None,
     annual_leave_hca=None,  prev_week_roster_hca=None,
-    solver_name="cbc",
+    solver_name="gurobi",
     weights=None,
 ):
-    if dept_name not in WARD_CONFIG:
-        dept_name = "DEFAULT"
-
-    cfg      = WARD_CONFIG[dept_name]
+    if milp_config is not None:
+        cfg = milp_config
+    else:
+        if dept_name not in WARD_CONFIG:
+            dept_name = "DEFAULT"
+        cfg = WARD_CONFIG[dept_name]
     LOW_DAYS = set(cfg.get("LOW_DAYS", set()))
     rn_cfg   = cfg["RN"]
     en_cfg   = cfg["EN"]
@@ -553,16 +556,17 @@ def _solve(
 # ---------------------------------------------------------------------------
 # Public entry point (called by algo_scheduler.py)
 # ---------------------------------------------------------------------------
-def run_milp_pipeline(nurses, shifts, requests=None, ward_name="DEFAULT"):
+def run_milp_pipeline(nurses, shifts, requests=None, ward_name="DEFAULT", milp_config=None):
     """
     Main entry point for MILP nurse rostering.
 
     Parameters
     ----------
-    nurses    : list of {"id", "name", "rank"} dicts  (rank A/B/C)
-    shifts    : 14-element list of per-day shift-requirement dicts
-    requests  : optional {nurse_id: [(day_0based, shift_str), ...]}
-    ward_name : key into WARD_CONFIG; falls back to "DEFAULT" if unknown
+    nurses      : list of {"id", "name", "rank"} dicts  (rank A/B/C)
+    shifts      : 14-element list of per-day shift-requirement dicts
+    requests    : optional {nurse_id: [(day_0based, shift_str), ...]}
+    ward_name   : key into WARD_CONFIG; falls back to "DEFAULT" if unknown
+    milp_config : optional WARD_CONFIG-compatible override dict (from staffing_json)
 
     Returns
     -------
@@ -576,6 +580,7 @@ def run_milp_pipeline(nurses, shifts, requests=None, ward_name="DEFAULT"):
             en_list=parsed["en_list"],
             hca_list=parsed["hca_list"],
             dept_name=ward_name,
+            milp_config=milp_config,
             hard_requests_rn=parsed["hard_requests_rn"],
             soft_requests_rn=parsed["soft_requests_rn"],
             annual_leave_rn=parsed["annual_leave_rn"],

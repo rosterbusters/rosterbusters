@@ -16,28 +16,46 @@ import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
 import useCustomToast from "@/hooks/useCustomToast";
 
-interface EditLeaveRequestProps {
-  isOpen: boolean;
-  onClose: () => void;
+export interface LeaveRequestEntry {
   requestId: number;
+  nurseName: string;
   initialLeaveType: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
 }
 
+interface EditLeaveRequestProps {
+  isOpen: boolean;
+  onClose: () => void;
+  requests: LeaveRequestEntry[];
+}
+
 export const EditLeaveRequest = ({
   isOpen,
   onClose,
-  requestId,
-  initialLeaveType,
-  startDate,
+  requests,
 }: EditLeaveRequestProps) => {
-  const [leaveType, setLeaveType] = useState<string[]>([initialLeaveType]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  useEffect(() => {
+    if (isOpen) setSelectedIdx(0);
+  }, [isOpen, requests]);
+
+  const active = requests[selectedIdx] ?? requests[0];
+
+  const [leaveType, setLeaveType] = useState<string[]>([active?.initialLeaveType ?? ""]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    new Date(startDate),
+    active ? new Date(active.startDate) : undefined,
   );
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (active) {
+      setLeaveType([active.initialLeaveType]);
+      setRequestDate(new Date(active.startDate));
+    }
+  }, [selectedIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
@@ -57,18 +75,22 @@ export const EditLeaveRequest = ({
     [leaveCodes],
   );
 
-  useEffect(() => {
-    setLeaveType([initialLeaveType]);
-    setRequestDate(new Date(startDate));
-  }, [initialLeaveType, startDate, isOpen]);
 
   const toDateStr = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+  const nurseCollection = useMemo(
+    () =>
+      createListCollection({
+        items: requests.map((r, i) => ({ value: String(i), label: r.nurseName })),
+      }),
+    [requests],
+  );
+
   const updateMutation = useMutation({
     mutationFn: () =>
       LeaveRequestsService.updateLeaveRequest({
-        leaveId: requestId,
+        leaveId: active.requestId,
         leavetype: leaveType[0],
         startdate: requestDate ? toDateStr(requestDate) : undefined,
         enddate: requestDate ? toDateStr(requestDate) : undefined,
@@ -87,7 +109,7 @@ export const EditLeaveRequest = ({
 
   const deleteMutation = useMutation({
     mutationFn: () =>
-      LeaveRequestsService.deleteLeaveRequest({ leaveId: requestId }),
+      LeaveRequestsService.deleteLeaveRequest({ leaveId: active.requestId }),
     onSuccess: () => {
       showSuccessToast("Leave request withdrawn.");
       queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
@@ -112,6 +134,8 @@ export const EditLeaveRequest = ({
     updateMutation.mutate();
   };
 
+  if (!active) return null;
+
   return (
     <Dialog.Root
       placement="center"
@@ -130,6 +154,36 @@ export const EditLeaveRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems="start" gap={4} maxWidth="225px">
+                {requests.length > 1 && (
+                  <Select.Root
+                    collection={nurseCollection}
+                    size="sm"
+                    value={[String(selectedIdx)]}
+                    onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
+                  >
+                    <Select.Label>Nurse</Select.Label>
+                    <Select.Control>
+                      <Select.Trigger>
+                        <Select.ValueText placeholder="Select nurse" />
+                      </Select.Trigger>
+                      <Select.IndicatorGroup>
+                        <Select.Indicator />
+                      </Select.IndicatorGroup>
+                    </Select.Control>
+                    <Portal>
+                      <Select.Positioner>
+                        <Select.Content>
+                          {nurseCollection.items.map((item) => (
+                            <Select.Item item={item.value} key={item.value}>
+                              {item.label}
+                              <Select.ItemIndicator />
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Positioner>
+                    </Portal>
+                  </Select.Root>
+                )}
                 <Select.Root
                   collection={leaveCollection}
                   size="sm"

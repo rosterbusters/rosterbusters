@@ -176,7 +176,7 @@ export function ManpowerEditDialog({
                   transition="all 0.15s ease"
                   textAlign="center"
                 >
-                  All days
+                  All future rosters
                 </Box>
                 <Box
                   as="button"
@@ -192,7 +192,7 @@ export function ManpowerEditDialog({
                   transition="all 0.15s ease"
                   textAlign="center"
                 >
-                  {dateLabel} only
+                  Current roster only
                 </Box>
               </Flex>
             </Box>

@@ -35,5 +35,5 @@ export default function NotificationBannerContainer({ role }: NotificationBanner
 
   const notifications = notificationsData?.notifications || [];
 
-  return <NotificationBanner items={notifications} />;
+  return <NotificationBanner items={notifications} role={role} />;
 }

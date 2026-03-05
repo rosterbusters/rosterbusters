@@ -151,7 +151,7 @@ def run_ga(nurse_names, nurse_ranks, demand, nurse_requests, hard_requests, num_
     Returns: (best_individual, best_penalty)
     """
     # ===================== CONFIG =====================
-    NUM_DAYS = 15
+    NUM_DAYS = 14
     NUM_NURSES = len(nurse_names)
 
     # Shift codes (for printing and hours calc)
