@@ -1,4 +1,4 @@
-import { Box, Container, Flex, Heading, Image, Text, VStack, Separator, IconButton } from "@chakra-ui/react"
+import { Box, Container, Flex, Heading, Image, Text, VStack, IconButton } from "@chakra-ui/react"
 import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
 import { FiLock, FiUser, FiEye, FiEyeOff } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
@@ -137,14 +137,6 @@ function Login() {
               </Text>
             </VStack>
 
-
-
-            {/* Separator */}
-            <Flex align="center" width="100%" gap={3}>
-              <Separator flex="1" borderColor="gray.200" />
-              <Text fontSize="xs" color="gray.400" fontWeight="medium">OR</Text>
-              <Separator flex="1" borderColor="gray.200" />
-            </Flex>
 
             {/* Login Form */}
             <Box as="form" onSubmit={handleSubmit(onSubmit)}>

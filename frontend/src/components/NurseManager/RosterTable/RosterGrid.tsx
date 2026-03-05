@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
   Box,
   Flex,
@@ -7,12 +7,16 @@ import {
   Table,
   Icon,
   Spinner,
+  Input,
+  Checkbox,
+  Popover,
 } from "@chakra-ui/react";
 import {
   AlertCircle,
   Filter,
   ChevronDown,
   ChevronRight,
+  X,
 } from "lucide-react";
 import moment from "moment";
 
@@ -145,16 +149,66 @@ export function RosterGrid({
     new Set(),
   );
 
+  // Filter popover state
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterSearch, setFilterSearch] = useState("");
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+  const filterAnchorRef = useRef<HTMLDivElement>(null);
+
+  // All unique nurse names sorted
+  const allNames = useMemo(
+    () => Array.from(new Set(data.map((r) => r.name))).sort(),
+    [data],
+  );
+
+  // Names matching the search query
+  const filteredNameOptions = useMemo(
+    () =>
+      allNames.filter((n) =>
+        n.toLowerCase().includes(filterSearch.toLowerCase()),
+      ),
+    [allNames, filterSearch],
+  );
+
+  const isFilterActive = selectedNames.size > 0;
+
+  const toggleName = useCallback((name: string) => {
+    setSelectedNames((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const clearFilter = useCallback(() => {
+    setSelectedNames(new Set());
+    setFilterSearch("");
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedNames(new Set(allNames));
+  }, [allNames]);
+
   // Generate day columns
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate, viewMode),
     [currentStartDate, viewMode],
   );
 
+  // Apply name filter to data before grouping
+  const filteredData = useMemo(
+    () =>
+      isFilterActive
+        ? data.filter((r) => selectedNames.has(r.name))
+        : data,
+    [data, isFilterActive, selectedNames],
+  );
+
   // Group data by designation (role) - always grouped
   const groupedData = useMemo(() => {
-    return groupByDesignation(data);
-  }, [data]);
+    return groupByDesignation(filteredData);
+  }, [filteredData]);
 
   // Handle shift badge click
   const handleShiftClick = useCallback(
@@ -259,8 +313,8 @@ export function RosterGrid({
 
   // Calculate shift counts for summary
   const shiftCounts = useMemo(
-    () => calculateShiftCounts(data, dayColumns),
-    [data, dayColumns],
+    () => calculateShiftCounts(filteredData, dayColumns),
+    [filteredData, dayColumns],
   );
 
   // Calculate total for a specific shift type and date
@@ -587,8 +641,191 @@ export function RosterGrid({
                   <Text fontSize="sm" fontWeight="medium">
                     Name
                   </Text>
-                  <Icon as={Filter} boxSize={4} />
+                  {/* Filter button */}
+                  <Box position="relative" display="inline-flex" ref={filterAnchorRef}>
+                    <Box
+                      as="button"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      p={1}
+                      borderRadius="md"
+                      cursor="pointer"
+                      color={isFilterActive ? "#155E75" : "faintforeground"}
+                      bg={isFilterActive ? "#e0f2fe" : "transparent"}
+                      _hover={{ bg: "#e0f2fe", color: "#155E75" }}
+                      _active={{ bg: "#bae6fd", color: "#0e7490" }}
+                      transition="all 0.15s ease"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFilterOpen((o) => !o);
+                      }}
+                      title="Filter by name"
+                    >
+                      <Filter size={14} />
+                    </Box>
+                    {isFilterActive && (
+                      <Box
+                        position="absolute"
+                        top="-2px"
+                        right="-2px"
+                        w="7px"
+                        h="7px"
+                        borderRadius="full"
+                        bg="#0e7490"
+                        border="1.5px solid white"
+                        pointerEvents="none"
+                      />
+                    )}
+                  </Box>
                 </HStack>
+
+                {/* Name Filter Popover */}
+                <Popover.Root
+                  open={filterOpen}
+                  onOpenChange={(d) => {
+                    if (!d.open) {
+                      setFilterOpen(false);
+                      setFilterSearch("");
+                    }
+                  }}
+                  positioning={{
+                    getAnchorRect: () =>
+                      filterAnchorRef.current?.getBoundingClientRect() ?? null,
+                    placement: "bottom-start",
+                  }}
+                >
+                  <Popover.Positioner zIndex={49}>
+                    <Popover.Content
+                      w="220px"
+                      borderRadius="lg"
+                      boxShadow="lg"
+                      overflow="hidden"
+                    >
+                      {/* Header */}
+                      <Popover.Header
+                        p={2}
+                        bg="gray.50"
+                        borderBottom="1px solid"
+                        borderColor="gray.100"
+                      >
+                        <Flex justify="space-between" align="center" mb={2}>
+                          <Text fontSize="xs" fontWeight="semibold" color="#155E75">
+                            Filter by Name
+                          </Text>
+                          <Box
+                            as="button"
+                            cursor="pointer"
+                            color="gray.400"
+                            _hover={{ color: "gray.600" }}
+                            onClick={() => {
+                              setFilterOpen(false);
+                              setFilterSearch("");
+                            }}
+                          >
+                            <X size={13} />
+                          </Box>
+                        </Flex>
+                        <Input
+                          placeholder="Search name..."
+                          size="xs"
+                          value={filterSearch}
+                          onChange={(e) => setFilterSearch(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                          borderColor="gray.200"
+                          _focus={{
+                            borderColor: "#4B8798",
+                            boxShadow: "0 0 0 1px #4B8798",
+                          }}
+                        />
+                      </Popover.Header>
+
+                      {/* Actions */}
+                      <Flex
+                        px={2}
+                        py={1}
+                        gap={2}
+                        borderBottom="1px solid"
+                        borderColor="gray.100"
+                        bg="white"
+                      >
+                        <Box
+                          as="button"
+                          fontSize="xs"
+                          color="#4B8798"
+                          cursor="pointer"
+                          _hover={{ color: "#155E75", textDecoration: "underline" }}
+                          onClick={selectAll}
+                        >
+                          Select all
+                        </Box>
+                        <Text fontSize="xs" color="gray.300">|</Text>
+                        <Box
+                          as="button"
+                          fontSize="xs"
+                          color="#4B8798"
+                          cursor="pointer"
+                          _hover={{ color: "#155E75", textDecoration: "underline" }}
+                          onClick={clearFilter}
+                        >
+                          Clear
+                        </Box>
+                        {isFilterActive && (
+                          <Text fontSize="xs" color="gray.400" ml="auto">
+                            {selectedNames.size} selected
+                          </Text>
+                        )}
+                      </Flex>
+
+                      {/* Name list */}
+                      <Popover.Body p={0} maxH="200px" overflowY="auto">
+                        {filteredNameOptions.length === 0 ? (
+                          <Flex px={3} py={3} align="center">
+                            <Text fontSize="xs" color="gray.400">No names found</Text>
+                          </Flex>
+                        ) : (
+                          filteredNameOptions.map((name) => (
+                            <Flex
+                              key={name}
+                              align="center"
+                              gap={2}
+                              px={3}
+                              py={1.5}
+                              cursor="pointer"
+                              bg={selectedNames.has(name) ? "#f0f9ff" : "white"}
+                              _hover={{ bg: "#f0f9ff" }}
+                              transition="background 0.1s ease"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleName(name);
+                              }}
+                            >
+                              <Checkbox.Root
+                                size="sm"
+                                checked={selectedNames.has(name)}
+                                onCheckedChange={() => toggleName(name)}
+                                onClick={(e) => e.stopPropagation()}
+                                colorPalette="cyan"
+                              >
+                                <Checkbox.HiddenInput />
+                                <Checkbox.Control
+                                  borderColor={selectedNames.has(name) ? "#0e7490" : "gray.300"}
+                                  bg={selectedNames.has(name) ? "#0e7490" : "white"}
+                                >
+                                  <Checkbox.Indicator />
+                                </Checkbox.Control>
+                              </Checkbox.Root>
+                              <Text fontSize="xs" color="gray.700" userSelect="none">
+                                {name}
+                              </Text>
+                            </Flex>
+                          ))
+                        )}
+                      </Popover.Body>
+                    </Popover.Content>
+                  </Popover.Positioner>
+                </Popover.Root>
               </Table.ColumnHeader>
 
               {/* Day Column Headers */}

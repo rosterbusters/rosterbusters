@@ -49,6 +49,9 @@ class Ward(SQLModel, table=True):
     nd_hca_min: Optional[int] = Field(default=None)
     nd_hca_max: Optional[int] = Field(default=None)
 
+    # Full staffing guidelines stored as JSON (set by nurse managers via the roster UI)
+    staffing_json: Optional[str] = Field(default=None)
+
 
 class RosterPeriod(SQLModel, table=True):
     __tablename__ = "rosterperiod"
@@ -76,6 +79,7 @@ class Roster(SQLModel, table=True):
     status: str = Field(default="Confirmed", max_length=20)
     assignmentmethod: str = Field(default="Manual", max_length=20)  # Manual / Auto
     assignedby: Optional[int] = None  # Manager ID if Manual, None if Auto
+    comment: Optional[str] = Field(default=None)
 
 
 class NotificationQueue(SQLModel, table=True):

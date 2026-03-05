@@ -91,7 +91,7 @@ export function formatNotificationDate(dateString: string): string {
 export const getNotificationRoute = (type: string): string => {
   const routeMap: Record<string, string> = {
     Roster: "/staffrosterschedule",
-    ShiftRequest: "/shift-request",
+    ShiftRequest: "/request-application",
     LeaveRequest: "/request-application",
     ShiftUpdate: "/staffrosterschedule",
     SwapRequest: "/shift-request",

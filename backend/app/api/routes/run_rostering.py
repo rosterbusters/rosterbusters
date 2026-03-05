@@ -27,6 +27,10 @@ class ChangelogCreateRequest(BaseModel):
     changesource: str = "Manual"
 
 
+class RosterCommentUpdate(BaseModel):
+    comment: Optional[str] = None
+
+
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
@@ -94,10 +98,28 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
                 "shift_code": e.shiftcode,
                 "status": e.status,
                 "assignment_method": e.assignmentmethod,
+                "comment": e.comment,
             }
             for e in entries
         ],
     }
+
+
+@router.patch("/roster/{roster_id}/comment")
+def update_roster_comment(
+    roster_id: int,
+    body: RosterCommentUpdate,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Update the comment on a roster entry."""
+    entry = session.get(Roster, roster_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Roster entry not found")
+    entry.comment = body.comment or None
+    session.add(entry)
+    session.commit()
+    return {"roster_id": roster_id, "comment": entry.comment}
 
 
 @router.post("/changelog", response_model=RosterChangeLogPublic)
@@ -284,12 +306,7 @@ def generate_roster_endpoint(
         if not ward:
             raise HTTPException(status_code=404, detail="Ward not found")
 
-        daily_req = {
-            "AM": {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
-            "PM": {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
-            "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
-        }
-        shifts_data = [daily_req for _ in range(14)]
+        shifts_data, milp_config = _staffing_to_algo_inputs(ward)
 
         nurses_db = db.exec(
             select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
@@ -299,7 +316,7 @@ def generate_roster_endpoint(
             for n in nurses_db
         ]
 
-        result = generate_roster(nurses=nurses_data, shifts=shifts_data, requests=None)
+        result = generate_roster(nurses=nurses_data, shifts=shifts_data, requests=None, milp_config=milp_config)
         return {"method": result["method"], "roster": result["roster"]}
 
     except HTTPException:
@@ -319,12 +336,7 @@ def generate_roster_stream(
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    daily_req = {
-        "AM": {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
-        "PM": {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
-        "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
-    }
-    shifts_data = [daily_req for _ in range(14)]
+    shifts_data, milp_config = _staffing_to_algo_inputs(ward)
 
     nurses_db = db.exec(
         select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
@@ -352,6 +364,7 @@ def generate_roster_stream(
                 shifts=shifts_data,
                 requests=None,
                 progress_callback=on_progress,
+                milp_config=milp_config,
             )
             q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
         except Exception as exc:
@@ -371,6 +384,57 @@ def generate_roster_stream(
                 break
 
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
+
+def _staffing_to_algo_inputs(ward: Ward):
+    """
+    Build (shifts_data, milp_config) from ward.staffing_json when available,
+    otherwise fall back to the legacy Ward scalar fields.
+
+    shifts_data : 14-element list of {"AM": {"A":int,"B":int,"C":int}, "PM":..., "NIGHT":...}
+    milp_config : WARD_CONFIG-compatible dict, or None (MILP will use its built-in lookup)
+    """
+    if ward.staffing_json:
+        try:
+            g = json.loads(ward.staffing_json)
+
+            def _min(role: str, shift: str) -> int:
+                return int(g.get(role, {}).get(shift, {}).get("minimum", 0))
+
+            # Rank A = RN, B = EN+NA, C = HCA12+HCA3
+            # DailyStaffingGuideline shift keys: A=AM, P=PM, N=NIGHT
+            daily_req = {
+                "AM":    {"A": _min("RN","A"), "B": _min("EN","A") + _min("NA","A"), "C": _min("HCA12","A") + _min("HCA3","A")},
+                "PM":    {"A": _min("RN","P"), "B": _min("EN","P") + _min("NA","P"), "C": _min("HCA12","P") + _min("HCA3","P")},
+                "NIGHT": {"A": _min("RN","N"), "B": _min("EN","N") + _min("NA","N"), "C": _min("HCA12","N") + _min("HCA3","N")},
+            }
+            shifts_data = [daily_req for _ in range(14)]
+
+            rn_min  = {"A": _min("RN","A"),                              "P": _min("RN","P"),  "N": _min("RN","N")}
+            en_min  = {"A": _min("EN","A") + _min("NA","A"),             "P": _min("EN","P") + _min("NA","P"),  "N": _min("EN","N") + _min("NA","N")}
+            hca_min = {"A": _min("HCA12","A") + _min("HCA3","A"),        "P": _min("HCA12","P") + _min("HCA3","P"), "N": _min("HCA12","N") + _min("HCA3","N")}
+
+            milp_config = {
+                "LOW_DAYS": set(),
+                "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": {"A": 5, "P": 3, "N": 2}},
+                "EN":  {"normal_min": en_min,  "low_exact": None, "day_target": en_min,  "shift_target": {"A": 5, "P": 3, "N": 2}},
+                "HCA": {"normal_min": hca_min, "low_exact": None, "day_target": hca_min, "shift_target": {"A": 5, "P": 3, "N": 2}},
+                "TOTAL_MIN": {
+                    "A": rn_min["A"] + en_min["A"] + hca_min["A"],
+                    "P": rn_min["P"] + en_min["P"] + hca_min["P"],
+                    "N": rn_min["N"] + en_min["N"] + hca_min["N"],
+                },
+            }
+            return shifts_data, milp_config
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            pass  # fall through to legacy fields
+
+    daily_req = {
+        "AM":    {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
+        "PM":    {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
+        "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
+    }
+    return [daily_req for _ in range(14)], None
 
 
 def _map_rank(designation: str) -> str:

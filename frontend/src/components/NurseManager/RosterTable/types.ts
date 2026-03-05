@@ -132,6 +132,7 @@ export interface WardRosterResponse {
     shift_date: string;
     shift_code: string;
     status: string;
+    comment?: string | null;
   }>;
 }
 

@@ -108,24 +108,6 @@ function NurseManagerNavbar() {
                 </NavigationMenuLink>
               </NavigationMenuItem>
 
-              {/* Roster Planning */}
-              <NavigationMenuItem>
-                <NavigationMenuLink asChild>
-                  <Link
-                    to="/nurse-manager/roster-planning"
-                    className={cn(
-                      navPillBaseStyles,
-                      isActive("/nurse-manager/roster-planning")
-                        ? navPillActiveStyles
-                        : navPillInactiveStyles,
-                    )}
-                  >
-                    <CalendarDays className="h-4 w-4 text-[#4B8798]" />
-                    <span>Roster Planning</span>
-                  </Link>
-                </NavigationMenuLink>
-              </NavigationMenuItem>
-
               {/* Leave and Shift Overview - DROPDOWN */}
               <NavigationMenuItem className="relative">
                 <NavigationMenuTrigger
@@ -179,6 +161,24 @@ function NurseManagerNavbar() {
                     </li>
                   </ul>
                 </NavigationMenuContent>
+              </NavigationMenuItem>
+
+              {/* Roster Planning */}
+              <NavigationMenuItem>
+                <NavigationMenuLink asChild>
+                  <Link
+                    to="/nurse-manager/roster-planning"
+                    className={cn(
+                      navPillBaseStyles,
+                      isActive("/nurse-manager/roster-planning")
+                        ? navPillActiveStyles
+                        : navPillInactiveStyles,
+                    )}
+                  >
+                    <CalendarDays className="h-4 w-4 text-[#4B8798]" />
+                    <span>Roster Planning</span>
+                  </Link>
+                </NavigationMenuLink>
               </NavigationMenuItem>
 
               {/* Ward Staff Directory */}
@@ -336,25 +336,6 @@ function NurseManagerNavbar() {
                 </span>
               </Link>
 
-              {/* Roster Planning */}
-              <Link
-                to="/nurse-manager/roster-planning"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center"
-              >
-                <span
-                  className={cn(
-                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                    isActive("/nurse-manager/roster-planning")
-                      ? "bg-[#DCECEF] text-[#4B8798]"
-                      : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
-                  )}
-                >
-                  <CalendarDays className="h-4 w-4 text-[#4B8798]" />
-                  Roster Planning
-                </span>
-              </Link>
-
               {/* Leave and Shift Overview - EXPANDABLE */}
               <div className="flex flex-col">
                 <button
@@ -418,6 +399,25 @@ function NurseManagerNavbar() {
                   </div>
                 )}
               </div>
+
+              {/* Roster Planning */}
+              <Link
+                to="/nurse-manager/roster-planning"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center"
+              >
+                <span
+                  className={cn(
+                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                    isActive("/nurse-manager/roster-planning")
+                      ? "bg-[#DCECEF] text-[#4B8798]"
+                      : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
+                  )}
+                >
+                  <CalendarDays className="h-4 w-4 text-[#4B8798]" />
+                  Roster Planning
+                </span>
+              </Link>
 
               {/* Ward Staff Directory */}
               <Link

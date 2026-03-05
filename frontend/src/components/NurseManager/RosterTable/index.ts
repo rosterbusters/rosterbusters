@@ -22,6 +22,7 @@ export {
   useShiftCodes,
   useRosterChangelog,
   useCreateChangelog,
+  useUpdateRosterComment,
   getShiftDurationHours,
   transformRosterData,
 } from "./useRosterData";

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Flex, Stack, Box } from "@chakra-ui/react";import moment from "moment";
 
@@ -19,17 +19,28 @@ import {
   type ShiftCode,
   type RosterRow,
   type EditHistoryEntry,
+  type DailyStaffingGuideline,
 } from "@/components/NurseManager/RosterTable";
 import { getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
+import { toaster } from "@/components/ui/toaster";
 import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer";
 import { WardsService } from "@/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Ward } from "@/client/types.gen";
 
 export const Route = createFileRoute("/nurse-manager/home")({
   component: NurseManagerHome,
 });
+
+interface UndoRedoItem {
+  nurseId: number;
+  nurseName: string;
+  date: string;
+  rosterId: number | null;
+  fromShiftCode: ShiftCode;
+  toShiftCode: ShiftCode;
+}
 
 
 function NurseManagerHome() {
@@ -41,6 +52,15 @@ function NurseManagerHome() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
+  const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(getWardGuidelines(undefined));
+  const [dateOverrides, setDateOverrides] = useState<Record<string, DailyStaffingGuideline>>({});
+  const [undoStack, setUndoStack] = useState<UndoRedoItem[]>([]);
+  const [redoStack, setRedoStack] = useState<UndoRedoItem[]>([]);
+  const undoStackRef = useRef<UndoRedoItem[]>([]);
+  const undoRedoHandlersRef = useRef({
+    performUndo: (_item: UndoRedoItem) => {},
+    performRedo: (_item: UndoRedoItem) => {},
+  });
 
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
@@ -179,6 +199,29 @@ function NurseManagerHome() {
         changetype: "shift_change",
         changesource: "Manual",
       });
+
+      if (oldShiftCode !== null) {
+        const undoItem: UndoRedoItem = {
+          nurseId,
+          nurseName: row?.name ?? "",
+          date,
+          rosterId,
+          fromShiftCode: oldShiftCode,
+          toShiftCode: newShiftCode,
+        };
+        setUndoStack(prev => [...prev, undoItem]);
+        setRedoStack([]);
+        toaster.create({
+          title: "Shift updated",
+          description: `${row?.name ?? "Nurse"}: ${oldShiftCode} → ${newShiftCode}`,
+          action: {
+            label: "Undo",
+            onClick: () => undoRedoHandlersRef.current.performUndo(undoItem),
+          },
+          meta: { closable: true },
+          duration: 5000,
+        });
+      }
     },
     [localRosterData, createChangelog]
   );
@@ -226,6 +269,43 @@ function NurseManagerHome() {
     setIsEditHistoryOpen(true);
   }, []);
 
+  // Persist staffing guidelines to the ward record in the database
+  const { mutate: persistStaffing } = useMutation({
+    mutationFn: async (newGuidelines: DailyStaffingGuideline) => {
+      if (!selectedWard) return;
+      const token = localStorage.getItem("access_token");
+      const BASE = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${BASE}/api/v1/wards/${selectedWard.wardid}/staffing`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ staffing_json: JSON.stringify(newGuidelines) }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+    },
+    onSuccess: () =>
+      toaster.create({ title: "Staffing requirements saved for all future rosters", type: "success", duration: 3000 }),
+    onError: () =>
+      toaster.create({ title: "Failed to save staffing requirements", type: "error", duration: 3000 }),
+  });
+
+  const handleGuidelinesChange = useCallback(
+    (updated: DailyStaffingGuideline) => {
+      setGuidelines(updated);
+      persistStaffing(updated);
+    },
+    [persistStaffing],
+  );
+
+  const handleDateOverrideChange = useCallback(
+    (dateKey: string, updated: DailyStaffingGuideline) => {
+      setDateOverrides((prev) => ({ ...prev, [dateKey]: updated }));
+    },
+    [],
+  );
+
   const handleUndo = useCallback(
     (entryId: number) => {
       const entry = editHistory.find(e => e.id === entryId);
@@ -238,6 +318,148 @@ function NurseManagerHome() {
     },
     [editHistory, localRosterData, handleShiftChange]
   );
+
+  // Keep undoStackRef in sync for use in the Ctrl+Z listener
+  useEffect(() => {
+    undoStackRef.current = undoStack;
+  }, [undoStack]);
+
+  // Assign undo/redo handlers to a mutable ref so toast action closures always call the latest version
+  undoRedoHandlersRef.current = {
+    performUndo: (item: UndoRedoItem) => {
+      setLocalRosterData(prevData =>
+        prevData.map(r => {
+          if (r.nurseId === item.nurseId) {
+            return {
+              ...r,
+              shifts: {
+                ...r.shifts,
+                [item.date]: {
+                  ...(r.shifts[item.date] || {}),
+                  rosterId: r.shifts[item.date]?.rosterId || 0,
+                  nurseId: item.nurseId,
+                  shiftDate: item.date,
+                  shiftCode: item.fromShiftCode,
+                  status: "Confirmed" as const,
+                },
+              },
+            };
+          }
+          return r;
+        })
+      );
+      createChangelog({
+        rosterid: item.rosterId,
+        oldnurseid: item.nurseId,
+        oldshiftcode: item.toShiftCode,
+        newshiftcode: item.fromShiftCode,
+        changetype: "shift_change",
+        changesource: "Manual",
+      });
+      setUndoStack(prev => prev.filter(i => i !== item));
+      const redoItem: UndoRedoItem = { ...item, fromShiftCode: item.toShiftCode, toShiftCode: item.fromShiftCode };
+      setRedoStack(prev => [...prev, redoItem]);
+      toaster.create({
+        title: "Change undone",
+        description: `${item.nurseName}: ${item.toShiftCode} → ${item.fromShiftCode}`,
+        action: {
+          label: "Redo",
+          onClick: () => undoRedoHandlersRef.current.performRedo(redoItem),
+        },
+        meta: { closable: true },
+        duration: 5000,
+      });
+    },
+    performRedo: (item: UndoRedoItem) => {
+      setLocalRosterData(prevData =>
+        prevData.map(r => {
+          if (r.nurseId === item.nurseId) {
+            return {
+              ...r,
+              shifts: {
+                ...r.shifts,
+                [item.date]: {
+                  ...(r.shifts[item.date] || {}),
+                  rosterId: r.shifts[item.date]?.rosterId || 0,
+                  nurseId: item.nurseId,
+                  shiftDate: item.date,
+                  shiftCode: item.toShiftCode,
+                  status: "Confirmed" as const,
+                },
+              },
+            };
+          }
+          return r;
+        })
+      );
+      createChangelog({
+        rosterid: item.rosterId,
+        oldnurseid: item.nurseId,
+        oldshiftcode: item.fromShiftCode,
+        newshiftcode: item.toShiftCode,
+        changetype: "shift_change",
+        changesource: "Manual",
+      });
+      setRedoStack(prev => prev.filter(i => i !== item));
+      const undoItem: UndoRedoItem = { ...item };
+      setUndoStack(prev => [...prev, undoItem]);
+      toaster.create({
+        title: "Change redone",
+        description: `${item.nurseName}: ${item.fromShiftCode} → ${item.toShiftCode}`,
+        action: {
+          label: "Undo",
+          onClick: () => undoRedoHandlersRef.current.performUndo(undoItem),
+        },
+        meta: { closable: true },
+        duration: 5000,
+      });
+    },
+  };
+
+  // Keep redoStackRef in sync for use in the Ctrl+Y listener
+  const redoStackRef = useRef<UndoRedoItem[]>([]);
+  useEffect(() => {
+    redoStackRef.current = redoStack;
+  }, [redoStack]);
+
+  // Global Ctrl+Z / Ctrl+Y listener (only when the history dialog is not open, to avoid conflict)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !isEditHistoryOpen) {
+        if (e.key === "z") {
+          e.preventDefault();
+          const stack = undoStackRef.current;
+          if (stack.length > 0) {
+            undoRedoHandlersRef.current.performUndo(stack[stack.length - 1]);
+          }
+        } else if (e.key === "y") {
+          e.preventDefault();
+          const stack = redoStackRef.current;
+          if (stack.length > 0) {
+            undoRedoHandlersRef.current.performRedo(stack[stack.length - 1]);
+          }
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isEditHistoryOpen]);
+
+  // Re-initialise guidelines whenever the selected ward changes
+  useEffect(() => {
+    if (!selectedWard) return;
+    const stored = (selectedWard as any)?.staffing_json as string | undefined;
+    if (stored) {
+      try {
+        setGuidelines(JSON.parse(stored));
+      } catch {
+        setGuidelines(getWardGuidelines(selectedWard.wardname));
+      }
+    } else {
+      setGuidelines(getWardGuidelines(selectedWard.wardname));
+    }
+    setDateOverrides({});
+  }, [selectedWard?.wardid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Set default ward if not set, restoring from localStorage if available
   useEffect(() => {
@@ -332,7 +554,11 @@ function NurseManagerHome() {
           viewMode={viewMode}
           currentStartDate={currentStartDate}
           isRosterGenerated={true}
-          guidelines={getWardGuidelines(selectedWard?.wardname)}
+          guidelines={guidelines}
+          dateOverrides={dateOverrides}
+          originalGuidelines={getWardGuidelines(selectedWard?.wardname)}
+          onGuidelinesChange={handleGuidelinesChange}
+          onDateOverrideChange={handleDateOverrideChange}
         />
       </Box>
 

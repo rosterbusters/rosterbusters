@@ -8,13 +8,14 @@ import {
   Container,
   Flex,
   Heading,
+  IconButton,
   Image,
+  Input,
   Text,
   VStack,
 } from "@chakra-ui/react"
 import { Button } from "@chakra-ui/react"
 import { Field } from "@/components/ui/field"
-import { Input } from "@chakra-ui/react"
 import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"
 import { AdminService } from "@/client/adminService"
@@ -102,7 +103,6 @@ function FirstLoginSetup() {
         flex={{ base: "0 0 50%", lg: "1" }}
         position="relative"
         overflow="hidden"
-        display={{ base: "none", lg: "block" }}
       >
         <Image
           src="/assets/images/sach-entrance.jpg"
@@ -112,40 +112,61 @@ function FirstLoginSetup() {
           h="100%"
           objectPosition="center"
         />
+        <Box
+          position="absolute"
+          bottom="0"
+          left="0"
+          right="0"
+          h="32"
+          bgGradient="to-t"
+          gradientFrom="blackAlpha.700"
+          gradientTo="transparent"
+        />
       </Box>
 
       {/* Form Side */}
       <Flex
         flex="1"
+        direction="column"
+        bg="white"
+        mt={{ base: "-10vh", lg: "0" }}
+        roundedTop="none"
+        position="relative"
+        zIndex="2"
         align="center"
-        justify="center"
-        p={{ base: 6, md: 10 }}
+        justify={{ base: "start", lg: "center" }}
+        pt={{ base: 6, lg: 0 }}
+        pb={4}
       >
-        <Container maxW="sm" w="full">
-          <VStack gap={6} align="stretch">
-            <Box textAlign="center">
-              <Heading size="xl" mb={2} color="gray.800">
+        <Container maxW="md" w="100%" px={6}>
+          <VStack gap={3} align="stretch">
+
+            {/* Header */}
+            <VStack gap={0} align="start" mb={1}>
+              <Heading
+                as="h1"
+                size="lg"
+                fontWeight="700"
+                color="teal.700"
+              >
                 Welcome! Set Up Your Account
               </Heading>
               <Text color="gray.500" fontSize="sm">
-                Please set a new password and link your email address to your account.
+                Please set a new password and link your email to complete setup.
               </Text>
-            </Box>
+            </VStack>
 
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <VStack gap={4}>
-                {/* Email (required) */}
+            <Box as="form" onSubmit={handleSubmit(onSubmit)}>
+              <VStack gap={3} align="stretch">
+
+                {/* Email */}
                 <Field
                   label="Email"
                   invalid={!!errors.email}
                   errorText={errors.email?.message}
                   required
                 >
-                  <InputGroup
-                    flex="1"
-                    startElement={<FiMail color="gray" />}
-                    w="full"
-                  >
+                  <InputGroup startElement={<FiMail color="gray" />} w="100%">
                     <Input
                       {...register("email", {
                         required: "Email is required",
@@ -156,7 +177,9 @@ function FirstLoginSetup() {
                       })}
                       placeholder="your.email@example.com"
                       type="email"
-                      size="lg"
+                      size="md"
+                      variant="subtle"
+                      bg="gray.50"
                     />
                   </InputGroup>
                 </Field>
@@ -169,33 +192,27 @@ function FirstLoginSetup() {
                   required
                 >
                   <InputGroup
-                    flex="1"
                     startElement={<FiLock color="gray" />}
                     endElement={
-                      <button
-                        type="button"
+                      <IconButton
+                        aria-label={showPassword ? "Hide password" : "Show password"}
                         onClick={() => setShowPassword(!showPassword)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
+                        variant="ghost"
+                        size="sm"
+                        color="gray.400"
                       >
-                        {showPassword ? (
-                          <FiEyeOff color="gray" />
-                        ) : (
-                          <FiEye color="gray" />
-                        )}
-                      </button>
+                        {showPassword ? <FiEyeOff /> : <FiEye />}
+                      </IconButton>
                     }
-                    w="full"
+                    w="100%"
                   >
                     <Input
                       {...register("new_password", passwordRules())}
                       placeholder="At least 8 characters"
                       type={showPassword ? "text" : "password"}
-                      size="lg"
+                      size="md"
+                      variant="subtle"
+                      bg="gray.50"
                     />
                   </InputGroup>
                 </Field>
@@ -208,27 +225,19 @@ function FirstLoginSetup() {
                   required
                 >
                   <InputGroup
-                    flex="1"
                     startElement={<FiLock color="gray" />}
                     endElement={
-                      <button
-                        type="button"
+                      <IconButton
+                        aria-label={showConfirm ? "Hide password" : "Show password"}
                         onClick={() => setShowConfirm(!showConfirm)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
+                        variant="ghost"
+                        size="sm"
+                        color="gray.400"
                       >
-                        {showConfirm ? (
-                          <FiEyeOff color="gray" />
-                        ) : (
-                          <FiEye color="gray" />
-                        )}
-                      </button>
+                        {showConfirm ? <FiEyeOff /> : <FiEye />}
+                      </IconButton>
                     }
-                    w="full"
+                    w="100%"
                   >
                     <Input
                       {...register("confirm_password", {
@@ -239,23 +248,27 @@ function FirstLoginSetup() {
                       })}
                       placeholder="Repeat your password"
                       type={showConfirm ? "text" : "password"}
-                      size="lg"
+                      size="md"
+                      variant="subtle"
+                      bg="gray.50"
                     />
                   </InputGroup>
                 </Field>
 
                 <Button
                   type="submit"
-                  colorScheme="blue"
-                  size="lg"
-                  w="full"
+                  variant="solid"
+                  size="md"
+                  w="100%"
                   loading={isSubmitting || mutation.isPending}
-                  mt={2}
+                  mt={1}
                 >
                   Complete Setup
                 </Button>
+
               </VStack>
-            </form>
+            </Box>
+
           </VStack>
         </Container>
       </Flex>
