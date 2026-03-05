@@ -509,7 +509,12 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
     ).first()
 
     if existing:
-        logger.info("  Admin user already exists, skipping")
+        logger.info("  Admin user already exists, updating credentials to seed values")
+        existing.username = "admin"
+        existing.email = "admin@sach.org.sg"
+        existing.passwordhash = get_password_hash("admin1234")
+        session.commit()
+        session.refresh(existing)
         return existing
 
     admin = RBACUser(
