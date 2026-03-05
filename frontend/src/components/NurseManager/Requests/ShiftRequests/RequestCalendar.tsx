@@ -180,7 +180,6 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         date={date}
         showAllEvents
         onNavigate={onNavigate}
-        wardId={wardId}
       />
     </Box>
   );
