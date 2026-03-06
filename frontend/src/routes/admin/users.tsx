@@ -186,7 +186,7 @@ function UserFormDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-lg font-semibold">
             {isEdit ? "Edit User" : "Add User"}
@@ -196,8 +196,8 @@ function UserFormDialog({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit as SubmitHandler<UserFormData>)}>
-          <div className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit as SubmitHandler<UserFormData>)} className="flex flex-col overflow-hidden">
+          <div className="p-6 space-y-4 overflow-y-auto">
             {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
