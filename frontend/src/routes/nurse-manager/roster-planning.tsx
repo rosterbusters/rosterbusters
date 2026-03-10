@@ -22,6 +22,7 @@ import {
   type ShiftCode,
   type RosterRow,
   type DailyStaffingGuideline,
+  type ShiftRequestOverlay,
 } from "@/components/NurseManager/RosterTable";
 import { RosterPlanningHeader, getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import {
@@ -63,6 +64,15 @@ function generateEmptyRosterData(): RosterRow[] {
   }));
 }
 
+// Generate mock shift request overlays for demonstration (Algorithm and Nurse Manager only)
+function generateMockPlanningOverlays(startDate: Date): Record<string, Record<string, ShiftRequestOverlay>> {
+  const d = (n: number) => moment(startDate).add(n, "days").format("YYYY-MM-DD");
+  return {
+    "1": { [d(0)]: { status: "Pending",  category: "Algorithm",     reason: "Under review by scheduling algorithm" } },
+    "4": { [d(3)]: { status: "Rejected", category: "Nurse Manager", reason: "Insufficient overnight coverage" } },
+  };
+}
+
 function RosterPlanningPage() {
   const { showSuccessToast, showErrorToast } = useCustomToast();
   
@@ -78,6 +88,12 @@ function RosterPlanningPage() {
   
   // Algorithm generation state
   const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
+
+  // Mock shift request overlays (Algorithm and Nurse Manager categories only)
+  const mockPlanningOverlays = useMemo(
+    () => generateMockPlanningOverlays(currentStartDate),
+    [currentStartDate],
+  );
 
   // Staffing guidelines — initialised from ward data, editable via the summary table
   const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(
@@ -1048,6 +1064,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
             isLoading={generateAlgorithmRoster.isPending}
             guidelines={guidelines}
             isRosterGenerated={isAlgorithmGenerated}
+            shiftRequestOverlays={mockPlanningOverlays}
           />
         </Box>
 

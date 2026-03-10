@@ -30,6 +30,7 @@ import type {
   DailyStaffingGuideline,
   SummaryShiftType,
   StaffRole,
+  ShiftRequestOverlay,
 } from "./types";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -61,6 +62,7 @@ interface RosterGridProps {
   guidelines?: DailyStaffingGuideline;
   isRosterGenerated?: boolean;
   showSummary?: boolean;
+  shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>;
 }
 
 // Generate day columns based on view mode and start date
@@ -105,6 +107,7 @@ export function RosterGrid({
   guidelines = MOCK_STAFFING_GUIDELINES,
   isRosterGenerated = false,
   showSummary = true,
+  shiftRequestOverlays = {},
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -555,6 +558,7 @@ export function RosterGrid({
                   onCommentIconClick={(e) =>
                     handleCommentIconClick(row.nurseId, row.name, dateKey, shift, e)
                   }
+                  shiftRequestOverlay={shiftRequestOverlays[String(row.nurseId)]?.[dateKey]}
                 />
               </Box>
             </Flex>

@@ -5,6 +5,7 @@ import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { NewShiftRequest } from "./NewShiftRequest";
 import { EditShiftRequest } from "./EditShiftRequest";
+import { ReviewShiftRequest } from "./ReviewShiftRequest";
 import useAuth from "@/hooks/useAuth";
 import moment from "moment";
 
@@ -59,6 +60,15 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     shiftType: string;
     preferredDate: string;
   } | null>(null);
+  const [selectedReviewRequest, setSelectedReviewRequest] = useState<{
+    requestId: number;
+    nurseName: string;
+    shiftType: string;
+    preferredDate: string;
+    status: string;
+    reason: string | null;
+  } | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
@@ -67,6 +77,14 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     setSelectedDay(day);
     console.log(day)
     setIsOpen(true); 
+  };
+
+  const handleReviewAction = (
+    requestId: number,
+    action: "Approved" | "Rejected",
+    _comment: string,
+  ) => {
+    setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
   };
 
   
@@ -121,11 +139,22 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                           shift={ev.title}
                           nurseName={ev.resource?.nurseName}
                           owned={ev.resource?.isOwn}
-                          onClick={ev.resource?.isOwn ? () => setSelectedRequest({
-                            requestId: ev.resource.requestId,
-                            shiftType: ev.resource.shiftType,
-                            preferredDate: ev.resource.preferredDate,
-                          }) : undefined}
+                          onClick={
+                            ev.resource?.isOwn
+                              ? () => setSelectedRequest({
+                                  requestId: ev.resource.requestId,
+                                  shiftType: ev.resource.shiftType,
+                                  preferredDate: ev.resource.preferredDate,
+                                })
+                              : () => setSelectedReviewRequest({
+                                  requestId: ev.resource.requestId,
+                                  nurseName: ev.resource.nurseName,
+                                  shiftType: ev.resource.shiftType,
+                                  preferredDate: ev.resource.preferredDate,
+                                  status: statusOverrides[ev.resource.requestId] ?? ev.resource.status,
+                                  reason: ev.resource.reason ?? null,
+                                })
+                          }
                         />
                       </Box>
                     ))
@@ -151,6 +180,23 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
           requestId={selectedRequest.requestId}
           initialShiftType={selectedRequest.shiftType}
           initialDate={selectedRequest.preferredDate}
+        />
+      )}
+
+      {selectedReviewRequest && (
+        <ReviewShiftRequest
+          isOpen={!!selectedReviewRequest}
+          onClose={() => setSelectedReviewRequest(null)}
+          requestId={selectedReviewRequest.requestId}
+          nurseName={selectedReviewRequest.nurseName}
+          shiftCode={selectedReviewRequest.shiftType}
+          date={selectedReviewRequest.preferredDate}
+          status={
+            statusOverrides[selectedReviewRequest.requestId] ??
+            selectedReviewRequest.status
+          }
+          comment={selectedReviewRequest.reason}
+          onAction={handleReviewAction}
         />
       )}
     </>

@@ -1,7 +1,7 @@
 import { Box, Text, VStack } from "@chakra-ui/react";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Clock, Check, X } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
-import { type ShiftCode, type ViewMode, SHIFT_COLOR_MAP, SHIFT_CODE_MAP } from "./types";
+import { type ShiftCode, type ViewMode, type ShiftRequestOverlay, SHIFT_COLOR_MAP, SHIFT_CODE_MAP } from "./types";
 
 interface ShiftBadgeProps {
   shiftCode: ShiftCode | null;
@@ -11,6 +11,7 @@ interface ShiftBadgeProps {
   viewMode?: ViewMode;
   comment?: string;
   onCommentIconClick?: (e: React.MouseEvent) => void;
+  shiftRequestOverlay?: ShiftRequestOverlay;
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
@@ -38,6 +39,7 @@ export function ShiftBadge({
   viewMode,
   comment,
   onCommentIconClick,
+  shiftRequestOverlay,
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
@@ -72,6 +74,16 @@ export function ShiftBadge({
   const isWeekView = viewMode === "week";
   const hasComment = !!comment;
 
+  const hasOverlay = !!shiftRequestOverlay;
+
+  const OVERLAY_CONFIG = {
+    Pending:  { borderColor: '#f97316', Icon: Clock,  iconBg: '#f97316' },
+    Approved: { borderColor: '#22c55e', Icon: Check,  iconBg: '#22c55e' },
+    Rejected: { borderColor: '#ef4444', Icon: X,      iconBg: '#ef4444' },
+  } as const;
+
+  const overlayConfig = hasOverlay ? OVERLAY_CONFIG[shiftRequestOverlay!.status] : null;
+
   // Tooltip content for comment
   const commentTooltipContent = hasComment ? (
     <Text fontSize="xs" color="whiteAlpha.900" fontStyle="italic" py={1}>
@@ -84,7 +96,8 @@ export function ShiftBadge({
     <Tooltip content={commentTooltipContent} showArrow>
       <Box
         position="absolute"
-        top="-4px"
+        top={hasOverlay ? undefined : "-4px"}
+        bottom={hasOverlay ? "-4px" : undefined}
         right="-4px"
         bg="#edc001"
         borderRadius="full"
@@ -101,6 +114,35 @@ export function ShiftBadge({
         }}
       >
         <MessageSquare size={isWeekView ? 12 : 10} color="white" fill="white" />
+      </Box>
+    </Tooltip>
+  ) : null;
+
+  // Shift request status icon — positioned top-right, tooltip trigger
+  const requestStatusIcon = hasOverlay && overlayConfig ? (
+    <Tooltip
+      content={
+        <Text fontSize="xs" color="whiteAlpha.900" py={1}>
+          {shiftRequestOverlay!.category}: {shiftRequestOverlay!.reason}
+        </Text>
+      }
+      showArrow
+    >
+      <Box
+        position="absolute"
+        top="-4px"
+        right="-4px"
+        bg={overlayConfig.iconBg}
+        borderRadius="full"
+        w={isWeekView ? "20px" : "18px"}
+        h={isWeekView ? "20px" : "18px"}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        boxShadow="0 0 0 1.5px white, 0 1px 3px rgba(0,0,0,0.2)"
+        zIndex={1}
+      >
+        <overlayConfig.Icon size={isWeekView ? 12 : 10} color="white" />
       </Box>
     </Tooltip>
   ) : null;
@@ -127,6 +169,8 @@ export function ShiftBadge({
           transition="all 0.15s ease"
           boxShadow={isWorkingShift ? "sm" : "none"}
           title={!hasComment ? (shiftInfo?.description || shiftCode) : undefined}
+          outline={hasOverlay && overlayConfig ? `2.5px solid ${overlayConfig.borderColor}` : undefined}
+          outlineOffset="1px"
           py={1}
         >
           <Text
@@ -151,6 +195,7 @@ export function ShiftBadge({
           )}
         </Box>
         {commentIcon}
+        {requestStatusIcon}
       </Box>
     );
 
@@ -179,6 +224,8 @@ export function ShiftBadge({
         transition="all 0.15s ease"
         boxShadow={isWorkingShift ? "sm" : "none"}
         title={!showShiftTooltip && !hasComment ? (shiftInfo?.description || shiftCode) : undefined}
+        outline={hasOverlay && overlayConfig ? `2.5px solid ${overlayConfig.borderColor}` : undefined}
+        outlineOffset="1px"
       >
         <Text
           fontSize={size === "sm" ? "xs" : "sm"}
@@ -190,6 +237,7 @@ export function ShiftBadge({
         </Text>
       </Box>
       {commentIcon}
+      {requestStatusIcon}
     </Box>
   );
 

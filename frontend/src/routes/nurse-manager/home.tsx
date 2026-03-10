@@ -17,6 +17,7 @@ import {
   type ShiftCode,
   type RosterRow,
   type EditHistoryEntry,
+  type ShiftRequestOverlay,
 } from "@/components/NurseManager/RosterTable";
 import { getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
@@ -80,6 +81,17 @@ function generateMockData(startDate: Date, viewMode: ViewMode): RosterRow[] {
       hasWarning: nurse.hours.worked > nurse.hours.contracted * 1.1,
     };
   });
+}
+
+// Generate mock shift request overlays for demonstration
+function generateMockOverlays(startDate: Date): Record<string, Record<string, ShiftRequestOverlay>> {
+  const d = (n: number) => moment(startDate).add(n, "days").format("YYYY-MM-DD");
+  return {
+    "1": { [d(0)]: { status: "Approved",  category: "Nurse Manager", reason: "Approved due to urgent coverage need" } },
+    "3": { [d(1)]: { status: "Rejected",  category: "Algorithm",     reason: "Violates staffing constraints" } },
+    "6": { [d(2)]: { status: "Pending",   category: "Nurse Manager", reason: "Awaiting manager review" } },
+    "7": { [d(4)]: { status: "Approved",  category: "Self Changed",  reason: "Nurse swapped shift after publication" } },
+  };
 }
 
 // Initial mock edit history data for demonstration
@@ -154,6 +166,9 @@ function NurseManagerHome() {
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
   const [editHistory, setEditHistory] = useState<EditHistoryEntry[]>(INITIAL_EDIT_HISTORY);
+  // Mock shift request overlays
+  const mockOverlays = useMemo(() => generateMockOverlays(currentStartDate), [currentStartDate]);
+
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
@@ -425,6 +440,7 @@ function NurseManagerHome() {
             onCommentChange={handleCommentChange}
             isLoading={wardsLoading || rosterLoading}
             showSummary={false}
+            shiftRequestOverlays={mockOverlays}
           />
         </Box>
 

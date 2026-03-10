@@ -147,6 +147,8 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         requestId: sr.requestid,
         preferredDate: sr.preferreddate,
         shiftType: sr.preferredshifttype,
+        status: sr.status,
+        reason: sr.reason ?? null,
       },
     }));
   }, [shiftRequests, nurseMap, currentNurseId]);
