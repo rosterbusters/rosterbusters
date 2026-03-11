@@ -1,3 +1,6 @@
+<img width="1080" height="324" alt="Banners" src="https://github.com/user-attachments/assets/c1ac96e4-8c46-4763-bcaa-9b008f642681" />
+
+
 # Setup
 1. Place .env file in root directory
 2. Place google_auth_credentials.json into the backend/
