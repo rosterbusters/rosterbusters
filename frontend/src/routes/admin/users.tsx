@@ -1365,12 +1365,12 @@ function AdminUsers() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(
-                    `Username: ${createdUserInfo.username}\nPassword: ${createdUserInfo.generated_password}`,
+                    createdUserInfo.generated_password ?? "",
                   )
                 }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Copy
+                Copy Password
               </button>
               <button
                 onClick={() => setCreatedUserInfo(null)}
