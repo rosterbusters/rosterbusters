@@ -21,7 +21,7 @@ import {
 } from "@/components/NurseManager/RosterTable";
 import { getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
-import NotificationBanner from "@/components/NurseManager/HomePage/NotificationBanner";
+import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer";
 import { WardsService } from "@/client";
 import { useQuery } from "@tanstack/react-query";
 import { Ward } from "@/client/types.gen";
@@ -400,7 +400,7 @@ function NurseManagerHome() {
           rounded="lg"
           width={{ base: "100%", md: "50%" }}
         >
-          <NotificationBanner />
+          <NotificationBannerContainer role="manager" />
         </Stack>
       </Stack>
 

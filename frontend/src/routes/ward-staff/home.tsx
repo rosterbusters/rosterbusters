@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Box, Flex, Stack } from "@chakra-ui/react";
 import StaffCalendar from "@/components/WardStaff/HomePage/StaffCalendar";
-import NotificationBanner from "@/components/WardStaff/HomePage/NotificationBanner";
+import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer";
 import StatusBanner from "@/components/WardStaff/HomePage/StatusBanner";
 
 export const Route = createFileRoute("/ward-staff/home")({
@@ -43,7 +43,7 @@ function HomePage() {
           rounded="lg"
           width={{ base: "100%", md: "50%" }}
         >
-          <NotificationBanner />
+          <NotificationBannerContainer role="nurse" />
         </Stack>
       </Stack>
 

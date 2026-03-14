@@ -48,17 +48,13 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   date,
   localizer,
   events,
-  startAccessor,
-  endAccessor,
 }: CustomWeekViewProps) {
-  
-  const { user } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<{
     requestId: number;
     shiftType: string;
     preferredDate: string;
+    nurseName: string;
+    status: string;
   } | null>(null);
   const [selectedReviewRequest, setSelectedReviewRequest] = useState<{
     requestId: number;
@@ -73,11 +69,6 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
   );
-  const handleDayClicked = (day: Date) => {
-    setSelectedDay(day);
-    console.log(day)
-    setIsOpen(true); 
-  };
 
   const handleReviewAction = (
     requestId: number,
@@ -115,25 +106,22 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
             return (
               
               <GridItem
-              
                 key={i}
                 bg="white"
                 textAlign={"start"}
                 color="foreground"
                 p={2}
                 minH="250px"
-                onClick={() => handleDayClicked(day)}
-                cursor={"pointer"}
                 borderColor="border"
                 borderWidth="1px"
                 bgColor={moment(day).isSame(moment(), 'day') ? "menuactive" : "white"}
               >
-                {localizer.format(day, "D")} 
+                {localizer.format(day, "D")}
                 <Box mt={2}>
                   {eventsForDay.length > 0 &&
                     [...eventsForDay]
-                  .sort((a, b) => (b.resource?.isOwn ? 1 : 0) - (a.resource?.isOwn ? 1 : 0))
-                  .map((ev, idx) => (
+                    .sort((a, b) => (b.resource?.isOwn ? 1 : 0) - (a.resource?.isOwn ? 1 : 0))
+                    .map((ev, idx) => (
                       <Box key={idx} pb={2} maxW="100%">
                         <CalendarRequestBlock
                           shift={ev.title}
@@ -166,20 +154,15 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         </Grid>
       </VStack>
 
-      <NewShiftRequest
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        selectedDate={selectedDay}
-        wardId={(user as any)?.wardid}
-      />
-
       {selectedRequest && (
-        <EditShiftRequest
+        <NMReviewShiftRequest
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
           requestId={selectedRequest.requestId}
-          initialShiftType={selectedRequest.shiftType}
-          initialDate={selectedRequest.preferredDate}
+          shiftType={selectedRequest.shiftType}
+          preferredDate={selectedRequest.preferredDate}
+          nurseName={selectedRequest.nurseName}
+          currentStatus={selectedRequest.status}
         />
       )}
 

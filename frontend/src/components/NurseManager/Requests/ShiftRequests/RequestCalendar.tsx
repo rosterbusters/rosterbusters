@@ -80,14 +80,14 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
    */
   const activePeriod = useMemo(() => {
     if (!periods) return undefined;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     return (
       periods.find(
         (p) =>
           p.status === 'RequestOpen' &&
-          new Date(p.startdate) <= today &&
-          new Date(p.enddate) >= today,
+          p.startdate <= todayStr &&
+          p.enddate >= todayStr,
       ) ?? periods.find((p) => p.status === 'RequestOpen')
     );
   }, [periods]);
@@ -148,7 +148,6 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         preferredDate: sr.preferreddate,
         shiftType: sr.preferredshifttype,
         status: sr.status,
-        reason: sr.reason ?? null,
       },
     }));
   }, [shiftRequests, nurseMap, currentNurseId]);

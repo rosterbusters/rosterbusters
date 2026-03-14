@@ -1,0 +1,217 @@
+{
+  "method": "GA",
+  "roster": {
+    "nurses": [
+      {
+        "id": 1,
+        "name": "Concep",
+        "rank": "A",
+        "schedule": ["A","N","DO","DO","A","P","N","DO","A","A","A","N","N","DO"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 2,
+        "name": "Debb",
+        "rank": "A",
+        "schedule": ["N","DO","A","P","P","P","DO","N","N","DO","A","N","DO","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 3,
+        "name": "Eliza",
+        "rank": "A",
+        "schedule": ["DO","A","P","N","N","DO","P","DO","A","N","N","DO","A","P"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 4,
+        "name": "GUTIER",
+        "rank": "A",
+        "schedule": ["N","N","DO","A","DO","A","A","N","DO","P","A","P","N","DO"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 5,
+        "name": "LANDI",
+        "rank": "A",
+        "schedule": ["DO","P","P","A","N","DO","P","A","P","N","DO","N","DO","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 6,
+        "name": "LIM C",
+        "rank": "A",
+        "schedule": ["DO","N","N","DO","A","A","P","P","DO","N","N","DO","P","P"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 7,
+        "name": "Lind",
+        "rank": "A",
+        "schedule": ["A","DO","A","P","N","DO","A","DO","A","A","DO","P","A","N"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 8,
+        "name": "Lourdu",
+        "rank": "A",
+        "schedule": ["N","DO","DO","P","P","A","A","DO","N","DO","P","A","A","N"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 9,
+        "name": "Lwin L",
+        "rank": "A",
+        "schedule": ["P","P","DO","N","DO","A","A","N","DO","A","A","A","DO","P"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 10,
+        "name": "Mari",
+        "rank": "A",
+        "schedule": ["P","P","P","P","DO","N","DO","A","P","P","N","DO","DO","N"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 11,
+        "name": "Myint W",
+        "rank": "A",
+        "schedule": ["N","DO","A","P","A","P","DO","P","A","A","P","DO","N","DO"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 12,
+        "name": "Nu N",
+        "rank": "A",
+        "schedule": ["DO","DO","A","A","A","N","N","DO","A","P","A","DO","A","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 13,
+        "name": "Vimosh",
+        "rank": "A",
+        "schedule": ["A","A","N","DO","A","P","DO","A","N","N","DO","P","P","DO"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 14,
+        "name": "Kangba",
+        "rank": "B",
+        "schedule": ["P","A","DO","N","DO","P","P","A","DO","N","DO","P","P","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 15,
+        "name": "MANZA",
+        "rank": "B",
+        "schedule": ["A","A","DO","P","N","N","DO","A","P","A","DO","P","N","DO"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 16,
+        "name": "MELAD",
+        "rank": "B",
+        "schedule": ["P","P","A","P","DO","N","DO","P","N","DO","DO","P","A","P"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 17,
+        "name": "Mae L",
+        "rank": "B",
+        "schedule": ["DO","A","N","DO","P","A","A","N","DO","P","P","A","DO","P"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 18,
+        "name": "Mary",
+        "rank": "B",
+        "schedule": ["N","N","DO","DO","P","A","P","N","N","DO","P","A","DO","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 19,
+        "name": "May M",
+        "rank": "B",
+        "schedule": ["A","DO","P","A","N","DO","P","P","N","DO","A","DO","P","P"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 20,
+        "name": "NEW",
+        "rank": "B",
+        "schedule": ["A","N","DO","P","A","DO","A","A","P","N","DO","P","A","DO"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 21,
+        "name": "Sailo",
+        "rank": "B",
+        "schedule": ["A","P","A","DO","A","N","DO","DO","P","N","DO","P","P","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 22,
+        "name": "Sales",
+        "rank": "B",
+        "schedule": ["A","A","P","DO","A","DO","N","DO","A","A","A","A","N","DO"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 23,
+        "name": "T Van",
+        "rank": "B",
+        "schedule": ["DO","N","DO","A","A","P","P","DO","A","A","P","A","DO","N"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 24,
+        "name": "Thet T",
+        "rank": "B",
+        "schedule": ["N","DO","P","A","A","DO","A","P","A","N","DO","N","DO","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 25,
+        "name": "Furiel",
+        "rank": "C",
+        "schedule": ["P","A","N","DO","N","DO","A","N","DO","A","A","DO","A","N"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 26,
+        "name": "Naw K",
+        "rank": "C",
+        "schedule": ["N","DO","P","P","DO","A","A","A","N","DO","N","DO","A","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 27,
+        "name": "Punch",
+        "rank": "C",
+        "schedule": ["A","P","A","A","DO","DO","N","N","DO","DO","P","P","P","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 28,
+        "name": "Saw S",
+        "rank": "C",
+        "schedule": ["DO","P","A","N","DO","P","P","P","P","P","DO","N","DO","N"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 29,
+        "name": "Saw TW",
+        "rank": "C",
+        "schedule": ["P","N","DO","DO","A","P","P","A","N","DO","N","DO","P","A"],
+        "stats": { "total_shifts": 10 }
+      },
+      {
+        "id": 30,
+        "name": "TENG",
+        "rank": "C",
+        "schedule": ["A","A","P","DO","N","N","DO","A","DO","A","N","DO","P","P"],
+        "stats": { "total_shifts": 10 }
+      }
+    ]
+  }
+}

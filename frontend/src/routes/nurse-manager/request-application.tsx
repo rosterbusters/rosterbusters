@@ -12,11 +12,11 @@ import {
   Portal,
   createListCollection,
 } from "@chakra-ui/react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import RequestCalendar from "@/components/NurseManager/Requests/ShiftRequests/RequestCalendar";
-import LeaveRequestCalendar from "@/components/WardStaff/Requests/LeaveRequests/LeaveRequestCalendar";
+import LeaveRequestCalendar from "@/components/NurseManager/Requests/LeaveRequests/LeaveRequestCalendar";
 import { WardsService, type Ward } from "@/client";
 
 export const Route = createFileRoute("/nurse-manager/request-application")({
@@ -33,6 +33,13 @@ function RouteComponent() {
     queryKey: ["wards"],
     queryFn: WardsService.getWards,
   });
+
+  useEffect(() => {
+    if (wards.length > 0 && selectedWard === null) {
+      const ward4 = wards.find((w) => w.wardid === 4) ?? wards[0];
+      setSelectedWard(ward4);
+    }
+  }, [wards, selectedWard]);
 
   const wardCollection = useMemo(
     () =>

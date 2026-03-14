@@ -1,7 +1,10 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import gaSched1 from "@/mockData/ga_sched_1.json";
-import gaSched2 from "@/mockData/ga_sched_2.json";
-import milpSched1 from "@/mockData/milp_sched_1.json";
+import gaWard4 from "@/mockData/ga_ward4.json";
+import gaWard5 from "@/mockData/ga_ward5.json";
+import gaWard6 from "@/mockData/ga_ward6.json";
+import milpWard4 from "@/mockData/milp_ward4.json";
+import milpWard5 from "@/mockData/milp_ward5.json";
+import milpWard6 from "@/mockData/milp_ward6.json";
 import { createFileRoute } from "@tanstack/react-router";
 import { Flex, Box, Button, Text, HStack } from "@chakra-ui/react";
 import moment from "moment";
@@ -872,10 +875,13 @@ const handleGenerateAlgorithm = useCallback(async () => {
 
   // Load a mock JSON dataset into the roster grid
   const handleLoadMockData = useCallback((mockKey: string) => {
-    const mockMap: Record<string, typeof gaSched1> = {
-      ga_sched_1: gaSched1,
-      ga_sched_2: gaSched2,
-      milp_sched_1: milpSched1,
+    const mockMap: Record<string, typeof gaWard4> = {
+      ga_ward4: gaWard4,
+      ga_ward5: gaWard5,
+      ga_ward6: gaWard6,
+      milp_ward4: milpWard4,
+      milp_ward5: milpWard5,
+      milp_ward6: milpWard6,
     };
     const mock = mockMap[mockKey];
     if (!mock) return;
