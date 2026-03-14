@@ -38,6 +38,7 @@ class AdminUserPublic(SQLModel):
     userid: int
     username: str
     email: Optional[str] = None
+    employee_id: Optional[str] = None
     isactive: bool
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
@@ -52,9 +53,15 @@ class AdminUsersPublic(SQLModel):
     count: int
 
 
+class AdminPasswordResetResponse(SQLModel):
+    username: str
+    generated_password: str
+
+
 class AdminUserCreate(SQLModel):
     username: str = Field(min_length=1, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
+    employee_id: Optional[str] = Field(default=None, max_length=100)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: bool = True
     role: str = Field(default="Nurse", description="Nurse | NurseManager | Admin")
@@ -64,6 +71,7 @@ class AdminUserCreate(SQLModel):
 class AdminUserUpdate(SQLModel):
     username: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
+    employee_id: Optional[str] = Field(default=None, max_length=100)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
     ward_ids: Optional[list[int]] = None
@@ -77,17 +85,23 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     """Convert an RBACUser row to the public response model."""
     roles = get_user_roles_by_userid(session, user.userid)
     ward_list: list[WardInfo] = []
+    employee_id: Optional[str] = None
 
     # Resolve ward for nurses (single primary ward via nurse.wardid)
     if user.nurseid:
         nurse = session.get(Nurse, user.nurseid)
-        if nurse and nurse.wardid:
-            ward = session.get(Ward, nurse.wardid)
-            if ward:
-                ward_list.append(WardInfo(ward_id=ward.wardid, ward_name=ward.wardname))
+        if nurse:
+            employee_id = nurse.employeeid
+            if nurse.wardid:
+                ward = session.get(Ward, nurse.wardid)
+                if ward:
+                    ward_list.append(WardInfo(ward_id=ward.wardid, ward_name=ward.wardname))
 
     # Resolve wards for managers (multiple — every ward where ward.managerid matches)
     if user.managerid:
+        manager = session.get(NurseManager, user.managerid)
+        if manager:
+            employee_id = manager.employeeid
         managed_wards = session.exec(
             select(Ward).where(Ward.managerid == user.managerid)
         ).all()
@@ -98,6 +112,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         userid=user.userid,
         username=user.username,
         email=user.email,
+        employee_id=employee_id,
         isactive=user.isactive,
         nurseid=user.nurseid,
         managerid=user.managerid,
@@ -148,6 +163,8 @@ def get_user(session: SessionDep, userid: int) -> Any:
 @router.post("/users", response_model=AdminUserPublic, status_code=201)
 def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     """Create a new RBACUser and assign a role."""
+    employee_id = body.employee_id.strip() if body.employee_id else None
+
     # Check duplicate email (only if email provided)
     if body.email:
         existing = session.exec(
@@ -168,6 +185,25 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
             status_code=400,
             detail="A user with this username already exists.",
         )
+
+    if employee_id:
+        existing_nurse = session.exec(
+            select(Nurse).where(Nurse.employeeid == employee_id)
+        ).first()
+        if existing_nurse:
+            raise HTTPException(
+                status_code=400,
+                detail="This employee ID is already assigned to a nurse.",
+            )
+
+        existing_manager = session.exec(
+            select(NurseManager).where(NurseManager.employeeid == employee_id)
+        ).first()
+        if existing_manager:
+            raise HTTPException(
+                status_code=400,
+                detail="This employee ID is already assigned to a nurse manager.",
+            )
 
     # Validate role
     role = session.exec(
@@ -203,6 +239,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     if body.role == "Nurse":
         nurse = Nurse(
             name=body.username,
+            employeeid=employee_id,
             designation="RN",
             email=body.email or "",
             contactnumber="",
@@ -221,6 +258,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     elif body.role == "NurseManager":
         manager = NurseManager(
             name=body.username,
+            employeeid=employee_id,
             email=body.email or "",
             contactnumber="",
             isactive=True,
@@ -266,12 +304,69 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    employee_id = body.employee_id.strip() if body.employee_id else None
+
     if body.email is not None and body.email != user.email:
         dup = session.exec(
             select(RBACUser).where(RBACUser.email == body.email)
         ).first()
         if dup:
             raise HTTPException(status_code=409, detail="Email already in use.")
+
+    if body.username is not None and body.username != user.username:
+        dup = session.exec(
+            select(RBACUser).where(RBACUser.username == body.username)
+        ).first()
+        if dup:
+            raise HTTPException(status_code=409, detail="Username already in use.")
+
+    nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
+    manager = session.get(NurseManager, user.managerid) if user.managerid else None
+
+    if body.employee_id is not None:
+        if nurse:
+            if employee_id:
+                dup_nurse = session.exec(
+                    select(Nurse).where(
+                        Nurse.employeeid == employee_id,
+                        Nurse.nurseid != user.nurseid,
+                    )
+                ).first()
+                if dup_nurse:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This employee ID is already assigned to another nurse.",
+                    )
+                dup_manager = session.exec(
+                    select(NurseManager).where(NurseManager.employeeid == employee_id)
+                ).first()
+                if dup_manager:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This employee ID is already assigned to a nurse manager.",
+                    )
+
+        if manager:
+            if employee_id:
+                dup_manager = session.exec(
+                    select(NurseManager).where(
+                        NurseManager.employeeid == employee_id,
+                        NurseManager.managerid != user.managerid,
+                    )
+                ).first()
+                if dup_manager:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This employee ID is already assigned to another nurse manager.",
+                    )
+                dup_nurse = session.exec(
+                    select(Nurse).where(Nurse.employeeid == employee_id)
+                ).first()
+                if dup_nurse:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This employee ID is already assigned to a nurse.",
+                    )
 
     if body.username is not None:
         user.username = body.username
@@ -285,6 +380,42 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    if body.employee_id is not None:
+        if nurse:
+            nurse.employeeid = employee_id
+            if body.username is not None:
+                nurse.name = body.username
+            if body.email is not None:
+                nurse.email = body.email or ""
+            session.add(nurse)
+            session.commit()
+
+        if manager:
+            manager.employeeid = employee_id
+            if body.username is not None:
+                manager.name = body.username
+            if body.email is not None:
+                manager.email = body.email or ""
+            session.add(manager)
+            session.commit()
+
+    elif body.username is not None or body.email is not None:
+        if nurse:
+            if body.username is not None:
+                nurse.name = body.username
+            if body.email is not None:
+                nurse.email = body.email or ""
+            session.add(nurse)
+            session.commit()
+
+        if manager:
+            if body.username is not None:
+                manager.name = body.username
+            if body.email is not None:
+                manager.email = body.email or ""
+            session.add(manager)
+            session.commit()
 
     # Handle multi-ward assignment changes
     if body.ward_ids is not None:
@@ -320,6 +451,26 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
             session.commit()
 
     return _enrich(session, user)
+
+
+@router.post("/users/{userid}/reset-password", response_model=AdminPasswordResetResponse)
+def reset_user_password(session: SessionDep, userid: int) -> Any:
+    """Generate a new temporary password for a user."""
+    user = session.get(RBACUser, userid)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    raw_password = generate_random_password()
+    user.passwordhash = get_password_hash(raw_password)
+    user.must_change_password = True
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return AdminPasswordResetResponse(
+        username=user.username,
+        generated_password=raw_password,
+    )
 
 
 @router.delete("/users/{userid}")

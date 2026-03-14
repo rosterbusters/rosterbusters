@@ -64,6 +64,7 @@ class Nurse(SQLModel, table=True):
     __tablename__ = "nurse"
     nurseid: int | None = Field(default=None, primary_key=True)
     name: str
+    employeeid: str | None = Field(default=None, sa_column=Column("employeeid", String))
     designation: str
     email: str
     contactnumber: str
@@ -77,6 +78,9 @@ class NurseManager(SQLModel, table=True):
 
     managerid: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=100)
+    employeeid: Optional[str] = Field(
+        default=None, sa_column=Column("employeeid", String)
+    )
     email: str = Field(max_length=100)
     contactnumber: str = Field(max_length=20)
     isactive: bool = Field(default=True)
@@ -113,6 +117,7 @@ class UserRole(SQLModel, table=True):
 class NursePublic(SQLModel):
       nurseid: int
       name: str
+      employeeid: str | None = None
       designation: str
       email: str
       wardid: int | None = None

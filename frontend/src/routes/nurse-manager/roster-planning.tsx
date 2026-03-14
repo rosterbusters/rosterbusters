@@ -37,7 +37,7 @@ import {
   DialogFooter,
   DialogCloseTrigger,
 } from "@/components/ui/dialog";
-import useCustomToast from "@/hooks/useCustomToast";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
@@ -68,8 +68,6 @@ function generateEmptyRosterData(): RosterRow[] {
 }
 
 function RosterPlanningPage() {
-  const { showSuccessToast, showErrorToast } = useCustomToast();
-  
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
     moment().startOf("isoWeek").toDate()

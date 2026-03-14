@@ -43,6 +43,7 @@ export interface AdminUser {
   userid: number
   username: string
   email: string | null
+  employee_id: string | null
   isactive: boolean
   nurseid: number | null
   managerid: number | null
@@ -50,6 +51,11 @@ export interface AdminUser {
   roles: string[]
   wards: WardInfo[]
   generated_password?: string | null
+}
+
+export interface AdminPasswordResetResponse {
+  username: string
+  generated_password: string
 }
 
 export interface AdminUsersResponse {
@@ -60,6 +66,7 @@ export interface AdminUsersResponse {
 export interface AdminUserCreate {
   username: string
   email?: string
+  employee_id?: string
   password?: string
   is_active?: boolean
   role?: string
@@ -69,6 +76,7 @@ export interface AdminUserCreate {
 export interface AdminUserUpdate {
   username?: string
   email?: string
+  employee_id?: string
   password?: string
   is_active?: boolean
   ward_ids?: number[]
@@ -118,6 +126,12 @@ export const AdminService = {
   deleteUser(userid: number): Promise<{ message: string }> {
     return request(`/api/v1/admin/users/${userid}`, {
       method: "DELETE",
+    })
+  },
+
+  resetUserPassword(userid: number): Promise<AdminPasswordResetResponse> {
+    return request(`/api/v1/admin/users/${userid}/reset-password`, {
+      method: "POST",
     })
   },
 

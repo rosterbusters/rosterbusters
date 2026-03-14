@@ -12,6 +12,7 @@ from decimal import Decimal
 from faker import Faker
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
@@ -233,16 +234,16 @@ WARDS_DATA = [
 NUM_WARDS = len(WARDS_DATA)
 
 MANAGERS_DATA = [
-    {"name": "Lim Wei Ling",     "email": "lim.weiling@sach.org.sg",      "contactnumber": "91234501"},
-    {"name": "Tan Siew Bee",     "email": "tan.siewbee@sach.org.sg",      "contactnumber": "91234502"},
-    {"name": "Ng Ai Hua",        "email": "ng.aihua@sach.org.sg",         "contactnumber": "91234503"},
-    {"name": "Wong Mei Fong",    "email": "wong.meifong@sach.org.sg",     "contactnumber": "91234504"},
-    {"name": "Chua Shu Min",     "email": "chua.shumin@sach.org.sg",      "contactnumber": "91234505"},
-    {"name": "Koh Pei Shan",     "email": "koh.peishan@sach.org.sg",      "contactnumber": "91234506"},
-    {"name": "Lee Hui Ling",     "email": "lee.huiling@sach.org.sg",      "contactnumber": "91234507"},
-    {"name": "Ong Siew Lan",     "email": "ong.siewlan@sach.org.sg",      "contactnumber": "91234508"},
-    {"name": "Ahmad Ismail",     "email": "ahmad.ismail@sach.org.sg",     "contactnumber": "91234509"},
-    {"name": "Priya Nair",       "email": "priya.nair@sach.org.sg",       "contactnumber": "91234510"},
+    {"name": "Lim Wei Ling",     "email": "lim.weiling@sach.org.sg",      "contactnumber": "91234501", "ward_idx": 0},
+    {"name": "Tan Siew Bee",     "email": "tan.siewbee@sach.org.sg",      "contactnumber": "91234502", "ward_idx": 1},
+    {"name": "Ng Ai Hua",        "email": "ng.aihua@sach.org.sg",         "contactnumber": "91234503", "ward_idx": 2},
+    {"name": "Wong Mei Fong",    "email": "wong.meifong@sach.org.sg",     "contactnumber": "91234504", "ward_idx": 3},
+    {"name": "Chua Shu Min",     "email": "chua.shumin@sach.org.sg",      "contactnumber": "91234505", "ward_idx": 4},
+    {"name": "Koh Pei Shan",     "email": "koh.peishan@sach.org.sg",      "contactnumber": "91234506", "ward_idx": 5},
+    {"name": "Lee Hui Ling",     "email": "lee.huiling@sach.org.sg",      "contactnumber": "91234507", "ward_idx": 6},
+    {"name": "Ong Siew Lan",     "email": "ong.siewlan@sach.org.sg",      "contactnumber": "91234508", "ward_idx": 7},
+    {"name": "Ahmad Ismail",     "email": "ahmad.ismail@sach.org.sg",     "contactnumber": "91234509", "ward_idx": 8},
+    {"name": "Priya Nair",       "email": "priya.nair@sach.org.sg",       "contactnumber": "91234510", "ward_idx": 9},
 ]
 
 # 70 nurses: 7 per ward × 10 wards
@@ -435,19 +436,19 @@ def seed_wards(session: Session) -> list[Ward]:
     return wards
 
 
-def seed_managers(session: Session, _wards: list[Ward]) -> list[NurseManager]:
+def seed_managers(session: Session, wards: list[Ward]) -> list[NurseManager]:
     """Seed nurse managers and return list of created NurseManager objects."""
     logger.info("Seeding nurse managers...")
     managers = []
 
-    for _i, mgr_data in enumerate(MANAGERS_DATA):
+    for mgr_data in MANAGERS_DATA:
         existing = session.exec(
             select(NurseManager).where(NurseManager.email == mgr_data["email"])
         ).first()
 
         if existing:
             logger.info(f"  Manager '{mgr_data['name']}' already exists, skipping")
-            managers.append(existing)
+            manager = existing
         else:
             manager = NurseManager(
                 name=mgr_data["name"],
@@ -459,8 +460,21 @@ def seed_managers(session: Session, _wards: list[Ward]) -> list[NurseManager]:
             session.add(manager)
             session.commit()
             session.refresh(manager)
-            managers.append(manager)
             logger.info(f"  Created manager: {mgr_data['name']} (ID: {manager.managerid})")
+
+        ward_idx = int(mgr_data["ward_idx"])
+        if ward_idx < len(wards):
+            ward = wards[ward_idx]
+            if ward.managerid != manager.managerid:
+                ward.managerid = manager.managerid
+                session.add(ward)
+                session.commit()
+                session.refresh(ward)
+                logger.info(
+                    f"  Assigned manager {mgr_data['name']} to ward {ward.wardname} (ID: {ward.wardid})"
+                )
+
+        managers.append(manager)
 
     return managers
 
@@ -504,25 +518,27 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
 
     existing = session.exec(
         select(RBACUser).where(
-            (RBACUser.email == "admin@sach.org.sg") | (RBACUser.username == "admin")
+            (RBACUser.email == settings.FIRST_SUPERUSER)
+            | (RBACUser.username == settings.FIRST_SUPERUSER.split("@")[0])
         )
     ).first()
 
     if existing:
         logger.info("  Admin user already exists, updating credentials to seed values")
-        existing.username = "admin"
-        existing.email = "admin@sach.org.sg"
-        existing.passwordhash = get_password_hash("admin1234")
+        existing.username = settings.FIRST_SUPERUSER.split("@")[0]
+        existing.email = settings.FIRST_SUPERUSER
+        existing.passwordhash = get_password_hash(settings.FIRST_SUPERUSER_PASSWORD)
+        existing.isactive = True
         session.commit()
         session.refresh(existing)
         return existing
 
     admin = RBACUser(
-        username="admin",
-        email="admin@sach.org.sg",
-        passwordhash=get_password_hash("changethis"),
+        username=settings.FIRST_SUPERUSER.split("@")[0],
+        email=settings.FIRST_SUPERUSER,
+        passwordhash=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD),
         isactive=True,
-        createdate=datetime.now(timezone.utc),
+        createdat=datetime.now(timezone.utc),
     )
     session.add(admin)
     session.commit()
@@ -540,7 +556,10 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         session.add(user_role)
         session.commit()
 
-    logger.info("  Created admin user: admin@sach.org.sg / changethis")
+    logger.info(
+        f"  Created admin user: {settings.FIRST_SUPERUSER} / "
+        f"{settings.FIRST_SUPERUSER_PASSWORD}"
+    )
     return admin
 
 
@@ -554,54 +573,76 @@ def seed_manager_users(
     logger.info("Seeding manager users...")
     users = []
 
-    for i, manager in enumerate(managers):
+    manager_seed_by_email = {mgr["email"]: mgr for mgr in MANAGERS_DATA}
+
+    for manager in managers:
         existing = session.exec(
             select(RBACUser).where(RBACUser.email == manager.email)
         ).first()
 
         if existing:
-            logger.info(f"  Manager user '{manager.email}' already exists, skipping")
-            users.append(existing)
-            continue
+            user = existing
+            logger.info(f"  Manager user '{manager.email}' already exists, syncing assignment")
+        else:
+            username = manager.email.split("@")[0]
 
-        username = manager.email.split("@")[0]
+            existing_by_username = session.exec(
+                select(RBACUser).where(RBACUser.username == username)
+            ).first()
 
-        existing_by_username = session.exec(
-            select(RBACUser).where(RBACUser.username == username)
-        ).first()
+            if existing_by_username:
+                user = existing_by_username
+                logger.info(f"  Manager username '{username}' already exists, syncing assignment")
+            else:
+                user = RBACUser(
+                    username=username,
+                    email=manager.email,
+                    passwordhash=get_password_hash("manager123"),
+                    managerid=manager.managerid,
+                    isactive=True,
+                    createdat=datetime.now(timezone.utc),
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+                logger.info(f"  Created manager user: {manager.email} / manager123")
 
-        if existing_by_username:
-            logger.info(f"  Manager username '{username}' already exists, skipping")
-            users.append(existing_by_username)
-            continue
-
-        user = RBACUser(
-            username=username,
-            email=manager.email,
-            passwordhash=get_password_hash("manager123"),
-            managerid=manager.managerid,
-            isactive=True,
-            createdat=datetime.now(timezone.utc),
-        )
+        user.username = manager.email.split("@")[0]
+        user.email = manager.email
+        user.managerid = manager.managerid
+        user.isactive = True
         session.add(user)
         session.commit()
         session.refresh(user)
 
         # Assign NurseManager role with ward assignment
         manager_role = roles.get("NurseManager")
-        if manager_role and i < len(wards):
-            user_role = UserRole(
-                userid=user.userid,
-                roleid=manager_role.roleid,
-                wardid=wards[i].wardid,
-                isactive=True,
-                assignedat=datetime.now(timezone.utc),
-            )
-            session.add(user_role)
-            session.commit()
+        manager_seed = manager_seed_by_email.get(manager.email)
+        ward_idx = int(manager_seed["ward_idx"]) if manager_seed else None
+        if manager_role and ward_idx is not None and ward_idx < len(wards):
+            existing_user_role = session.exec(
+                select(UserRole).where(
+                    UserRole.userid == user.userid,
+                    UserRole.roleid == manager_role.roleid,
+                    UserRole.wardid == wards[ward_idx].wardid,
+                )
+            ).first()
+            if not existing_user_role:
+                user_role = UserRole(
+                    userid=user.userid,
+                    roleid=manager_role.roleid,
+                    wardid=wards[ward_idx].wardid,
+                    isactive=True,
+                    assignedat=datetime.now(timezone.utc),
+                )
+                session.add(user_role)
+                session.commit()
+            else:
+                existing_user_role.isactive = True
+                session.add(existing_user_role)
+                session.commit()
 
         users.append(user)
-        logger.info(f"  Created manager user: {manager.email} / manager123")
 
     return users
 
@@ -1384,7 +1425,7 @@ def seed_all() -> None:
         nurses = seed_nurses(session, wards)
 
         # Create RBAC users
-        # seed_admin_user(session, roles)
+        # Admin bootstrap is handled separately by app/seed_admin.py or app/initial_data.py
         seed_manager_users(session, managers, wards, roles)
         seed_nurse_users(session, nurses, roles)
 
