@@ -1,0 +1,82 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { Box, Flex, Grid, GridItem, Text, VStack } from "@chakra-ui/react";
+
+import useAuth from "@/hooks/useAuth";
+
+export const Route = createFileRoute("/nurse-manager/profile")({
+  component: ProfilePage,
+});
+
+function formatValue(value: string | null | undefined) {
+  return value && value.trim().length > 0 ? value : "Not available";
+}
+
+function ProfilePage() {
+  const { user } = useAuth();
+
+  const profileName = formatValue(user?.name ?? user?.username ?? user?.email);
+  const email = formatValue(user?.email);
+  const designation = "Nurse Manager";
+  const ward = "Not available";
+  const phoneNumber = "Not available";
+
+  const details = [
+    { label: "Ward", value: ward },
+    { label: "Designation", value: designation },
+    { label: "Email", value: email },
+    { label: "Phone Number", value: phoneNumber },
+  ];
+
+  return (
+    <Flex
+      minH="100vh"
+      w="100vw"
+      height="100%"
+      direction={{ base: "column" }}
+      bgColor="background2"
+      p={5}
+    >
+      <VStack
+        gap={6}
+        justifyItems="center"
+        w="full"
+        maxW="720px"
+        height="100%"
+        bgColor="white"
+        rounded="lg"
+        p={{ base: 6, md: 7 }}
+        align="stretch"
+        mx="auto"
+      >
+        <Text color="primary" fontWeight="semibold" fontSize="lg" textAlign="center">
+          Profile
+        </Text>
+
+        <Box>
+          <Text color="foreground" fontWeight="semibold" fontSize={{ base: "2xl", md: "3xl" }}>
+            {profileName}
+          </Text>
+        </Box>
+
+        <Grid templateColumns={{ base: "1fr", md: "160px 1fr" }} gap={4} maxW="2xl">
+          {details.map((item) => (
+            <GridItem key={item.label} colSpan={2}>
+              <Grid templateColumns={{ base: "1fr", md: "160px 1fr" }} gap={2}>
+                <GridItem>
+                  <Text color="foreground" fontWeight="medium">
+                    {item.label}:
+                  </Text>
+                </GridItem>
+                <GridItem>
+                  <Text color="gray.500">{item.value}</Text>
+                </GridItem>
+              </Grid>
+            </GridItem>
+          ))}
+        </Grid>
+      </VStack>
+    </Flex>
+  );
+}
+
+export default ProfilePage;
