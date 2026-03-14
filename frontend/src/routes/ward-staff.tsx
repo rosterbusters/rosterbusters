@@ -23,7 +23,7 @@ export const Route = createFileRoute("/ward-staff")({
       }
     } catch (e) {
       if (e && typeof e === "object" && "to" in e) throw e
-      throw redirect({ to: "/login" })
+      throw redirect({    to: "/login" })
     }
   },
 })
