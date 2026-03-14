@@ -15,11 +15,11 @@ import {
   VStack,
 } from "@chakra-ui/react"
 import { Button } from "@chakra-ui/react"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"
 import { AdminService } from "@/client/adminService"
-import useCustomToast from "@/hooks/useCustomToast"
 import { UsersService } from "@/client"
 import type { CurrentUser } from "@/hooks/useAuth"
 import { passwordRules, confirmPasswordRules } from "@/utils"
@@ -42,7 +42,6 @@ interface SetupFormData {
 function FirstLoginSetup() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { showSuccessToast, showErrorToast } = useCustomToast()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 

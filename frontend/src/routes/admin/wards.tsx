@@ -5,7 +5,7 @@ import { useForm, type SubmitHandler } from "react-hook-form"
 import { WardsService } from "@/client"
 import type { Ward } from "@/client/types.gen"
 import type { ApiError } from "@/client/core/ApiError"
-import useCustomToast from "@/hooks/useCustomToast"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import {
   Building2,
   Plus,
@@ -38,7 +38,6 @@ function WardFormDialog({
   editWard?: Ward | null
 }) {
   const queryClient = useQueryClient()
-  const { showSuccessToast } = useCustomToast()
   const isEdit = !!editWard
 
   const {
@@ -327,7 +326,6 @@ function DeleteWardDialog({
   ward: Ward | null
 }) {
   const queryClient = useQueryClient()
-  const { showSuccessToast, showErrorToast } = useCustomToast()
   const [deleting, setDeleting] = useState(false)
 
   const mutation = useMutation({

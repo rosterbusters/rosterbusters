@@ -9,7 +9,7 @@ import { Button } from "@chakra-ui/react"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"
-import useCustomToast from "@/hooks/useCustomToast"
+import { showSuccessToast } from "@/components/ui/toast"
 import { emailPattern, handleError } from "@/utils"
 
 interface FormData {
@@ -34,8 +34,6 @@ function RecoverPassword() {
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormData>()
-  const { showSuccessToast } = useCustomToast()
-
   const recoverPassword = async (_data: FormData) => {
     // TODO: Backend endpoint not implemented yet
     throw new Error("Password recovery not implemented")

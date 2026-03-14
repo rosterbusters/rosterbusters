@@ -4,7 +4,7 @@ import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock } from "react-icons/fi"
 
 import { type ApiError, type UpdatePassword, UsersService } from "@/client"
-import useCustomToast from "@/hooks/useCustomToast"
+import { showSuccessToast } from "@/components/ui/toast"
 import { confirmPasswordRules, handleError, passwordRules } from "@/utils"
 import { PasswordInput } from "../ui/password-input"
 
@@ -13,7 +13,6 @@ interface UpdatePasswordForm extends UpdatePassword {
 }
 
 const ChangePassword = () => {
-  const { showSuccessToast } = useCustomToast()
   const {
     register,
     handleSubmit,

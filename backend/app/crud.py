@@ -3,17 +3,37 @@ from typing import Any
 from sqlmodel import Session, or_, select
 
 from app.core.security import verify_password
-from app.models import RBACUser
+from app.models import Nurse, NurseManager, RBACUser
 from app.models.enums import NotificationType
 from app.models.roster import NotificationQueue
 
 
 def authenticate(*, session: Session, email: str, password: str) -> RBACUser | None:
-    """Authenticate using RBACUser table. Accepts email or username."""
+    """Authenticate using RBACUser table. Accepts email, username, or employee ID."""
+    identifier = email.strip()
     statement = select(RBACUser).where(
-        or_(RBACUser.email == email, RBACUser.username == email)
+        or_(RBACUser.email == identifier, RBACUser.username == identifier)
     )
     db_user = session.exec(statement).first()
+
+    if not db_user:
+        nurse = session.exec(
+            select(Nurse).where(Nurse.employeeid == identifier)
+        ).first()
+        if nurse:
+            db_user = session.exec(
+                select(RBACUser).where(RBACUser.nurseid == nurse.nurseid)
+            ).first()
+
+    if not db_user:
+        manager = session.exec(
+            select(NurseManager).where(NurseManager.employeeid == identifier)
+        ).first()
+        if manager:
+            db_user = session.exec(
+                select(RBACUser).where(RBACUser.managerid == manager.managerid)
+            ).first()
+
     if not db_user:
         return None
     if not verify_password(password, db_user.passwordhash):

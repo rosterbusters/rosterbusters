@@ -146,7 +146,7 @@ function Login() {
                   <InputGroup startElement={<FiUser color="gray" />} w="100%">
                     <Input
                       {...register("username", { required: "Required" })}
-                      placeholder="Username or Email"
+                      placeholder="Username, Email, or Employee ID"
                       type="text"
                       size="md"
                       variant="subtle"

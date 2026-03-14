@@ -11,10 +11,10 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
-import useCustomToast from "@/hooks/useCustomToast";
 
 export interface LeaveRequestEntry {
   requestId: number;
@@ -47,7 +47,6 @@ export const EditLeaveRequest = ({
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     active ? new Date(active.startDate) : undefined,
   );
-  const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
   useEffect(() => {
