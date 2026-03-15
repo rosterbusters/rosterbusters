@@ -20,7 +20,7 @@ import {
   SHIFT_COLOR_MAP,
 } from "./types";
 import { useUpdateRosterComment } from "./useRosterData";
-import useCustomToast from "@/hooks/useCustomToast";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 interface ShiftEditPopoverProps {
   isOpen: boolean;
@@ -233,7 +233,6 @@ export function ShiftEditPopover({
   const [isSavingComment, setIsSavingComment] = useState(false);
 
   const updateRosterComment = useUpdateRosterComment();
-  const { showSuccessToast, showErrorToast } = useCustomToast();
 
   // Snapshot of state at the moment the popover was opened — used for Ctrl+Z revert
   const originalShiftRef = useRef<ShiftCode | null>(null);

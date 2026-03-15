@@ -11,11 +11,11 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { AssignableStatus } from "./AssignableStatus";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
-import useCustomToast from "@/hooks/useCustomToast";
 
 interface NewShiftRequestProps {
   isOpen: boolean;
@@ -34,7 +34,6 @@ export const NewShiftRequest = ({
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     selectedDate ?? undefined,
   );
-  const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
   const { data: periods } = useQuery({

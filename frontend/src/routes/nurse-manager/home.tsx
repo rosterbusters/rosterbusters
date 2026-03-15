@@ -23,7 +23,11 @@ import {
 } from "@/components/NurseManager/RosterTable";
 import { getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
 import StatusBanner from "@/components/NurseManager/HomePage/StatusBanner";
-import { toaster } from "@/components/ui/toaster";
+import {
+  createToast,
+  showErrorToast,
+  showSuccessToast,
+} from "@/components/ui/toast";
 import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer";
 import { WardsService } from "@/client";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -211,7 +215,7 @@ function NurseManagerHome() {
         };
         setUndoStack(prev => [...prev, undoItem]);
         setRedoStack([]);
-        toaster.create({
+        createToast({
           title: "Shift updated",
           description: `${row?.name ?? "Nurse"}: ${oldShiftCode} → ${newShiftCode}`,
           action: {
@@ -286,9 +290,13 @@ function NurseManagerHome() {
       if (!res.ok) throw new Error("Failed to save");
     },
     onSuccess: () =>
-      toaster.create({ title: "Staffing requirements saved for all future rosters", type: "success", duration: 3000 }),
+      showSuccessToast("Staffing requirements saved for all future rosters", {
+        title: "Staffing saved",
+      }),
     onError: () =>
-      toaster.create({ title: "Failed to save staffing requirements", type: "error", duration: 3000 }),
+      showErrorToast("Failed to save staffing requirements", {
+        title: "Save failed",
+      }),
   });
 
   const handleGuidelinesChange = useCallback(
@@ -359,7 +367,7 @@ function NurseManagerHome() {
       setUndoStack(prev => prev.filter(i => i !== item));
       const redoItem: UndoRedoItem = { ...item, fromShiftCode: item.toShiftCode, toShiftCode: item.fromShiftCode };
       setRedoStack(prev => [...prev, redoItem]);
-      toaster.create({
+      createToast({
         title: "Change undone",
         description: `${item.nurseName}: ${item.toShiftCode} → ${item.fromShiftCode}`,
         action: {
@@ -403,7 +411,7 @@ function NurseManagerHome() {
       setRedoStack(prev => prev.filter(i => i !== item));
       const undoItem: UndoRedoItem = { ...item };
       setUndoStack(prev => [...prev, undoItem]);
-      toaster.create({
+      createToast({
         title: "Change redone",
         description: `${item.nurseName}: ${item.fromShiftCode} → ${item.toShiftCode}`,
         action: {

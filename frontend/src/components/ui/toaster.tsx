@@ -10,7 +10,7 @@ import {
 } from "@chakra-ui/react"
 
 export const toaster = createToaster({
-  placement: "top-end",
+  placement: "bottom-end",
   pauseOnPageIdle: true,
 })
 
@@ -34,7 +34,7 @@ export const Toaster = () => {
             {toast.action && (
               <Toast.ActionTrigger>{toast.action.label}</Toast.ActionTrigger>
             )}
-            {toast.meta?.closable && <Toast.CloseTrigger />}
+            <Toast.CloseTrigger />
           </Toast.Root>
         )}
       </ChakraToaster>

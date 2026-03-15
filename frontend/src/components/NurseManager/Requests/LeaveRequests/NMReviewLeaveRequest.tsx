@@ -12,10 +12,10 @@ import {
   HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
-import useCustomToast from "@/hooks/useCustomToast";
 
 interface NMReviewLeaveRequestProps {
   isOpen: boolean;
@@ -41,7 +41,6 @@ export const NMReviewLeaveRequest = ({
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     new Date(startDate),
   );
-  const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
   const { data: leaveCodes } = useQuery({

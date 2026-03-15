@@ -9,8 +9,8 @@ import {
   HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { ShiftRequestsService } from "@/client";
-import useCustomToast from "@/hooks/useCustomToast";
 
 interface NMReviewShiftRequestProps {
   isOpen: boolean;
@@ -31,7 +31,6 @@ export const NMReviewShiftRequest = ({
   nurseName,
   currentStatus,
 }: NMReviewShiftRequestProps) => {
-  const { showSuccessToast, showErrorToast } = useCustomToast();
   const queryClient = useQueryClient();
 
   const reviewMutation = useMutation({
