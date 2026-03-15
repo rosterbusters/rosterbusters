@@ -17,7 +17,7 @@ import {
   Portal,
   CloseButton,
 } from "@chakra-ui/react";
-import { ClipboardCheck, Download, Eye } from "lucide-react";
+import { ClipboardCheck, Download, Eye, Home } from "lucide-react";
 import moment from "moment";
 
 import {
@@ -144,6 +144,8 @@ function RosterPlanningPage() {
     null,
   );
   const [isPublishSuccessDialogOpen, setIsPublishSuccessDialogOpen] =
+    useState(false);
+  const [isDownloadSuccessDialogOpen, setIsDownloadSuccessDialogOpen] =
     useState(false);
   const navigate = useNavigate();
   const [rosterData, setRosterData] = useState<RosterRow[]>(() =>
@@ -1094,6 +1096,7 @@ function RosterPlanningPage() {
 
   const handleDownloadRoster = useCallback(() => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
+    setIsDownloadSuccessDialogOpen(true);
   }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
 
   const handlePublishClick = useCallback(async () => {
@@ -1246,7 +1249,10 @@ function RosterPlanningPage() {
                       borderColor="#E6E6E6"
                       color="#4A4A4A"
                       _hover={{ bg: "gray.50" }}
-                      onClick={handleDownloadRoster}
+                      onClick={() => {
+                        setIsPublishSuccessDialogOpen(false);
+                        handleDownloadRoster();
+                      }}
                     >
                       <HStack gap={2}>
                         <Download className="h-4 w-4" />
@@ -1267,6 +1273,66 @@ function RosterPlanningPage() {
                       </HStack>
                     </Button>
                   </VStack>
+                </VStack>
+              </Dialog.Body>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
+
+      {/* Download Success Dialog */}
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isDownloadSuccessDialogOpen}
+        onOpenChange={(e) => setIsDownloadSuccessDialogOpen(e.open)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content maxW="380px">
+              <Dialog.Body py={8} px={6}>
+                <VStack gap={6} align="center">
+                  <Box position="relative" w="full">
+                    <Text
+                      fontSize="xl"
+                      fontWeight="bold"
+                      color="primary"
+                      textAlign="center"
+                      w="full"
+                    >
+                      Roster Downloaded!
+                    </Text>
+                    <Dialog.CloseTrigger asChild>
+                      <CloseButton
+                        size="sm"
+                        position="absolute"
+                        top="-2.5"
+                        right="-2"
+                      />
+                    </Dialog.CloseTrigger>
+                  </Box>
+                  {selectedPeriod && (
+                    <Text fontSize="sm" color="gray.500" mt={-4} textAlign="center">
+                      Downloaded for:{" "}
+                      {moment(selectedPeriod.startDate).format("ddd D MMM")} –{" "}
+                      {moment(selectedPeriod.endDate).format("ddd D MMM")}
+                    </Text>
+                  )}
+                  <Download size={80} color="#16a34a" strokeWidth={1.5} />
+                  <Button
+                    w="full"
+                    variant="outline"
+                    borderColor="#E6E6E6"
+                    color="#4A4A4A"
+                    _hover={{ bg: "gray.50" }}
+                    onClick={() => navigate({ to: "/nurse-manager/home" })}
+                  >
+                    <HStack gap={2}>
+                      <Home className="h-4 w-4" />
+                      <Text>Go to Homepage</Text>
+                    </HStack>
+                  </Button>
                 </VStack>
               </Dialog.Body>
             </Dialog.Content>
