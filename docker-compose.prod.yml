@@ -1,14 +1,17 @@
-# Production overrides: RDS database, Traefik SSL
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
 services:
   db:
     deploy:
       replicas: 0
 
+  prestart:
+    environment:
+      - POSTGRES_SERVER=${POSTGRES_SERVER}
+
   backend:
     volumes: []
     command: ["fastapi", "run", "--workers", "4", "app/main.py"]
+    environment:
+      - POSTGRES_SERVER=${POSTGRES_SERVER}
 
   frontend:
     ports: []
