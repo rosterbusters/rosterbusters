@@ -3,8 +3,8 @@ import logging
 from sqlmodel import Session, select
 
 from app.core.db import engine
-from app.models.roster import Ward
-from app.seed_data import WARDS_DATA
+from app.models.roster import Ward, WardShiftCode
+from app.seed_data import SHIFT_CODES_DATA, WARDS_DATA
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,14 +57,52 @@ STAFF_LIST_WARDS = [
 ALL_WARDS = WARDS_DATA + STAFF_LIST_WARDS
 
 
+def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
+    """Seed ward-specific shift code mappings."""
+    logger.info("Seeding ward shift code mappings...")
+    default_base_working = {"A", "P", "N"}
+    special_base_working = {"D", "N-12", "N", "A", "P"}
+    special_ward_names = {"CH", "TCF"}
+    leave_codes = {
+        shift_code["shiftcode"] for shift_code in SHIFT_CODES_DATA if not shift_code["isworking"]
+    }
+
+    for ward in wards:
+        if ward.wardname in special_ward_names:
+            base_working = special_base_working
+        else:
+            base_working = default_base_working
+
+        ward_codes = base_working | leave_codes
+        for shiftcode in sorted(ward_codes):
+            existing = session.exec(
+                select(WardShiftCode).where(
+                    WardShiftCode.wardid == ward.wardid,
+                    WardShiftCode.shiftcode == shiftcode,
+                )
+            ).first()
+
+            if existing:
+                logger.info("  Mapping %s -> %s already exists, skipping", ward.wardname, shiftcode)
+                continue
+
+            mapping = WardShiftCode(wardid=ward.wardid, shiftcode=shiftcode)
+            session.add(mapping)
+            logger.info("  Mapped %s -> %s", ward.wardname, shiftcode)
+
+    session.commit()
+
+
 def seed_staff_list_wards() -> None:
     with Session(engine) as session:
+        seeded_wards: list[Ward] = []
         for ward_data in ALL_WARDS:
             existing = session.exec(
                 select(Ward).where(Ward.wardname == ward_data["wardname"])
             ).first()
             if existing:
                 logger.info("Ward '%s' already exists, skipping", ward_data["wardname"])
+                seeded_wards.append(existing)
                 continue
 
             ward = Ward(
@@ -94,7 +132,10 @@ def seed_staff_list_wards() -> None:
             session.add(ward)
             session.commit()
             session.refresh(ward)
+            seeded_wards.append(ward)
             logger.info("Created ward '%s' (ID: %s)", ward.wardname, ward.wardid)
+
+        seed_ward_shiftcodes(session, seeded_wards)
 
 
 if __name__ == "__main__":

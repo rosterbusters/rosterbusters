@@ -1379,7 +1379,7 @@ def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     logger.info("Seeding ward shift code mappings...")
     DEFAULT_BASE_WORKING = {"A", "P", "N"}
     SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
-    SPECIAL_WARD_IDS = {9, 10} #CH and TCF
+    SPECIAL_WARD_IDS = {16, 17} #CH and TCF
     leave_codes = {
         sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
     }
