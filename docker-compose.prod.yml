@@ -1,13 +1,17 @@
 services:
   db:
-    deploy:
-      replicas: 0
+    profiles:
+      - donotstart
 
   prestart:
+    depends_on: {}
     environment:
       - POSTGRES_SERVER=${POSTGRES_SERVER}
 
   backend:
+    depends_on:
+      prestart:
+        condition: service_completed_successfully
     volumes: []
     command: ["fastapi", "run", "--workers", "4", "app/main.py"]
     environment:
