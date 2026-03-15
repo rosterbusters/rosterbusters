@@ -1,8 +1,10 @@
 services:
   db:
-    profiles:
-      - donotstart
-
+    profiles: []  # override prod, re-enable db for staging
+    restart: unless-stopped
+  adminer:
+    profiles: []  # ensure adminer can find db
+    restart: unless-stopped
   prestart:
     depends_on: {}
     environment:
