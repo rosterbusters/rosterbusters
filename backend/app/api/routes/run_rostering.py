@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser, SessionDep, get_db
+from app.designation_mapping import classify_designation
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
 from app.models.shifts import ShiftRequest
@@ -58,6 +59,8 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 "name": n.name,
                 "designation": n.designation,
                 "employmentType": n.employmenttype,
+                "staffing_role": classify_designation(n.designation).staffing_role,
+                "roster_rank": classify_designation(n.designation).roster_rank,
             }
             for n in nurses
         ],
@@ -312,7 +315,11 @@ def generate_roster_endpoint(
             select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
         ).all()
         nurses_data = [
-            {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+            {
+                "id": n.nurseid,
+                "name": n.name,
+                "rank": classify_designation(n.designation).roster_rank or "C",
+            }
             for n in nurses_db
         ]
 
@@ -378,7 +385,11 @@ def generate_roster_stream(
         select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
     nurses_data = [
-        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+        {
+            "id": n.nurseid,
+            "name": n.name,
+            "rank": classify_designation(n.designation).roster_rank or "C",
+        }
         for n in nurses_db
     ]
 
@@ -472,23 +483,3 @@ def _staffing_to_algo_inputs(ward: Ward):
     }
     return [daily_req for _ in range(14)], None
 
-
-def _map_rank(designation: str) -> str:
-    """Map nurse designation to scheduling rank A/B/C."""
-    RANK_A = {
-        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
-        "STAFF NURSE I", "STAFF NURSE II",
-        "RN", "SSN",
-    }
-    RANK_B = {
-        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
-        "NURSING AIDE I", "NURSING AIDE II",
-        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
-        "SNR PATIENT SERVICE ASST",
-        "EN", "NA",
-    }
-    if designation in RANK_A:
-        return "A"
-    if designation in RANK_B:
-        return "B"
-    return "C"

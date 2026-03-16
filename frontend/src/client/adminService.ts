@@ -42,8 +42,10 @@ export interface WardInfo {
 export interface AdminUser {
   userid: number
   username: string
+  name: string | null
   email: string | null
   employee_id: string | null
+  designation: string | null
   isactive: boolean
   nurseid: number | null
   managerid: number | null
@@ -65,8 +67,10 @@ export interface AdminUsersResponse {
 
 export interface AdminUserCreate {
   username: string
+  name?: string
   email?: string
   employee_id?: string
+  designation?: string
   password?: string
   is_active?: boolean
   role?: string
@@ -75,8 +79,10 @@ export interface AdminUserCreate {
 
 export interface AdminUserUpdate {
   username?: string
+  name?: string
   email?: string
   employee_id?: string
+  designation?: string
   password?: string
   is_active?: boolean
   ward_ids?: number[]

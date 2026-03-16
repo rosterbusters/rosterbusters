@@ -37,8 +37,10 @@ class WardInfo(SQLModel):
 class AdminUserPublic(SQLModel):
     userid: int
     username: str
+    name: Optional[str] = None
     email: Optional[str] = None
     employee_id: Optional[str] = None
+    designation: Optional[str] = None
     isactive: bool
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
@@ -60,8 +62,10 @@ class AdminPasswordResetResponse(SQLModel):
 
 class AdminUserCreate(SQLModel):
     username: str = Field(min_length=1, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    designation: Optional[str] = Field(default=None, max_length=100)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: bool = True
     role: str = Field(default="Nurse", description="Nurse | NurseManager | Admin")
@@ -70,8 +74,10 @@ class AdminUserCreate(SQLModel):
 
 class AdminUserUpdate(SQLModel):
     username: Optional[str] = Field(default=None, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    designation: Optional[str] = Field(default=None, max_length=100)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
     ward_ids: Optional[list[int]] = None
@@ -86,12 +92,16 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     roles = get_user_roles_by_userid(session, user.userid)
     ward_list: list[WardInfo] = []
     employee_id: Optional[str] = None
+    designation: Optional[str] = None
+    name: Optional[str] = None
 
     # Resolve ward for nurses (single primary ward via nurse.wardid)
     if user.nurseid:
         nurse = session.get(Nurse, user.nurseid)
         if nurse:
+            name = nurse.name
             employee_id = nurse.employeeid
+            designation = nurse.designation
             if nurse.wardid:
                 ward = session.get(Ward, nurse.wardid)
                 if ward:
@@ -101,6 +111,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     if user.managerid:
         manager = session.get(NurseManager, user.managerid)
         if manager:
+            name = manager.name
             employee_id = manager.employeeid
         managed_wards = session.exec(
             select(Ward).where(Ward.managerid == user.managerid)
@@ -111,8 +122,10 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     return AdminUserPublic(
         userid=user.userid,
         username=user.username,
+        name=name,
         email=user.email,
         employee_id=employee_id,
+        designation=designation,
         isactive=user.isactive,
         nurseid=user.nurseid,
         managerid=user.managerid,
@@ -164,6 +177,8 @@ def get_user(session: SessionDep, userid: int) -> Any:
 def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     """Create a new RBACUser and assign a role."""
     employee_id = body.employee_id.strip() if body.employee_id else None
+    name = body.name.strip() if body.name else None
+    designation = body.designation.strip() if body.designation else None
 
     # Check duplicate email (only if email provided)
     if body.email:
@@ -238,9 +253,9 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     # Create linked Nurse/NurseManager record and assign wards
     if body.role == "Nurse":
         nurse = Nurse(
-            name=body.username,
+            name=name or body.username,
             employeeid=employee_id,
-            designation="RN",
+            designation=designation or "RN",
             email=body.email or "",
             contactnumber="",
             wardid=body.ward_ids[0] if body.ward_ids else None,
@@ -257,7 +272,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
 
     elif body.role == "NurseManager":
         manager = NurseManager(
-            name=body.username,
+            name=name or body.username,
             employeeid=employee_id,
             email=body.email or "",
             contactnumber="",
@@ -305,6 +320,8 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
         raise HTTPException(status_code=404, detail="User not found")
 
     employee_id = body.employee_id.strip() if body.employee_id else None
+    name = body.name.strip() if body.name else None
+    designation = body.designation.strip() if body.designation else None
 
     if body.email is not None and body.email != user.email:
         dup = session.exec(
@@ -384,8 +401,10 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     if body.employee_id is not None:
         if nurse:
             nurse.employeeid = employee_id
-            if body.username is not None:
-                nurse.name = body.username
+            if body.designation is not None:
+                nurse.designation = designation or "RN"
+            if body.name is not None:
+                nurse.name = name or user.username
             if body.email is not None:
                 nurse.email = body.email or ""
             session.add(nurse)
@@ -393,25 +412,27 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
 
         if manager:
             manager.employeeid = employee_id
-            if body.username is not None:
-                manager.name = body.username
+            if body.name is not None:
+                manager.name = name or user.username
             if body.email is not None:
                 manager.email = body.email or ""
             session.add(manager)
             session.commit()
 
-    elif body.username is not None or body.email is not None:
+    elif body.username is not None or body.name is not None or body.email is not None or body.designation is not None:
         if nurse:
-            if body.username is not None:
-                nurse.name = body.username
+            if body.designation is not None:
+                nurse.designation = designation or "RN"
+            if body.name is not None:
+                nurse.name = name or user.username
             if body.email is not None:
                 nurse.email = body.email or ""
             session.add(nurse)
             session.commit()
 
         if manager:
-            if body.username is not None:
-                manager.name = body.username
+            if body.name is not None:
+                manager.name = name or user.username
             if body.email is not None:
                 manager.email = body.email or ""
             session.add(manager)
