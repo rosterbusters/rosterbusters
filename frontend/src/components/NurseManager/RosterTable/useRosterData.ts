@@ -203,6 +203,7 @@ export function transformRosterData(
       nurseId: nurse.nurseId,
       name: nurse.name,
       designation: nurse.designation,
+      staffingRole: nurse.staffing_role ?? null,
       hours: {
         worked: workedHours,
         contracted: contractedHours,
@@ -370,6 +371,7 @@ export function useGenerateAlgorithmRoster() {
           nurseId: nurse.id,
           name: nurse.name,
           designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          staffingRole: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
           hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,

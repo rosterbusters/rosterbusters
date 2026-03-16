@@ -21,6 +21,7 @@ def test_create_nurse_user_stores_employee_id(
         headers=superuser_token_headers,
         json={
             "username": "nurse.import",
+            "name": "Nurse Import",
             "email": "nurse.import@example.com",
             "employee_id": "EMP-1001",
             "role": "Nurse",
@@ -31,6 +32,8 @@ def test_create_nurse_user_stores_employee_id(
     assert response.status_code == 201, response.text
     payload = response.json()
     assert payload["employee_id"] == "EMP-1001"
+    assert payload["username"] == "nurse.import"
+    assert payload["name"] == "Nurse Import"
     assert payload["nurseid"] is not None
 
     nurse = db.exec(
@@ -38,3 +41,4 @@ def test_create_nurse_user_stores_employee_id(
     ).first()
     assert nurse is not None
     assert nurse.employeeid == "EMP-1001"
+    assert nurse.name == "Nurse Import"
