@@ -72,6 +72,20 @@ export interface RosterPeriod {
   status: 'RequestOpen' | 'RequestClosed' | 'Finalized';
 }
 
+// ============================================
+// Shift Request Overlay Types
+// ============================================
+
+export type ShiftRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export type ShiftRequestCategory = 'Algorithm' | 'Nurse Manager' | 'Self Changed';
+
+export interface ShiftRequestOverlay {
+  status: ShiftRequestStatus;
+  category: ShiftRequestCategory;
+  reason: string;
+}
+
 // Shift assignment for a specific day
 export interface ShiftAssignment {
   rosterId: number;
