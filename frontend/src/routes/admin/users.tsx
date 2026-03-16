@@ -115,11 +115,32 @@ const slugifyUsername = (value: string) =>
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "")
 
-const inferRole = (value: string): "Admin" | "NurseManager" | "Nurse" => {
+const NURSE_MANAGER_IMPORT_ROLE_TITLES = new Set([
+  "nursingmanager",
+  "nursingmanagers",
+  "seniornursemanager",
+  "seniornursemanagers",
+  "nursemanager",
+  "nursemanagers",
+  "nurseclinician",
+  "nurseclinicians",
+  "assistantnurseclinician",
+  "assistantnurseclinicians",
+])
+
+const resolveImportedRole = (
+  value: string,
+): "Admin" | "NurseManager" | "Nurse" | null => {
   const normalized = normalizeHeader(value)
+  if (!normalized) return null
+  if (NURSE_MANAGER_IMPORT_ROLE_TITLES.has(normalized)) return "NurseManager"
   if (normalized.includes("admin")) return "Admin"
   if (normalized.includes("manager")) return "NurseManager"
   return "Nurse"
+}
+
+const inferRole = (value: string): "Admin" | "NurseManager" | "Nurse" => {
+  return resolveImportedRole(value) ?? "Nurse"
 }
 
 const parseActiveValue = (value: string) => {
@@ -178,12 +199,9 @@ const STAFF_LIST_WARD_ALIASES: Record<string, string[]> = {
   "ward11": ["ward11"],
 }
 
-const parseWorkbookRole = (occupation: string): "Nurse" | "NurseManager" | null => {
-  const normalized = occupation.trim().toUpperCase()
-  if (!normalized) return null
-  if (normalized.includes("MANAGER")) return "NurseManager"
-  return "Nurse"
-}
+const parseWorkbookRole = (
+  occupation: string,
+): "Admin" | "Nurse" | "NurseManager" | null => resolveImportedRole(occupation)
 
 const parseWorkbookWardIds = (value: string, wards: WardOption[]) => {
   const wardMap = new Map<string, number>()
