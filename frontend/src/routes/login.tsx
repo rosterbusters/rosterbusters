@@ -1,7 +1,6 @@
-import { Box, Container, Flex, Heading, Image, Text, VStack, IconButton } from "@chakra-ui/react"
-import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
+import { Box, Container, Flex, Heading, Image, Text, VStack, Separator, IconButton } from "@chakra-ui/react"
+import { redirect,createFileRoute, Link as RouterLink, useSearch } from "@tanstack/react-router"
 import { FiLock, FiUser, FiEye, FiEyeOff } from "react-icons/fi"
-import { FcGoogle } from "react-icons/fc"
 import { useState } from "react"; 
 import { useForm, SubmitHandler } from 'react-hook-form';
 import type { Body_login_access_token as AccessToken } from "@/client"
@@ -15,6 +14,10 @@ import { passwordRules } from "../utils"
 
 export const Route = createFileRoute("/login")({
   component: Login,
+  validateSearch: (search: Record<string, unknown>) => ({
+    message: (search.message as string) ?? "",
+    error: (search.error as string) ?? "",
+  }),
   beforeLoad: async () => {
     if (isLoggedIn()) {
       let to: "/admin/dashboard" | "/nurse-manager/home" | "/ward-staff/home" | "/first-login-setup" = "/ward-staff/home"
@@ -39,6 +42,7 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { loginMutation, error, resetError } = useAuth()
+  const { message: successMessage, error: searchError } = useSearch({ from: "/login" })
   const [showPassword, setShowPassword] = useState(false)
   
   const {
@@ -183,6 +187,13 @@ function Login() {
                   </InputGroup>
                 </Field>
 
+                {successMessage && (
+                  <Text color="green.600" fontSize="sm" textAlign="center">{successMessage}</Text>
+                )}
+                {searchError && (
+                  <Text color="red.600" fontSize="sm" textAlign="center">{searchError}</Text>
+                )}
+                
                 {error && (
                   <Text color="red.500" fontSize="xs" textAlign="center">{error}</Text>
                 )}

@@ -44,6 +44,12 @@ class RBACUser(SQLModel, table=True):
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column("createdat", DateTime(timezone=True)),
     )
+    password_reset_token: Optional[str] = Field(
+        default=None, sa_column=Column("password_reset_token", String(128), nullable=True)
+    )
+    password_reset_token_expires_at: Optional[datetime] = Field(
+        default=None, sa_column=Column("password_reset_token_expires_at", DateTime(timezone=True), nullable=True)
+    )
 
 
 # Public response model for RBACUser (for API responses)

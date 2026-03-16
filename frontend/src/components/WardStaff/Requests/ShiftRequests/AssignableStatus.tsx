@@ -55,7 +55,7 @@ export function AssignableStatus() {
         <Text color="foreground" fontWeight="light">
           Assignable:
         </Text>
-        <Badge variant="requests">Requests: {MAX_REQUESTS-count}/{MAX_REQUESTS}</Badge>
+        <Badge variant="subtle">Requests: {MAX_REQUESTS-count}/{MAX_REQUESTS}</Badge>
       </HStack>
     </>
   );
