@@ -325,6 +325,42 @@ def generate_roster_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/generate-algorithm-async")
+def generate_roster_async(
+    request_data: RosterGenerationRequest,
+    db: Session = Depends(get_db),
+):
+    """Queue roster generation as a Celery background task. Returns a task_id to poll."""
+    from app.tasks.roster_tasks import generate_roster_task
+
+    ward = db.get(Ward, request_data.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    task = generate_roster_task.delay(request_data.ward_id, request_data.period_id)
+    return {"task_id": task.id, "status": "queued"}
+
+
+@router.get("/task/{task_id}/status")
+def get_task_status(task_id: str):
+    """Poll the status of a queued roster generation task."""
+    from app.worker import celery_app
+
+    result = celery_app.AsyncResult(task_id)
+
+    if result.state == "PENDING":
+        return {"task_id": task_id, "status": "pending"}
+    if result.state == "STARTED":
+        return {"task_id": task_id, "status": "started"}
+    if result.state == "PROGRESS":
+        return {"task_id": task_id, "status": "in_progress", **(result.info or {})}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "complete", **(result.result or {})}
+    if result.state == "FAILURE":
+        return {"task_id": task_id, "status": "failed", "error": str(result.info)}
+    return {"task_id": task_id, "status": result.state.lower()}
+
+
 @router.post("/generate-algorithm-stream")
 def generate_roster_stream(
     request_data: RosterGenerationRequest,
