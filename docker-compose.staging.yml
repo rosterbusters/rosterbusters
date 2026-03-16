@@ -5,13 +5,6 @@ services:
   backend:
     volumes: []
     command: ["fastapi", "run", "--workers", "4", "app/main.py"]
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-
-  celery_worker:
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - POSTGRES_SERVER=db
 
   frontend:
     ports: []

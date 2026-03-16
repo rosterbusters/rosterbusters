@@ -1,7 +1,6 @@
 import logging
 from sqlmodel import Session
 
-from app.core.config import settings
 from app.core.db import engine
 from app.seed_data import seed_admin_user, seed_roles
 
@@ -10,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    logger.info("Seeding admin user only for %s", settings.FIRST_SUPERUSER)
+    logger.info("Seeding admin user only")
     with Session(engine) as session:
         roles = seed_roles(session)
         seed_admin_user(session, roles)
