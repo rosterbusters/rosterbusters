@@ -1,24 +1,26 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Badge,
   Box,
   Button,
   CloseButton,
+  createListCollection,
   Dialog,
+  HStack,
   Portal,
+  Select,
   Text,
   Textarea,
   VStack,
-  HStack,
-  Badge,
 } from "@chakra-ui/react";
 import { Trash2 } from "lucide-react";
 import {
   SHIFT_CODE_MAP,
   type ShiftCode,
 } from "@/components/NurseManager/RosterTable/types";
+import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 
-// Reverse map: full description → shift code letter
-// Needed when the prop arrives as a full name instead of a code (e.g. mock data fallback)
+// Reverse map: full description -> shift code letter.
 const SHIFT_NAME_TO_CODE: Record<string, string> = {
   "Day Shift": "D",
   "AM Shift": "A",
@@ -26,6 +28,13 @@ const SHIFT_NAME_TO_CODE: Record<string, string> = {
   "Night Shift": "N",
   "Night 12h": "N-12",
 };
+
+function resolveShiftCode(value?: string | null): string {
+  if (!value) return "";
+  return SHIFT_CODE_MAP[value as ShiftCode]
+    ? value
+    : (SHIFT_NAME_TO_CODE[value] ?? value);
+}
 
 interface ReviewShiftRequestProps {
   isOpen: boolean;
@@ -36,7 +45,14 @@ interface ReviewShiftRequestProps {
   date: string;
   status: string;
   comment?: string | null;
+  wardId?: number | null;
+  requests?: ReviewShiftRequestEntry[];
   onAction: (requestId: number, action: "Approved" | "Rejected", comment: string) => void;
+}
+
+interface ReviewShiftRequestEntry extends ShiftRequestEntry {
+  status: string;
+  comment?: string | null;
 }
 
 export const ReviewShiftRequest = ({
@@ -48,168 +64,250 @@ export const ReviewShiftRequest = ({
   date,
   status,
   comment,
+  wardId,
+  requests,
   onAction,
 }: ReviewShiftRequestProps) => {
-  const [localComment, setLocalComment] = useState<string>(comment ?? "");
+  const requestOptions = useMemo<ReviewShiftRequestEntry[]>(
+    () =>
+      requests && requests.length > 0
+        ? requests
+        : [
+            {
+              requestId,
+              nurseName: nurseName ?? "",
+              initialShiftType: shiftCode,
+              initialDate: date,
+              status,
+              comment,
+            },
+          ],
+    [comment, date, nurseName, requestId, requests, shiftCode, status],
+  );
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0];
+  const [localComment, setLocalComment] = useState<string>(activeRequest?.comment ?? "");
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
-  // Sync when modal opens with fresh data
+  const nurseCollection = useMemo(
+    () =>
+      createListCollection({
+        items: requestOptions.map((request, index) => ({
+          value: String(index),
+          label: request.nurseName || `Nurse ${index + 1}`,
+        })),
+      }),
+    [requestOptions],
+  );
+
   useEffect(() => {
-    if (isOpen) setLocalComment(comment ?? "");
-  }, [isOpen, comment]);
+    if (isOpen) {
+      setSelectedIdx(0);
+      setLocalComment(requestOptions[0]?.comment ?? comment ?? "");
+    } else {
+      setIsEditOpen(false);
+    }
+  }, [comment, isOpen, requestOptions]);
+
+  useEffect(() => {
+    if (activeRequest) {
+      setLocalComment(activeRequest.comment ?? "");
+    }
+  }, [activeRequest]);
 
   const handleAction = (action: "Approved" | "Rejected") => {
-    onAction(requestId, action, localComment);
+    onAction(activeRequest.requestId, action, localComment);
     onClose();
   };
 
   const statusColor =
-    status === "Approved"
+    activeRequest.status === "Approved"
       ? "#16a34a"
-      : status === "Rejected"
+      : activeRequest.status === "Rejected"
         ? "#dc2626"
         : "#d97706";
 
-  // Normalise: if prop is a full name (e.g. "Day Shift"), resolve to code letter ("D")
-  const resolvedCode: string = SHIFT_CODE_MAP[shiftCode as ShiftCode]
-    ? shiftCode
-    : (SHIFT_NAME_TO_CODE[shiftCode] ?? shiftCode);
+  const activeShiftCode = activeRequest?.initialShiftType ?? shiftCode;
+  const resolvedCode = resolveShiftCode(activeShiftCode);
   const shiftDescription =
-    SHIFT_CODE_MAP[resolvedCode as ShiftCode]?.description ?? shiftCode;
+    SHIFT_CODE_MAP[resolvedCode as ShiftCode]?.description ?? activeShiftCode;
 
   return (
-    <Dialog.Root
-      placement="center"
-      motionPreset="slide-in-bottom"
-      open={isOpen}
-      onOpenChange={(e) => !e.open && onClose()}
-    >
-      <Portal>
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content maxW="520px">
-            <Dialog.Header>
-              <Dialog.Title color="primary" fontWeight="bold">
-                Review Shift Request
-              </Dialog.Title>
-            </Dialog.Header>
+    <>
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isOpen}
+        onOpenChange={(e) => !e.open && onClose()}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content maxW="520px">
+              <Dialog.Header>
+                <Dialog.Title color="primary" fontWeight="bold">
+                  Review Shift Request
+                </Dialog.Title>
+              </Dialog.Header>
 
-            <Dialog.Body>
-              <VStack align="stretch" gap={3}>
-                {/* Nurse */}
-                <HStack gap={2}>
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Nurse:
-                  </Text>
-                  <Text color="#4A4A4A">{nurseName ?? "—"}</Text>
-                </HStack>
+              <Dialog.Body>
+                <VStack align="stretch" gap={4}>
+                  {requestOptions.length > 1 && (
+                    <Select.Root
+                      collection={nurseCollection}
+                      size="sm"
+                      value={[String(selectedIdx)]}
+                      onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
+                    >
+                      <Select.Label>Nurse</Select.Label>
+                      <Select.Control>
+                        <Select.Trigger>
+                          <Select.ValueText placeholder="Select nurse" />
+                        </Select.Trigger>
+                        <Select.IndicatorGroup>
+                          <Select.Indicator />
+                        </Select.IndicatorGroup>
+                      </Select.Control>
+                      <Portal>
+                        <Select.Positioner>
+                          <Select.Content>
+                            {nurseCollection.items.map((item) => (
+                              <Select.Item item={item.value} key={item.value}>
+                                {item.label}
+                                <Select.ItemIndicator />
+                              </Select.Item>
+                            ))}
+                          </Select.Content>
+                        </Select.Positioner>
+                      </Portal>
+                    </Select.Root>
+                  )}
 
-                {/* Date */}
-                <HStack gap={2}>
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Date:
-                  </Text>
-                  <Text color="#4A4A4A">{date}</Text>
-                </HStack>
+                  <HStack gap={2}>
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Nurse:
+                    </Text>
+                    <Text color="#4A4A4A">{activeRequest?.nurseName || "—"}</Text>
+                  </HStack>
 
-                {/* Shift: badge + full name */}
-                <HStack gap={2} align="center">
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Shift:
-                  </Text>
+                  <HStack gap={2}>
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Date:
+                    </Text>
+                    <Text color="#4A4A4A">{activeRequest?.initialDate ?? date}</Text>
+                  </HStack>
+
                   <HStack gap={2} align="center">
-                    <Badge variant={`${resolvedCode}Shift` as any}>
-                      {resolvedCode}
-                    </Badge>
-                    <Text color="#4A4A4A">{shiftDescription}</Text>
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Shift:
+                    </Text>
+                    <HStack gap={2} align="center">
+                      <Badge variant={`${resolvedCode}Shift` as any}>
+                        {resolvedCode}
+                      </Badge>
+                      <Text color="#4A4A4A">{shiftDescription}</Text>
+                    </HStack>
+                  </HStack>
+
+                  <HStack gap={2}>
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Status:
+                    </Text>
+                    <Text fontWeight="medium" color={statusColor}>
+                      {activeRequest?.status ?? status}
+                    </Text>
+                  </HStack>
+
+                  <VStack align="stretch" gap={2}>
+                    <Text fontSize="xs" fontWeight="medium" color="gray.500">
+                      Comment
+                    </Text>
+                    <Box position="relative">
+                      <Textarea
+                        value={localComment}
+                        onChange={(e) => setLocalComment(e.target.value)}
+                        placeholder="Add a comment..."
+                        size="sm"
+                        borderRadius="md"
+                        borderColor="gray.200"
+                        _focus={{
+                          borderColor: "#4B8798",
+                          boxShadow: "0 0 0 1px #4B8798",
+                        }}
+                        resize="none"
+                        rows={3}
+                        fontSize="sm"
+                        pb="28px"
+                      />
+                      <Box
+                        as="button"
+                        position="absolute"
+                        bottom="10px"
+                        right="8px"
+                        display="flex"
+                        alignItems="center"
+                        cursor="pointer"
+                        color="gray.400"
+                        _hover={{ color: "red.400" }}
+                        transition="color 0.15s ease"
+                        onClick={() => setLocalComment("")}
+                        title="Clear comment"
+                        zIndex={1}
+                      >
+                        <Trash2 size={13} />
+                      </Box>
+                    </Box>
+                  </VStack>
+                </VStack>
+              </Dialog.Body>
+
+              <Dialog.Footer>
+                <HStack gap={2} justify="space-between" w="full">
+                  <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
+                    Edit Request
+                  </Button>
+                  <HStack gap={2}>
+                    <Button
+                      variant="outline"
+                      colorPalette="red"
+                      size="sm"
+                      onClick={() => handleAction("Rejected")}
+                    >
+                      Deny
+                    </Button>
+                    <Button
+                      bg="#4B8798"
+                      color="white"
+                      _hover={{ bg: "#3d6f7e" }}
+                      size="sm"
+                      onClick={() => handleAction("Approved")}
+                    >
+                      Approve
+                    </Button>
                   </HStack>
                 </HStack>
+              </Dialog.Footer>
 
-                {/* Status */}
-                <HStack gap={2}>
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Status:
-                  </Text>
-                  <Text fontWeight="medium" color={statusColor}>
-                    {status}
-                  </Text>
-                </HStack>
+              <Dialog.CloseTrigger asChild>
+                <CloseButton size="sm" />
+              </Dialog.CloseTrigger>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
 
-                {/* Comment */}
-                <VStack align="stretch" gap={2}>
-                  <Text
-                    fontSize="xs"
-                    fontWeight="medium"
-                    color="gray.500"
-                  >
-                    Comment
-                  </Text>
-                  <Box position="relative">
-                    <Textarea
-                      value={localComment}
-                      onChange={(e) => setLocalComment(e.target.value)}
-                      placeholder="Add a comment..."
-                      size="sm"
-                      borderRadius="md"
-                      borderColor="gray.200"
-                      _focus={{
-                        borderColor: "#4B8798",
-                        boxShadow: "0 0 0 1px #4B8798",
-                      }}
-                      resize="none"
-                      rows={3}
-                      fontSize="sm"
-                      pb="28px"
-                    />
-                    <Box
-                      as="button"
-                      position="absolute"
-                      bottom="10px"
-                      right="8px"
-                      display="flex"
-                      alignItems="center"
-                      cursor="pointer"
-                      color="gray.400"
-                      _hover={{ color: "red.400" }}
-                      transition="color 0.15s ease"
-                      onClick={() => setLocalComment("")}
-                      title="Clear comment"
-                      zIndex={1}
-                    >
-                      <Trash2 size={13} />
-                    </Box>
-                  </Box>
-                </VStack>
-              </VStack>
-            </Dialog.Body>
-
-            <Dialog.Footer>
-              <HStack gap={2}>
-                <Button
-                  variant="outline"
-                  colorPalette="red"
-                  size="sm"
-                  onClick={() => handleAction("Rejected")}
-                >
-                  Deny
-                </Button>
-                <Button
-                  bg="#4B8798"
-                  color="white"
-                  _hover={{ bg: "#3d6f7e" }}
-                  size="sm"
-                  onClick={() => handleAction("Approved")}
-                >
-                  Approve
-                </Button>
-              </HStack>
-            </Dialog.Footer>
-
-            <Dialog.CloseTrigger asChild>
-              <CloseButton size="sm" />
-            </Dialog.CloseTrigger>
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Portal>
-    </Dialog.Root>
+      <EditShiftRequest
+        isOpen={isEditOpen}
+        onClose={() => setIsEditOpen(false)}
+        requests={requestOptions.map((request) => ({
+          requestId: request.requestId,
+          nurseName: request.nurseName,
+          initialShiftType: resolveShiftCode(request.initialShiftType),
+          initialDate: request.initialDate,
+        }))}
+        wardId={wardId}
+        selectedRequestId={activeRequest?.requestId}
+      />
+    </>
   );
 };

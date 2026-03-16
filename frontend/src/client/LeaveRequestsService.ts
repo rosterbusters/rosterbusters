@@ -23,6 +23,7 @@ export interface GetWardLeaveRequestsData {
 }
 
 export interface LeaveRequestCreate {
+  nurseid?: number;
   startdate: string;  // YYYY-MM-DD
   enddate: string;    // YYYY-MM-DD
   leavetype: string;

@@ -9,6 +9,7 @@ import {
   Badge,
   Text,
   VStack,
+  HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
@@ -24,37 +25,48 @@ export interface LeaveRequestEntry {
   endDate: string;   // YYYY-MM-DD
 }
 
+function parseRequestDate(value: string) {
+  const normalized = value.split("–")[0]?.trim() ?? value;
+  const [day, month, year] = normalized.split("/");
+  if (day && month && year) {
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  return new Date(normalized);
+}
+
 interface EditLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
   requests: LeaveRequestEntry[];
+  selectedRequestId?: number;
 }
 
 export const EditLeaveRequest = ({
   isOpen,
   onClose,
   requests,
+  selectedRequestId,
 }: EditLeaveRequestProps) => {
-  const [selectedIdx, setSelectedIdx] = useState(0);
-
-  useEffect(() => {
-    if (isOpen) setSelectedIdx(0);
-  }, [isOpen, requests]);
-
-  const active = requests[selectedIdx] ?? requests[0];
+  const active = useMemo(
+    () =>
+      (selectedRequestId != null
+        ? requests.find((request) => request.requestId === selectedRequestId)
+        : undefined) ?? requests[0],
+    [requests, selectedRequestId],
+  );
 
   const [leaveType, setLeaveType] = useState<string[]>([active?.initialLeaveType ?? ""]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    active ? new Date(active.startDate) : undefined,
+    active ? parseRequestDate(active.startDate) : undefined,
   );
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (active) {
       setLeaveType([active.initialLeaveType]);
-      setRequestDate(new Date(active.startDate));
+      setRequestDate(parseRequestDate(active.startDate));
     }
-  }, [selectedIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active]);
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
@@ -77,15 +89,6 @@ export const EditLeaveRequest = ({
 
   const toDateStr = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-  const nurseCollection = useMemo(
-    () =>
-      createListCollection({
-        items: requests.map((r, i) => ({ value: String(i), label: r.nurseName })),
-      }),
-    [requests],
-  );
-
   const updateMutation = useMutation({
     mutationFn: () =>
       LeaveRequestsService.updateLeaveRequest({
@@ -153,36 +156,10 @@ export const EditLeaveRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems="start" gap={4} maxWidth="225px">
-                {requests.length > 1 && (
-                  <Select.Root
-                    collection={nurseCollection}
-                    size="sm"
-                    value={[String(selectedIdx)]}
-                    onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
-                  >
-                    <Select.Label>Nurse</Select.Label>
-                    <Select.Control>
-                      <Select.Trigger>
-                        <Select.ValueText placeholder="Select nurse" />
-                      </Select.Trigger>
-                      <Select.IndicatorGroup>
-                        <Select.Indicator />
-                      </Select.IndicatorGroup>
-                    </Select.Control>
-                    <Portal>
-                      <Select.Positioner>
-                        <Select.Content>
-                          {nurseCollection.items.map((item) => (
-                            <Select.Item item={item.value} key={item.value}>
-                              {item.label}
-                              <Select.ItemIndicator />
-                            </Select.Item>
-                          ))}
-                        </Select.Content>
-                      </Select.Positioner>
-                    </Portal>
-                  </Select.Root>
-                )}
+                <HStack alignItems="start">
+                  <Text fontWeight="medium">Nurse</Text>
+                  <Text>{active.nurseName || "—"}</Text>
+                </HStack>
                 <Select.Root
                   collection={leaveCollection}
                   size="sm"
