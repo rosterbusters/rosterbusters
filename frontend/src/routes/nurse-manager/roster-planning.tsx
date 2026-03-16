@@ -1051,6 +1051,8 @@ function RosterPlanningPage() {
           name: nurse.name,
           designation:
             nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          staffingRole:
+            nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
           hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,
@@ -1058,30 +1060,13 @@ function RosterPlanningPage() {
         };
       });
 
-      const workedHours = nurse.schedule.reduce(
-        (sum, shiftCode) => sum + getShiftDurationHours(shiftCode, shiftDurationMap),
-        0,
-      );
-      const contractedHours = 42;
-      return {
-        nurseId: nurse.id,
-        name: nurse.name,
-        designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
-        staffingRole: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
-        hours: { worked: workedHours, contracted: contractedHours },
-        shifts: shiftsObject,
-        hasOvertime: workedHours > contractedHours,
-        hasWarning: workedHours > contractedHours * 1.2,
-      };
-    });
-
       setRosterData(rows);
       setIsAlgorithmGenerated(true);
       showSuccessToast(
         `Loaded mock data: ${mockKey.replace(/_/g, " ").toUpperCase()}`,
       );
     },
-    [currentStartDate, showSuccessToast],
+    [currentStartDate, shiftDurationMap, showSuccessToast],
   );
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
