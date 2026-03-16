@@ -14,7 +14,6 @@ import type {
 } from "./types";
 import {
   MOCK_STAFFING_GUIDELINES,
-  mapDesignationToRole,
   mapShiftCodeToSummaryType,
 } from "./staffingGuidelines";
 
@@ -85,7 +84,7 @@ export function calculateShiftCounts(
 
   // Count shifts for each nurse
   data.forEach((row) => {
-    const role = mapDesignationToRole(row.designation);
+    const role = row.staffingRole;
     if (!role) return;
 
     Object.entries(row.shifts).forEach(([dateKey, shift]) => {
