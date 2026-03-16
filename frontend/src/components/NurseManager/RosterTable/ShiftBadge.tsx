@@ -1,7 +1,13 @@
 import { Box, Text, VStack } from "@chakra-ui/react";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Clock, Check, X } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
-import { type ShiftCode, type ViewMode, SHIFT_COLOR_MAP, SHIFT_CODE_MAP } from "./types";
+import {
+  type ShiftCode,
+  type ViewMode,
+  type ShiftRequestOverlay,
+  SHIFT_COLOR_MAP,
+  SHIFT_CODE_MAP,
+} from "./types";
 
 interface ShiftBadgeProps {
   shiftCode: ShiftCode | null;
@@ -11,6 +17,7 @@ interface ShiftBadgeProps {
   viewMode?: ViewMode;
   comment?: string;
   onCommentIconClick?: (e: React.MouseEvent) => void;
+  shiftRequestOverlay?: ShiftRequestOverlay;
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
@@ -24,7 +31,11 @@ function formatTime(time: string): string {
 // Get formatted time range for a shift
 function getTimeRange(shiftCode: ShiftCode): string | null {
   const shiftInfo = SHIFT_CODE_MAP[shiftCode];
-  if (!shiftInfo?.isWorking || !shiftInfo.defaultStart || !shiftInfo.defaultEnd) {
+  if (
+    !shiftInfo?.isWorking ||
+    !shiftInfo.defaultStart ||
+    !shiftInfo.defaultEnd
+  ) {
     return null;
   }
   return `${formatTime(shiftInfo.defaultStart)}-${formatTime(shiftInfo.defaultEnd)}`;
@@ -38,6 +49,7 @@ export function ShiftBadge({
   viewMode,
   comment,
   onCommentIconClick,
+  shiftRequestOverlay,
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
@@ -55,10 +67,15 @@ export function ShiftBadge({
         justifyContent="center"
         cursor={isEditable ? "pointer" : "default"}
         onClick={onClick}
-        _hover={isEditable ? { bg: "gray.200", borderColor: "#4B8798" } : undefined}
+        _hover={
+          isEditable ? { bg: "gray.200", borderColor: "#4B8798" } : undefined
+        }
         transition="all 0.15s ease"
       >
-        <Text fontSize={isWeekView ? "sm" : size === "sm" ? "xs" : "xs"} color="gray.400">
+        <Text
+          fontSize={isWeekView ? "sm" : size === "sm" ? "xs" : "xs"}
+          color="gray.400"
+        >
           Select
         </Text>
       </Box>
@@ -72,6 +89,18 @@ export function ShiftBadge({
   const isWeekView = viewMode === "week";
   const hasComment = !!comment;
 
+  const hasOverlay = !!shiftRequestOverlay;
+
+  const OVERLAY_CONFIG = {
+    Pending: { borderColor: "#f97316", Icon: Clock, iconBg: "#f97316" },
+    Approved: { borderColor: "#22c55e", Icon: Check, iconBg: "#22c55e" },
+    Rejected: { borderColor: "#ef4444", Icon: X, iconBg: "#ef4444" },
+  } as const;
+
+  const overlayConfig = hasOverlay
+    ? OVERLAY_CONFIG[shiftRequestOverlay!.status]
+    : null;
+
   // Tooltip content for comment
   const commentTooltipContent = hasComment ? (
     <Text fontSize="xs" color="whiteAlpha.900" fontStyle="italic" py={1}>
@@ -79,7 +108,7 @@ export function ShiftBadge({
     </Text>
   ) : null;
 
-  // Comment indicator icon (positioned absolutely), wrapped in Tooltip
+  // Comment indicator icon - always top-right circle
   const commentIcon = hasComment ? (
     <Tooltip content={commentTooltipContent} showArrow>
       <Box
@@ -105,6 +134,39 @@ export function ShiftBadge({
     </Tooltip>
   ) : null;
 
+  // Shift request status icon - bottom-left rounded square, inside the border
+  const requestStatusIcon =
+    hasOverlay && overlayConfig ? (
+      <Tooltip
+        content={
+          <Text fontSize="xs" color="whiteAlpha.900" py={1}>
+            {shiftRequestOverlay!.category}: {shiftRequestOverlay!.reason}
+          </Text>
+        }
+        showArrow
+      >
+        <Box
+          position="absolute"
+          bottom="-1px"
+          left="-2px"
+          bg={overlayConfig.iconBg}
+          borderRadius="sm"
+          w={isWeekView ? "16px" : "14px"}
+          h={isWeekView ? "16px" : "14px"}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          zIndex={1}
+        >
+          <overlayConfig.Icon
+            size={isWeekView ? 10 : 9}
+            color="white"
+            strokeWidth={3}
+          />
+        </Box>
+      </Tooltip>
+    ) : null;
+
   // Week view - all badges same size (with or without time)
   if (isWeekView) {
     const weekBadge = (
@@ -120,13 +182,23 @@ export function ShiftBadge({
           justifyContent="center"
           cursor={isEditable ? "pointer" : "default"}
           onClick={onClick}
-          _hover={isEditable ? {
-            opacity: 0.85,
-            transform: "scale(1.02)",
-          } : undefined}
+          _hover={
+            isEditable
+              ? {
+                  opacity: 0.85,
+                  transform: "scale(1.02)",
+                }
+              : undefined
+          }
           transition="all 0.15s ease"
           boxShadow={isWorkingShift ? "sm" : "none"}
-          title={!hasComment ? (shiftInfo?.description || shiftCode) : undefined}
+          title={!hasComment ? shiftInfo?.description || shiftCode : undefined}
+          outline={
+            hasOverlay && overlayConfig
+              ? `2.5px solid ${overlayConfig.borderColor}`
+              : undefined
+          }
+          outlineOffset="1px"
           py={1}
         >
           <Text
@@ -151,6 +223,7 @@ export function ShiftBadge({
           )}
         </Box>
         {commentIcon}
+        {requestStatusIcon}
       </Box>
     );
 
@@ -172,13 +245,27 @@ export function ShiftBadge({
         justifyContent="center"
         cursor={isEditable ? "pointer" : "default"}
         onClick={onClick}
-        _hover={isEditable ? {
-          opacity: 0.85,
-          transform: "scale(1.02)",
-        } : undefined}
+        _hover={
+          isEditable
+            ? {
+                opacity: 0.85,
+                transform: "scale(1.02)",
+              }
+            : undefined
+        }
         transition="all 0.15s ease"
         boxShadow={isWorkingShift ? "sm" : "none"}
-        title={!showShiftTooltip && !hasComment ? (shiftInfo?.description || shiftCode) : undefined}
+        title={
+          !showShiftTooltip && !hasComment
+            ? shiftInfo?.description || shiftCode
+            : undefined
+        }
+        outline={
+          hasOverlay && overlayConfig
+            ? `2.5px solid ${overlayConfig.borderColor}`
+            : undefined
+        }
+        outlineOffset="1px"
       >
         <Text
           fontSize={size === "sm" ? "xs" : "sm"}
@@ -190,6 +277,7 @@ export function ShiftBadge({
         </Text>
       </Box>
       {commentIcon}
+      {requestStatusIcon}
     </Box>
   );
 
@@ -199,8 +287,12 @@ export function ShiftBadge({
       <Tooltip
         content={
           <VStack gap={0} py={1}>
-            <Text fontSize="xs" fontWeight="medium">{shiftInfo?.description}</Text>
-            <Text fontSize="xs" color="whiteAlpha.800">{timeRange}</Text>
+            <Text fontSize="xs" fontWeight="medium">
+              {shiftInfo?.description}
+            </Text>
+            <Text fontSize="xs" color="whiteAlpha.800">
+              {timeRange}
+            </Text>
           </VStack>
         }
         showArrow

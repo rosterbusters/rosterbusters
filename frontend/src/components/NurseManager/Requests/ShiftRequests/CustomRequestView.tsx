@@ -3,6 +3,9 @@ import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
+import { NewShiftRequest } from "./NewShiftRequest";
+import { ReviewShiftRequest } from "./ReviewShiftRequest";
+import useAuth from "@/hooks/useAuth";
 import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 import moment from "moment";
 
@@ -59,12 +62,31 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   events,
   wardId,
 }: CustomWeekViewProps) {
+  const [selectedReviewRequest, setSelectedReviewRequest] = useState<{
+    requestId: number;
+    nurseName: string;
+    shiftType: string;
+    preferredDate: string;
+    status: string;
+    reason: string | null;
+  } | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
   const [selectedGroup, setSelectedGroup] = useState<ShiftRequestEntry[] | null>(null);
 
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
   );
+
+  const handleReviewAction = (
+    requestId: number,
+    action: "Approved" | "Rejected",
+    _comment: string,
+  ) => {
+    setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
+  };
+
+  
 
   return (
     <>
@@ -161,6 +183,23 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
           onClose={() => setSelectedGroup(null)}
           requests={selectedGroup}
           wardId={wardId as number | null | undefined}
+        />
+      )}
+
+      {selectedReviewRequest && (
+        <ReviewShiftRequest
+          isOpen={!!selectedReviewRequest}
+          onClose={() => setSelectedReviewRequest(null)}
+          requestId={selectedReviewRequest.requestId}
+          nurseName={selectedReviewRequest.nurseName}
+          shiftCode={selectedReviewRequest.shiftType}
+          date={selectedReviewRequest.preferredDate}
+          status={
+            statusOverrides[selectedReviewRequest.requestId] ??
+            selectedReviewRequest.status
+          }
+          comment={selectedReviewRequest.reason}
+          onAction={handleReviewAction}
         />
       )}
     </>
