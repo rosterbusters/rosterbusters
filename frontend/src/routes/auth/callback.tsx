@@ -19,7 +19,7 @@ function AuthCallback() {
       // Handle error - redirect to login with error message
       navigate({
         to: "/login",
-        search: { error: error }
+        search: { error: error, message: "" }
       })
       return
     }
@@ -42,7 +42,7 @@ function AuthCallback() {
       })
     } else {
       // No token or error - redirect to login
-      navigate({ to: "/login" })
+      navigate({ to: "/login", search: { error: "", message: "" } })
     }
   }, [navigate])
 

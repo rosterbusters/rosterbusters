@@ -28,7 +28,7 @@ export const Route = createFileRoute("/first-login-setup")({
   component: FirstLoginSetup,
   beforeLoad: async () => {
     if (!isLoggedIn()) {
-      throw redirect({ to: "/login" })
+      throw redirect({ to: "/login", search: { message: "Please log in", error: "" } })
     }
   },
 })
