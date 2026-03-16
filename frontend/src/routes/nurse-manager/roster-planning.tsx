@@ -1057,7 +1057,7 @@ function RosterPlanningPage() {
           hasWarning: workedHours > contractedHours * 1.2,
         };
       });
-<<<<<<< HEAD
+
       const workedHours = nurse.schedule.reduce(
         (sum, shiftCode) => sum + getShiftDurationHours(shiftCode, shiftDurationMap),
         0,
@@ -1074,8 +1074,6 @@ function RosterPlanningPage() {
         hasWarning: workedHours > contractedHours * 1.2,
       };
     });
-=======
->>>>>>> f18f2e492f7f892697d301933ac74cd2965c008f
 
       setRosterData(rows);
       setIsAlgorithmGenerated(true);
