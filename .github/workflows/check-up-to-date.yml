@@ -1,0 +1,24 @@
+name: "Check up-to-date with main"
+
+on:
+  pull_request:
+    branches: [main, production]
+
+jobs:
+  check-up-to-date:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check branch is up-to-date with main
+        run: |
+          git fetch origin main
+          BEHIND=$(git rev-list --count HEAD..origin/main)
+          if [ "$BEHIND" -gt 0 ]; then
+            echo "::error::This branch is $BEHIND commit(s) behind main. Please pull/rebase from main before merging."
+            exit 1
+          fi
+          echo "Branch is up-to-date with main."
