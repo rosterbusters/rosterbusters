@@ -58,7 +58,7 @@
     "@hey-api/openapi-ts": "0.73.0",
     "@playwright/test": "1.58.2",
     "@tanstack/router-cli": "^1.141.1",
-    "@tanstack/router-devtools": "^1.140.0",
+    "@tanstack/router-devtools": "^1.166.9",
     "@tanstack/router-plugin": "^1.140.0",
     "@types/node": "^25.0.2",
     "@types/react": "^19.2.14",
