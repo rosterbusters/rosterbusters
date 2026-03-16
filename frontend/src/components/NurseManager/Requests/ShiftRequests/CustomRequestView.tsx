@@ -7,6 +7,7 @@ import { NewShiftRequest } from "./NewShiftRequest";
 import { EditShiftRequest } from "./EditShiftRequest";
 import { ReviewShiftRequest } from "./ReviewShiftRequest";
 import useAuth from "@/hooks/useAuth";
+import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 import moment from "moment";
 
 interface CustomWeekViewProps {
@@ -44,10 +45,23 @@ export function getEventsForDay(day: Date, events: Event[]): Event[] {
   });
 }
 
+/** Group events in a day by shift type, returning one entry per distinct shift. */
+function groupByShift(events: Event[]): Map<string, Event[]> {
+  const grouped = new Map<string, Event[]>();
+  events.forEach((ev) => {
+    const key: string = ev.resource?.shiftType ?? ev.title;
+    const existing = grouped.get(key) ?? [];
+    existing.push(ev);
+    grouped.set(key, existing);
+  });
+  return grouped;
+}
+
 const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   date,
   localizer,
   events,
+  wardId,
 }: CustomWeekViewProps) {
   const [selectedRequest, setSelectedRequest] = useState<{
     requestId: number;
@@ -65,6 +79,8 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     reason: string | null;
   } | null>(null);
   const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
+  const [selectedGroup, setSelectedGroup] = useState<ShiftRequestEntry[] | null>(null);
+
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
@@ -82,15 +98,20 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
 
   return (
     <>
-      <VStack overflowX={"auto"} gap={0} alignItems="stretch" >
-        <Grid width={"full"} minW={"820px"} templateColumns="repeat(7, 1fr)" borderColor="border" borderWidth={"1px"}>
+      <VStack overflowX={"auto"} gap={0} alignItems="stretch">
+        <Grid
+          width={"full"}
+          minW={"820px"}
+          templateColumns="repeat(7, 1fr)"
+          borderColor="border"
+          borderWidth={"1px"}
+        >
           {currRange.slice(0, 7).map((day, i) => (
             <GridItem
               key={i}
               bg="white"
               color="#404040"
               p={2}
-            
               h="32px"
               fontWeight="medium"
             >
@@ -98,13 +119,18 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
             </GridItem>
           ))}
         </Grid>
-        
-        <Grid width={"full"} minW={"820px"} templateColumns="repeat(7, 1fr)" templateRows="repeat(2, 1fr)">
+
+        <Grid
+          width={"full"}
+          minW={"820px"}
+          templateColumns="repeat(7, 1fr)"
+          templateRows="repeat(2, 1fr)"
+        >
           {currRange.map((day, i) => {
             const eventsForDay = getEventsForDay(day, events);
+            const grouped = groupByShift(eventsForDay);
 
             return (
-              
               <GridItem
                 key={i}
                 bg="white"
@@ -114,7 +140,9 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                 minH="250px"
                 borderColor="border"
                 borderWidth="1px"
-                bgColor={moment(day).isSame(moment(), 'day') ? "menuactive" : "white"}
+                bgColor={
+                  moment(day).isSame(moment(), "day") ? "menuactive" : "white"
+                }
               >
                 {localizer.format(day, "D")}
                 <Box mt={2}>
@@ -147,6 +175,38 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                       </Box>
                     ))
                   }
+                  {Array.from(grouped.entries())
+                    .sort(([, a], [, b]) => {
+                      // Own requests first
+                      const aOwn = a.some((e) => e.resource?.isOwn);
+                      const bOwn = b.some((e) => e.resource?.isOwn);
+                      return (bOwn ? 1 : 0) - (aOwn ? 1 : 0);
+                    })
+                    .map(([shiftType, groupEvents]) => {
+                      const isOwn = groupEvents.some((e) => e.resource?.isOwn);
+                      const nurseNames = groupEvents
+                        .map((e) => e.resource?.nurseName ?? "")
+                        .filter(Boolean)
+                        .join(", ");
+
+                      const requests: ShiftRequestEntry[] = groupEvents.map((e) => ({
+                        requestId: e.resource?.requestId,
+                        nurseName: e.resource?.nurseName ?? "",
+                        initialShiftType: e.resource?.shiftType ?? shiftType,
+                        initialDate: e.resource?.preferredDate ?? "",
+                      }));
+
+                      return (
+                        <Box key={shiftType} pb={2} maxW="100%">
+                          <CalendarRequestBlock
+                            shift={shiftType}
+                            nurseName={nurseNames}
+                            owned={isOwn}
+                            onClick={() => setSelectedGroup(requests)}
+                          />
+                        </Box>
+                      );
+                    })}
                 </Box>
               </GridItem>
             );
@@ -154,15 +214,12 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         </Grid>
       </VStack>
 
-      {selectedRequest && (
-        <NMReviewShiftRequest
-          isOpen={!!selectedRequest}
-          onClose={() => setSelectedRequest(null)}
-          requestId={selectedRequest.requestId}
-          shiftType={selectedRequest.shiftType}
-          preferredDate={selectedRequest.preferredDate}
-          nurseName={selectedRequest.nurseName}
-          currentStatus={selectedRequest.status}
+      {selectedGroup && (
+        <EditShiftRequest
+          isOpen={!!selectedGroup}
+          onClose={() => setSelectedGroup(null)}
+          requests={selectedGroup}
+          wardId={wardId as number | null | undefined}
         />
       )}
 
@@ -183,14 +240,14 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         />
       )}
     </>
-  )
-}
+  );
+};
 
 CustomWeekView.range = (
   date: Date,
   { localizer }: { localizer: DateLocalizer },
 ): Date[] => {
-  const start = date; //need to change this date to shift request opening
+  const start = date;
   const end = localizer.add(start, 13, "day");
 
   let current = start;

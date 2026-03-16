@@ -6,6 +6,9 @@ import {
   HStack,
   IconButton,
   Spinner,
+  Select,
+  Portal,
+  createListCollection,
 } from "@chakra-ui/react";
 import {
   ChevronLeft,
@@ -17,7 +20,6 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { Select, createListCollection } from "@chakra-ui/react";
 import moment from "moment";
 import type { Ward, RosterPeriod, ViewMode } from "../RosterTable/types";
 import {
@@ -47,6 +49,7 @@ interface RosterPlanningHeaderProps {
   periods: RosterPeriod[];
   isAlgorithmGenerated?: boolean;
   isGenerating?: boolean;
+  generationProgress?: number;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
@@ -67,6 +70,7 @@ export function RosterPlanningHeader({
   periods,
   isAlgorithmGenerated = false,
   isGenerating = false,
+  generationProgress = 0,
   onDateChange,
   onViewModeChange,
   onWardChange,
@@ -106,6 +110,14 @@ export function RosterPlanningHeader({
     itemToString: (ward) => ward.wardName,
     itemToValue: (ward) => String(ward.wardId),
   });
+
+  const periodCollection = createListCollection({
+    items: periods,
+    itemToString: (period) =>
+      period.name ||
+      `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`,
+    itemToValue: (period) => String(period.periodId),
+  });
   
   return (
     <Box w="full" position="relative">
@@ -127,42 +139,44 @@ export function RosterPlanningHeader({
           
 
           <HStack gap={2}>
-          <Text fontSize="sm" color="#6B7280" fontWeight="medium">
-            Ward:
-          </Text>
-          <Select.Root
-            collection={wardCollection}
-            size="sm"
-            width="140px"
-            color="foreground"
-            value={selectedWard ? [String(selectedWard.wardId)] : []}
-            onValueChange={(details) => {
-              const ward = wards.find(
-                (w) => String(w.wardId) === details.value[0],
-              );
-              if (ward) onWardChange(ward);
-            }}
-          >
-            <Select.HiddenSelect />
-            <Select.Control>
-              <Select.Trigger>
-                <Select.ValueText placeholder="Select Ward" />
-              </Select.Trigger>
-              <Select.IndicatorGroup>
-                <Select.Indicator />
-              </Select.IndicatorGroup>
-            </Select.Control>
-            <Select.Positioner>
-              <Select.Content>
-                {wardCollection.items.map((ward) => (
-                  <Select.Item key={ward.wardId} item={ward}>
-                    {ward.wardName}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Positioner>
-          </Select.Root>
-        </HStack>
+            <Text fontSize="sm" color="foreground" fontWeight="medium">
+              Ward:
+            </Text>
+            <Select.Root
+              collection={wardCollection}
+              size="sm"
+              width="140px"
+              color="foreground"
+              value={selectedWard ? [String(selectedWard.wardId)] : []}
+              onValueChange={(details) => {
+                const ward = wards.find(
+                  (w) => String(w.wardId) === details.value[0],
+                );
+                if (ward) onWardChange(ward);
+              }}
+            >
+              <Select.HiddenSelect />
+              <Select.Control>
+                <Select.Trigger>
+                  <Select.ValueText placeholder="Select Ward" />
+                </Select.Trigger>
+                <Select.IndicatorGroup>
+                  <Select.Indicator />
+                </Select.IndicatorGroup>
+              </Select.Control>
+              <Portal>
+                <Select.Positioner zIndex={1500}>
+                  <Select.Content>
+                    {wardCollection.items.map((ward) => (
+                      <Select.Item key={ward.wardId} item={ward}>
+                        {ward.wardName}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Positioner>
+              </Portal>
+            </Select.Root>
+          </HStack>
           
 
           {/* Hamburger Menu */}
@@ -170,10 +184,8 @@ export function RosterPlanningHeader({
             <MenuTrigger asChild>
               <IconButton
                 aria-label="More options"
-                variant="outline"
+                variant="outlinegrey"
                 size="sm"
-                borderColor="#E6E6E6"
-                color="#4A4A4A"
                 _hover={{ bg: "#F8FAFC" }}
               >
                 <MoreVertical className="h-4 w-4" />
@@ -227,45 +239,41 @@ export function RosterPlanningHeader({
           <HStack gap={2}>
             <Button
               size="sm"
-              variant="outline"
+              variant="outlinegrey"
               onClick={handleToday}
-              borderColor="#E6E6E6"
-              color="#4A4A4A"
               _hover={{ bg: "#F8FAFC" }}
             >
               Today
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleBack}
-              borderColor="#E6E6E6"
-              color="#4A4A4A"
-              _hover={{ bg: "#F8FAFC" }}
-              p={2}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Back
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleNext}
-              borderColor="#E6E6E6"
-              color="#4A4A4A"
-              _hover={{ bg: "#F8FAFC" }}
-              p={2}
-            >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <HStack gap={0}>
+              <Button
+                size="sm"
+                variant="outlinegrey"
+                onClick={handleBack}
+                _hover={{ bg: "#F8FAFC" }}
+                p={2}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </Button>
+              <Button
+                size="sm"
+                variant="outlinegrey"
+                onClick={handleNext}
+                _hover={{ bg: "#F8FAFC" }}
+                p={2}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </HStack>
           </HStack>
 
           {/* Center Section: Date Range Display */}
           <Text
             fontSize="lg"
             fontWeight="semibold"
-            color="#374151"
+            color="brand.fg"
             textAlign="center"
           >
             {dateRangeText}
@@ -280,12 +288,13 @@ export function RosterPlanningHeader({
           >
             <Button
               size="sm"
-              variant="ghost"
+              variant="outlinegrey"
+              fontWeight="normal"
               onClick={() => onViewModeChange("week")}
-              bg={viewMode === "week" ? "#4B8798" : "transparent"}
-              color={viewMode === "week" ? "white" : "#4A4A4A"}
+              bg={viewMode === "week" ? "menuactive" : "transparent"}
+              color={viewMode === "week" ? "primary" : "foreground"}
               _hover={{
-                bg: viewMode === "week" ? "#3d6f7d" : "#F8FAFC",
+                bg: viewMode === "week" ? "menuactive" : "#F8FAFC",
               }}
               borderRadius={0}
               px={4}
@@ -294,12 +303,13 @@ export function RosterPlanningHeader({
             </Button>
             <Button
               size="sm"
-              variant="ghost"
+              variant="outlinegrey"
+              fontWeight="normal"
               onClick={() => onViewModeChange("twoWeeks")}
-              bg={viewMode === "twoWeeks" ? "#4B8798" : "transparent"}
-              color={viewMode === "twoWeeks" ? "white" : "#4A4A4A"}
+              bg={viewMode === "twoWeeks" ? "primary" : "transparent"}
+              color={viewMode === "twoWeeks" ? "white" : "foreground"}
               _hover={{
-                bg: viewMode === "twoWeeks" ? "#3d6f7d" : "#F8FAFC",
+                bg: viewMode === "twoWeeks" ? "menuactive" : "#F8FAFC",
               }}
               borderRadius={0}
               px={4}
@@ -311,42 +321,61 @@ export function RosterPlanningHeader({
 
         {/* Roster Period Dropdown */}
         <HStack gap={2}>
-          <Text fontSize="sm" color="#6B7280" fontWeight="medium">
+          <Text fontSize="sm" color="foreground" fontWeight="medium">
             Roster Period:
           </Text>
-          <Box position="relative" minW="180px">
-            <select
-              value={selectedPeriod?.periodId || ""}
-              onChange={(e) => {
-                const period = periods.find(
-                  (p) => p.periodId === Number(e.target.value),
-                );
-                if (period) onPeriodChange(period);
-              }}
-              style={{
-                width: "100%",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "1px solid #E6E6E6",
-                fontSize: "14px",
-                color: "#4A4A4A",
-                backgroundColor: "white",
-                cursor: "pointer",
-              }}
-            >
-              {periods.map((period) => (
-                <option key={period.periodId} value={period.periodId}>
-                  {period.name ||
-                    `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
-                </option>
-              ))}
-            </select>
-          </Box>
+          <Select.Root
+            collection={periodCollection}
+            size="sm"
+            width="220px"
+            color="foreground"
+            value={selectedPeriod ? [String(selectedPeriod.periodId)] : []}
+            onValueChange={(details) => {
+              const period = periods.find(
+                (p) => String(p.periodId) === details.value[0],
+              );
+              if (period) onPeriodChange(period);
+            }}
+          >
+            <Select.HiddenSelect />
+            <Select.Control>
+              <Select.Trigger>
+                <Select.ValueText placeholder="Select period" />
+              </Select.Trigger>
+              <Select.IndicatorGroup>
+                <Select.Indicator />
+              </Select.IndicatorGroup>
+            </Select.Control>
+            <Portal>
+              <Select.Positioner zIndex={1500}>
+                <Select.Content>
+                  {periodCollection.items.map((period) => (
+                    <Select.Item key={period.periodId} item={period}>
+                      {period.name ||
+                        `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Positioner>
+            </Portal>
+          </Select.Root>
         </HStack>
 
         {/* Algorithm Generation Buttons */}
         {!isAlgorithmGenerated ? (
           // Generate + Mock Data row
+          <Flex direction="column" align="center" gap={2} w="full">
+            {/* Progress bar — visible only while generating */}
+            {isGenerating && (
+              <Box w="320px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
+                <Box
+                  h="full"
+                  bg="#4B8798"
+                  borderRadius="full"
+                  style={{ width: `${generationProgress}%`, transition: "width 0.4s ease" }}
+                />
+              </Box>
+            )}
           <HStack gap={4} flexWrap="wrap" justify="center">
             <Button
               size="md"
@@ -365,7 +394,7 @@ export function RosterPlanningHeader({
               {isGenerating ? (
                 <HStack gap={2}>
                   <Spinner size="sm" />
-                  <Text>Generating...</Text>
+                  <Text>Generating… {generationProgress}%</Text>
                 </HStack>
               ) : (
                 <HStack gap={2}>
@@ -416,14 +445,15 @@ export function RosterPlanningHeader({
               </HStack>
             )}
           </HStack>
+          </Flex>
         ) : (
           // Regenerate / Clear Buttons (after generation)
           <HStack gap={3}>
             <Button
               size="sm"
               variant="outline"
-              borderColor="#4B8798"
-              color="#4B8798"
+              borderColor="primary"
+              color="primary"
               _hover={{ bg: "#F0F9FA" }}
               onClick={onGenerateAlgorithm}
               disabled={isGenerating}
@@ -443,9 +473,7 @@ export function RosterPlanningHeader({
             </Button>
             <Button
               size="sm"
-              variant="outline"
-              borderColor="#E6E6E6"
-              color="#6B7280"
+              variant="outlinegrey"
               _hover={{
                 bg: "#F8FAFC",
                 borderColor: "#DC2626",

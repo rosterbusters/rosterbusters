@@ -58,21 +58,6 @@ async def auth_google_callback(
                     detail=f"Only {', '.join(allowed_domains)} email addresses are allowed",
                 )
 
-        statement = select(User).where(User.email == email)
-        user = session.exec(statement).first()
-
-        if not user:
-            user = User(
-                email=email,
-                full_name=user_info.get("name", ""),
-                hashed_password=get_password_hash(security.generate_random_password()),
-                is_active=True,
-                is_superuser=False,
-            )
-            session.add(user)
-            session.commit()
-            session.refresh(user)
-
         from app.models import Nurse, NurseManager, RBACUser, Role, UserRole
 
         rbac_statement = select(RBACUser).where(RBACUser.email == email)
@@ -135,9 +120,10 @@ async def auth_google_callback(
 @router.post("/login/access-token")
 def login_access_token(
     session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
     """
-    OAuth2 compatible token login, get an access token for future requests
+    OAuth2 compatible token login, get an access token for future requests.
+    Accepts email or username in the 'username' field.
     """
     user = crud.authenticate(session=session, email=form_data.username, password=form_data.password)
     if not user:
@@ -146,4 +132,8 @@ def login_access_token(
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(user.userid, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "must_change_password": user.must_change_password,
+    }

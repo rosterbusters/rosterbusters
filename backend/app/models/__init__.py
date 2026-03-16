@@ -6,27 +6,13 @@ Re-exports all models for backwards compatibility with `from app.models import .
 
 from sqlmodel import SQLModel
 
-# Web authentication models
+# Web schemas (no more User/Item models)
 from app.models.web import (
-    Item,
-    ItemBase,
-    ItemCreate,
-    ItemPublic,
-    ItemsPublic,
-    ItemUpdate,
     Message,
     NewPassword,
     Token,
     TokenPayload,
     UpdatePassword,
-    User,
-    UserBase,
-    UserCreate,
-    UserPublic,
-    UserRegister,
-    UsersPublic,
-    UserUpdate,
-    UserUpdateMe,
 )
 
 # RBAC models
@@ -47,6 +33,8 @@ from app.models.enums import NotificationType
 from app.models.roster import (
     NotificationQueue,
     Roster,
+    RosterChangeLog,
+    RosterChangeLogPublic,
     RosterPeriod,
     RosterPeriodPublic,
     Ward,
@@ -83,18 +71,20 @@ from app.models.notification_models import (
 __all__ = [
     # SQLModel base
     "SQLModel",
-    # Web auth
-    "Item", "ItemBase", "ItemCreate", "ItemPublic", "ItemsPublic", "ItemUpdate",
-    "Message", "NewPassword", "Token", "TokenPayload", "UpdatePassword",
-    "User", "UserBase", "UserCreate", "UserPublic", "UserRegister",
-    "UsersPublic", "UserUpdate", "UserUpdateMe",
+    # Web schemas
+    "Message",
+    "NewPassword",
+    "Token",
+    "TokenPayload",
+    "UpdatePassword",
     # RBAC
     "Nurse", "NurseManager", "NursePublic",
     "RBACUser", "RBACUserPublic", "Role", "UserRole",
     # Enums
     "NotificationType",
     # Roster
-    "NotificationQueue", "Roster", "RosterPeriod", "RosterPeriodPublic", "Ward",
+    "NotificationQueue", "Roster", "RosterChangeLog", "RosterChangeLogPublic",
+    "RosterPeriod", "RosterPeriodPublic", "Ward",
     # Leave
     "LeaveRequest", "LeaveRequestCreate", "LeaveRequestPublic", "LeaveRequestUpdate",
     # Shifts

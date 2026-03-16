@@ -22,7 +22,9 @@ class RBACUser(SQLModel, table=True):
         default=None, sa_column=Column("userid", Integer, primary_key=True)
     )
     username: str = Field(sa_column=Column("username", String))
-    email: str = Field(sa_column=Column("email", String))
+    email: Optional[str] = Field(
+        default=None, sa_column=Column("email", String)
+    )
     passwordhash: str = Field(sa_column=Column("passwordhash", String))
     nurseid: Optional[int] = Field(
         default=None, sa_column=Column("nurseid", Integer)
@@ -31,6 +33,10 @@ class RBACUser(SQLModel, table=True):
         default=None, sa_column=Column("managerid", Integer)
     )
     isactive: bool = Field(default=True, sa_column=Column("isactive", Boolean))
+    must_change_password: bool = Field(
+        default=False,
+        sa_column=Column("mustchangepassword", Boolean, server_default="false"),
+    )
     lastlogin: Optional[datetime] = Field(
         default=None, sa_column=Column("lastlogin", DateTime(timezone=True))
     )
@@ -44,10 +50,12 @@ class RBACUser(SQLModel, table=True):
 class RBACUserPublic(SQLModel):
     userid: int
     username: str
-    email: str
+    email: Optional[str] = None
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
     isactive: bool
+    is_superuser: bool = False
+    must_change_password: bool = False
     name: Optional[str] = None
     wardid: Optional[int] = None
 
@@ -56,6 +64,7 @@ class Nurse(SQLModel, table=True):
     __tablename__ = "nurse"
     nurseid: int | None = Field(default=None, primary_key=True)
     name: str
+    employeeid: str | None = Field(default=None, sa_column=Column("employeeid", String))
     designation: str
     email: str
     contactnumber: str
@@ -69,6 +78,9 @@ class NurseManager(SQLModel, table=True):
 
     managerid: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=100)
+    employeeid: Optional[str] = Field(
+        default=None, sa_column=Column("employeeid", String)
+    )
     email: str = Field(max_length=100)
     contactnumber: str = Field(max_length=20)
     isactive: bool = Field(default=True)
@@ -105,6 +117,7 @@ class UserRole(SQLModel, table=True):
 class NursePublic(SQLModel):
       nurseid: int
       name: str
+      employeeid: str | None = None
       designation: str
       email: str
       wardid: int | None = None

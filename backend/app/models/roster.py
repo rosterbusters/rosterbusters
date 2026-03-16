@@ -22,6 +22,7 @@ class Ward(SQLModel, table=True):
     wardname: str = Field(max_length=100)
     wardtype: Optional[str] = Field(default=None, max_length=50)
     location: Optional[str] = Field(default=None, max_length=100)
+    managerid: Optional[int] = Field(default=None)
     isactive: bool = Field(default=True)
 
     # Staffing requirements - AM shift
@@ -47,6 +48,9 @@ class Ward(SQLModel, table=True):
     nd_en_na_max: Optional[int] = Field(default=None)
     nd_hca_min: Optional[int] = Field(default=None)
     nd_hca_max: Optional[int] = Field(default=None)
+
+    # Full staffing guidelines stored as JSON (set by nurse managers via the roster UI)
+    staffing_json: Optional[str] = Field(default=None)
 
 
 class RosterPeriod(SQLModel, table=True):
@@ -75,6 +79,7 @@ class Roster(SQLModel, table=True):
     status: str = Field(default="Confirmed", max_length=20)
     assignmentmethod: str = Field(default="Manual", max_length=20)  # Manual / Auto
     assignedby: Optional[int] = None  # Manager ID if Manual, None if Auto
+    comment: Optional[str] = Field(default=None)
 
 
 class NotificationQueue(SQLModel, table=True):
@@ -108,3 +113,51 @@ class RosterPeriodPublic(SQLModel):
     startdate: date
     enddate: date
     status: str
+
+
+class RosterChangeLog(SQLModel, table=True):
+    __tablename__ = "rosterchangelog"
+
+    changeid: Optional[int] = Field(default=None, primary_key=True)
+    rosterid: Optional[int] = Field(default=None)
+    changedbymanagerid: Optional[int] = Field(default=None)
+    changedat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    changetype: str = Field(max_length=20)
+
+    # Before values
+    oldnurseid: Optional[int] = Field(default=None)
+    oldshiftcode: Optional[str] = Field(default=None, max_length=10)
+    oldstarttime: Optional[time] = Field(default=None)
+    oldendtime: Optional[time] = Field(default=None)
+    oldstatus: Optional[str] = Field(default=None, max_length=20)
+
+    # After values
+    newnurseid: Optional[int] = Field(default=None)
+    newshiftcode: Optional[str] = Field(default=None, max_length=10)
+    newstarttime: Optional[time] = Field(default=None)
+    newendtime: Optional[time] = Field(default=None)
+    newstatus: Optional[str] = Field(default=None, max_length=20)
+
+    reason: Optional[str] = Field(default=None)
+    changesource: str = Field(default="Manual", max_length=20)
+    notificationtriggered: bool = Field(default=False)
+    isreplacementchange: bool = Field(default=False)
+    replacementreason: Optional[str] = Field(default=None, max_length=20)
+    replacednurseid: Optional[int] = Field(default=None)
+    replacementnurseid: Optional[int] = Field(default=None)
+    isexternalreplacement: bool = Field(default=False)
+
+
+class RosterChangeLogPublic(SQLModel):
+    """API response shape – includes denormalized display fields."""
+    changeid: int
+    rosterid: Optional[int]
+    changedat: datetime
+    changetype: str
+    oldshiftcode: Optional[str]
+    newshiftcode: Optional[str]
+    reason: Optional[str]
+    changesource: str
+    shiftdate: Optional[date]
+    nursename: str
+    modifiedby: str

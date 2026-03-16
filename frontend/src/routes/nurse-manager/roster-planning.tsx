@@ -25,6 +25,7 @@ import {
   ShiftSummaryTable,
   useWards,
   useRosterPeriods,
+  useWardStatistics,
   usePublishRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
@@ -43,6 +44,15 @@ import {
   getWardGuidelines,
 } from "@/components/NurseManager/RosterPlanning";
 import useCustomToast from "@/hooks/useCustomToast";
+  DialogRoot,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
+  DialogCloseTrigger,
+} from "@/components/ui/dialog";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
@@ -132,8 +142,6 @@ function generateMockPlanningOverlays(
 }
 
 function RosterPlanningPage() {
-  const { showSuccessToast, showErrorToast } = useCustomToast();
-
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
     moment().startOf("isoWeek").toDate(),
@@ -154,6 +162,7 @@ function RosterPlanningPage() {
 
   // Algorithm generation state
   const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
 
   // Mock shift request overlays (Algorithm and Nurse Manager categories only)
   const mockPlanningOverlays = useMemo(
@@ -173,6 +182,7 @@ function RosterPlanningPage() {
   // Data hooks
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
+  const { data: wardStatistics } = useWardStatistics(selectedWard?.wardId ?? null);
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToXLSX } = useRosterExport();
   const publishRoster = usePublishRoster();
@@ -265,12 +275,26 @@ function RosterPlanningPage() {
     }
   }, [displayPeriods, selectedPeriod]);
 
-  // Reset to empty data when view mode changes (only if not algorithm generated)
+  // Populate roster rows with real nurses from the selected ward whenever the ward changes
   useEffect(() => {
-    if (!isAlgorithmGenerated) {
-      setRosterData(generateEmptyRosterData());
+    if (isAlgorithmGenerated) return;
+    const nurses = wardStatistics?.nurses;
+    if (nurses && nurses.length > 0) {
+      setRosterData(
+        nurses.map((nurse) => ({
+          nurseId: nurse.nurseId,
+          name: nurse.name,
+          designation: nurse.designation,
+          hours: { worked: 0, contracted: 44 },
+          shifts: {},
+          hasOvertime: false,
+          hasWarning: false,
+        }))
+      );
+    } else {
+      setRosterData([]);
     }
-  }, [viewMode, isAlgorithmGenerated]);
+  }, [wardStatistics, isAlgorithmGenerated]);
 
   // Derive roster data with hours calculated from the visible date window only
   const displayRosterData = useMemo(() => {
@@ -968,9 +992,8 @@ function RosterPlanningPage() {
     showErrorToast,
   ]);
 
-  // Clear roster and return to manual mode
+  // Clear roster and return to manual mode — ward nurses repopulate via the wardStatistics effect
   const handleClearRoster = useCallback(() => {
-    setRosterData(generateEmptyRosterData());
     setIsAlgorithmGenerated(false);
   }, []);
 
@@ -1143,6 +1166,7 @@ function RosterPlanningPage() {
           periods={displayPeriods}
           isAlgorithmGenerated={isAlgorithmGenerated}
           isGenerating={generateAlgorithmRoster.isPending}
+          generationProgress={generationProgress}
           onDateChange={handleDateChange}
           onViewModeChange={handleViewModeChange}
           onWardChange={handleWardChange}

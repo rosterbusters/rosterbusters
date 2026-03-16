@@ -1,19 +1,16 @@
 from fastapi import APIRouter
 
-from app.api.routes import items, leave, login, notifications, private, run_rostering, shifts, users, utils, wards
-from app.core.config import settings
+from app.api.routes import admin, leave, login, notifications, run_rostering, shifts, users, utils, wards
 
 api_router = APIRouter()
+api_router.include_router(admin.router)
 api_router.include_router(login.router)
 api_router.include_router(users.router)
 api_router.include_router(utils.router)
-api_router.include_router(items.router)
 api_router.include_router(shifts.home_router)
 api_router.include_router(shifts.router)
 api_router.include_router(leave.router)
 api_router.include_router(notifications.router)
 api_router.include_router(wards.router)
-api_router.include_router(run_rostering.router, prefix="/roster", tags=["rostering"])
 
-if settings.ENVIRONMENT == "local":
-    api_router.include_router(private.router)
+api_router.include_router(run_rostering.router, prefix="/roster", tags=["rostering"])

@@ -29,8 +29,10 @@ function AuthCallback() {
       localStorage.setItem('access_token', token)
 
       // Fetch user to determine role-based redirect
-      UsersService.readUserMe().then((user) => {
-        if (user.managerid) {
+      UsersService.readUserMe().then((user: any) => {
+        if (user.must_change_password) {
+          navigate({ to: "/first-login-setup" })
+        } else if (user.managerid) {
           navigate({ to: "/nurse-manager/home" })
         } else {
           navigate({ to: "/ward-staff/home" })

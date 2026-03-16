@@ -3,7 +3,7 @@ import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
-import { EditLeaveRequest } from "./EditLeaveRequest";
+import { EditLeaveRequest, type LeaveRequestEntry } from "./EditLeaveRequest";
 import { NewLeaveRequest } from "./NewLeaveRequest";
 import moment from "moment";
 
@@ -47,12 +47,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   localizer,
   events,
 }: CustomMonthViewProps) {
-  const [selectedRequest, setSelectedRequest] = useState<{
-    requestId: number;
-    leaveType: string;
-    startDate: string;
-    endDate: string;
-  } | null>(null);
+  const [selectedRequests, setSelectedRequests] = useState<LeaveRequestEntry[] | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
   const currRange = useMemo(
@@ -136,13 +131,18 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               owned={ev.resource?.isOwn}
                               onClick={
                                 ev.resource?.isOwn
-                                  ? () =>
-                                      setSelectedRequest({
-                                        requestId: ev.resource.requestId,
-                                        leaveType: ev.resource.shiftType,
-                                        startDate: ev.resource.startDate,
-                                        endDate: ev.resource.endDate,
-                                      })
+                                  ? () => {
+                                      const ownedForDay = eventsForDay
+                                        .filter((e) => e.resource?.isOwn)
+                                        .map((e) => ({
+                                          requestId: e.resource.requestId,
+                                          nurseName: e.resource.nurseName ?? e.title,
+                                          initialLeaveType: e.resource.shiftType,
+                                          startDate: e.resource.startDate,
+                                          endDate: e.resource.endDate,
+                                        }));
+                                      setSelectedRequests(ownedForDay);
+                                    }
                                   : undefined
                               }
                             />
@@ -156,14 +156,11 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         ))}
       </VStack>
 
-      {selectedRequest && (
+      {selectedRequests && (
         <EditLeaveRequest
-          isOpen={!!selectedRequest}
-          onClose={() => setSelectedRequest(null)}
-          requestId={selectedRequest.requestId}
-          initialLeaveType={selectedRequest.leaveType}
-          startDate={selectedRequest.startDate}
-          endDate={selectedRequest.endDate}
+          isOpen={!!selectedRequests}
+          onClose={() => setSelectedRequests(null)}
+          requests={selectedRequests}
         />
       )}
 

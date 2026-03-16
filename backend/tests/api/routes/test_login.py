@@ -1,12 +1,12 @@
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.core.config import settings
-from app.core.security import verify_password
-from app.crud import create_user
-from app.models import UserCreate
+from app.core.security import get_password_hash, verify_password
+from app.models import RBACUser
 from app.utils import generate_password_reset_token
 from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
@@ -77,14 +77,17 @@ def test_reset_password(client: TestClient, db: Session) -> None:
     password = random_lower_string()
     new_password = random_lower_string()
 
-    user_create = UserCreate(
+    user = RBACUser(
+        username=email.split("@")[0],
         email=email,
-        full_name="Test User",
-        password=password,
-        is_active=True,
-        is_superuser=False,
+        passwordhash=get_password_hash(password),
+        isactive=True,
+        createdat=datetime.now(timezone.utc),
     )
-    user = create_user(session=db, user_create=user_create)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
     token = generate_password_reset_token(email=email)
     headers = user_authentication_headers(client=client, email=email, password=password)
     data = {"new_password": new_password, "token": token}
@@ -99,7 +102,7 @@ def test_reset_password(client: TestClient, db: Session) -> None:
     assert r.json() == {"message": "Password updated successfully"}
 
     db.refresh(user)
-    assert verify_password(new_password, user.hashed_password)
+    assert verify_password(new_password, user.passwordhash)
 
 
 def test_reset_password_invalid_token(

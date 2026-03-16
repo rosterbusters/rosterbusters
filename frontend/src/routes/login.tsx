@@ -1,6 +1,6 @@
-import { Box, Container, Flex, Heading, Image, Text, VStack, Separator, IconButton } from "@chakra-ui/react"
+import { Box, Container, Flex, Heading, Image, Text, VStack, IconButton } from "@chakra-ui/react"
 import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
-import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
+import { FiLock, FiUser, FiEye, FiEyeOff } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
 import { useState } from "react"; 
 import { useForm, SubmitHandler } from 'react-hook-form';
@@ -11,16 +11,20 @@ import { Field } from "@/components/ui/field"
 import { Input } from "@chakra-ui/react"
 import { InputGroup } from "@/components/ui/input-group"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
-import { emailPattern, passwordRules } from "../utils"
+import { passwordRules } from "../utils"
 
 export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
     if (isLoggedIn()) {
-      let to: "/nurse-manager/home" | "/ward-staff/home" = "/ward-staff/home"
+      let to: "/admin/dashboard" | "/nurse-manager/home" | "/ward-staff/home" | "/first-login-setup" = "/ward-staff/home"
       try {
-        const user = await UsersService.readUserMe()
-        if (user.managerid) {
+        const user = await UsersService.readUserMe() as any
+        if (user.must_change_password) {
+          to = "/first-login-setup"
+        } else if (user.is_superuser) {
+          to = "/admin/dashboard"
+        } else if (user.managerid) {
           to = "/nurse-manager/home"
         }
       } catch {
@@ -129,44 +133,21 @@ function Login() {
                 Sign In
               </Heading>
               <Text color="gray.500" fontSize="sm">
-                Login with your <Text as="span" fontWeight="700" color="teal.600">SACH</Text> email.
+                Login with your <Text as="span" fontWeight="700" color="teal.600">SACH</Text> account.
               </Text>
             </VStack>
 
-            {/* Google Button */}
-            <Button
-              onClick={handleGoogleLogin}
-              size="md"
-              variant="outline"
-              borderColor="gray.300"
-              color="gray.700"
-              _hover={{ bg: "gray.50" }}
-              w="100%"
-              fontWeight="medium"
-            >
-              <Flex align="center" gap={2}>
-                <FcGoogle size={20} />
-                <Text as="span">Sign In With Google</Text>
-              </Flex>
-            </Button>
-
-            {/* Separator */}
-            <Flex align="center" width="100%" gap={3}>
-              <Separator flex="1" borderColor="gray.200" />
-              <Text fontSize="xs" color="gray.400" fontWeight="medium">OR</Text>
-              <Separator flex="1" borderColor="gray.200" />
-            </Flex>
 
             {/* Login Form */}
             <Box as="form" onSubmit={handleSubmit(onSubmit)}>
               <VStack gap={3} align="stretch"> 
-                {/* Email */}
+                {/* Username */}
                 <Field invalid={!!errors.username} errorText={errors.username?.message}>
-                  <InputGroup startElement={<FiMail color="gray" />} w="100%">
+                  <InputGroup startElement={<FiUser color="gray" />} w="100%">
                     <Input
-                      {...register("username", { required: "Required", pattern: emailPattern })}
-                      placeholder="Email Address"
-                      type="email"
+                      {...register("username", { required: "Required" })}
+                      placeholder="Username, Email, or Employee ID"
+                      type="text"
                       size="md"
                       variant="subtle"
                       bg="gray.50"
@@ -232,22 +213,6 @@ function Login() {
                   </RouterLink>
                 </Flex>
 
-                {/* Sign Up */}
-                <Flex justify="center" align="center" gap={2} pt={2}>
-                  <Text fontSize="sm" color="gray.500">
-                    Don't have an account?
-                  </Text>
-                  <RouterLink 
-                    to="/signup" 
-                    style={{ 
-                      fontSize: "13px", 
-                      fontWeight: 600,
-                      textDecoration: "none"
-                    }}
-                  >
-                    Sign Up
-                  </RouterLink>
-                </Flex>
               </VStack>
             </Box>
 

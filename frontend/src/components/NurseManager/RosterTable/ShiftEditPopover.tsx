@@ -8,6 +8,7 @@ import {
   Popover,
   Textarea,
   Input,
+  Spinner,
 } from "@chakra-ui/react";
 import { X, ChevronDown, MessageSquarePlus, Trash2 } from "lucide-react";
 
@@ -18,6 +19,8 @@ import {
   SHIFT_CODE_MAP,
   SHIFT_COLOR_MAP,
 } from "./types";
+import { useUpdateRosterComment } from "./useRosterData";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 interface ShiftEditPopoverProps {
   isOpen: boolean;
@@ -227,6 +230,9 @@ export function ShiftEditPopover({
     currentShift?.comment || "",
   );
   const [showCommentInput, setShowCommentInput] = useState(false);
+  const [isSavingComment, setIsSavingComment] = useState(false);
+
+  const updateRosterComment = useUpdateRosterComment();
 
   // Snapshot of state at the moment the popover was opened — used for Ctrl+Z revert
   const originalShiftRef = useRef<ShiftCode | null>(null);
@@ -290,7 +296,23 @@ export function ShiftEditPopover({
     onShiftChange(shiftCode);
   };
 
-  const handleCommentSave = () => {
+  const handleCommentSave = async () => {
+    const rosterId = currentShift?.rosterId;
+    if (rosterId && rosterId > 0) {
+      setIsSavingComment(true);
+      try {
+        await updateRosterComment.mutateAsync({
+          rosterId,
+          comment: comment || null,
+        });
+        showSuccessToast("Comment saved successfully.");
+      } catch {
+        showErrorToast("Failed to save comment. Please try again.");
+        setIsSavingComment(false);
+        return;
+      }
+      setIsSavingComment(false);
+    }
     if (onCommentChange) {
       onCommentChange(comment);
     }
@@ -451,17 +473,17 @@ export function ShiftEditPopover({
                           fontSize="xs"
                           fontWeight="medium"
                           color="white"
-                          bg="#4B8798"
+                          bg={isSavingComment ? "#7aacba" : "#4B8798"}
                           borderRadius="md"
-                          cursor="pointer"
-                          _hover={{ bg: "#155E75" }}
+                          cursor={isSavingComment ? "not-allowed" : "pointer"}
+                          _hover={{ bg: isSavingComment ? "#7aacba" : "#155E75" }}
                           transition="all 0.2s ease"
-                          onClick={handleCommentSave}
+                          onClick={isSavingComment ? undefined : handleCommentSave}
                           display="flex"
                           alignItems="center"
                           gap={1}
                         >
-                          Save
+                          {isSavingComment ? <Spinner size="xs" /> : "Save"}
                         </Box>
                       </Flex>
                     </Flex>

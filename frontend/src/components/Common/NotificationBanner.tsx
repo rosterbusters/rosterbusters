@@ -1,36 +1,11 @@
-import { useNavigate } from "@tanstack/react-router";
 import { Stack, Table, Badge } from "@chakra-ui/react";
+import { useNavigate } from "@tanstack/react-router";
 import type { NotificationResponse } from "@/client/NotificationsService";
-
-// Badge variant mapping based on notification types
-const getBadgeVariant = (notificationType: string): string => {
-  const variantMap: Record<string, string> = {
-    "Roster": "roster",
-    "RosterRelease": "roster",
-    "ShiftUpdate": "roster",
-    "ShiftRequest": "shiftRequest",
-    "LeaveRequest": "leaveRequest",
-    "LeaveApproval": "leaveRequest",
-    "LeaveReminder": "leaveRequest",
-    "HRISReminder": "subtle",
-    "System": "subtle"
-  };
-
-  return variantMap[notificationType] || "subtle";
-};
-
-// Label mapping for notification types
-const notificationTypeLabels: Record<string, string> = {
-  "Roster": "Roster",
-  "RosterRelease": "Roster Release",
-  "ShiftUpdate": "Roster",
-  "ShiftRequest": "Shift Request",
-  "LeaveRequest": "Leave Request",
-  "LeaveApproval": "Leave Approval",
-  "LeaveReminder": "Leave Reminder",
-  "HRISReminder": "HRIS Reminder",
-  "System": "System"
-};
+import {
+  notificationTypeLabels,
+  notificationTypeBadgeVariant,
+  getNotificationRoute,
+} from "@/types/notifications";
 
 // Format date as D/M/YYYY
 const formatDate = (dateString: string) => {
@@ -41,11 +16,20 @@ const formatDate = (dateString: string) => {
   return `${day}/${month}/${year}`;
 };
 
+const rolePrefix: Record<string, string> = {
+  manager: "/nurse-manager",
+  nurse: "/ward-staff",
+};
+
 interface NotificationBannerProps {
   items: NotificationResponse[];
+  role: "nurse" | "manager";
 }
 
-export default function NotificationBanner({ items }: NotificationBannerProps) {
+export default function NotificationBanner({ items, role }: NotificationBannerProps) {
+  const navigate = useNavigate();
+  const prefix = rolePrefix[role] ?? "";
+
   return (
     <Stack width="full" gap="5">
       <Table.ScrollArea maxHeight="216px">
@@ -59,13 +43,19 @@ export default function NotificationBanner({ items }: NotificationBannerProps) {
           </Table.Header>
           <Table.Body>
             {items.map((item) => (
-              <Table.Row lineHeight="36px" key={item.notificationid}>
+              <Table.Row
+                lineHeight="36px"
+                key={item.notificationid}
+                cursor="pointer"
+                onClick={() => navigate({ to: `${prefix}${getNotificationRoute(item.notificationtype)}` })}
+              >
                 <Table.Cell lineHeight="36px">
-                  <Badge 
-                    width="fit-content" 
-                    variant={getBadgeVariant(item.notificationtype) as any}
+                  <Badge
+                    width="fit-content"
+                    colorPalette={notificationTypeBadgeVariant[item.notificationtype] ?? "gray"}
+                    variant="subtle"
                   >
-                    {notificationTypeLabels[item.notificationtype] || item.notificationtype}
+                    {notificationTypeLabels[item.notificationtype] ?? item.notificationtype}
                   </Badge>
                 </Table.Cell>
                 <Table.Cell color="foreground">

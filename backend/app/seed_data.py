@@ -3,7 +3,7 @@ Database seeding script for RBAC data.
 Run: docker compose exec backend python app/seed_data.py
 
 Uses hardcoded mock data for managers and nurses to guarantee consistency
-across all tables (nurse, nursemanager, RBACUser, web_user, userrole).
+across all tables (nurse, nursemanager, RBACUser, userrole).
 """
 import logging
 from datetime import date, datetime, time, timedelta, timezone
@@ -12,12 +12,13 @@ from decimal import Decimal
 from faker import Faker
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
 from app.models.enums import NotificationType
-from app.models.web import User
+# from app.models.web import User
 
 
 # ============================================================================
@@ -233,16 +234,16 @@ WARDS_DATA = [
 NUM_WARDS = len(WARDS_DATA)
 
 MANAGERS_DATA = [
-    {"name": "Lim Wei Ling",     "email": "lim.weiling@sach.org.sg",      "contactnumber": "91234501"},
-    {"name": "Tan Siew Bee",     "email": "tan.siewbee@sach.org.sg",      "contactnumber": "91234502"},
-    {"name": "Ng Ai Hua",        "email": "ng.aihua@sach.org.sg",         "contactnumber": "91234503"},
-    {"name": "Wong Mei Fong",    "email": "wong.meifong@sach.org.sg",     "contactnumber": "91234504"},
-    {"name": "Chua Shu Min",     "email": "chua.shumin@sach.org.sg",      "contactnumber": "91234505"},
-    {"name": "Koh Pei Shan",     "email": "koh.peishan@sach.org.sg",      "contactnumber": "91234506"},
-    {"name": "Lee Hui Ling",     "email": "lee.huiling@sach.org.sg",      "contactnumber": "91234507"},
-    {"name": "Ong Siew Lan",     "email": "ong.siewlan@sach.org.sg",      "contactnumber": "91234508"},
-    {"name": "Ahmad Ismail",     "email": "ahmad.ismail@sach.org.sg",     "contactnumber": "91234509"},
-    {"name": "Priya Nair",       "email": "priya.nair@sach.org.sg",       "contactnumber": "91234510"},
+    {"name": "Lim Wei Ling",     "email": "lim.weiling@sach.org.sg",      "contactnumber": "91234501", "ward_idx": 0},
+    {"name": "Tan Siew Bee",     "email": "tan.siewbee@sach.org.sg",      "contactnumber": "91234502", "ward_idx": 1},
+    {"name": "Ng Ai Hua",        "email": "ng.aihua@sach.org.sg",         "contactnumber": "91234503", "ward_idx": 2},
+    {"name": "Wong Mei Fong",    "email": "wong.meifong@sach.org.sg",     "contactnumber": "91234504", "ward_idx": 3},
+    {"name": "Chua Shu Min",     "email": "chua.shumin@sach.org.sg",      "contactnumber": "91234505", "ward_idx": 4},
+    {"name": "Koh Pei Shan",     "email": "koh.peishan@sach.org.sg",      "contactnumber": "91234506", "ward_idx": 5},
+    {"name": "Lee Hui Ling",     "email": "lee.huiling@sach.org.sg",      "contactnumber": "91234507", "ward_idx": 6},
+    {"name": "Ong Siew Lan",     "email": "ong.siewlan@sach.org.sg",      "contactnumber": "91234508", "ward_idx": 7},
+    {"name": "Ahmad Ismail",     "email": "ahmad.ismail@sach.org.sg",     "contactnumber": "91234509", "ward_idx": 8},
+    {"name": "Priya Nair",       "email": "priya.nair@sach.org.sg",       "contactnumber": "91234510", "ward_idx": 9},
 ]
 
 # 70 nurses: 7 per ward × 10 wards
@@ -435,19 +436,19 @@ def seed_wards(session: Session) -> list[Ward]:
     return wards
 
 
-def seed_managers(session: Session, _wards: list[Ward]) -> list[NurseManager]:
+def seed_managers(session: Session, wards: list[Ward]) -> list[NurseManager]:
     """Seed nurse managers and return list of created NurseManager objects."""
     logger.info("Seeding nurse managers...")
     managers = []
 
-    for _i, mgr_data in enumerate(MANAGERS_DATA):
+    for mgr_data in MANAGERS_DATA:
         existing = session.exec(
             select(NurseManager).where(NurseManager.email == mgr_data["email"])
         ).first()
 
         if existing:
             logger.info(f"  Manager '{mgr_data['name']}' already exists, skipping")
-            managers.append(existing)
+            manager = existing
         else:
             manager = NurseManager(
                 name=mgr_data["name"],
@@ -459,8 +460,21 @@ def seed_managers(session: Session, _wards: list[Ward]) -> list[NurseManager]:
             session.add(manager)
             session.commit()
             session.refresh(manager)
-            managers.append(manager)
             logger.info(f"  Created manager: {mgr_data['name']} (ID: {manager.managerid})")
+
+        ward_idx = int(mgr_data["ward_idx"])
+        if ward_idx < len(wards):
+            ward = wards[ward_idx]
+            if ward.managerid != manager.managerid:
+                ward.managerid = manager.managerid
+                session.add(ward)
+                session.commit()
+                session.refresh(ward)
+                logger.info(
+                    f"  Assigned manager {mgr_data['name']} to ward {ward.wardname} (ID: {ward.wardid})"
+                )
+
+        managers.append(manager)
 
     return managers
 
@@ -503,17 +517,26 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
     logger.info("Seeding admin user...")
 
     existing = session.exec(
-        select(RBACUser).where(RBACUser.email == "admin@sach.org.sg")
+        select(RBACUser).where(
+            (RBACUser.email == settings.FIRST_SUPERUSER)
+            | (RBACUser.username == settings.FIRST_SUPERUSER.split("@")[0])
+        )
     ).first()
 
     if existing:
-        logger.info("  Admin user already exists, skipping")
+        logger.info("  Admin user already exists, updating credentials to seed values")
+        existing.username = settings.FIRST_SUPERUSER.split("@")[0]
+        existing.email = settings.FIRST_SUPERUSER
+        existing.passwordhash = get_password_hash(settings.FIRST_SUPERUSER_PASSWORD)
+        existing.isactive = True
+        session.commit()
+        session.refresh(existing)
         return existing
 
     admin = RBACUser(
-        username="admin",
-        email="admin@sach.org.sg",
-        passwordhash=get_password_hash("changethis"),
+        username=settings.FIRST_SUPERUSER.split("@")[0],
+        email=settings.FIRST_SUPERUSER,
+        passwordhash=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD),
         isactive=True,
         createdat=datetime.now(timezone.utc),
     )
@@ -533,7 +556,10 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         session.add(user_role)
         session.commit()
 
-    logger.info("  Created admin user: admin@sach.org.sg / changethis")
+    logger.info(
+        f"  Created admin user: {settings.FIRST_SUPERUSER} / "
+        f"{settings.FIRST_SUPERUSER_PASSWORD}"
+    )
     return admin
 
 
@@ -547,54 +573,76 @@ def seed_manager_users(
     logger.info("Seeding manager users...")
     users = []
 
-    for i, manager in enumerate(managers):
+    manager_seed_by_email = {mgr["email"]: mgr for mgr in MANAGERS_DATA}
+
+    for manager in managers:
         existing = session.exec(
             select(RBACUser).where(RBACUser.email == manager.email)
         ).first()
 
         if existing:
-            logger.info(f"  Manager user '{manager.email}' already exists, skipping")
-            users.append(existing)
-            continue
+            user = existing
+            logger.info(f"  Manager user '{manager.email}' already exists, syncing assignment")
+        else:
+            username = manager.email.split("@")[0]
 
-        username = manager.email.split("@")[0]
+            existing_by_username = session.exec(
+                select(RBACUser).where(RBACUser.username == username)
+            ).first()
 
-        existing_by_username = session.exec(
-            select(RBACUser).where(RBACUser.username == username)
-        ).first()
+            if existing_by_username:
+                user = existing_by_username
+                logger.info(f"  Manager username '{username}' already exists, syncing assignment")
+            else:
+                user = RBACUser(
+                    username=username,
+                    email=manager.email,
+                    passwordhash=get_password_hash("manager123"),
+                    managerid=manager.managerid,
+                    isactive=True,
+                    createdat=datetime.now(timezone.utc),
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+                logger.info(f"  Created manager user: {manager.email} / manager123")
 
-        if existing_by_username:
-            logger.info(f"  Manager username '{username}' already exists, skipping")
-            users.append(existing_by_username)
-            continue
-
-        user = RBACUser(
-            username=username,
-            email=manager.email,
-            passwordhash=get_password_hash("manager123"),
-            managerid=manager.managerid,
-            isactive=True,
-            createdat=datetime.now(timezone.utc),
-        )
+        user.username = manager.email.split("@")[0]
+        user.email = manager.email
+        user.managerid = manager.managerid
+        user.isactive = True
         session.add(user)
         session.commit()
         session.refresh(user)
 
         # Assign NurseManager role with ward assignment
         manager_role = roles.get("NurseManager")
-        if manager_role and i < len(wards):
-            user_role = UserRole(
-                userid=user.userid,
-                roleid=manager_role.roleid,
-                wardid=wards[i].wardid,
-                isactive=True,
-                assignedat=datetime.now(timezone.utc),
-            )
-            session.add(user_role)
-            session.commit()
+        manager_seed = manager_seed_by_email.get(manager.email)
+        ward_idx = int(manager_seed["ward_idx"]) if manager_seed else None
+        if manager_role and ward_idx is not None and ward_idx < len(wards):
+            existing_user_role = session.exec(
+                select(UserRole).where(
+                    UserRole.userid == user.userid,
+                    UserRole.roleid == manager_role.roleid,
+                    UserRole.wardid == wards[ward_idx].wardid,
+                )
+            ).first()
+            if not existing_user_role:
+                user_role = UserRole(
+                    userid=user.userid,
+                    roleid=manager_role.roleid,
+                    wardid=wards[ward_idx].wardid,
+                    isactive=True,
+                    assignedat=datetime.now(timezone.utc),
+                )
+                session.add(user_role)
+                session.commit()
+            else:
+                existing_user_role.isactive = True
+                session.add(existing_user_role)
+                session.commit()
 
         users.append(user)
-        logger.info(f"  Created manager user: {manager.email} / manager123")
 
     return users
 
@@ -778,8 +826,41 @@ def seed_roster_entries(
     shift_codes_db = session.exec(select(ShiftCode)).all()
     shift_lookup = {sc.shiftcode: sc for sc in shift_codes_db}
 
-    # 7-day rotating pattern; offset per nurse for variety
-    shift_pattern = ["D", "D", "N", "N", "DO", "DO", "D"]
+    # 14-day realistic patterns derived from ga_ward6.json mock data.
+    # Each pattern tiles across the full date range per nurse.
+    ROSTER_PATTERNS = [
+        ["A","P","DO","N","N","DO","A","N","N","DO","A","DO","P","P"],
+        ["A","N","N","DO","DO","A","P","P","DO","N","N","DO","P","P"],
+        ["DO","N","DO","P","P","A","P","N","DO","N","DO","A","A","P"],
+        ["DO","N","DO","P","P","A","N","DO","N","DO","P","A","A","A"],
+        ["P","A","DO","A","DO","A","N","N","DO","A","A","P","DO","P"],
+        ["N","DO","A","A","A","P","DO","A","A","A","DO","N","DO","N"],
+        ["N","DO","P","P","A","P","DO","DO","P","P","N","DO","A","A"],
+        ["DO","A","A","A","DO","N","N","DO","A","P","A","A","A","DO"],
+        ["A","P","A","N","N","DO","DO","DO","N","DO","A","P","A","A"],
+        ["A","A","N","DO","N","DO","P","DO","P","A","N","N","DO","A"],
+        ["P","A","DO","P","N","N","DO","A","A","A","DO","P","N","DO"],
+        ["P","P","A","P","DO","N","DO","P","DO","DO","P","P","A","N"],
+        ["N","DO","P","A","A","DO","A","DO","P","P","A","P","N","DO"],
+        ["N","N","DO","A","A","P","DO","P","N","DO","DO","A","P","A"],
+        ["P","P","N","DO","P","DO","P","A","A","P","A","DO","N","DO"],
+        ["A","N","DO","P","DO","A","A","P","A","P","DO","DO","A","N"],
+        ["A","A","N","DO","P","P","DO","A","P","DO","P","N","DO","P"],
+        ["N","DO","P","A","A","DO","A","P","A","N","DO","P","P","DO"],
+        ["DO","N","N","DO","A","A","A","N","DO","A","P","N","DO","P"],
+        ["N","DO","P","A","A","DO","A","P","N","N","DO","A","DO","A"],
+        ["DO","A","P","P","N","N","DO","A","P","P","P","DO","N","DO"],
+        ["P","A","DO","N","DO","P","N","N","DO","A","DO","P","A","A"],
+        ["P","DO","A","N","DO","A","A","N","DO","DO","P","P","P","A"],
+        ["DO","A","P","N","N","DO","P","A","N","DO","P","N","DO","A"],
+        ["A","DO","A","N","DO","A","P","P","DO","N","DO","A","A","P"],
+        ["P","DO","A","A","N","DO","P","N","N","DO","P","DO","P","A"],
+        ["DO","A","A","A","P","DO","N","DO","P","A","P","A","N","DO"],
+        ["DO","A","N","DO","P","P","N","DO","A","A","P","N","DO","N"],
+        ["A","N","N","DO","A","A","DO","N","DO","N","DO","A","P","A"],
+        ["DO","N","DO","A","A","A","P","A","A","P","N","DO","DO","A"],
+        ["P","A","DO","P","N","DO","N","DO","A","P","A","N","N","DO"],
+    ]
 
     count = 0
     for nurse_idx, nurse in enumerate(nurses):
@@ -813,7 +894,8 @@ def seed_roster_entries(
                 day_offset += 1
                 continue
 
-            shift_code = shift_pattern[(day_offset + nurse_idx * 3) % len(shift_pattern)]
+            pattern = ROSTER_PATTERNS[nurse_idx % len(ROSTER_PATTERNS)]
+            shift_code = pattern[day_offset % len(pattern)]
             sc = shift_lookup.get(shift_code)
             start_time = sc.defaultstart if sc else None
             end_time = sc.defaultend if sc else None
@@ -1289,47 +1371,6 @@ def seed_notifications(
     return total
 
 
-def seed_web_users(session: Session) -> int:
-    """Create web_user entries for all RBAC users so they can login.
-
-    This syncs RBACUser table with web_user table used for authentication.
-    Uses the same email and password hash from RBAC users.
-    """
-    logger.info("Seeding web users (for login)...")
-    count = 0
-
-    # Get all RBAC users
-    rbac_users = session.exec(select(RBACUser)).all()
-
-    for rbac_user in rbac_users:
-        # Check if web_user already exists with this email
-        existing = session.exec(
-            select(User).where(User.email == rbac_user.email)
-        ).first()
-
-        if existing:
-            logger.info(f"  Web user '{rbac_user.email}' already exists, skipping")
-            continue
-
-        # Determine if user should be superuser (Admin role)
-        is_superuser = rbac_user.email == "admin@sach.org.sg"
-
-        web_user = User(
-            email=rbac_user.email,
-            hashed_password=rbac_user.passwordhash,
-            is_active=rbac_user.isactive,
-            is_superuser=is_superuser,
-            full_name=rbac_user.username,
-        )
-        session.add(web_user)
-        count += 1
-        logger.info(f"  Created web user: {rbac_user.email}")
-
-    session.commit()
-    logger.info(f"  Created {count} web users")
-    return count
-
-
 def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     """Seed ward-specific shift code mappings.
 
@@ -1384,12 +1425,9 @@ def seed_all() -> None:
         nurses = seed_nurses(session, wards)
 
         # Create RBAC users
-        seed_admin_user(session, roles)
+        # Admin bootstrap is handled separately by app/seed_admin.py or app/initial_data.py
         seed_manager_users(session, managers, wards, roles)
         seed_nurse_users(session, nurses, roles)
-
-        # Create web_user entries for login
-        seed_web_users(session)
 
         # Seed roster data
         periods = seed_roster_periods(session)

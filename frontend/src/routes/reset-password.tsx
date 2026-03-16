@@ -5,14 +5,13 @@ import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock } from "react-icons/fi"
 
 import { type ApiError } from "@/client"
-
 interface NewPassword {
   new_password: string
 }
 import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
+import { showSuccessToast } from "@/components/ui/toast"
 import { isLoggedIn } from "@/hooks/useAuth"
-import useCustomToast from "@/hooks/useCustomToast"
 import { confirmPasswordRules, handleError, passwordRules } from "@/utils"
 
 interface NewPasswordForm extends NewPassword {
@@ -44,7 +43,6 @@ function ResetPassword() {
       new_password: "",
     },
   })
-  const { showSuccessToast } = useCustomToast()
   const navigate = useNavigate()
 
   const resetPassword = async (_data: NewPassword) => {

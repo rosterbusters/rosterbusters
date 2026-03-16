@@ -13,6 +13,7 @@ import {
   Pencil,
   NotepadText,
   LogOut,
+  CircleUserRound,
 } from "lucide-react";
 import {
   NavigationMenu,
@@ -38,7 +39,7 @@ function NurseManagerNavbar() {
   const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
   const { user, logout } = useAuth();
 
-  const userName = (user as any)?.name || user?.full_name || user?.email || "Manager";
+  const userName = user?.name || user?.email || "Manager";
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
@@ -108,24 +109,6 @@ function NurseManagerNavbar() {
                 </NavigationMenuLink>
               </NavigationMenuItem>
 
-              {/* Roster Planning */}
-              <NavigationMenuItem>
-                <NavigationMenuLink asChild>
-                  <Link
-                    to="/nurse-manager/roster-planning"
-                    className={cn(
-                      navPillBaseStyles,
-                      isActive("/nurse-manager/roster-planning")
-                        ? navPillActiveStyles
-                        : navPillInactiveStyles,
-                    )}
-                  >
-                    <CalendarDays className="h-4 w-4 text-[#4B8798]" />
-                    <span>Roster Planning</span>
-                  </Link>
-                </NavigationMenuLink>
-              </NavigationMenuItem>
-
               {/* Leave and Shift Overview - DROPDOWN */}
               <NavigationMenuItem className="relative">
                 <NavigationMenuTrigger
@@ -181,6 +164,24 @@ function NurseManagerNavbar() {
                 </NavigationMenuContent>
               </NavigationMenuItem>
 
+              {/* Roster Planning */}
+              <NavigationMenuItem>
+                <NavigationMenuLink asChild>
+                  <Link
+                    to="/nurse-manager/roster-planning"
+                    className={cn(
+                      navPillBaseStyles,
+                      isActive("/nurse-manager/roster-planning")
+                        ? navPillActiveStyles
+                        : navPillInactiveStyles,
+                    )}
+                  >
+                    <CalendarDays className="h-4 w-4 text-[#4B8798]" />
+                    <span>Roster Planning</span>
+                  </Link>
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+
               {/* Ward Staff Directory */}
               <NavigationMenuItem>
                 <NavigationMenuLink asChild>
@@ -234,10 +235,22 @@ function NurseManagerNavbar() {
                 <ChevronDown className="h-4 w-4 text-[#4B8798]" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40 border-0">
+            <DropdownMenuContent
+              align="end"
+              className="w-44 border border-[#E6E6E6] bg-white p-1 shadow-md"
+            >
+              <DropdownMenuItem asChild className="cursor-pointer bg-white text-[#4A4A4A] focus:bg-[#DDE8EA]/50 focus:text-[#4A4A4A]">
+                <Link
+                  to="/nurse-manager/profile"
+                  className="flex w-full items-center rounded-sm"
+                >
+                  <CircleUserRound className="h-4 w-4 mr-2 text-[#4B8798]" />
+                  My Profile
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={logout}
-                className="cursor-pointer bg-white border-width-0 text-red-600 focus:text-red-600"
+                className="cursor-pointer bg-white text-red-600 focus:bg-red-50 focus:text-red-600"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
@@ -294,21 +307,31 @@ function NurseManagerNavbar() {
           <div className="h-full overflow-y-auto px-4 pt-4">
             {/* Staff Identity Header */}
             <div className="!px-2 pt-6 pb-5 mb-6 border-b border-[#E6E6E6]">
-              <div className="flex items-center justify-between">
+              <div className="space-y-3">
                 <div className="flex items-center gap-1">
                   <User className="h-[18px] w-[18px] text-[#4B8798]" />
                   <span className="text-sm font-medium text-[#4A4A4A]">{userName}</span>
                 </div>
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    logout();
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Logout
-                </button>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/nurse-manager/profile"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-[#4A4A4A] transition-colors hover:bg-[#DDE8EA]/50"
+                  >
+                    <CircleUserRound className="h-4 w-4 text-[#4B8798]" />
+                    My Profile
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      logout();
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -333,25 +356,6 @@ function NurseManagerNavbar() {
                 >
                   <Home className="h-4 w-4 text-[#4B8798]" />
                   Home
-                </span>
-              </Link>
-
-              {/* Roster Planning */}
-              <Link
-                to="/nurse-manager/roster-planning"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center"
-              >
-                <span
-                  className={cn(
-                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                    isActive("/nurse-manager/roster-planning")
-                      ? "bg-[#DCECEF] text-[#4B8798]"
-                      : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
-                  )}
-                >
-                  <CalendarDays className="h-4 w-4 text-[#4B8798]" />
-                  Roster Planning
                 </span>
               </Link>
 
@@ -418,6 +422,25 @@ function NurseManagerNavbar() {
                   </div>
                 )}
               </div>
+
+              {/* Roster Planning */}
+              <Link
+                to="/nurse-manager/roster-planning"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center"
+              >
+                <span
+                  className={cn(
+                    "w-fit inline-flex items-center gap-2 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
+                    isActive("/nurse-manager/roster-planning")
+                      ? "bg-[#DCECEF] text-[#4B8798]"
+                      : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
+                  )}
+                >
+                  <CalendarDays className="h-4 w-4 text-[#4B8798]" />
+                  Roster Planning
+                </span>
+              </Link>
 
               {/* Ward Staff Directory */}
               <Link
