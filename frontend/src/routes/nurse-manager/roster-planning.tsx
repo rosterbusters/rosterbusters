@@ -45,6 +45,7 @@ import {
 } from "@/components/NurseManager/RosterPlanning";
 
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
@@ -134,6 +135,8 @@ function generateMockPlanningOverlays(
 }
 
 function RosterPlanningPage() {
+  const { user } = useAuth();
+
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
     moment().startOf("isoWeek").toDate(),
@@ -182,13 +185,25 @@ function RosterPlanningPage() {
 
   // Generate mock wards if API wards are empty
   const displayWards = useMemo(() => {
-    if (wards.length > 0) return wards;
-    return [
-      { wardId: 4, wardName: "Ward 4", wardType: "General", campus: "Main" },
-      { wardId: 5, wardName: "Ward 5", wardType: "General", campus: "Main" },
-      { wardId: 6, wardName: "Ward 6", wardType: "ICU", campus: "Main" },
-    ];
-  }, [wards]);
+    const availableWards =
+      wards.length > 0
+        ? wards
+        : [
+            { wardId: 4, wardName: "Ward 4", wardType: "General", campus: "Main" },
+            { wardId: 5, wardName: "Ward 5", wardType: "General", campus: "Main" },
+            { wardId: 6, wardName: "Ward 6", wardType: "ICU", campus: "Main" },
+          ];
+
+    if (!user?.managerid) {
+      return availableWards;
+    }
+
+    const designatedWards = availableWards.filter(
+      (ward) => ward.managerId === user.managerid,
+    );
+
+    return designatedWards.length > 0 ? designatedWards : availableWards;
+  }, [wards, user?.managerid]);
 
   // Generate mock periods if API periods are empty
   const displayPeriods = useMemo(() => {
@@ -241,9 +256,15 @@ function RosterPlanningPage() {
     ];
   }, [periods]);
 
-  // Set default ward if not set
+  // Default to a designated ward, and recover if the current selection is no longer allowed
   useEffect(() => {
-    if (displayWards.length > 0 && !selectedWard) {
+    if (displayWards.length === 0) return;
+
+    const selectedWardStillAvailable = selectedWard
+      ? displayWards.some((ward) => ward.wardId === selectedWard.wardId)
+      : false;
+
+    if (!selectedWardStillAvailable) {
       setSelectedWard(displayWards[0]);
     }
   }, [displayWards, selectedWard]);
