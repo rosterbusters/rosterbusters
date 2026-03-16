@@ -112,9 +112,9 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
 
           # Seed database
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_admin.py
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_staff_list_wards.py
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_data.py
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec -T backend python app/seed_admin.py
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec -T backend python app/seed_staff_list_wards.py
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec -T backend python app/seed_data.py
 
           EOF
       
