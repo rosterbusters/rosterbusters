@@ -29,6 +29,13 @@ const SHIFT_NAME_TO_CODE: Record<string, string> = {
   "Night 12h": "N-12",
 };
 
+function resolveShiftCode(value?: string | null): string {
+  if (!value) return "";
+  return SHIFT_CODE_MAP[value as ShiftCode]
+    ? value
+    : (SHIFT_NAME_TO_CODE[value] ?? value);
+}
+
 interface ReviewShiftRequestProps {
   isOpen: boolean;
   onClose: () => void;
@@ -121,9 +128,7 @@ export const ReviewShiftRequest = ({
         : "#d97706";
 
   const activeShiftCode = activeRequest?.initialShiftType ?? shiftCode;
-  const resolvedCode: string = SHIFT_CODE_MAP[activeShiftCode as ShiftCode]
-    ? activeShiftCode
-    : (SHIFT_NAME_TO_CODE[activeShiftCode] ?? activeShiftCode);
+  const resolvedCode = resolveShiftCode(activeShiftCode);
   const shiftDescription =
     SHIFT_CODE_MAP[resolvedCode as ShiftCode]?.description ?? activeShiftCode;
 
@@ -297,7 +302,7 @@ export const ReviewShiftRequest = ({
         requests={requestOptions.map((request) => ({
           requestId: request.requestId,
           nurseName: request.nurseName,
-          initialShiftType: request.initialShiftType,
+          initialShiftType: resolveShiftCode(request.initialShiftType),
           initialDate: request.initialDate,
         }))}
         wardId={wardId}

@@ -20,6 +20,15 @@ import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
 import { Trash2 } from "lucide-react";
 
+function parseRequestDate(value: string) {
+  const normalized = value.split("–")[0]?.trim() ?? value;
+  const [day, month, year] = normalized.split("/");
+  if (day && month && year) {
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  return new Date(normalized);
+}
+
 interface NMReviewLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
@@ -72,7 +81,7 @@ export const NMReviewLeaveRequest = ({
     activeRequest?.leaveType ?? leaveType,
   ]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    new Date(activeRequest?.startDate ?? startDate),
+    parseRequestDate(activeRequest?.startDate ?? startDate),
   );
   const [localComment, setLocalComment] = useState("");
   const queryClient = useQueryClient();
@@ -111,7 +120,7 @@ export const NMReviewLeaveRequest = ({
 
     setSelectedIdx(0);
     setSelectedLeaveType([requestOptions[0]?.leaveType ?? leaveType]);
-    setRequestDate(new Date(requestOptions[0]?.startDate ?? startDate));
+    setRequestDate(parseRequestDate(requestOptions[0]?.startDate ?? startDate));
     setLocalComment("");
   }, [isOpen, leaveType, requestOptions, startDate]);
 
@@ -119,7 +128,7 @@ export const NMReviewLeaveRequest = ({
     if (!activeRequest) return;
 
     setSelectedLeaveType([activeRequest.leaveType]);
-    setRequestDate(new Date(activeRequest.startDate));
+    setRequestDate(parseRequestDate(activeRequest.startDate));
     setLocalComment("");
   }, [activeRequest]);
 
