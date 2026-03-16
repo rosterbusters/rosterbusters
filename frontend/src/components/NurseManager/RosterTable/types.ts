@@ -60,6 +60,7 @@ export interface Ward {
   wardName: string;
   wardType: string;
   campus: string;
+  managerId?: number | null;
 }
 
 // Roster period information
@@ -69,6 +70,20 @@ export interface RosterPeriod {
   startDate: string;
   endDate: string;
   status: 'RequestOpen' | 'RequestClosed' | 'Finalized';
+}
+
+// ============================================
+// Shift Request Overlay Types
+// ============================================
+
+export type ShiftRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export type ShiftRequestCategory = 'Algorithm' | 'Nurse Manager' | 'Self Changed';
+
+export interface ShiftRequestOverlay {
+  status: ShiftRequestStatus;
+  category: ShiftRequestCategory;
+  reason: string;
 }
 
 // Shift assignment for a specific day

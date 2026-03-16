@@ -19,6 +19,7 @@ import {
   type ShiftCode,
   type RosterRow,
   type EditHistoryEntry,
+  type ShiftRequestOverlay,
   type DailyStaffingGuideline,
 } from "@/components/NurseManager/RosterTable";
 import { getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
@@ -46,6 +47,78 @@ interface UndoRedoItem {
   toShiftCode: ShiftCode;
 }
 
+// Generate mock shift request overlays for demonstration
+function generateMockOverlays(startDate: Date): Record<string, Record<string, ShiftRequestOverlay>> {
+  const d = (n: number) => moment(startDate).add(n, "days").format("YYYY-MM-DD");
+  return {
+    "1": { [d(0)]: { status: "Approved",  category: "Nurse Manager", reason: "Approved due to urgent coverage need" } },
+    "3": { [d(1)]: { status: "Rejected",  category: "Algorithm",     reason: "Violates staffing constraints" } },
+    "6": { [d(2)]: { status: "Pending",   category: "Nurse Manager", reason: "Awaiting manager review" } },
+    "7": { [d(4)]: { status: "Approved",  category: "Self Changed",  reason: "Nurse swapped shift after publication" } },
+  };
+}
+
+// Initial mock edit history data for demonstration
+const INITIAL_EDIT_HISTORY: EditHistoryEntry[] = [
+  {
+    id: 1,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "shift_change",
+    previousShiftCode: "A",
+    newShiftCode: "P",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Mary Susan",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 2,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "shift_change",
+    previousShiftCode: "A",
+    newShiftCode: "P",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Tonnie Marti",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 3,
+    modifiedDate: "2025-10-04T14:56:00",
+    changeType: "comment",
+    comment: "hduehud",
+    shiftDate: "2025-10-04T14:56:00",
+    nurseName: "Mary Lamb",
+    modifiedBy: "Tonnie Marti",
+  },
+  {
+    id: 4,
+    modifiedDate: "2025-10-03T09:30:00",
+    changeType: "shift_change",
+    previousShiftCode: "D",
+    newShiftCode: "N",
+    shiftDate: "2025-10-03T09:30:00",
+    nurseName: "Sarah Johnson",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 5,
+    modifiedDate: "2025-10-03T08:15:00",
+    changeType: "shift_change",
+    previousShiftCode: "DO",
+    newShiftCode: "A",
+    shiftDate: "2025-10-03T08:15:00",
+    nurseName: "Emily Chen",
+    modifiedBy: "Grace",
+  },
+  {
+    id: 6,
+    modifiedDate: "2025-10-02T16:45:00",
+    changeType: "comment",
+    comment: "Nurse requested swap due to family emergency",
+    shiftDate: "2025-10-02T16:45:00",
+    nurseName: "David Wong",
+    modifiedBy: "Grace",
+  },
+];
 
 function NurseManagerHome() {
   // State management
@@ -56,6 +129,8 @@ function NurseManagerHome() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
+  // Mock shift request overlays
+  const mockOverlays = useMemo(() => generateMockOverlays(currentStartDate), [currentStartDate]);
   const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(getWardGuidelines(undefined));
   const [dateOverrides, setDateOverrides] = useState<Record<string, DailyStaffingGuideline>>({});
   const [undoStack, setUndoStack] = useState<UndoRedoItem[]>([]);
@@ -553,6 +628,7 @@ function NurseManagerHome() {
             onCommentChange={handleCommentChange}
             isLoading={wardsLoading || rosterLoading}
             showSummary={false}
+            shiftRequestOverlays={mockOverlays}
           />
         </Box>
 
