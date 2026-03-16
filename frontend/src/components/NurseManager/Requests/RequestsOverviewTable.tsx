@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Box,
@@ -15,7 +15,7 @@ import { Check, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
 import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
 import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
-import { ReviewLeaveRequest } from "./LeaveRequests/ReviewLeaveRequest";
+import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
 
 // ─── Mock shift request data (used when no wardId / no API data) ─────────────
 const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
@@ -154,6 +154,14 @@ function formatDate(dateStr: string): string {
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
   return `${day}/${month < 10 ? "0" + month : month}/${year}`;
+}
+
+function normalizeLeaveDateRange(dateValue: string) {
+  const parts = dateValue.split("–").map((part) => part.trim());
+  return {
+    startDate: parts[0] ?? dateValue,
+    endDate: parts[1] ?? parts[0] ?? dateValue,
+  };
 }
 
 // ─── Status cell ─────────────────────────────────────────────────────────────
@@ -310,9 +318,13 @@ function SortIcon({ direction }: { direction: "asc" | "desc" | null }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 interface RequestsOverviewTableProps {
   wardId?: number | null;
+  wardSelector?: ReactNode;
 }
 
-export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
+export function RequestsOverviewTable({
+  wardId,
+  wardSelector,
+}: RequestsOverviewTableProps) {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
@@ -492,13 +504,22 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
       </Text>
 
       {/* Tabs */}
-      <Flex justify="center">
+      <Flex
+        w="full"
+        align="center"
+        justify="space-between"
+        gap={4}
+        wrap={{ base: "wrap", md: "nowrap" }}
+      >
+        <Box minW={{ base: "0", md: "160px" }} flex={{ base: "1 1 auto", md: "0 0 160px" }} />
         <HStack
           gap={0}
           rounded="full"
           borderWidth="1px"
           borderColor="border"
           overflow="hidden"
+          justify="center"
+          flexShrink={0}
         >
           {TABS.map((tab, idx) => {
             const isFirst = idx === 0;
@@ -527,6 +548,14 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
             );
           })}
         </HStack>
+        <Box
+          minW={{ base: "100%", md: "160px" }}
+          display="flex"
+          justifyContent={{ base: "center", md: "flex-end" }}
+          flex={{ base: "1 1 100%", md: "0 0 160px" }}
+        >
+          {wardSelector ?? <Box />}
+        </Box>
       </Flex>
 
       {/* Table */}
@@ -844,25 +873,35 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
           }
           date={selectedShiftRequest.requestedDates}
           status={selectedShiftRequest.status}
-          comment={selectedShiftRequest.comments}
+          comment={
+            commentOverrides[selectedShiftRequest.id] ??
+            selectedShiftRequest.comments
+          }
+          wardId={wardId}
           onAction={handleAction}
         />
       )}
 
       {/* Leave review dialog */}
-      {selectedLeaveRequest && (
-        <ReviewLeaveRequest
-          isOpen={!!selectedLeaveRequest}
-          onClose={() => setSelectedLeaveRequest(null)}
-          requestId={selectedLeaveRequest.id}
-          nurseName={selectedLeaveRequest.nurseName ?? null}
-          leaveType={selectedLeaveRequest.requestTypeName}
-          date={selectedLeaveRequest.requestedDates}
-          status={selectedLeaveRequest.status}
-          comment={selectedLeaveRequest.comments}
-          onAction={handleAction}
-        />
-      )}
+      {selectedLeaveRequest &&
+        (() => {
+          const { startDate, endDate } = normalizeLeaveDateRange(
+            selectedLeaveRequest.requestedDates,
+          );
+
+          return (
+            <NMReviewLeaveRequest
+              isOpen={!!selectedLeaveRequest}
+              onClose={() => setSelectedLeaveRequest(null)}
+              requestId={selectedLeaveRequest.id}
+              nurseName={selectedLeaveRequest.nurseName ?? ""}
+              leaveType={selectedLeaveRequest.requestTypeName}
+              startDate={startDate}
+              endDate={endDate}
+              currentStatus={selectedLeaveRequest.status}
+            />
+          );
+        })()}
     </VStack>
   );
 }

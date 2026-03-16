@@ -3,8 +3,10 @@ import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
-import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
+import { NewShiftRequest } from "./NewShiftRequest";
 import { ReviewShiftRequest } from "./ReviewShiftRequest";
+import useAuth from "@/hooks/useAuth";
+import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 import moment from "moment";
 
 interface CustomWeekViewProps {
@@ -54,20 +56,22 @@ function groupByShift(events: Event[]): Map<string, Event[]> {
   return grouped;
 }
 
-interface ReviewRequestEntry extends ShiftRequestEntry {
-  status: string;
-  comment?: string | null;
-}
-
 const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   date,
   localizer,
   events,
   wardId,
 }: CustomWeekViewProps) {
-  const [selectedRequest, setSelectedRequest] = useState<ShiftRequestEntry[] | null>(null);
-  const [selectedReviewRequest, setSelectedReviewRequest] = useState<ReviewRequestEntry[] | null>(null);
+  const [selectedReviewRequest, setSelectedReviewRequest] = useState<{
+    requestId: number;
+    nurseName: string;
+    shiftType: string;
+    preferredDate: string;
+    status: string;
+    reason: string | null;
+  } | null>(null);
   const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
+  const [selectedGroup, setSelectedGroup] = useState<ShiftRequestEntry[] | null>(null);
 
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
@@ -81,6 +85,9 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   ) => {
     setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
   };
+
+  
+
   return (
     <>
       <VStack overflowX={"auto"} gap={0} alignItems="stretch">
@@ -151,29 +158,14 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                         initialShiftType: e.resource?.shiftType ?? shiftType,
                         initialDate: e.resource?.preferredDate ?? "",
                       }));
-                      const reviewRequests: ReviewRequestEntry[] = groupEvents.map((e) => ({
-                        requestId: e.resource?.requestId,
-                        nurseName: e.resource?.nurseName ?? "",
-                        initialShiftType: e.resource?.shiftType ?? shiftType,
-                        initialDate: e.resource?.preferredDate ?? "",
-                        status: statusOverrides[e.resource?.requestId] ?? e.resource?.status ?? "",
-                        comment: e.resource?.reason ?? null,
-                      }));
 
                       return (
-                        <Box key={`${localizer.format(day, "yyyy-MM-dd")}-${shiftType}`} pb={2} maxW="100%">
+                        <Box key={shiftType} pb={2} maxW="100%">
                           <CalendarRequestBlock
                             shift={shiftType}
                             nurseName={nurseNames}
                             owned={isOwn}
-                            onClick={() => {
-                              if (isOwn) {
-                                setSelectedRequest(requests);
-                                return;
-                              }
-
-                              setSelectedReviewRequest(reviewRequests);
-                            }}
+                            onClick={() => setSelectedGroup(requests)}
                           />
                         </Box>
                       );
@@ -185,11 +177,11 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         </Grid>
       </VStack>
 
-      {selectedRequest && (
+      {selectedGroup && (
         <EditShiftRequest
-          isOpen={!!selectedRequest}
-          onClose={() => setSelectedRequest(null)}
-          requests={selectedRequest}
+          isOpen={!!selectedGroup}
+          onClose={() => setSelectedGroup(null)}
+          requests={selectedGroup}
           wardId={wardId as number | null | undefined}
         />
       )}
@@ -198,14 +190,15 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         <ReviewShiftRequest
           isOpen={!!selectedReviewRequest}
           onClose={() => setSelectedReviewRequest(null)}
-          requestId={selectedReviewRequest[0].requestId}
-          nurseName={selectedReviewRequest[0].nurseName}
-          shiftCode={selectedReviewRequest[0].initialShiftType}
-          date={selectedReviewRequest[0].initialDate}
-          status={selectedReviewRequest[0].status}
-          comment={selectedReviewRequest[0].comment}
-          wardId={wardId as number | null | undefined}
-          requests={selectedReviewRequest}
+          requestId={selectedReviewRequest.requestId}
+          nurseName={selectedReviewRequest.nurseName}
+          shiftCode={selectedReviewRequest.shiftType}
+          date={selectedReviewRequest.preferredDate}
+          status={
+            statusOverrides[selectedReviewRequest.requestId] ??
+            selectedReviewRequest.status
+          }
+          comment={selectedReviewRequest.reason}
           onAction={handleReviewAction}
         />
       )}

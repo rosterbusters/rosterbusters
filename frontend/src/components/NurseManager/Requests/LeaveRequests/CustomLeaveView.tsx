@@ -41,6 +41,17 @@ function getEventsForDay(day: Date, events: Event[]): Event[] {
   });
 }
 
+function groupByLeaveType(events: Event[]) {
+  const grouped = new Map<string, Event[]>();
+  events.forEach((event) => {
+    const key = event.resource?.leaveType ?? event.title;
+    const existing = grouped.get(key) ?? [];
+    existing.push(event);
+    grouped.set(key, existing);
+  });
+  return grouped;
+}
+
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
@@ -107,6 +118,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
           >
             {week.map((day, di) => {
               const eventsForDay = getEventsForDay(day, events);
+              const grouped = groupByLeaveType(eventsForDay);
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
 
@@ -125,23 +137,40 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
-                    {eventsForDay.length > 0 &&
-                      [...eventsForDay]
-                        .sort(
-                          (a, b) =>
-                            (b.resource?.isOwn ? 1 : 0) -
-                            (a.resource?.isOwn ? 1 : 0),
-                        )
-                        .map((ev, idx) => (
-                          <Box key={idx} pb={2} maxW="100%" onClick={(e) => e.stopPropagation()}>
+                    {Array.from(grouped.entries())
+                      .sort(([, a], [, b]) => {
+                        const aOwn = a.some((event) => event.resource?.isOwn);
+                        const bOwn = b.some((event) => event.resource?.isOwn);
+                        return (bOwn ? 1 : 0) - (aOwn ? 1 : 0);
+                      })
+                      .map(([leaveType, groupedEvents]) => {
+                        const isOwn = groupedEvents.some(
+                          (event) => event.resource?.isOwn,
+                        );
+                        const requests = groupedEvents.flatMap(
+                          (event) => event.resource?.requests ?? [],
+                        );
+                        const nurseNames = requests
+                          .map((request) => request.nurseName)
+                          .filter(Boolean)
+                          .join(", ");
+
+                        return (
+                          <Box
+                            key={`${moment(day).format("YYYY-MM-DD")}-${leaveType}`}
+                            pb={2}
+                            maxW="100%"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <CalendarRequestBlock
-                              shift={ev.title}
-                              nurseName={ev.resource?.nurseName}
-                              owned={ev.resource?.isOwn}
-                              onClick={() => setSelectedRequest(ev.resource?.requests ?? [])}
+                              shift={leaveType}
+                              nurseName={nurseNames}
+                              owned={isOwn}
+                              onClick={() => setSelectedRequest(requests)}
                             />
                           </Box>
-                        ))}
+                        );
+                      })}
                   </Box>
                 </GridItem>
               );
