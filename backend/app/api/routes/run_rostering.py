@@ -2,7 +2,7 @@ import json
 import queue
 import threading
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -35,6 +35,23 @@ class RosterCommentUpdate(BaseModel):
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
+
+
+class TriggeredItem(BaseModel):
+    ward_id: int
+    period_id: int
+    task_id: str
+
+
+class SkippedItem(BaseModel):
+    ward_id: int
+    period_id: int
+    reason: str
+
+
+class ScheduledGenerationResponse(BaseModel):
+    triggered: list[TriggeredItem]
+    skipped: list[SkippedItem]
 
 
 router = APIRouter()
@@ -346,6 +363,46 @@ def generate_roster_async(
 
     task = generate_roster_task.delay(request_data.ward_id, request_data.period_id)
     return {"task_id": task.id, "status": "queued"}
+
+
+@router.post("/trigger-scheduled-generation", response_model=ScheduledGenerationResponse)
+def trigger_scheduled_generation(
+    days_ahead: int = 8,
+    db: Session = Depends(get_db),
+):
+    """
+    Called by AWS Lambda on a schedule. No user auth required.
+    Finds RosterPeriods starting in `days_ahead` days, queues generate_and_save_roster_task
+    for every active ward. Existing rosters are overwritten by the task.
+    """
+    from app.tasks.roster_tasks import generate_and_save_roster_task
+
+    target_date = date.today() + timedelta(days=days_ahead)
+
+    periods = db.exec(
+        select(RosterPeriod).where(
+            RosterPeriod.startdate == target_date,
+            RosterPeriod.status == "RequestOpen",
+        )
+    ).all()
+
+    active_wards = db.exec(
+        select(Ward).where(Ward.isactive == True)  # noqa: E712
+    ).all()
+
+    triggered: list[dict] = []
+    skipped: list[dict] = []
+
+    for period in periods:
+        for ward in active_wards:
+            task = generate_and_save_roster_task.delay(ward.wardid, period.periodid)
+            triggered.append({
+                "ward_id": ward.wardid,
+                "period_id": period.periodid,
+                "task_id": task.id,
+            })
+
+    return {"triggered": triggered, "skipped": skipped}
 
 
 @router.get("/task/{task_id}/status")
