@@ -113,6 +113,30 @@ export function useShiftCodes() {
   });
 }
 
+export interface ShiftCodeOption {
+  shiftcode: string;
+  description: string;
+  isworking: boolean;
+  shiftdurationhours: number | null;
+}
+
+export function useAllShiftCodes() {
+  return useQuery<ShiftCodeOption[]>({
+    queryKey: ["allShiftCodes"],
+    queryFn: async () => {
+      const data: Array<{
+        shiftcode: string;
+        description: string;
+        isworking: boolean;
+        shiftdurationhours: number | null;
+      }> = await fetchWithAuth("/api/v1/shift-requests/shift-codes");
+
+      return data;
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
 // Get duration hours for a shift code, falling back to the static SHIFT_CODE_MAP
 export function getShiftDurationHours(
   shiftCode: string,

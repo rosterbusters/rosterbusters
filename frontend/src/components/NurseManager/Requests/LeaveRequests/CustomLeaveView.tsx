@@ -11,6 +11,7 @@ interface CustomMonthViewProps {
   date: Date;
   localizer: DateLocalizer;
   events: Event[];
+  wardId?: number | null;
   [key: string]: unknown;
 }
 
@@ -46,15 +47,16 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
   localizer,
   events,
+  wardId,
 }: CustomMonthViewProps) {
-  const [selectedRequest, setSelectedRequest] = useState<{
+  const [selectedRequest, setSelectedRequest] = useState<Array<{
     requestId: number;
+    nurseName: string;
     leaveType: string;
     startDate: string;
     endDate: string;
-    nurseName: string;
     status: string;
-  } | null>(null);
+  }> | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
   const currRange = useMemo(
@@ -136,16 +138,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               shift={ev.title}
                               nurseName={ev.resource?.nurseName}
                               owned={ev.resource?.isOwn}
-                              onClick={() =>
-                                setSelectedRequest({
-                                  requestId: ev.resource.requestId,
-                                  leaveType: ev.resource.shiftType,
-                                  startDate: ev.resource.startDate,
-                                  endDate: ev.resource.endDate,
-                                  nurseName: ev.resource.nurseName,
-                                  status: ev.resource.status,
-                                })
-                              }
+                              onClick={() => setSelectedRequest(ev.resource?.requests ?? [])}
                             />
                           </Box>
                         ))}
@@ -161,12 +154,13 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         <NMReviewLeaveRequest
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
-          requestId={selectedRequest.requestId}
-          leaveType={selectedRequest.leaveType}
-          startDate={selectedRequest.startDate}
-          endDate={selectedRequest.endDate}
-          nurseName={selectedRequest.nurseName}
-          currentStatus={selectedRequest.status}
+          requestId={selectedRequest[0].requestId}
+          leaveType={selectedRequest[0].leaveType}
+          startDate={selectedRequest[0].startDate}
+          endDate={selectedRequest[0].endDate}
+          nurseName={selectedRequest[0].nurseName}
+          currentStatus={selectedRequest[0].status}
+          requests={selectedRequest}
         />
       )}
 
@@ -174,6 +168,8 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         isOpen={!!newLeaveDate}
         onClose={() => setNewLeaveDate(null)}
         selectedDate={newLeaveDate}
+        wardId={wardId}
+        allowNurseOverride
       />
     </>
   );

@@ -19,7 +19,7 @@ import {
   SHIFT_CODE_MAP,
   SHIFT_COLOR_MAP,
 } from "./types";
-import { useUpdateRosterComment } from "./useRosterData";
+import { useAllShiftCodes, useUpdateRosterComment } from "./useRosterData";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 interface ShiftEditPopoverProps {
@@ -33,26 +33,12 @@ interface ShiftEditPopoverProps {
   anchorEl: HTMLElement | null;
 }
 
-// Working shifts
-const WORKING_SHIFTS: ShiftCode[] = ["D", "A", "P", "N", "N-12"];
-// Leave / Off shifts
-const LEAVE_SHIFTS: ShiftCode[] = [
-  "DO",
-  "AL",
-  "MC",
-  "URG",
-  "BCL",
-  "CCL",
-  "ML",
-  "CL",
-  "EML",
-];
-
 interface ShiftDropdownProps {
   label: string;
   options: ShiftCode[];
   selectedShift: ShiftCode | null;
   onSelect: (code: ShiftCode) => void;
+  descriptions?: Record<string, string>;
 }
 
 function ShiftDropdown({
@@ -60,6 +46,7 @@ function ShiftDropdown({
   options,
   selectedShift,
   onSelect,
+  descriptions,
 }: ShiftDropdownProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -70,7 +57,7 @@ function ShiftDropdown({
     const q = searchQuery.toLowerCase();
     return (
       code.toLowerCase().includes(q) ||
-      (SHIFT_CODE_MAP[code]?.description ?? "").toLowerCase().includes(q)
+      (descriptions?.[code] ?? SHIFT_CODE_MAP[code]?.description ?? "").toLowerCase().includes(q)
     );
   });
 
@@ -99,7 +86,7 @@ function ShiftDropdown({
           {selectedOption ? (
             <HStack gap={2}>
               <Box
-                bg={SHIFT_COLOR_MAP[selectedOption]}
+                bg={SHIFT_COLOR_MAP[selectedOption] ?? "gray.500"}
                 color="white"
                 px={2}
                 py={0.5}
@@ -107,12 +94,14 @@ function ShiftDropdown({
                 fontSize="xs"
                 fontWeight="semibold"
                 minW="32px"
+                width="fit-content"
+                flexShrink={0}
                 textAlign="center"
               >
                 {selectedOption}
               </Box>
-              <Text fontSize="sm" color="gray.700">
-                {SHIFT_CODE_MAP[selectedOption]?.description}
+              <Text fontSize="sm" color="gray.700" whiteSpace="normal" wordBreak="break-word">
+                {descriptions?.[selectedOption] ?? SHIFT_CODE_MAP[selectedOption]?.description ?? selectedOption}
               </Text>
             </HStack>
           ) : (
@@ -185,7 +174,7 @@ function ShiftDropdown({
               }}
             >
               <Box
-                bg={SHIFT_COLOR_MAP[code]}
+                bg={SHIFT_COLOR_MAP[code] ?? "gray.500"}
                 color="white"
                 px={2}
                 py={0.5}
@@ -193,12 +182,14 @@ function ShiftDropdown({
                 fontSize="xs"
                 fontWeight="semibold"
                 minW="32px"
+                width="fit-content"
+                flexShrink={0}
                 textAlign="center"
               >
                 {code}
               </Box>
-              <Text fontSize="sm" color="gray.700">
-                {SHIFT_CODE_MAP[code]?.description}
+              <Text fontSize="sm" color="gray.700" whiteSpace="normal" wordBreak="break-word">
+                {descriptions?.[code] ?? SHIFT_CODE_MAP[code]?.description ?? code}
               </Text>
             </Flex>
           ))}
@@ -231,6 +222,7 @@ export function ShiftEditPopover({
   );
   const [showCommentInput, setShowCommentInput] = useState(false);
   const [isSavingComment, setIsSavingComment] = useState(false);
+  const { data: allShiftCodes = [], isLoading: isShiftCodesLoading } = useAllShiftCodes();
 
   const updateRosterComment = useUpdateRosterComment();
 
@@ -283,12 +275,22 @@ export function ShiftEditPopover({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleUndoAll]);
 
+  const workingShifts = allShiftCodes
+    .filter((shiftCode) => shiftCode.isworking)
+    .map((shiftCode) => shiftCode.shiftcode as ShiftCode);
+  const leaveShifts = allShiftCodes
+    .filter((shiftCode) => !shiftCode.isworking)
+    .map((shiftCode) => shiftCode.shiftcode as ShiftCode);
+  const shiftDescriptions = Object.fromEntries(
+    allShiftCodes.map((shiftCode) => [shiftCode.shiftcode, shiftCode.description]),
+  ) as Record<string, string>;
+
   // Determine which category the current selection belongs to
   const isWorkingShift = selectedShift
-    ? WORKING_SHIFTS.includes(selectedShift)
+    ? workingShifts.includes(selectedShift)
     : false;
   const isLeaveShift = selectedShift
-    ? LEAVE_SHIFTS.includes(selectedShift)
+    ? leaveShifts.includes(selectedShift)
     : false;
 
   const handleShiftSelect = (shiftCode: ShiftCode) => {
@@ -369,18 +371,27 @@ export function ShiftEditPopover({
               {/* Shift Type Dropdown */}
               <ShiftDropdown
                 label="Shift Type"
-                options={WORKING_SHIFTS}
+                options={workingShifts}
                 selectedShift={isWorkingShift ? selectedShift : null}
                 onSelect={handleShiftSelect}
+                descriptions={shiftDescriptions}
               />
 
               {/* Leave Type Dropdown */}
               <ShiftDropdown
                 label="Leave Type"
-                options={LEAVE_SHIFTS}
+                options={leaveShifts}
                 selectedShift={isLeaveShift ? selectedShift : null}
                 onSelect={handleShiftSelect}
+                descriptions={shiftDescriptions}
               />
+
+              {isShiftCodesLoading && (
+                <Flex align="center" gap={2} color="gray.500">
+                  <Spinner size="sm" />
+                  <Text fontSize="sm">Loading shift codes...</Text>
+                </Flex>
+              )}
 
               {/* Add Comment Section */}
               <Box

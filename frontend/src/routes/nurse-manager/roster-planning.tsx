@@ -43,15 +43,7 @@ import {
   RosterPlanningHeader,
   getWardGuidelines,
 } from "@/components/NurseManager/RosterPlanning";
-import useCustomToast from "@/hooks/useCustomToast";
-  DialogRoot,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogBody,
-  DialogFooter,
-  DialogCloseTrigger,
-} from "@/components/ui/dialog";
+
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
@@ -972,7 +964,7 @@ function RosterPlanningPage() {
         wardId: selectedWard.wardId, // CamelCase to match hook params
         periodId: selectedPeriod.periodId,
         startDate: currentStartDate, // Pass the actual Date object
-        mockData,
+
       });
 
       // The hook now returns exactly what we need

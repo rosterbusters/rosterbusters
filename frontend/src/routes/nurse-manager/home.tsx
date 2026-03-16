@@ -129,7 +129,6 @@ function NurseManagerHome() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
-  const [editHistory, setEditHistory] = useState<EditHistoryEntry[]>(INITIAL_EDIT_HISTORY);
   // Mock shift request overlays
   const mockOverlays = useMemo(() => generateMockOverlays(currentStartDate), [currentStartDate]);
   const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(getWardGuidelines(undefined));
