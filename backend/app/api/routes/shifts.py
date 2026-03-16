@@ -20,6 +20,7 @@ from app.models.shifts import (
     ShiftRequestUpdate,
 )
 from app.rbac import get_rbac_user_by_email
+from app.services.roster_period_service import ensure_roster_period_window
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -234,8 +235,7 @@ def get_shift_codes_by_ward(
 @router.get("/periods", response_model=list[RosterPeriodPublic])
 def get_roster_periods(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all roster periods."""
-    statement = select(RosterPeriod).order_by(RosterPeriod.startdate.desc())
-    return list(session.exec(statement).all())
+    return ensure_roster_period_window(session)
 
 
 @router.get("/period", response_model=RosterPeriodPublic)
@@ -245,6 +245,7 @@ def get_roster_period(
     target_date: date = Query(..., description="Date to find the roster period for"),
 ) -> Any:
     """Get the roster period that contains the given date."""
+    ensure_roster_period_window(session)
     statement = select(RosterPeriod).where(
         RosterPeriod.startdate <= target_date,
         RosterPeriod.enddate >= target_date,

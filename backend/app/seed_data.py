@@ -18,6 +18,7 @@ from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
 from app.models.enums import NotificationType
+from app.services.roster_period_service import ensure_roster_period_window, get_roster_year_start
 # from app.models.web import User
 
 
@@ -712,80 +713,41 @@ def seed_nurse_users(
 
 
 def seed_roster_periods(session: Session) -> list[RosterPeriod]:
-    """Seed roster periods covering the previous calendar month and upcoming 2 weeks.
-
-    Periods are 2-week Mon–Sun blocks aligned to the current week's Monday.
-    Blocks step backward until the previous calendar month is fully covered,
-    then forward for the next 2-week block.
-
-    Returns the list with the current period at index 0 and the next period at
-    index 1 (preserving backward-compat for callers that use periods[0/1]),
-    followed by past periods in reverse-chronological order.
-    """
+    """Seed the maintained roster-period window and return current-first ordering."""
     logger.info("Seeding roster periods...")
-
     today = date.today()
-    current_monday = today - timedelta(days=today.weekday())
-    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    maintained_periods = ensure_roster_period_window(session, today=today)
+    current_roster_year_start = get_roster_year_start(today)
+    next_roster_year_start = current_roster_year_start + timedelta(days=364)
 
-    # Collect all period start dates needed
-    period_starts: set[date] = set()
+    current_periods: list[RosterPeriod] = []
+    next_year_periods: list[RosterPeriod] = []
 
-    # Current + next
-    period_starts.add(current_monday)
-    period_starts.add(current_monday + timedelta(weeks=2))
-
-    # Step backward in 2-week blocks until the block's end date reaches
-    # before the first day of the previous month
-    p = current_monday - timedelta(weeks=2)
-    while True:
-        period_starts.add(p)
-        if p <= first_of_prev_month:
-            break
-        p -= timedelta(weeks=2)
-
-    all_periods: dict[date, RosterPeriod] = {}
-    for start in sorted(period_starts):
-        end = start + timedelta(days=13)
-        request_open = start - timedelta(days=10)
-        request_close = start - timedelta(days=3)
-
-        if start == current_monday:
-            label, status = "Current", "RequestOpen"
-        elif start > current_monday:
-            label, status = "Next", "RequestOpen"
+    for period in maintained_periods:
+        if period.startdate <= today <= period.enddate:
+            current_periods.append(period)
+        elif current_roster_year_start <= period.startdate < next_roster_year_start:
+            current_periods.append(period)
         else:
-            label, status = "Past", "Published"
+            next_year_periods.append(period)
 
-        period_name = f"{label} Period {start.strftime('%b %d')}-{end.strftime('%b %d %Y')}"
+    ordered_periods = sorted(
+        current_periods,
+        key=lambda period: (
+            0 if period.startdate <= today <= period.enddate else 1,
+            period.startdate,
+        ),
+    ) + sorted(next_year_periods, key=lambda period: period.startdate)
 
-        existing = session.exec(
-            select(RosterPeriod).where(RosterPeriod.startdate == start)
-        ).first()
+    for period in ordered_periods:
+        logger.info(
+            "  Maintained roster period: %s (%s - %s)",
+            period.name,
+            period.startdate,
+            period.enddate,
+        )
 
-        if existing:
-            logger.info(f"  Roster period {start} already exists, skipping")
-            all_periods[start] = existing
-        else:
-            period = RosterPeriod(
-                name=period_name,
-                startdate=start,
-                enddate=end,
-                requestopendate=request_open,
-                requestclosedate=request_close,
-                status=status,
-            )
-            session.add(period)
-            session.commit()
-            session.refresh(period)
-            all_periods[start] = period
-            logger.info(f"  Created roster period: {period_name} (ID: {period.periodid})")
-
-    sorted_starts = sorted(all_periods.keys())
-    # current + future first (index 0 = current), then past in reverse-chron order
-    current_and_future = [all_periods[s] for s in sorted_starts if s >= current_monday]
-    past = [all_periods[s] for s in reversed(sorted_starts) if s < current_monday]
-    return current_and_future + past
+    return ordered_periods
 
 
 def seed_roster_entries(
