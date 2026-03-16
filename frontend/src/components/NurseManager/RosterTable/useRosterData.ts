@@ -44,6 +44,7 @@ export function useWards() {
         wardName: w.wardname,
         wardType: w.wardtype ?? "",
         campus: w.campus ?? "",
+        managerId: w.managerid ?? null,
       }));
     },
     staleTime: 5 * 60 * 1000, // 5 minutes

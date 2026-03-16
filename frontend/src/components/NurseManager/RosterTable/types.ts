@@ -60,6 +60,7 @@ export interface Ward {
   wardName: string;
   wardType: string;
   campus: string;
+  managerId?: number | null;
 }
 
 // Roster period information
