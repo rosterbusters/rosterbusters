@@ -84,30 +84,6 @@ interface ImportProgressState {
   currentLabel: string
 }
 
-type ImportedPasswordMap = Record<number, string>
-
-const IMPORTED_PASSWORDS_STORAGE_KEY = "admin-imported-passwords"
-
-const loadImportedPasswords = (): ImportedPasswordMap => {
-  if (typeof window === "undefined") return {}
-  try {
-    const raw = window.sessionStorage.getItem(IMPORTED_PASSWORDS_STORAGE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as ImportedPasswordMap
-    return parsed && typeof parsed === "object" ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
-const persistImportedPasswords = (passwords: ImportedPasswordMap) => {
-  if (typeof window === "undefined") return
-  window.sessionStorage.setItem(
-    IMPORTED_PASSWORDS_STORAGE_KEY,
-    JSON.stringify(passwords),
-  )
-}
-
 const normalizeHeader = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, "")
 
@@ -897,9 +873,6 @@ function AdminUsers() {
   const [pendingImport, setPendingImport] = useState<PendingImportState | null>(null)
   const [importPassword, setImportPassword] = useState("")
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null)
-  const [importedPasswords, setImportedPasswords] = useState<ImportedPasswordMap>(
-    () => loadImportedPasswords(),
-  )
 
   const importRows = async (file: File, password?: string) => {
     const result = await parseStaffWorkbook(
@@ -918,7 +891,6 @@ function AdminUsers() {
     const failures: string[] = []
     let importedCount = 0
     let failedCount = 0
-    const newImportedPasswords: ImportedPasswordMap = {}
 
     setImportProgress({
       total: result.rows.length,
@@ -937,7 +909,7 @@ function AdminUsers() {
         currentLabel: row.username,
       })
       try {
-        const createdUser = await AdminService.createUser({
+        await AdminService.createUser({
           username: row.username,
           email: row.email,
           employee_id: row.employee_id,
@@ -946,9 +918,6 @@ function AdminUsers() {
           role: row.role,
           ward_ids: row.ward_ids,
         })
-        if (createdUser.generated_password) {
-          newImportedPasswords[createdUser.userid] = createdUser.generated_password
-        }
         importedCount += 1
       } catch (error: any) {
         failedCount += 1
@@ -963,14 +932,6 @@ function AdminUsers() {
         imported: importedCount,
         failed: failedCount,
         currentLabel: row.username,
-      })
-    }
-
-    if (Object.keys(newImportedPasswords).length > 0) {
-      setImportedPasswords((prev) => {
-        const next = { ...prev, ...newImportedPasswords }
-        persistImportedPasswords(next)
-        return next
       })
     }
 
@@ -1226,7 +1187,6 @@ function AdminUsers() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Ward</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Password</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Imported Password</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
@@ -1295,24 +1255,6 @@ function AdminUsers() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {importedPasswords[user.userid] ? (
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-gray-900">
-                            {importedPasswords[user.userid]}
-                          </span>
-                          <button
-                            onClick={() => navigator.clipboard.writeText(importedPasswords[user.userid])}
-                            className="text-xs text-blue-600 hover:text-blue-700"
-                            title="Copy imported password"
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button
                           onClick={() => resetPasswordMutation.mutate(user)}
@@ -1344,7 +1286,7 @@ function AdminUsers() {
                 ))}
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-500">
+                    <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
                       No users found.
                     </td>
                   </tr>
