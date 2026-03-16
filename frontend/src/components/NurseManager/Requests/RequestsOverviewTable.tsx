@@ -27,6 +27,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Pending",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Alice Tan",
   },
   {
     id: -102,
@@ -36,6 +37,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Ben Lim",
   },
   {
     id: -103,
@@ -45,6 +47,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Rejected",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Clara Wong",
   },
   {
     id: -104,
@@ -54,6 +57,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "David Ng",
   },
   {
     id: -105,
@@ -63,6 +67,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Eva Chan",
   },
 ];
 
@@ -76,6 +81,7 @@ const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: "mom's birthday",
+    nurseName: "Fiona Koh",
   },
   {
     id: -2,
@@ -85,6 +91,7 @@ const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "George Tan",
   },
   {
     id: -3,
@@ -94,6 +101,7 @@ const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Hannah Lee",
   },
   {
     id: -4,
@@ -103,6 +111,7 @@ const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Ivan Ong",
   },
   {
     id: -5,
@@ -112,6 +121,7 @@ const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Julia Sim",
   },
   {
     id: -6,
@@ -121,6 +131,7 @@ const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Kevin Ho",
   },
 ];
 
@@ -469,7 +480,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
   const isLoading = shiftLoading;
 
   return (
-    <VStack align="stretch" gap={4} w="full" maxW="1000px" mx="auto">
+    <VStack align="stretch" gap={4} w="full" maxW="1200px" mx="auto">
       {/* Title */}
       <Text
         color="primary"
@@ -538,6 +549,17 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                   px={4}
                 >
                   Type
+                </Table.ColumnHeader>
+                <Table.ColumnHeader
+                  fontSize="xs"
+                  color="gray.500"
+                  fontWeight="semibold"
+                  textTransform="uppercase"
+                  letterSpacing="wider"
+                  py={3}
+                  px={4}
+                >
+                  Ward Staff
                 </Table.ColumnHeader>
                 <Table.ColumnHeader
                   fontSize="xs"
@@ -619,7 +641,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
               {currentPageData.length === 0 ? (
                 <Table.Row>
                   <Table.Cell
-                    colSpan={7}
+                    colSpan={8}
                     textAlign="center"
                     py={10}
                     color="gray.400"
@@ -638,6 +660,13 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                     {/* Type */}
                     <Table.Cell py={2} px={4}>
                       <TypeCell type={req.type} />
+                    </Table.Cell>
+
+                    {/* Ward Staff */}
+                    <Table.Cell py={2} px={4}>
+                      <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
+                        {req.nurseName ?? "–"}
+                      </Text>
                     </Table.Cell>
 
                     {/* Request Type badge */}
@@ -683,7 +712,9 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                               expandedComments.has(req.id) ? "normal" : "nowrap"
                             }
                             overflow={
-                              expandedComments.has(req.id) ? "visible" : "hidden"
+                              expandedComments.has(req.id)
+                                ? "visible"
+                                : "hidden"
                             }
                             textOverflow={
                               expandedComments.has(req.id) ? "clip" : "ellipsis"
@@ -807,7 +838,10 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
           onClose={() => setSelectedShiftRequest(null)}
           requestId={selectedShiftRequest.id}
           nurseName={selectedShiftRequest.nurseName ?? null}
-          shiftCode={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
+          shiftCode={
+            selectedShiftRequest.shiftCode ??
+            selectedShiftRequest.requestTypeName
+          }
           date={selectedShiftRequest.requestedDates}
           status={selectedShiftRequest.status}
           comment={selectedShiftRequest.comments}

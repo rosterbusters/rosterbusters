@@ -4,6 +4,7 @@ import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
+import { ReviewShiftRequest } from "./ReviewShiftRequest";
 import moment from "moment";
 
 interface CustomWeekViewProps {
@@ -53,19 +54,33 @@ function groupByShift(events: Event[]): Map<string, Event[]> {
   return grouped;
 }
 
+interface ReviewRequestEntry extends ShiftRequestEntry {
+  status: string;
+  comment?: string | null;
+}
+
 const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   date,
   localizer,
   events,
   wardId,
 }: CustomWeekViewProps) {
-  const [selectedGroup, setSelectedGroup] = useState<ShiftRequestEntry[] | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<ShiftRequestEntry[] | null>(null);
+  const [selectedReviewRequest, setSelectedReviewRequest] = useState<ReviewRequestEntry[] | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
 
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
   );
 
+  const handleReviewAction = (
+    requestId: number,
+    action: "Approved" | "Rejected",
+    _comment: string,
+  ) => {
+    setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
+  };
   return (
     <>
       <VStack overflowX={"auto"} gap={0} alignItems="stretch">
@@ -136,14 +151,29 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                         initialShiftType: e.resource?.shiftType ?? shiftType,
                         initialDate: e.resource?.preferredDate ?? "",
                       }));
+                      const reviewRequests: ReviewRequestEntry[] = groupEvents.map((e) => ({
+                        requestId: e.resource?.requestId,
+                        nurseName: e.resource?.nurseName ?? "",
+                        initialShiftType: e.resource?.shiftType ?? shiftType,
+                        initialDate: e.resource?.preferredDate ?? "",
+                        status: statusOverrides[e.resource?.requestId] ?? e.resource?.status ?? "",
+                        comment: e.resource?.reason ?? null,
+                      }));
 
                       return (
-                        <Box key={shiftType} pb={2} maxW="100%">
+                        <Box key={`${localizer.format(day, "yyyy-MM-dd")}-${shiftType}`} pb={2} maxW="100%">
                           <CalendarRequestBlock
                             shift={shiftType}
                             nurseName={nurseNames}
                             owned={isOwn}
-                            onClick={() => setSelectedGroup(requests)}
+                            onClick={() => {
+                              if (isOwn) {
+                                setSelectedRequest(requests);
+                                return;
+                              }
+
+                              setSelectedReviewRequest(reviewRequests);
+                            }}
                           />
                         </Box>
                       );
@@ -155,12 +185,28 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         </Grid>
       </VStack>
 
-      {selectedGroup && (
+      {selectedRequest && (
         <EditShiftRequest
-          isOpen={!!selectedGroup}
-          onClose={() => setSelectedGroup(null)}
-          requests={selectedGroup}
+          isOpen={!!selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+          requests={selectedRequest}
           wardId={wardId as number | null | undefined}
+        />
+      )}
+
+      {selectedReviewRequest && (
+        <ReviewShiftRequest
+          isOpen={!!selectedReviewRequest}
+          onClose={() => setSelectedReviewRequest(null)}
+          requestId={selectedReviewRequest[0].requestId}
+          nurseName={selectedReviewRequest[0].nurseName}
+          shiftCode={selectedReviewRequest[0].initialShiftType}
+          date={selectedReviewRequest[0].initialDate}
+          status={selectedReviewRequest[0].status}
+          comment={selectedReviewRequest[0].comment}
+          wardId={wardId as number | null | undefined}
+          requests={selectedReviewRequest}
+          onAction={handleReviewAction}
         />
       )}
     </>

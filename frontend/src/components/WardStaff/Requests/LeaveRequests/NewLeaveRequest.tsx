@@ -14,13 +14,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { LeaveRequestsService } from "@/client";
+import { LeaveRequestsService, ShiftRequestsService } from "@/client";
 
 interface NewLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate?: Date | null;
   wardId?: number | null;
+  allowNurseOverride?: boolean;
 }
 
 export const NewLeaveRequest = ({
@@ -28,8 +29,10 @@ export const NewLeaveRequest = ({
   onClose,
   selectedDate,
   wardId,
+  allowNurseOverride = false,
 }: NewLeaveRequestProps) => {
   const [leaveType, setLeaveType] = useState<string[]>([]);
+  const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     selectedDate ?? undefined,
   );
@@ -49,12 +52,30 @@ export const NewLeaveRequest = ({
           label: lc.shiftcode,
           description: lc.description,
         })),
-      }),
+    }),
     [leaveCodes],
   );
 
+  const { data: wardNurses } = useQuery({
+    queryKey: ["ward-nurses", wardId],
+    queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
+    enabled: allowNurseOverride && wardId != null,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const nurseCollection = useMemo(
+    () =>
+      createListCollection({
+        items: (wardNurses ?? []).map((nurse) => ({
+          value: String(nurse.nurseid),
+          label: nurse.name,
+        })),
+      }),
+    [wardNurses],
+  );
+
   const mutation = useMutation({
-    mutationFn: (data: { startdate: string; enddate: string; leavetype: string }) =>
+    mutationFn: (data: { startdate: string; enddate: string; leavetype: string; nurseid?: number }) =>
       LeaveRequestsService.createLeaveRequest(data),
     onSuccess: () => {
       showSuccessToast("Leave request created!");
@@ -72,8 +93,9 @@ export const NewLeaveRequest = ({
     if (isOpen) {
       setRequestDate(selectedDate ?? undefined);
       setLeaveType([]);
+      setSelectedNurse([]);
     }
-  }, [isOpen]);
+  }, [isOpen, selectedDate]);
 
   const handleSubmit = () => {
     if (leaveType.length === 0) {
@@ -84,6 +106,10 @@ export const NewLeaveRequest = ({
       showErrorToast("Please select a date.");
       return;
     }
+    if (allowNurseOverride && selectedNurse.length === 0) {
+      showErrorToast("Please select a nurse.");
+      return;
+    }
 
     const dateStr = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`;
 
@@ -91,6 +117,7 @@ export const NewLeaveRequest = ({
       startdate: dateStr,
       enddate: dateStr,
       leavetype: leaveType[0],
+      nurseid: allowNurseOverride ? Number(selectedNurse[0]) : undefined,
     });
   };
 
@@ -112,6 +139,37 @@ export const NewLeaveRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems="start" gap={4} maxWidth="225px">
+                {allowNurseOverride && (
+                  <Select.Root
+                    collection={nurseCollection}
+                    size="sm"
+                    value={selectedNurse}
+                    onValueChange={(e) => setSelectedNurse(e.value)}
+                  >
+                    <Select.Label>Nurse</Select.Label>
+                    <Select.Control>
+                      <Select.Trigger>
+                        <Select.ValueText placeholder="Select Nurse" />
+                      </Select.Trigger>
+                      <Select.IndicatorGroup>
+                        <Select.Indicator />
+                      </Select.IndicatorGroup>
+                    </Select.Control>
+                    <Portal>
+                      <Select.Positioner>
+                        <Select.Content>
+                          {nurseCollection.items.map((nurse) => (
+                            <Select.Item item={nurse.value} key={nurse.value}>
+                              {nurse.label}
+                              <Select.ItemIndicator />
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Positioner>
+                    </Portal>
+                  </Select.Root>
+                )}
+
                 <Select.Root
                   collection={leaveCollection}
                   size="sm"

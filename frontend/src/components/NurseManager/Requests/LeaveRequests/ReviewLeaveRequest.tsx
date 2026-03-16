@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Button,
   CloseButton,
+  createListCollection,
   Dialog,
   Portal,
+  Select,
   Text,
   Textarea,
   VStack,
@@ -17,6 +19,10 @@ import {
   SHIFT_COLOR_MAP,
   type ShiftCode,
 } from "@/components/NurseManager/RosterTable/types";
+import {
+  EditLeaveRequest,
+  type LeaveRequestEntry,
+} from "@/components/WardStaff/Requests/LeaveRequests/EditLeaveRequest";
 
 // Reverse map: full leave description → leave code
 // Covers all non-working entries in SHIFT_CODE_MAP
@@ -41,7 +47,18 @@ interface ReviewLeaveRequestProps {
   date: string;
   status: string;
   comment?: string | null;
+  requests?: ReviewLeaveRequestEntry[];
   onAction: (requestId: number, action: "Approved" | "Rejected", comment: string) => void;
+}
+
+interface ReviewLeaveRequestEntry {
+  requestId: number;
+  nurseName: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  comment?: string | null;
 }
 
 export const ReviewLeaveRequest = ({
@@ -53,175 +70,269 @@ export const ReviewLeaveRequest = ({
   date,
   status,
   comment,
+  requests,
   onAction,
 }: ReviewLeaveRequestProps) => {
-  const [localComment, setLocalComment] = useState<string>(comment ?? "");
+  const requestOptions = useMemo<ReviewLeaveRequestEntry[]>(
+    () =>
+      requests && requests.length > 0
+        ? requests
+        : [
+            {
+              requestId,
+              nurseName: nurseName ?? "",
+              leaveType,
+              startDate: date,
+              endDate: date,
+              status,
+              comment,
+            },
+          ],
+    [comment, date, leaveType, nurseName, requestId, requests, status],
+  );
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0];
+  const [localComment, setLocalComment] = useState<string>(activeRequest?.comment ?? "");
+  const [isEditOpen, setIsEditOpen] = useState(false);
+
+  const nurseCollection = useMemo(
+    () =>
+      createListCollection({
+        items: requestOptions.map((request, index) => ({
+          value: String(index),
+          label: request.nurseName || `Nurse ${index + 1}`,
+        })),
+      }),
+    [requestOptions],
+  );
 
   // Sync when modal opens with fresh data
   useEffect(() => {
-    if (isOpen) setLocalComment(comment ?? "");
-  }, [isOpen, comment]);
+    if (isOpen) {
+      setSelectedIdx(0);
+      setLocalComment(requestOptions[0]?.comment ?? comment ?? "");
+    } else {
+      setIsEditOpen(false);
+    }
+  }, [comment, isOpen, requestOptions]);
+
+  useEffect(() => {
+    if (activeRequest) {
+      setLocalComment(activeRequest.comment ?? "");
+    }
+  }, [activeRequest]);
 
   const handleAction = (action: "Approved" | "Rejected") => {
-    onAction(requestId, action, localComment);
+    onAction(activeRequest.requestId, action, localComment);
     onClose();
   };
 
   const statusColor =
-    status === "Approved"
+    activeRequest.status === "Approved"
       ? "#16a34a"
-      : status === "Rejected"
+      : activeRequest.status === "Rejected"
         ? "#dc2626"
         : "#d97706";
 
   // Normalise: resolve code from full name if needed
-  const resolvedCode: string = SHIFT_CODE_MAP[leaveType as ShiftCode]
-    ? leaveType
-    : (LEAVE_NAME_TO_CODE[leaveType] ?? leaveType);
+  const activeLeaveType = activeRequest?.leaveType ?? leaveType;
+  const resolvedCode: string = SHIFT_CODE_MAP[activeLeaveType as ShiftCode]
+    ? activeLeaveType
+    : (LEAVE_NAME_TO_CODE[activeLeaveType] ?? activeLeaveType);
   const leaveDescription =
-    SHIFT_CODE_MAP[resolvedCode as ShiftCode]?.description ?? leaveType;
+    SHIFT_CODE_MAP[resolvedCode as ShiftCode]?.description ?? activeLeaveType;
   const badgeColor =
     SHIFT_COLOR_MAP[resolvedCode as ShiftCode] ?? "#9db8c0";
 
   return (
-    <Dialog.Root
-      placement="center"
-      motionPreset="slide-in-bottom"
-      open={isOpen}
-      onOpenChange={(e) => !e.open && onClose()}
-    >
-      <Portal>
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content maxW="520px">
-            <Dialog.Header>
-              <Dialog.Title color="primary" fontWeight="bold">
-                Review Leave Request
-              </Dialog.Title>
-            </Dialog.Header>
+    <>
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isOpen}
+        onOpenChange={(e) => !e.open && onClose()}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content maxW="520px">
+              <Dialog.Header>
+                <Dialog.Title color="primary" fontWeight="bold">
+                  Review Leave Request
+                </Dialog.Title>
+              </Dialog.Header>
 
-            <Dialog.Body>
-              <VStack align="stretch" gap={3}>
-                {/* Nurse */}
-                <HStack gap={2}>
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Nurse:
-                  </Text>
-                  <Text color="#4A4A4A">{nurseName ?? "—"}</Text>
-                </HStack>
-
-                {/* Date */}
-                <HStack gap={2}>
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Date:
-                  </Text>
-                  <Text color="#4A4A4A">{date}</Text>
-                </HStack>
-
-                {/* Leave type: badge + full name */}
-                <HStack gap={2} align="center">
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Leave:
-                  </Text>
-                  <HStack gap={2} align="center">
-                    <Badge
-                      bg={badgeColor}
-                      color="white"
-                      fontWeight="bold"
-                      fontSize="xs"
-                      px={2}
-                      py={0.5}
-                      rounded="md"
-                      textTransform="none"
+              <Dialog.Body>
+                <VStack align="stretch" gap={3}>
+                  {requestOptions.length > 1 && (
+                    <Select.Root
+                      collection={nurseCollection}
+                      size="sm"
+                      value={[String(selectedIdx)]}
+                      onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
                     >
-                      {resolvedCode}
-                    </Badge>
-                    <Text color="#4A4A4A">{leaveDescription}</Text>
+                      <Select.Label>Nurse</Select.Label>
+                      <Select.Control>
+                        <Select.Trigger>
+                          <Select.ValueText placeholder="Select nurse" />
+                        </Select.Trigger>
+                        <Select.IndicatorGroup>
+                          <Select.Indicator />
+                        </Select.IndicatorGroup>
+                      </Select.Control>
+                      <Portal>
+                        <Select.Positioner>
+                          <Select.Content>
+                            {nurseCollection.items.map((item) => (
+                              <Select.Item item={item.value} key={item.value}>
+                                {item.label}
+                                <Select.ItemIndicator />
+                              </Select.Item>
+                            ))}
+                          </Select.Content>
+                        </Select.Positioner>
+                      </Portal>
+                    </Select.Root>
+                  )}
+
+                  <HStack gap={2}>
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Nurse:
+                    </Text>
+                    <Text color="#4A4A4A">{activeRequest?.nurseName || "—"}</Text>
+                  </HStack>
+
+                  <HStack gap={2}>
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Date:
+                    </Text>
+                    <Text color="#4A4A4A">
+                      {activeRequest?.startDate === activeRequest?.endDate
+                        ? activeRequest?.startDate
+                        : `${activeRequest?.startDate} - ${activeRequest?.endDate}`}
+                    </Text>
+                  </HStack>
+
+                  <HStack gap={2} align="center">
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Leave:
+                    </Text>
+                    <HStack gap={2} align="center">
+                      <Badge
+                        bg={badgeColor}
+                        color="white"
+                        fontWeight="bold"
+                        fontSize="xs"
+                        px={2}
+                        py={0.5}
+                        rounded="md"
+                        textTransform="none"
+                      >
+                        {resolvedCode}
+                      </Badge>
+                      <Text color="#4A4A4A">{leaveDescription}</Text>
+                    </HStack>
+                  </HStack>
+
+                  <HStack gap={2}>
+                    <Text fontWeight="medium" color="gray.600" minW="70px">
+                      Status:
+                    </Text>
+                    <Text fontWeight="medium" color={statusColor}>
+                      {activeRequest?.status ?? status}
+                    </Text>
+                  </HStack>
+
+                  <VStack align="stretch" gap={1}>
+                    <Text fontSize="xs" fontWeight="medium" color="gray.500">
+                      Comment
+                    </Text>
+                    <Box position="relative">
+                      <Textarea
+                        value={localComment}
+                        onChange={(e) => setLocalComment(e.target.value)}
+                        placeholder="Add a comment..."
+                        size="sm"
+                        borderRadius="md"
+                        borderColor="gray.200"
+                        _focus={{
+                          borderColor: "#4B8798",
+                          boxShadow: "0 0 0 1px #4B8798",
+                        }}
+                        resize="none"
+                        rows={3}
+                        fontSize="sm"
+                        pb="28px"
+                      />
+                      <Box
+                        as="button"
+                        position="absolute"
+                        bottom="10px"
+                        right="8px"
+                        display="flex"
+                        alignItems="center"
+                        cursor="pointer"
+                        color="gray.400"
+                        _hover={{ color: "red.400" }}
+                        transition="color 0.15s ease"
+                        onClick={() => setLocalComment("")}
+                        title="Clear comment"
+                        zIndex={1}
+                      >
+                        <Trash2 size={13} />
+                      </Box>
+                    </Box>
+                  </VStack>
+                </VStack>
+              </Dialog.Body>
+
+              <Dialog.Footer>
+                <HStack gap={2} justify="space-between" w="full">
+                  <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
+                    Edit Request
+                  </Button>
+                  <HStack gap={2}>
+                    <Button
+                      variant="outline"
+                      colorPalette="red"
+                      size="sm"
+                      onClick={() => handleAction("Rejected")}
+                    >
+                      Deny
+                    </Button>
+                    <Button
+                      bg="#4B8798"
+                      color="white"
+                      _hover={{ bg: "#3d6f7e" }}
+                      size="sm"
+                      onClick={() => handleAction("Approved")}
+                    >
+                      Approve
+                    </Button>
                   </HStack>
                 </HStack>
+              </Dialog.Footer>
 
-                {/* Status */}
-                <HStack gap={2}>
-                  <Text fontWeight="medium" color="gray.600" minW="70px">
-                    Status:
-                  </Text>
-                  <Text fontWeight="medium" color={statusColor}>
-                    {status}
-                  </Text>
-                </HStack>
+              <Dialog.CloseTrigger asChild>
+                <CloseButton size="sm" />
+              </Dialog.CloseTrigger>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
 
-                {/* Comment */}
-                <VStack align="stretch" gap={1}>
-                  <Text fontSize="xs" fontWeight="medium" color="gray.500">
-                    Comment
-                  </Text>
-                  <Box position="relative">
-                    <Textarea
-                      value={localComment}
-                      onChange={(e) => setLocalComment(e.target.value)}
-                      placeholder="Add a comment..."
-                      size="sm"
-                      borderRadius="md"
-                      borderColor="gray.200"
-                      _focus={{
-                        borderColor: "#4B8798",
-                        boxShadow: "0 0 0 1px #4B8798",
-                      }}
-                      resize="none"
-                      rows={3}
-                      fontSize="sm"
-                      pb="28px"
-                    />
-                    <Box
-                      as="button"
-                      position="absolute"
-                      bottom="10px"
-                      right="8px"
-                      display="flex"
-                      alignItems="center"
-                      cursor="pointer"
-                      color="gray.400"
-                      _hover={{ color: "red.400" }}
-                      transition="color 0.15s ease"
-                      onClick={() => setLocalComment("")}
-                      title="Clear comment"
-                      zIndex={1}
-                    >
-                      <Trash2 size={13} />
-                    </Box>
-                  </Box>
-                </VStack>
-              </VStack>
-            </Dialog.Body>
-
-            <Dialog.Footer>
-              <HStack gap={2}>
-                <Button
-                  variant="outline"
-                  colorPalette="red"
-                  size="sm"
-                  onClick={() => handleAction("Rejected")}
-                >
-                  Deny
-                </Button>
-                <Button
-                  bg="#4B8798"
-                  color="white"
-                  _hover={{ bg: "#3d6f7e" }}
-                  size="sm"
-                  onClick={() => handleAction("Approved")}
-                >
-                  Approve
-                </Button>
-              </HStack>
-            </Dialog.Footer>
-
-            <Dialog.CloseTrigger asChild>
-              <CloseButton size="sm" />
-            </Dialog.CloseTrigger>
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Portal>
-    </Dialog.Root>
+      <EditLeaveRequest
+        isOpen={isEditOpen}
+        onClose={() => setIsEditOpen(false)}
+        requests={requestOptions.map((request): LeaveRequestEntry => ({
+          requestId: request.requestId,
+          nurseName: request.nurseName,
+          initialLeaveType: request.leaveType,
+          startDate: request.startDate,
+          endDate: request.endDate,
+        }))}
+        selectedRequestId={activeRequest?.requestId}
+      />
+    </>
   );
 };
