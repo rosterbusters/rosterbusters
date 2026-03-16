@@ -18,6 +18,12 @@ services:
     command: ["fastapi", "run", "--workers", "4", "app/main.py"]
     environment:
       - POSTGRES_SERVER=${POSTGRES_SERVER}
+      - REDIS_URL=redis://redis:6379/0
+
+  celery_worker:
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_SERVER=${POSTGRES_SERVER}
 
   frontend:
     ports: []
