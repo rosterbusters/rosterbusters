@@ -4,13 +4,14 @@ import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { NMReviewLeaveRequest } from "./NMReviewLeaveRequest";
-import { NewLeaveRequest } from "@/components/WardStaff/Requests/LeaveRequests/NewLeaveRequest";
+import { NewLeaveRequest } from "./NewLeaveRequest";
 import moment from "moment";
 
 interface CustomMonthViewProps {
   date: Date;
   localizer: DateLocalizer;
   events: Event[];
+  wardId?: number | null;
   [key: string]: unknown;
 }
 
@@ -40,12 +41,24 @@ function getEventsForDay(day: Date, events: Event[]): Event[] {
   });
 }
 
+function groupByLeaveType(events: Event[]): Map<string, Event[]> {
+  const grouped = new Map<string, Event[]>();
+  events.forEach((ev) => {
+    const key = ev.resource?.shiftType ?? ev.title;
+    const existing = grouped.get(key) ?? [];
+    existing.push(ev);
+    grouped.set(key, existing);
+  });
+  return grouped;
+}
+
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
   localizer,
   events,
+  wardId,
 }: CustomMonthViewProps) {
   const [selectedRequest, setSelectedRequest] = useState<{
     requestId: number;
@@ -54,6 +67,14 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
     endDate: string;
     nurseName: string;
     status: string;
+    requests?: Array<{
+      requestId: number;
+      nurseName: string;
+      leaveType: string;
+      startDate: string;
+      endDate: string;
+      status: string;
+    }>;
   } | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
@@ -105,6 +126,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
           >
             {week.map((day, di) => {
               const eventsForDay = getEventsForDay(day, events);
+              const grouped = groupByLeaveType(eventsForDay);
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
               const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
@@ -128,32 +150,58 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
-                    {eventsForDay.length > 0 &&
-                      [...eventsForDay]
-                        .sort(
-                          (a, b) =>
-                            (b.resource?.isOwn ? 1 : 0) -
-                            (a.resource?.isOwn ? 1 : 0),
-                        )
-                        .map((ev, idx) => (
-                          <Box key={idx} pb={2} maxW="100%" onClick={(e) => e.stopPropagation()}>
+                    {Array.from(grouped.entries())
+                      .sort(([, a], [, b]) => {
+                        const aOwn = a.some((event) => event.resource?.isOwn);
+                        const bOwn = b.some((event) => event.resource?.isOwn);
+                        return (bOwn ? 1 : 0) - (aOwn ? 1 : 0);
+                      })
+                      .map(([leaveType, groupEvents]) => {
+                        const isOwn = groupEvents.some((event) => event.resource?.isOwn);
+                        const nurseNames = groupEvents
+                          .map((event) => event.resource?.nurseName ?? "")
+                          .filter(Boolean)
+                          .join(", ");
+                        const requests = groupEvents.map((event) => ({
+                          requestId: event.resource?.requestId,
+                          nurseName: event.resource?.nurseName ?? "",
+                          leaveType: event.resource?.shiftType ?? leaveType,
+                          startDate: event.resource?.startDate ?? "",
+                          endDate: event.resource?.endDate ?? "",
+                          status: event.resource?.status ?? "Pending",
+                        }));
+                        const leadRequest = requests[0];
+
+                        if (!leadRequest) {
+                          return null;
+                        }
+
+                        return (
+                          <Box
+                            key={leaveType}
+                            pb={2}
+                            maxW="100%"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <CalendarRequestBlock
-                              shift={ev.title}
-                              nurseName={ev.resource?.nurseName}
-                              owned={ev.resource?.isOwn}
+                              shift={leaveType}
+                              nurseName={nurseNames}
+                              owned={isOwn}
                               onClick={() =>
                                 setSelectedRequest({
-                                  requestId: ev.resource.requestId,
-                                  leaveType: ev.resource.shiftType,
-                                  startDate: ev.resource.startDate,
-                                  endDate: ev.resource.endDate,
-                                  nurseName: ev.resource.nurseName,
-                                  status: ev.resource.status,
+                                  requestId: leadRequest.requestId,
+                                  leaveType: leadRequest.leaveType,
+                                  startDate: leadRequest.startDate,
+                                  endDate: leadRequest.endDate,
+                                  nurseName: leadRequest.nurseName,
+                                  status: leadRequest.status,
+                                  requests,
                                 })
                               }
                             />
                           </Box>
-                        ))}
+                        );
+                      })}
                   </Box>
                 </GridItem>
               );
@@ -172,6 +220,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
           endDate={selectedRequest.endDate}
           nurseName={selectedRequest.nurseName}
           currentStatus={selectedRequest.status}
+          requests={selectedRequest.requests}
         />
       )}
 
@@ -179,6 +228,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         isOpen={!!newLeaveDate}
         onClose={() => setNewLeaveDate(null)}
         selectedDate={newLeaveDate}
+        wardId={wardId}
       />
     </>
   );

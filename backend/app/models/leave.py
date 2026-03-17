@@ -49,6 +49,7 @@ class LeaveRequestPublic(SQLModel):
 
 
 class LeaveRequestCreate(SQLModel):
+    nurseid: Optional[int] = None
     startdate: date
     enddate: date
     leavetype: str

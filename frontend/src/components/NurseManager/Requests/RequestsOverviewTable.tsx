@@ -15,7 +15,7 @@ import { Check, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
 import { LeaveRequestsService } from "@/client/LeaveRequestsService";
 import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
-import { NMReviewShiftRequest } from "./ShiftRequests/NMReviewShiftRequest";
+import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
 import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
 
 // ─── Mock shift request data (used when no wardId / no API data) ─────────────
@@ -743,14 +743,16 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
 
       {/* Shift review dialog */}
       {selectedShiftRequest && (
-        <NMReviewShiftRequest
+        <ReviewShiftRequest
           isOpen={!!selectedShiftRequest}
           onClose={() => setSelectedShiftRequest(null)}
           requestId={selectedShiftRequest.id}
-          nurseName={selectedShiftRequest.nurseName ?? ""}
-          shiftType={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
-          preferredDate={selectedShiftRequest.rawPreferredDate ?? selectedShiftRequest.requestedDates}
-          currentStatus={selectedShiftRequest.status}
+          nurseName={selectedShiftRequest.nurseName ?? null}
+          shiftCode={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
+          date={selectedShiftRequest.rawPreferredDate ?? selectedShiftRequest.requestedDates}
+          status={selectedShiftRequest.status}
+          comment={selectedShiftRequest.comments}
+          wardId={wardId}
         />
       )}
 

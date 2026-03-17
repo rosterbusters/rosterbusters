@@ -127,10 +127,19 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
     }));
   }, [leaveRequests, nurseMap]);
 
-  const { views, defaultView } = useMemo(() => ({
-    views: { month: CustomMonthView, week: false, day: false } as any,
-    defaultView: "month" as View,
-  }), []);
+  const { views, defaultView } = useMemo(() => {
+    const MonthView = (props: Record<string, unknown>) => (
+      <CustomMonthView {...props} wardId={wardId} />
+    );
+    MonthView.range = CustomMonthView.range;
+    MonthView.navigate = CustomMonthView.navigate;
+    MonthView.title = CustomMonthView.title;
+
+    return {
+      views: { month: MonthView, week: false, day: false } as any,
+      defaultView: "month" as View,
+    };
+  }, [wardId]);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>

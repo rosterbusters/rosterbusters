@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import {
+  Box,
   Button,
   CloseButton,
   createListCollection,
@@ -8,6 +9,7 @@ import {
   Select,
   Badge,
   Text,
+  Textarea,
   VStack,
   HStack,
 } from "@chakra-ui/react";
@@ -15,9 +17,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { useRosterPeriodWindow } from "@/components/NurseManager/RosterTable/useRosterData";
+import moment from "moment";
+import {
+  useRosterPeriodWindow,
+  useRosterPeriods,
+} from "@/components/NurseManager/RosterTable/useRosterData";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import type { NursePublic } from "@/client/types.gen";
+import { Trash2 } from "lucide-react";
 
 const MAX_REQUESTS = 3;
 
@@ -36,13 +43,32 @@ export const NewShiftRequest = ({
 }: NewShiftRequestProps) => {
   const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
   const [shiftType, setShiftType] = useState<string[]>([]);
+  const [localComment, setLocalComment] = useState("");
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     selectedDate ?? undefined,
   );
   const queryClient = useQueryClient();
 
   const { data: periodWindow } = useRosterPeriodWindow();
-  const activePeriod = periodWindow?.requestOpenPeriod;
+  const { data: periods = [] } = useRosterPeriods();
+  const activePeriod = useMemo(() => {
+    if (requestDate) {
+      const matchingPeriod = periods.find((period) =>
+        moment(requestDate).isBetween(
+          moment(period.startDate),
+          moment(period.endDate),
+          "day",
+          "[]",
+        ),
+      );
+
+      if (matchingPeriod) {
+        return matchingPeriod;
+      }
+    }
+
+    return periodWindow?.requestOpenPeriod ?? periodWindow?.currentPeriod ?? null;
+  }, [periodWindow?.currentPeriod, periodWindow?.requestOpenPeriod, periods, requestDate]);
 
   const { data: wardNurses = [] } = useQuery<NursePublic[]>({
     queryKey: ["ward-nurses", wardId],
@@ -123,9 +149,17 @@ export const NewShiftRequest = ({
   const mutation = useMutation({
     mutationFn: (data: ShiftRequestCreate) =>
       ShiftRequestsService.createShiftRequest({ requestBody: data }),
-    onSuccess: () => {
+    onSuccess: async () => {
       showSuccessToast("Shift request created!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["shift-requests"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["shift-requests", "ward", wardId, activePeriod?.periodId ?? null],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["shift-requests", "ward", wardId],
+        }),
+      ]);
       onClose();
     },
     onError: (error: unknown) => {
@@ -139,6 +173,7 @@ export const NewShiftRequest = ({
       setRequestDate(selectedDate ?? undefined);
       setShiftType([]);
       setSelectedNurse([]);
+      setLocalComment("");
     }
   }, [isOpen, selectedDate]);
 
@@ -165,6 +200,7 @@ export const NewShiftRequest = ({
       periodid: activePeriod.periodId,
       preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
       preferredshifttype: shiftType[0],
+      reason: localComment.trim() || undefined,
     });
   };
 
@@ -270,6 +306,46 @@ export const NewShiftRequest = ({
                     selected={requestDate}
                     onSelect={(date) => setRequestDate(date)}
                   />
+                </VStack>
+                <VStack align="stretch" gap={1} w="full">
+                  <Text fontSize="xs" fontWeight="medium" color="gray.500">
+                    Comment
+                  </Text>
+                  <Box position="relative">
+                    <Textarea
+                      value={localComment}
+                      onChange={(event) => setLocalComment(event.target.value)}
+                      placeholder="Add a comment..."
+                      size="sm"
+                      borderRadius="md"
+                      borderColor="gray.200"
+                      _focus={{
+                        borderColor: "#4B8798",
+                        boxShadow: "0 0 0 1px #4B8798",
+                      }}
+                      resize="none"
+                      rows={3}
+                      fontSize="sm"
+                      pb="28px"
+                    />
+                    <Box
+                      as="button"
+                      position="absolute"
+                      bottom="10px"
+                      right="8px"
+                      display="flex"
+                      alignItems="center"
+                      cursor="pointer"
+                      color="gray.400"
+                      _hover={{ color: "red.400" }}
+                      transition="color 0.15s ease"
+                      onClick={() => setLocalComment("")}
+                      title="Clear comment"
+                      zIndex={1}
+                    >
+                      <Trash2 size={13} />
+                    </Box>
+                  </Box>
                 </VStack>
               </VStack>
             </Dialog.Body>

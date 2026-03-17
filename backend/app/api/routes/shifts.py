@@ -380,15 +380,31 @@ def update_shift_request(
     current_user: CurrentUser,
     request_in: ShiftRequestUpdate,
 ) -> Any:
-    """Update a shift request. Only the owning nurse can update."""
+    """Update a shift request. The owning nurse or their nurse manager can update."""
     rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
-        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
 
     shift_request = session.get(ShiftRequest, request_id)
     if not shift_request:
         raise HTTPException(status_code=404, detail="Shift request not found")
-    if shift_request.nurseid != rbac_user.nurseid:
+
+    can_update = shift_request.nurseid == rbac_user.nurseid
+    if not can_update and user_has_role(session, current_user.email, "NurseManager"):
+        if not rbac_user.managerid:
+            raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
+
+        managed_ward = session.exec(
+            select(Ward).where(Ward.managerid == rbac_user.managerid)
+        ).first()
+        target_nurse = session.get(Nurse, shift_request.nurseid)
+        can_update = bool(
+            managed_ward
+            and target_nurse
+            and target_nurse.wardid == managed_ward.wardid
+        )
+
+    if not can_update:
         raise HTTPException(status_code=403, detail="Not authorized to update this request")
 
     update_data = request_in.model_dump(exclude_unset=True)
@@ -448,15 +464,31 @@ def delete_shift_request(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> None:
-    """Delete a shift request. Only the owning nurse can delete."""
+    """Delete a shift request. The owning nurse or their nurse manager can delete."""
     rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
-        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
 
     shift_request = session.get(ShiftRequest, request_id)
     if not shift_request:
         raise HTTPException(status_code=404, detail="Shift request not found")
-    if shift_request.nurseid != rbac_user.nurseid:
+
+    can_delete = shift_request.nurseid == rbac_user.nurseid
+    if not can_delete and user_has_role(session, current_user.email, "NurseManager"):
+        if not rbac_user.managerid:
+            raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
+
+        managed_ward = session.exec(
+            select(Ward).where(Ward.managerid == rbac_user.managerid)
+        ).first()
+        target_nurse = session.get(Nurse, shift_request.nurseid)
+        can_delete = bool(
+            managed_ward
+            and target_nurse
+            and target_nurse.wardid == managed_ward.wardid
+        )
+
+    if not can_delete:
         raise HTTPException(status_code=403, detail="Not authorized to delete this request")
 
     session.delete(shift_request)

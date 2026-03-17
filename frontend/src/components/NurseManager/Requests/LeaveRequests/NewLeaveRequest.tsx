@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import {
+  Box,
   Button,
   CloseButton,
   createListCollection,
@@ -8,6 +9,7 @@ import {
   Select,
   Badge,
   Text,
+  Textarea,
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,13 +17,13 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService, ShiftRequestsService } from "@/client";
+import { Trash2 } from "lucide-react";
 
 interface NewLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate?: Date | null;
   wardId?: number | null;
-  allowNurseOverride?: boolean;
 }
 
 export const NewLeaveRequest = ({
@@ -29,13 +31,13 @@ export const NewLeaveRequest = ({
   onClose,
   selectedDate,
   wardId,
-  allowNurseOverride = false,
 }: NewLeaveRequestProps) => {
   const [leaveType, setLeaveType] = useState<string[]>([]);
   const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     selectedDate ?? undefined,
   );
+  const [localComment, setLocalComment] = useState("");
   const queryClient = useQueryClient();
 
   const { data: leaveCodes } = useQuery({
@@ -59,7 +61,7 @@ export const NewLeaveRequest = ({
   const { data: wardNurses } = useQuery({
     queryKey: ["ward-nurses", wardId],
     queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
-    enabled: allowNurseOverride && wardId != null,
+    enabled: wardId != null,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -69,22 +71,33 @@ export const NewLeaveRequest = ({
         items: (wardNurses ?? []).map((nurse) => ({
           value: String(nurse.nurseid),
           label: nurse.name,
+          description: nurse.designation,
         })),
       }),
     [wardNurses],
   );
 
+  const selectedNurseId =
+    selectedNurse.length > 0 ? Number(selectedNurse[0]) : null;
+
   const mutation = useMutation({
-    mutationFn: (data: { startdate: string; enddate: string; leavetype: string; nurseid?: number }) =>
-      LeaveRequestsService.createLeaveRequest(data),
-    onSuccess: () => {
+    mutationFn: (data: {
+      startdate: string;
+      enddate: string;
+      leavetype: string;
+      nurseid: number;
+      reason?: string;
+    }) => LeaveRequestsService.createLeaveRequest(data),
+    onSuccess: async () => {
       showSuccessToast("Leave request created!");
-      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] }),
+      ]);
       onClose();
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
+      const detail = (error as { body?: { detail?: string } })?.body?.detail;
       showErrorToast(detail || "Failed to create request");
     },
   });
@@ -94,10 +107,19 @@ export const NewLeaveRequest = ({
       setRequestDate(selectedDate ?? undefined);
       setLeaveType([]);
       setSelectedNurse([]);
+      setLocalComment("");
     }
   }, [isOpen, selectedDate]);
 
   const handleSubmit = () => {
+    if (selectedNurse.length === 0) {
+      showErrorToast("Please select a nurse.");
+      return;
+    }
+    if (selectedNurseId == null || Number.isNaN(selectedNurseId)) {
+      showErrorToast("Please select a valid nurse.");
+      return;
+    }
     if (leaveType.length === 0) {
       showErrorToast("Please select a leave type.");
       return;
@@ -106,18 +128,15 @@ export const NewLeaveRequest = ({
       showErrorToast("Please select a date.");
       return;
     }
-    if (allowNurseOverride && selectedNurse.length === 0) {
-      showErrorToast("Please select a nurse.");
-      return;
-    }
 
     const dateStr = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`;
 
     mutation.mutate({
-      nurseid: allowNurseOverride ? Number(selectedNurse[0]) : undefined,
+      nurseid: selectedNurseId,
       startdate: dateStr,
       enddate: dateStr,
       leavetype: leaveType[0],
+      reason: localComment.trim() || undefined,
     });
   };
 
@@ -127,6 +146,12 @@ export const NewLeaveRequest = ({
       motionPreset="slide-in-bottom"
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault();
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />
@@ -138,37 +163,40 @@ export const NewLeaveRequest = ({
               </Dialog.Title>
             </Dialog.Header>
             <Dialog.Body>
-              <VStack alignItems="start" gap={4} maxWidth="225px">
-                {allowNurseOverride && (
-                  <Select.Root
-                    collection={nurseCollection}
-                    size="sm"
-                    value={selectedNurse}
-                    onValueChange={(e) => setSelectedNurse(e.value)}
-                  >
-                    <Select.Label>Nurse</Select.Label>
-                    <Select.Control>
-                      <Select.Trigger>
-                        <Select.ValueText placeholder="Select Nurse" />
-                      </Select.Trigger>
-                      <Select.IndicatorGroup>
-                        <Select.Indicator />
-                      </Select.IndicatorGroup>
-                    </Select.Control>
-                    <Portal>
-                      <Select.Positioner>
-                        <Select.Content>
-                          {nurseCollection.items.map((nurse) => (
-                            <Select.Item item={nurse.value} key={nurse.value}>
-                              {nurse.label}
-                              <Select.ItemIndicator />
-                            </Select.Item>
-                          ))}
-                        </Select.Content>
-                      </Select.Positioner>
-                    </Portal>
-                  </Select.Root>
-                )}
+              <VStack alignItems="start" gap={4} maxWidth="320px">
+                <Select.Root
+                  collection={nurseCollection}
+                  size="sm"
+                  value={selectedNurse}
+                  onValueChange={(e) => setSelectedNurse(e.value)}
+                >
+                  <Select.Label>Nurse</Select.Label>
+                  <Select.Control>
+                    <Select.Trigger>
+                      <Select.ValueText placeholder="Select Nurse" />
+                    </Select.Trigger>
+                    <Select.IndicatorGroup>
+                      <Select.Indicator />
+                    </Select.IndicatorGroup>
+                  </Select.Control>
+                  <Portal>
+                    <Select.Positioner>
+                      <Select.Content>
+                        {nurseCollection.items.map((nurse) => (
+                          <Select.Item item={nurse.value} key={nurse.value}>
+                            <VStack alignItems="start" gap={0}>
+                              <Text>{nurse.label}</Text>
+                              <Text fontSize="xs" color="gray.500">
+                                {nurse.description}
+                              </Text>
+                            </VStack>
+                            <Select.ItemIndicator />
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select.Positioner>
+                  </Portal>
+                </Select.Root>
 
                 <Select.Root
                   collection={leaveCollection}
@@ -202,12 +230,54 @@ export const NewLeaveRequest = ({
                     </Select.Positioner>
                   </Portal>
                 </Select.Root>
+
                 <VStack alignItems="start">
-                  <Text fontWeight="medium">Dates Requesting</Text>
+                  <Text fontWeight="medium">Date Requesting</Text>
                   <DatePickerDemo
                     selected={requestDate}
                     onSelect={(date) => setRequestDate(date)}
                   />
+                </VStack>
+
+                <VStack align="stretch" gap={1} w="full">
+                  <Text fontSize="xs" fontWeight="medium" color="gray.500">
+                    Comment
+                  </Text>
+                  <Box position="relative">
+                    <Textarea
+                      value={localComment}
+                      onChange={(event) => setLocalComment(event.target.value)}
+                      placeholder="Add a comment..."
+                      size="sm"
+                      borderRadius="md"
+                      borderColor="gray.200"
+                      _focus={{
+                        borderColor: "#4B8798",
+                        boxShadow: "0 0 0 1px #4B8798",
+                      }}
+                      resize="none"
+                      rows={3}
+                      fontSize="sm"
+                      pb="28px"
+                    />
+                    <Box
+                      as="button"
+                      position="absolute"
+                      bottom="10px"
+                      right="8px"
+                      display="flex"
+                      alignItems="center"
+                      cursor="pointer"
+                      color="gray.400"
+                      _hover={{ color: "red.400" }}
+                      transition="color 0.15s ease"
+                      onClick={() => setLocalComment("")}
+                      title="Clear comment"
+                      zIndex={1}
+                    >
+                      <Trash2 size={13} />
+                    </Box>
+                  </Box>
                 </VStack>
               </VStack>
             </Dialog.Body>

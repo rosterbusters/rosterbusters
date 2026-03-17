@@ -6,7 +6,10 @@ import CustomWeekView from './CustomRequestView'
 import { Box, Grid, Span } from '@chakra-ui/react'
 import cx from "clsx"
 import { ShiftRequestsService } from '@/client'
-import { useRosterPeriodWindow } from '@/components/NurseManager/RosterTable/useRosterData'
+import {
+  useRosterPeriodWindow,
+  useRosterPeriods,
+} from '@/components/NurseManager/RosterTable/useRosterData'
 import useAuth from '@/hooks/useAuth'
 
 const localizer = momentLocalizer(moment);
@@ -67,18 +70,26 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   const currentNurseId = user?.nurseid;
 
   const { data: periodWindow } = useRosterPeriodWindow();
-  const activePeriod = periodWindow?.currentPeriod;
+  const { data: periods = [] } = useRosterPeriods();
 
   // ─── Calendar navigation ──────────────────────────────────────────────────
   const [date, setDate] = useState(() => moment().startOf('isoWeek').toDate());
 
   useEffect(() => {
-    if (activePeriod?.startDate) {
-      setDate(moment(activePeriod.startDate).startOf('isoWeek').toDate());
+    if (periodWindow?.currentPeriod?.startDate) {
+      setDate(moment(periodWindow.currentPeriod.startDate).startOf('isoWeek').toDate());
     }
-  }, [activePeriod?.startDate]);
+  }, [periodWindow?.currentPeriod?.startDate]);
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
+
+  const activePeriod = useMemo(
+    () =>
+      periods.find((period) =>
+        moment(date).isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+      ) ?? periodWindow?.currentPeriod ?? null,
+    [date, periodWindow?.currentPeriod, periods],
+  );
 
   const periodId = activePeriod?.periodId;
 
@@ -125,6 +136,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         preferredDate: sr.preferreddate,
         shiftType: sr.preferredshifttype,
         status: sr.status,
+        reason: sr.reason,
       },
     }));
   }, [shiftRequests, nurseMap, currentNurseId]);
@@ -146,7 +158,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
       views: customViews,
       defaultView: "fortnight" as View,
     };
-  }, []);
+  }, [wardId]);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>
