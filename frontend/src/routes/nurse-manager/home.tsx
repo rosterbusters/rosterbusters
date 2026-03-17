@@ -618,7 +618,7 @@ function NurseManagerHome() {
           alignItems="start"
           justifyContent="center"
         >
-          <StatusBanner ward={selectedWard} period={currentPeriod} />
+          <StatusBanner ward={selectedWard} />
         </Stack>
 
         <Stack

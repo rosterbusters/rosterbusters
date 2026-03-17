@@ -42,6 +42,7 @@ export type Message = {
 export type NursePublic = {
     nurseid: number;
     name: string;
+    designation: string;
 };
 
 export type PrivateUserCreate = {
