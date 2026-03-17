@@ -7,7 +7,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminLayout,
   beforeLoad: async () => {
     if (!isLoggedIn()) {
-      throw redirect({ to: "/login" })
+      throw redirect({ to: "/login", search: { message: "", error: "" } })
     }
 
     // Check that the logged-in user actually has admin privileges
@@ -17,7 +17,7 @@ export const Route = createFileRoute("/admin")({
       const res = await fetch(`${BASE}/api/v1/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      if (!res.ok) throw redirect({ to: "/login" })
+      if (!res.ok) throw redirect({ to: "/login", search: { message: "", error: "" } })
       const user = await res.json()
       if (!user.is_superuser) {
         // Send non-admin users to their appropriate home page
@@ -28,7 +28,7 @@ export const Route = createFileRoute("/admin")({
     } catch (e) {
       // Re-throw redirects; treat anything else as an auth failure
       if (e && typeof e === "object" && "to" in e) throw e
-      throw redirect({ to: "/login" })
+      throw redirect({ to: "/login", search: { message: "", error: "" } })
     }
   },
 })

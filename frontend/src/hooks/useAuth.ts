@@ -82,7 +82,7 @@ const useAuth = () => {
     localStorage.removeItem("refresh_token")
     // Clear cached data without triggering refetches
     queryClient.clear()
-    navigate({ to: "/login" })
+    navigate({ to: "/login", search: { message: "", error: "" } })
   }
 
   return {
