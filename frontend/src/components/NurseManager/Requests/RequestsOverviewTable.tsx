@@ -13,9 +13,10 @@ import {
 } from "@chakra-ui/react";
 import { Check, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
+import { LeaveRequestsService } from "@/client/LeaveRequestsService";
 import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
-import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
-import { ReviewLeaveRequest } from "./LeaveRequests/ReviewLeaveRequest";
+import { NMReviewShiftRequest } from "./ShiftRequests/NMReviewShiftRequest";
+import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
 
 // ─── Mock shift request data (used when no wardId / no API data) ─────────────
 const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
@@ -60,64 +61,6 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     type: "ShiftRequest",
     requestTypeName: "AM Shift",
     requestedDates: "31/10/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-  },
-];
-
-// ─── Mock leave request data ──────────────────────────────────────────────────
-const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
-  {
-    id: -1,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: "mom's birthday",
-  },
-  {
-    id: -2,
-    type: "LeaveRequest",
-    requestTypeName: "Birthday Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-  },
-  {
-    id: -3,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-  },
-  {
-    id: -4,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-  },
-  {
-    id: -5,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-  },
-  {
-    id: -6,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
@@ -321,20 +264,18 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
     });
 
   // Local overrides for optimistic status updates
-  const [statusOverrides, setStatusOverrides] = useState<
-    Record<number, RequestStatus>
-  >({});
-
-  // Local overrides for comments written in the review modal
-  const [commentOverrides, setCommentOverrides] = useState<
-    Record<number, string>
-  >({});
-
   // ── Fetch shift requests ──────────────────────────────────────────────────
   const { data: shiftRequests = [], isLoading: shiftLoading } = useQuery({
     queryKey: ["shift-requests", "ward", wardId],
     queryFn: () =>
       ShiftRequestsService.getShiftRequestsByWard({ wardId: wardId! }),
+    enabled: !!wardId,
+    staleTime: 30_000,
+  });
+
+  const { data: leaveRequests = [], isLoading: leaveLoading } = useQuery({
+    queryKey: ["ward-leave-requests", wardId],
+    queryFn: () => LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 30_000,
   });
@@ -377,23 +318,34 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
             shiftCodeMap.get(sr.preferredshifttype) || sr.preferredshifttype,
           shiftCode: sr.preferredshifttype,
           requestedDates: formatDate(sr.preferreddate),
-          status: (statusOverrides[sr.requestid] ?? sr.status) as RequestStatus,
+          rawPreferredDate: sr.preferreddate,
+          status: sr.status as RequestStatus,
           applicationDate: formatDate(sr.preferreddate),
           comments: sr.reason,
           nurseName: nurseMap.get(sr.nurseid) ?? null,
         }))
-      : MOCK_SHIFT_REQUESTS.map((sr) => ({
-          ...sr,
-          status: (statusOverrides[sr.id] ?? sr.status) as RequestStatus,
-        }));
+      : MOCK_SHIFT_REQUESTS;
 
-    const fromLeave: UnifiedRequest[] = MOCK_LEAVE_REQUESTS.map((lr) => ({
-      ...lr,
-      status: (statusOverrides[lr.id] ?? lr.status) as RequestStatus,
-    }));
+    const fromLeave: UnifiedRequest[] = wardId
+      ? leaveRequests.map((lr) => ({
+          id: lr.leaveid,
+          type: "LeaveRequest" as const,
+          requestTypeName: lr.leavetype,
+          requestedDates:
+            lr.startdate === lr.enddate
+              ? formatDate(lr.startdate)
+              : `${formatDate(lr.startdate)} – ${formatDate(lr.enddate)}`,
+          rawStartDate: lr.startdate,
+          rawEndDate: lr.enddate,
+          status: lr.status as RequestStatus,
+          applicationDate: formatDate(lr.requestedat),
+          comments: lr.reason,
+          nurseName: nurseMap.get(lr.nurseid) ?? null,
+        }))
+      : [];
 
     return [...fromShift, ...fromLeave];
-  }, [wardId, shiftRequests, shiftCodeMap, nurseMap, statusOverrides]);
+  }, [wardId, shiftRequests, leaveRequests, shiftCodeMap, nurseMap]);
 
   // ── Filter by tab ─────────────────────────────────────────────────────────
   const filteredRequests = useMemo(() => {
@@ -455,18 +407,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
     }
   };
 
-  const handleAction = (
-    requestId: number,
-    action: "Approved" | "Rejected",
-    comment: string,
-  ) => {
-    setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
-    if (comment.trim()) {
-      setCommentOverrides((prev) => ({ ...prev, [requestId]: comment.trim() }));
-    }
-  };
-
-  const isLoading = shiftLoading;
+  const isLoading = shiftLoading || leaveLoading;
 
   return (
     <VStack align="stretch" gap={4} w="full" maxW="1000px" mx="auto">
@@ -673,7 +614,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                     <Table.Cell py={2} px={4} maxW="160px">
                       {(() => {
                         const displayComment =
-                          commentOverrides[req.id] ?? req.comments ?? null;
+                          req.comments ?? null;
                         return displayComment ? (
                           <Text
                             fontSize="sm"
@@ -802,31 +743,28 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
 
       {/* Shift review dialog */}
       {selectedShiftRequest && (
-        <ReviewShiftRequest
+        <NMReviewShiftRequest
           isOpen={!!selectedShiftRequest}
           onClose={() => setSelectedShiftRequest(null)}
           requestId={selectedShiftRequest.id}
-          nurseName={selectedShiftRequest.nurseName ?? null}
-          shiftCode={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
-          date={selectedShiftRequest.requestedDates}
-          status={selectedShiftRequest.status}
-          comment={selectedShiftRequest.comments}
-          onAction={handleAction}
+          nurseName={selectedShiftRequest.nurseName ?? ""}
+          shiftType={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
+          preferredDate={selectedShiftRequest.rawPreferredDate ?? selectedShiftRequest.requestedDates}
+          currentStatus={selectedShiftRequest.status}
         />
       )}
 
       {/* Leave review dialog */}
       {selectedLeaveRequest && (
-        <ReviewLeaveRequest
+        <NMReviewLeaveRequest
           isOpen={!!selectedLeaveRequest}
           onClose={() => setSelectedLeaveRequest(null)}
           requestId={selectedLeaveRequest.id}
-          nurseName={selectedLeaveRequest.nurseName ?? null}
+          nurseName={selectedLeaveRequest.nurseName ?? ""}
           leaveType={selectedLeaveRequest.requestTypeName}
-          date={selectedLeaveRequest.requestedDates}
-          status={selectedLeaveRequest.status}
-          comment={selectedLeaveRequest.comments}
-          onAction={handleAction}
+          startDate={selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
+          endDate={selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
+          currentStatus={selectedLeaveRequest.status}
         />
       )}
     </VStack>

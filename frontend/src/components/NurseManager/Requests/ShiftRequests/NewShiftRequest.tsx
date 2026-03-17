@@ -230,11 +230,6 @@ export const NewShiftRequest = ({
                     </Badge>
                   </HStack>
                 ) : null}
-                {selectedNurseRecord ? (
-                  <Text fontSize="sm" color="gray.600">
-                    Selected nurse: {selectedNurseRecord.name}
-                  </Text>
-                ) : null}
 
                 <Select.Root
                   collection={shiftCollection}
