@@ -1,4 +1,11 @@
-import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from "react-big-calendar";
+import {
+  Navigate,
+  Calendar,
+  momentLocalizer,
+  View,
+  ToolbarProps,
+  DateLocalizer,
+} from "react-big-calendar";
 import moment from "moment";
 import { useState, useCallback, useMemo, ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -81,8 +88,33 @@ interface Event {
   resource?: any;
 }
 
+interface GroupedLeaveRequestResource {
+  nurseName: string;
+  isOwn: boolean;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  requestId: number;
+  requests: Array<{
+    requestId: number;
+    nurseName: string;
+    leaveType: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  }>;
+}
+
 interface LeaveRequestCalendarProps {
   wardId: number | null | undefined;
+}
+
+interface MonthViewProps {
+  date: Date;
+  localizer: DateLocalizer;
+  events: Event[];
+  [key: string]: unknown;
 }
 
 export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarProps) {
@@ -110,25 +142,58 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
 
   const events: Event[] = useMemo(() => {
     if (!leaveRequests) return [];
-    return leaveRequests.map((lr) => ({
-      title: lr.leavetype,
-      start: new Date(lr.startdate),
-      end: new Date(lr.enddate),
-      allDay: true,
-      resource: {
-        nurseName: nurseMap.get(lr.nurseid) ?? `Nurse ${lr.nurseid}`,
+    const grouped = new Map<string, GroupedLeaveRequestResource>();
+
+    leaveRequests.forEach((lr) => {
+      const nurseName = nurseMap.get(lr.nurseid) ?? `Nurse ${lr.nurseid}`;
+      const key = `${lr.startdate}__${lr.enddate}__${lr.leavetype}`;
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.requests.push({
+          requestId: lr.leaveid,
+          nurseName,
+          leaveType: lr.leavetype,
+          startDate: lr.startdate,
+          endDate: lr.enddate,
+          status: lr.status,
+        });
+        existing.nurseName = existing.requests.map((request) => request.nurseName).join(", ");
+        return;
+      }
+
+      grouped.set(key, {
+        nurseName,
         isOwn: false,
         requestId: lr.leaveid,
-        shiftType: lr.leavetype,
+        leaveType: lr.leavetype,
         startDate: lr.startdate,
         endDate: lr.enddate,
         status: lr.status,
-      },
+        requests: [
+          {
+            requestId: lr.leaveid,
+            nurseName,
+            leaveType: lr.leavetype,
+            startDate: lr.startdate,
+            endDate: lr.enddate,
+            status: lr.status,
+          },
+        ],
+      });
+    });
+
+    return Array.from(grouped.values()).map((group) => ({
+      title: group.leaveType,
+      start: new Date(group.startDate),
+      end: new Date(group.endDate),
+      allDay: true,
+      resource: group,
     }));
   }, [leaveRequests, nurseMap]);
 
   const { views, defaultView } = useMemo(() => {
-    const MonthView = (props: Record<string, unknown>) => (
+    const MonthView = (props: MonthViewProps) => (
       <CustomMonthView {...props} wardId={wardId} />
     );
     MonthView.range = CustomMonthView.range;

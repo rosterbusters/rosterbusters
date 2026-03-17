@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Box,
@@ -28,6 +28,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Pending",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Alice Tan",
   },
   {
     id: -102,
@@ -37,6 +38,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Ben Lim",
   },
   {
     id: -103,
@@ -46,6 +48,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Rejected",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Clara Wong",
   },
   {
     id: -104,
@@ -55,6 +58,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "David Ng",
   },
   {
     id: -105,
@@ -64,6 +68,7 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     status: "Approved",
     applicationDate: "1/09/2025",
     comments: null,
+    nurseName: "Eva Chan",
   },
 ];
 
@@ -86,6 +91,14 @@ function formatDate(dateStr: string): string {
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
   return `${day}/${month < 10 ? "0" + month : month}/${year}`;
+}
+
+function normalizeLeaveDateRange(dateValue: string) {
+  const parts = dateValue.split("–").map((part) => part.trim());
+  return {
+    startDate: parts[0] ?? dateValue,
+    endDate: parts[1] ?? parts[0] ?? dateValue,
+  };
 }
 
 // ─── Status cell ─────────────────────────────────────────────────────────────
@@ -242,9 +255,13 @@ function SortIcon({ direction }: { direction: "asc" | "desc" | null }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 interface RequestsOverviewTableProps {
   wardId?: number | null;
+  wardSelector?: ReactNode;
 }
 
-export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
+export function RequestsOverviewTable({
+  wardId,
+  wardSelector,
+}: RequestsOverviewTableProps) {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
@@ -410,7 +427,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
   const isLoading = shiftLoading || leaveLoading;
 
   return (
-    <VStack align="stretch" gap={4} w="full" maxW="1000px" mx="auto">
+    <VStack align="stretch" gap={4} w="full" maxW="1200px" mx="auto">
       {/* Title */}
       <Text
         color="primary"
@@ -422,13 +439,22 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
       </Text>
 
       {/* Tabs */}
-      <Flex justify="center">
+      <Flex
+        w="full"
+        align="center"
+        justify="space-between"
+        gap={4}
+        wrap={{ base: "wrap", md: "nowrap" }}
+      >
+        <Box minW={{ base: "0", md: "160px" }} flex={{ base: "1 1 auto", md: "0 0 160px" }} />
         <HStack
           gap={0}
           rounded="full"
           borderWidth="1px"
           borderColor="border"
           overflow="hidden"
+          justify="center"
+          flexShrink={0}
         >
           {TABS.map((tab, idx) => {
             const isFirst = idx === 0;
@@ -457,6 +483,14 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
             );
           })}
         </HStack>
+        <Box
+          minW={{ base: "100%", md: "160px" }}
+          display="flex"
+          justifyContent={{ base: "center", md: "flex-end" }}
+          flex={{ base: "1 1 100%", md: "0 0 160px" }}
+        >
+          {wardSelector ?? <Box />}
+        </Box>
       </Flex>
 
       {/* Table */}
@@ -479,6 +513,17 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                   px={4}
                 >
                   Type
+                </Table.ColumnHeader>
+                <Table.ColumnHeader
+                  fontSize="xs"
+                  color="gray.500"
+                  fontWeight="semibold"
+                  textTransform="uppercase"
+                  letterSpacing="wider"
+                  py={3}
+                  px={4}
+                >
+                  Ward Staff
                 </Table.ColumnHeader>
                 <Table.ColumnHeader
                   fontSize="xs"
@@ -560,7 +605,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
               {currentPageData.length === 0 ? (
                 <Table.Row>
                   <Table.Cell
-                    colSpan={7}
+                    colSpan={8}
                     textAlign="center"
                     py={10}
                     color="gray.400"
@@ -579,6 +624,13 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                     {/* Type */}
                     <Table.Cell py={2} px={4}>
                       <TypeCell type={req.type} />
+                    </Table.Cell>
+
+                    {/* Ward Staff */}
+                    <Table.Cell py={2} px={4}>
+                      <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
+                        {req.nurseName ?? "–"}
+                      </Text>
                     </Table.Cell>
 
                     {/* Request Type badge */}
@@ -624,7 +676,9 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                               expandedComments.has(req.id) ? "normal" : "nowrap"
                             }
                             overflow={
-                              expandedComments.has(req.id) ? "visible" : "hidden"
+                              expandedComments.has(req.id)
+                                ? "visible"
+                                : "hidden"
                             }
                             textOverflow={
                               expandedComments.has(req.id) ? "clip" : "ellipsis"

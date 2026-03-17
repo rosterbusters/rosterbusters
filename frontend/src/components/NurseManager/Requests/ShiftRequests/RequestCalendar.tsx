@@ -1,4 +1,11 @@
-import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from 'react-big-calendar'
+import {
+  Navigate,
+  Calendar,
+  momentLocalizer,
+  View,
+  ToolbarProps,
+  DateLocalizer,
+} from 'react-big-calendar'
 import moment from 'moment'
 import { useState, useCallback, useMemo, useEffect, ComponentType } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -52,6 +59,13 @@ export const CustomToolbar: ComponentType<ToolbarProps> = ({
 
 interface RequestCalendarProps {
   wardId: number | null | undefined;
+}
+
+interface FortnightViewProps {
+  date: Date;
+  localizer: DateLocalizer;
+  events: Event[];
+  [key: string]: unknown;
 }
 
 /**
@@ -143,7 +157,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {
-    const FortnightView = (props: Record<string, unknown>) => (
+    const FortnightView = (props: FortnightViewProps) => (
       <CustomWeekView {...props} wardId={wardId} />
     );
     FortnightView.range = CustomWeekView.range;

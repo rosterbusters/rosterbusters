@@ -2,7 +2,7 @@ import json
 import queue
 import threading
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser, SessionDep, get_db
+from app.designation_mapping import classify_designation
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
 from app.models.shifts import ShiftRequest
@@ -36,6 +37,23 @@ class RosterGenerationRequest(BaseModel):
     period_id: int
 
 
+class TriggeredItem(BaseModel):
+    ward_id: int
+    period_id: int
+    task_id: str
+
+
+class SkippedItem(BaseModel):
+    ward_id: int
+    period_id: int
+    reason: str
+
+
+class ScheduledGenerationResponse(BaseModel):
+    triggered: list[TriggeredItem]
+    skipped: list[SkippedItem]
+
+
 router = APIRouter()
 
 
@@ -58,6 +76,8 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 "name": n.name,
                 "designation": n.designation,
                 "employmentType": n.employmenttype,
+                "staffing_role": classify_designation(n.designation).staffing_role,
+                "roster_rank": classify_designation(n.designation).roster_rank,
             }
             for n in nurses
         ],
@@ -312,7 +332,11 @@ def generate_roster_endpoint(
             select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
         ).all()
         nurses_data = [
-            {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+            {
+                "id": n.nurseid,
+                "name": n.name,
+                "rank": classify_designation(n.designation).roster_rank or "C",
+            }
             for n in nurses_db
         ]
 
@@ -323,6 +347,82 @@ def generate_roster_endpoint(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate-algorithm-async")
+def generate_roster_async(
+    request_data: RosterGenerationRequest,
+    db: Session = Depends(get_db),
+):
+    """Queue roster generation as a Celery background task. Returns a task_id to poll."""
+    from app.tasks.roster_tasks import generate_roster_task
+
+    ward = db.get(Ward, request_data.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    task = generate_roster_task.delay(request_data.ward_id, request_data.period_id)
+    return {"task_id": task.id, "status": "queued"}
+
+
+@router.post("/trigger-scheduled-generation", response_model=ScheduledGenerationResponse)
+def trigger_scheduled_generation(
+    days_ahead: int = 8,
+    db: Session = Depends(get_db),
+):
+    """
+    Called by AWS Lambda on a schedule. No user auth required.
+    Finds RosterPeriods starting in `days_ahead` days, queues generate_and_save_roster_task
+    for every active ward. Existing rosters are overwritten by the task.
+    """
+    from app.tasks.roster_tasks import generate_and_save_roster_task
+
+    target_date = date.today() + timedelta(days=days_ahead)
+
+    periods = db.exec(
+        select(RosterPeriod).where(
+            RosterPeriod.startdate == target_date,
+            RosterPeriod.status == "RequestOpen",
+        )
+    ).all()
+
+    active_wards = db.exec(
+        select(Ward).where(Ward.isactive == True)  # noqa: E712
+    ).all()
+
+    triggered: list[dict] = []
+    skipped: list[dict] = []
+
+    for period in periods:
+        for ward in active_wards:
+            task = generate_and_save_roster_task.delay(ward.wardid, period.periodid)
+            triggered.append({
+                "ward_id": ward.wardid,
+                "period_id": period.periodid,
+                "task_id": task.id,
+            })
+
+    return {"triggered": triggered, "skipped": skipped}
+
+
+@router.get("/task/{task_id}/status")
+def get_task_status(task_id: str):
+    """Poll the status of a queued roster generation task."""
+    from app.worker import celery_app
+
+    result = celery_app.AsyncResult(task_id)
+
+    if result.state == "PENDING":
+        return {"task_id": task_id, "status": "pending"}
+    if result.state == "STARTED":
+        return {"task_id": task_id, "status": "started"}
+    if result.state == "PROGRESS":
+        return {"task_id": task_id, "status": "in_progress", **(result.info or {})}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "complete", **(result.result or {})}
+    if result.state == "FAILURE":
+        return {"task_id": task_id, "status": "failed", "error": str(result.info)}
+    return {"task_id": task_id, "status": result.state.lower()}
 
 
 @router.post("/generate-algorithm-stream")
@@ -342,7 +442,11 @@ def generate_roster_stream(
         select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
     nurses_data = [
-        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+        {
+            "id": n.nurseid,
+            "name": n.name,
+            "rank": classify_designation(n.designation).roster_rank or "C",
+        }
         for n in nurses_db
     ]
 
@@ -436,23 +540,3 @@ def _staffing_to_algo_inputs(ward: Ward):
     }
     return [daily_req for _ in range(14)], None
 
-
-def _map_rank(designation: str) -> str:
-    """Map nurse designation to scheduling rank A/B/C."""
-    RANK_A = {
-        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
-        "STAFF NURSE I", "STAFF NURSE II",
-        "RN", "SSN",
-    }
-    RANK_B = {
-        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
-        "NURSING AIDE I", "NURSING AIDE II",
-        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
-        "SNR PATIENT SERVICE ASST",
-        "EN", "NA",
-    }
-    if designation in RANK_A:
-        return "A"
-    if designation in RANK_B:
-        return "B"
-    return "C"

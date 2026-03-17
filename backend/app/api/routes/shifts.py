@@ -60,6 +60,38 @@ class UpcomingShiftResponse(BaseModel):
     ward_name: Optional[str] = None
 
 
+def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
+    ward_ids = session.exec(
+        select(UserRole.wardid)
+        .join(Role, UserRole.roleid == Role.roleid)
+        .where(
+            UserRole.userid == user_id,
+            UserRole.isactive == True,  # noqa: E712
+            UserRole.wardid.is_not(None),
+            Role.rolename == "NurseManager",
+        )
+    ).all()
+    return {ward_id for ward_id in ward_ids if ward_id is not None}
+
+
+def _can_manage_nurse_shift_request(
+    session: SessionDep,
+    current_user: CurrentUser,
+    shift_request: ShiftRequest,
+) -> bool:
+    if current_user.nurseid and shift_request.nurseid == current_user.nurseid:
+        return True
+
+    managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
+    if not managed_ward_ids:
+        return False
+
+    nurse = session.exec(
+        select(Nurse).where(Nurse.nurseid == shift_request.nurseid)
+    ).first()
+    return bool(nurse and nurse.wardid in managed_ward_ids)
+
+
 @home_router.get("/upcoming-shift", response_model=UpcomingShiftResponse)
 def get_upcoming_shift(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get the next confirmed upcoming shift for the current user."""
@@ -384,7 +416,6 @@ def update_shift_request(
     rbac_user = get_rbac_user_by_email(session, current_user.email)
     if not rbac_user:
         raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
-
     shift_request = session.get(ShiftRequest, request_id)
     if not shift_request:
         raise HTTPException(status_code=404, detail="Shift request not found")
@@ -468,7 +499,6 @@ def delete_shift_request(
     rbac_user = get_rbac_user_by_email(session, current_user.email)
     if not rbac_user:
         raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
-
     shift_request = session.get(ShiftRequest, request_id)
     if not shift_request:
         raise HTTPException(status_code=404, detail="Shift request not found")

@@ -124,7 +124,7 @@ export function RosterPlanningHeader({
       <HStack gap={2} minW={0} flexWrap="nowrap">
         <Text whiteSpace="nowrap">{period.name}</Text>
         {flag ? (
-          <Badge variant={flag === "Current" ? "currentPeriod" : "upcomingPeriod"}>
+          <Badge variant={(flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any}>
             {flag}
           </Badge>
         ) : null}
@@ -254,7 +254,7 @@ export function RosterPlanningHeader({
             <MenuTrigger asChild>
               <IconButton
                 aria-label="More options"
-                variant="outlinegrey"
+                variant={"outlinegrey" as any}
                 size="sm"
                 _hover={{ bg: "#F8FAFC" }}
               >
@@ -310,7 +310,7 @@ export function RosterPlanningHeader({
           <HStack gap={2}>
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               onClick={onViewEditHistory}
               _hover={{ bg: "#F8FAFC" }}
             >
@@ -320,7 +320,7 @@ export function RosterPlanningHeader({
             <HStack gap={0}>
               <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               onClick={handleBack}
               disabled={!canGoBack}
               _hover={{ bg: "#F8FAFC" }}
@@ -331,7 +331,7 @@ export function RosterPlanningHeader({
               </Button>
               <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               onClick={handleNext}
               disabled={!canGoNext}
               _hover={{ bg: "#F8FAFC" }}
@@ -367,7 +367,7 @@ export function RosterPlanningHeader({
           >
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               fontWeight="normal"
               onClick={() => onViewModeChange("week")}
               bg={viewMode === "week" ? "menuactive" : "transparent"}
@@ -382,7 +382,7 @@ export function RosterPlanningHeader({
             </Button>
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               fontWeight="normal"
               onClick={() => onViewModeChange("twoWeeks")}
               bg={viewMode === "twoWeeks" ? "primary" : "transparent"}
@@ -555,7 +555,7 @@ export function RosterPlanningHeader({
             </Button>
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               _hover={{
                 bg: "#F8FAFC",
                 borderColor: "#DC2626",

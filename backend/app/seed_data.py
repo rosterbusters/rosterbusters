@@ -516,17 +516,18 @@ def seed_nurses(session: Session, wards: list[Ward]) -> list[Nurse]:
 def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
     """Seed admin user."""
     logger.info("Seeding admin user...")
+    admin_username = settings.FIRST_SUPERUSER.split("@")[0]
 
     existing = session.exec(
         select(RBACUser).where(
             (RBACUser.email == settings.FIRST_SUPERUSER)
-            | (RBACUser.username == settings.FIRST_SUPERUSER.split("@")[0])
+            | (RBACUser.username == admin_username)
         )
     ).first()
 
     if existing:
-        logger.info("  Admin user already exists, updating credentials to seed values")
-        existing.username = settings.FIRST_SUPERUSER.split("@")[0]
+        logger.info("  Admin user already exists, syncing credentials from env")
+        existing.username = admin_username
         existing.email = settings.FIRST_SUPERUSER
         existing.passwordhash = get_password_hash(settings.FIRST_SUPERUSER_PASSWORD)
         existing.isactive = True
@@ -535,7 +536,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         return existing
 
     admin = RBACUser(
-        username=settings.FIRST_SUPERUSER.split("@")[0],
+        username=admin_username,
         email=settings.FIRST_SUPERUSER,
         passwordhash=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD),
         isactive=True,
@@ -557,10 +558,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         session.add(user_role)
         session.commit()
 
-    logger.info(
-        f"  Created admin user: {settings.FIRST_SUPERUSER} / "
-        f"{settings.FIRST_SUPERUSER_PASSWORD}"
-    )
+    logger.info("  Created admin user: %s (password sourced from env)", settings.FIRST_SUPERUSER)
     return admin
 
 
@@ -1341,18 +1339,18 @@ def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     logger.info("Seeding ward shift code mappings...")
     DEFAULT_BASE_WORKING = {"A", "P", "N"}
     SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
-    SPECIAL_WARD_IDS = {9, 10} #CH and TCF
+    SPECIAL_WARD_NAMES = {"CH", "TCF"}
     leave_codes = {
         sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
     }
 
     for ward in wards:
-        if ward.wardid in SPECIAL_WARD_IDS:
-            base_working=SPECIAL_BASE_WORKING
+        if ward.wardname in SPECIAL_WARD_NAMES:
+            base_working = SPECIAL_BASE_WORKING
         else:
-            base_working=DEFAULT_BASE_WORKING
+            base_working = DEFAULT_BASE_WORKING
         
-        ward_codes=base_working | leave_codes
+        ward_codes = base_working | leave_codes
         for shiftcode in sorted(ward_codes):
             existing = session.exec(
                 select(WardShiftCode).where(
@@ -1409,7 +1407,7 @@ def seed_all() -> None:
     logger.info("=" * 60)
     logger.info("")
     logger.info("Test Credentials:")
-    logger.info("  admin@sach.org.sg / changethis (Admin)")
+    logger.info("  %s / [FIRST_SUPERUSER_PASSWORD from env] (Admin)", settings.FIRST_SUPERUSER)
     for mgr in MANAGERS_DATA:
         logger.info(f"  {mgr['email']} / manager123 (NurseManager)")
     for nurse in NURSES_DATA[:NUM_NURSE_USERS]:

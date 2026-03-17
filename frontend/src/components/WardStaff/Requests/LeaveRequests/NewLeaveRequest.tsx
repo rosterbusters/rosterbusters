@@ -52,7 +52,7 @@ export const NewLeaveRequest = ({
           label: lc.shiftcode,
           description: lc.description,
         })),
-      }),
+    }),
     [leaveCodes],
   );
 
@@ -118,6 +118,7 @@ export const NewLeaveRequest = ({
       startdate: dateStr,
       enddate: dateStr,
       leavetype: leaveType[0],
+      nurseid: allowNurseOverride ? Number(selectedNurse[0]) : undefined,
     });
   };
 

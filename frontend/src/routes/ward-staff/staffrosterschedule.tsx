@@ -281,12 +281,12 @@ function StaffRosterSchedule() {
               {dateRangeLabel}
             </Text>
             {isViewingCurrentPeriod ? (
-              <Badge variant="currentPeriod">
+              <Badge variant={"currentPeriod" as any}>
                 Current
               </Badge>
             ) : null}
             {isViewingUpcomingPeriod ? (
-              <Badge variant="upcomingPeriod">
+              <Badge variant={"upcomingPeriod" as any}>
                 Upcoming
               </Badge>
             ) : null}

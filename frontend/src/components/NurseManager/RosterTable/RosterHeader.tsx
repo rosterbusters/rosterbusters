@@ -92,7 +92,7 @@ export function RosterHeader({
       <HStack gap={2} minW={0} flexWrap="nowrap">
         <Text whiteSpace="nowrap">{period.name}</Text>
         {flag ? (
-          <Badge variant={flag === "Current" ? "currentPeriod" : "upcomingPeriod"}>
+          <Badge variant={(flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any}>
             {flag}
           </Badge>
         ) : null}
@@ -152,7 +152,7 @@ export function RosterHeader({
       >
         {/* Left Section: Edit History Button */}
         <Button
-          variant="outlinegrey"
+          variant={"outlinegrey" as any}
           size="sm"
           onClick={onViewEditHistory}
           _hover={{ bg: "#F8FAFC" }}
@@ -313,7 +313,7 @@ export function RosterHeader({
           >
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               fontWeight="normal"
               onClick={() => onViewModeChange("week")}
               bg={viewMode === "week" ? "menuactive" : "transparent"}
@@ -328,7 +328,7 @@ export function RosterHeader({
             </Button>
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               fontWeight="normal"
               onClick={() => onViewModeChange("twoWeeks")}
               bg={viewMode === "twoWeeks" ? "primary" : "transparent"}

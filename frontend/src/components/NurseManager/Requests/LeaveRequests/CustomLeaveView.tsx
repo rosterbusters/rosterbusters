@@ -62,10 +62,10 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
 }: CustomMonthViewProps) {
   const [selectedRequest, setSelectedRequest] = useState<{
     requestId: number;
+    nurseName: string;
     leaveType: string;
     startDate: string;
     endDate: string;
-    nurseName: string;
     status: string;
     requests?: Array<{
       requestId: number;

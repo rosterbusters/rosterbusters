@@ -20,6 +20,20 @@ router = APIRouter(prefix="/leave", tags=["leave-requests"])
 OFF_DAY_CODES = ["DO", "RD", "HOL", "FD", "SD", "OFF", "REST"]
 
 
+def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
+    ward_ids = session.exec(
+        select(UserRole.wardid)
+        .join(Role, UserRole.roleid == Role.roleid)
+        .where(
+            UserRole.userid == user_id,
+            UserRole.isactive == True,  # noqa: E712
+            UserRole.wardid.is_not(None),
+            Role.rolename == "NurseManager",
+        )
+    ).all()
+    return {ward_id for ward_id in ward_ids if ward_id is not None}
+
+
 @router.get("/leave-codes", response_model=list[ShiftCodePublic])
 def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get leave request codes, excluding off-day codes (DO, RD, etc.)."""
@@ -89,9 +103,14 @@ def create_leave_request(
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
     nurse = session.get(Nurse, target_nurse_id)
+    nurse = session.get(Nurse, target_nurse_id)
     if not nurse:
         raise HTTPException(status_code=404, detail="Nurse profile not found")
 
+    leave = LeaveRequest(
+        **leave_in.model_dump(exclude={"nurseid"}),
+        nurseid=target_nurse_id,
+    )
     leave = LeaveRequest(
         **leave_in.model_dump(exclude={"nurseid"}),
         nurseid=target_nurse_id,
@@ -187,7 +206,6 @@ def update_leave_request(
     rbac_user = get_rbac_user_by_email(session, current_user.email)
     if not rbac_user:
         raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
-
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")
@@ -234,7 +252,6 @@ def delete_leave_request(
     rbac_user = get_rbac_user_by_email(session, current_user.email)
     if not rbac_user:
         raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
-
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")

@@ -60,6 +60,7 @@ export interface Ward {
   wardName: string;
   wardType: string;
   campus: string;
+  managerId?: number | null;
 }
 
 // Roster period information
@@ -75,6 +76,20 @@ export interface RosterPeriodWindow {
   currentPeriod: RosterPeriod | null;
   upcomingPeriod: RosterPeriod | null;
   requestOpenPeriod: RosterPeriod | null;
+}
+
+// ============================================
+// Shift Request Overlay Types
+// ============================================
+
+export type ShiftRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export type ShiftRequestCategory = 'Algorithm' | 'Nurse Manager' | 'Self Changed';
+
+export interface ShiftRequestOverlay {
+  status: ShiftRequestStatus;
+  category: ShiftRequestCategory;
+  reason: string;
 }
 
 // Shift assignment for a specific day
@@ -100,6 +115,7 @@ export interface RosterRow {
   nurseId: number;
   name: string;
   designation: StaffDesignation | string;
+  staffingRole?: StaffRole | null;
   hours: HoursSummary;
   // Dynamic shift properties for each day
   shifts: Record<string, ShiftAssignment | null>;
@@ -146,6 +162,8 @@ export interface NurseInfo {
   nurseId: number;
   name: string;
   designation: string;
+  staffing_role?: StaffRole | null;
+  roster_rank?: "A" | "B" | "C" | null;
   email: string;
   contactNumber: string;
   wardId: number;
