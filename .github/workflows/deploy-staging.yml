@@ -80,6 +80,9 @@ jobs:
           EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
           USERNAME=${{ secrets.TRAEFIK_USERNAME }}
           HASHED_PASSWORD=${{ secrets.TRAEFIK_HASHED_PASSWORD }}
+          GRB_WLSACCESSID=${{ secrets.GRB_WLSACCESSID }}
+          GRB_WLSSECRET=${{ secrets.GRB_WLSSECRET }}
+          GRB_LICENSEID=${{ secrets.GRB_LICENSEID }}
           EOF
 
       - name: Strip whitespace from .env
