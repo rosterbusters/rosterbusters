@@ -10,6 +10,7 @@ from app.services.roster_period_service import (
     ROSTER_YEAR_LENGTH_DAYS,
     build_roster_period_definitions,
     ensure_roster_period_window,
+    get_period_window,
     get_roster_year_start,
 )
 
@@ -55,8 +56,12 @@ def test_build_roster_period_definitions_uses_march_anchor() -> None:
     assert periods[0].period_number == 1
     assert periods[0].startdate == date(2026, 3, 9)
     assert periods[0].enddate == date(2026, 3, 22)
+    assert periods[0].name == "Mar 09 - Mar 22 2026"
+    assert periods[1].requestopendate == date(2026, 3, 9)
+    assert periods[1].requestclosedate == date(2026, 3, 13)
     assert periods[1].period_number == 2
     assert periods[1].startdate == date(2026, 3, 23)
+    assert periods[1].name == "Mar 23 - Apr 05 2026"
 
 
 def test_get_roster_year_start_rolls_over_after_364_days() -> None:
@@ -68,8 +73,8 @@ def test_get_roster_year_start_rolls_over_after_364_days() -> None:
 def test_ensure_roster_period_window_is_idempotent_and_updates_statuses(db: Session) -> None:
     _clear_roster_period_state(db)
 
-    first_run = ensure_roster_period_window(db, today=date(2026, 3, 17))
-    second_run = ensure_roster_period_window(db, today=date(2026, 3, 17))
+    first_run = ensure_roster_period_window(db, today=date(2026, 3, 11))
+    second_run = ensure_roster_period_window(db, today=date(2026, 3, 11))
 
     assert len(first_run) == PERIODS_PER_ROSTER_YEAR * 2
     assert len(second_run) == PERIODS_PER_ROSTER_YEAR * 2
@@ -121,6 +126,37 @@ def test_ensure_roster_period_window_prunes_old_periods_and_cascades_shift_reque
     ).first() is None
 
 
+def test_get_period_window_returns_current_upcoming_and_request_open(db: Session) -> None:
+    _clear_roster_period_state(db)
+    periods = ensure_roster_period_window(db, today=date(2026, 3, 11))
+
+    current_period, upcoming_period, request_open_period = get_period_window(
+        periods, today=date(2026, 3, 11)
+    )
+
+    assert current_period is not None
+    assert current_period.startdate == date(2026, 3, 9)
+    assert upcoming_period is not None
+    assert upcoming_period.startdate == date(2026, 3, 23)
+    assert request_open_period is not None
+    assert request_open_period.startdate == date(2026, 3, 23)
+
+
+def test_get_period_window_returns_no_request_open_period_between_windows(db: Session) -> None:
+    _clear_roster_period_state(db)
+    periods = ensure_roster_period_window(db, today=date(2026, 3, 17))
+
+    current_period, upcoming_period, request_open_period = get_period_window(
+        periods, today=date(2026, 3, 17)
+    )
+
+    assert current_period is not None
+    assert current_period.startdate == date(2026, 3, 9)
+    assert upcoming_period is not None
+    assert upcoming_period.startdate == date(2026, 3, 23)
+    assert request_open_period is None
+
+
 def test_get_roster_periods_route_auto_populates_periods(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
@@ -169,3 +205,20 @@ def test_get_roster_period_route_returns_404_for_out_of_window_date(
     )
 
     assert response.status_code == 404
+
+
+def test_get_current_upcoming_roster_periods_route_returns_window(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    _clear_roster_period_state(db)
+
+    response = client.get(
+        f"{settings.API_V1_STR}/shift-requests/periods/current-upcoming",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "request_open_period" in payload
+    assert payload["current_period"] is not None
+    assert payload["upcoming_period"] is not None

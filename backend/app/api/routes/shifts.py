@@ -9,7 +9,13 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager, NursePublic
-from app.models.roster import Roster, RosterPeriod, RosterPeriodPublic, Ward
+from app.models.roster import (
+    Roster,
+    RosterPeriod,
+    RosterPeriodPublic,
+    RosterPeriodWindowPublic,
+    Ward,
+)
 from app.models.shifts import (
     ShiftCode,
     ShiftCodePublic,
@@ -19,8 +25,8 @@ from app.models.shifts import (
     ShiftRequestReview,
     ShiftRequestUpdate,
 )
-from app.rbac import get_rbac_user_by_email
-from app.services.roster_period_service import ensure_roster_period_window
+from app.rbac import get_rbac_user_by_email, user_has_role
+from app.services.roster_period_service import ensure_roster_period_window, get_period_window
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -256,6 +262,20 @@ def get_roster_period(
     return period
 
 
+@router.get("/periods/current-upcoming", response_model=RosterPeriodWindowPublic)
+def get_current_and_upcoming_roster_periods(
+    session: SessionDep, current_user: CurrentUser
+) -> Any:
+    """Get the current, upcoming, and request-open roster periods."""
+    periods = ensure_roster_period_window(session)
+    current_period, upcoming_period, request_open_period = get_period_window(periods)
+    return RosterPeriodWindowPublic(
+        current_period=current_period,
+        upcoming_period=upcoming_period,
+        request_open_period=request_open_period,
+    )
+
+
 # ─────────────────────────────────────────────
 # SHIFT REQUEST ENDPOINTS (current user)
 # ─────────────────────────────────────────────
@@ -277,15 +297,39 @@ def create_shift_request(
     current_user: CurrentUser,
     request_in: ShiftRequestCreate,
 ) -> Any:
-    """Create a shift request for the logged-in nurse."""
+    """Create a shift request for the logged-in nurse or a ward nurse (manager only)."""
     rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
+
+    target_nurse_id = rbac_user.nurseid
+    if request_in.nurseid is not None:
+        if not user_has_role(session, current_user.email, "NurseManager"):
+            raise HTTPException(
+                status_code=403,
+                detail="Only nurse managers can create a request for another nurse",
+            )
+        if not rbac_user.managerid:
+            raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
+
+        managed_ward = session.exec(
+            select(Ward).where(Ward.managerid == rbac_user.managerid)
+        ).first()
+        if not managed_ward:
+            raise HTTPException(status_code=400, detail="Nurse manager is not assigned to a ward")
+
+        target_nurse = session.get(Nurse, request_in.nurseid)
+        if not target_nurse or target_nurse.wardid != managed_ward.wardid:
+            raise HTTPException(status_code=403, detail="Selected nurse is not in your ward")
+        target_nurse_id = request_in.nurseid
+
+    if not target_nurse_id:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
     existing_requests = list(
         session.exec(
             select(ShiftRequest).where(
-                ShiftRequest.nurseid == rbac_user.nurseid,
+                ShiftRequest.nurseid == target_nurse_id,
                 ShiftRequest.periodid == request_in.periodid,
             )
         ).all()
@@ -303,7 +347,7 @@ def create_shift_request(
                 select(ShiftRequest)
                 .join(ShiftCode, ShiftRequest.preferredshifttype == ShiftCode.shiftcode)
                 .where(
-                    ShiftRequest.nurseid == rbac_user.nurseid,
+                    ShiftRequest.nurseid == target_nurse_id,
                     ShiftRequest.periodid == request_in.periodid,
                     or_(ShiftCode.isworking == True, ShiftCode.shiftcode.in_(list(_CAPPED_CODES))),  # noqa: E712
                 )
@@ -319,8 +363,8 @@ def create_shift_request(
     next_number = next(n for n in range(1, len(existing_requests) + 2) if n not in used_numbers)
 
     shift_request = ShiftRequest(
-        **request_in.model_dump(),
-        nurseid=rbac_user.nurseid,
+        **request_in.model_dump(exclude={"nurseid"}),
+        nurseid=target_nurse_id,
         requestnumber=next_number,
     )
     session.add(shift_request)

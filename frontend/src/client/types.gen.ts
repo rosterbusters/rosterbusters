@@ -69,6 +69,7 @@ export type ShiftCodePublic = {
 };
 
 export type ShiftRequestCreate = {
+    nurseid?: (number | null);
     periodid: number;
     preferreddate: string;
     preferredshifttype: string;

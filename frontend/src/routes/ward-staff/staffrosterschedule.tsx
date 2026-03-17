@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Badge,
   Box,
   Button,
   Flex,
@@ -17,6 +18,7 @@ import moment from "moment";
 
 import { ShiftBadge } from "@/components/NurseManager/RosterTable/ShiftBadge";
 import {
+  useRosterPeriodWindow,
   transformRosterData,
   useRosterPeriods,
   useWardRoster,
@@ -56,6 +58,8 @@ function StaffRosterSchedule() {
   const [selectedDesignations, setSelectedDesignations] = useState<Set<string>>(
     new Set(),
   );
+  const [hasInitializedCurrentPeriod, setHasInitializedCurrentPeriod] =
+    useState(false);
   const nameFilterAnchorRef = useRef<HTMLDivElement>(null);
   const designationFilterAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -66,25 +70,57 @@ function StaffRosterSchedule() {
   );
 
   const { data: periods } = useRosterPeriods();
+  const { data: periodWindow } = useRosterPeriodWindow();
+  const currentPeriod = periodWindow?.currentPeriod ?? null;
+  const upcomingPeriod = periodWindow?.upcomingPeriod ?? null;
   const activePeriod = useMemo(() => {
-    if (!periods?.length) {
-      return null;
-    }
-
     const weekStart = moment(currentStartDate);
     return (
-      periods.find((period) =>
-        weekStart.isBetween(
-          moment(period.startDate),
-          moment(period.endDate),
-          "day",
-          "[]",
-        ),
-      ) ??
-      periods[0] ??
-      null
+      periods?.find((period) =>
+        weekStart.isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+      ) ?? null
     );
   }, [currentStartDate, periods]);
+  const isViewingCurrentPeriod =
+    !!activePeriod &&
+    !!currentPeriod &&
+    activePeriod.periodId === currentPeriod.periodId;
+  const isViewingUpcomingPeriod =
+    !!activePeriod &&
+    !!upcomingPeriod &&
+    activePeriod.periodId === upcomingPeriod.periodId;
+
+  const navigationEndDate = useMemo(() => {
+    return upcomingPeriod?.endDate ?? currentPeriod?.endDate ?? null;
+  }, [currentPeriod?.endDate, upcomingPeriod?.endDate]);
+  const navigationStartDate = currentPeriod?.startDate ?? null;
+
+  const canGoBack = useMemo(() => {
+    if (!navigationStartDate) {
+      return true;
+    }
+    const previousWeekStart = moment(currentStartDate).subtract(7, "days").startOf("day");
+    return previousWeekStart.isSameOrAfter(moment(navigationStartDate).startOf("day"));
+  }, [currentStartDate, navigationStartDate]);
+
+  const canGoNext = useMemo(() => {
+    if (!navigationEndDate) {
+      return true;
+    }
+    const nextWeekStart = moment(currentStartDate).add(7, "days").startOf("day");
+    const latestAllowedWeekStart = moment(navigationEndDate)
+      .subtract(6, "days")
+      .startOf("day");
+
+    return nextWeekStart.isSameOrBefore(latestAllowedWeekStart);
+  }, [currentStartDate, navigationEndDate]);
+
+  useEffect(() => {
+    if (currentPeriod && !hasInitializedCurrentPeriod) {
+      setCurrentStartDate(moment(currentPeriod.startDate).toDate());
+      setHasInitializedCurrentPeriod(true);
+    }
+  }, [currentPeriod, hasInitializedCurrentPeriod]);
 
   const {
     data: statistics,
@@ -149,16 +185,24 @@ function StaffRosterSchedule() {
   const hasError = isStatisticsError || isRosterError;
 
   const handleToday = () => {
-    setCurrentStartDate(moment().startOf("isoWeek").toDate());
+    setCurrentStartDate(
+      moment(currentPeriod?.startDate ?? moment().startOf("isoWeek")).toDate(),
+    );
   };
 
   const handleBack = () => {
+    if (!canGoBack) {
+      return;
+    }
     setCurrentStartDate((previousDate) =>
       moment(previousDate).subtract(7, "days").toDate(),
     );
   };
 
   const handleNext = () => {
+    if (!canGoNext) {
+      return;
+    }
     setCurrentStartDate((previousDate) =>
       moment(previousDate).add(7, "days").toDate(),
     );
@@ -232,12 +276,24 @@ function StaffRosterSchedule() {
           <Text color="primary" fontWeight="semibold" fontSize="lg">
             Staff Roster Schedule
           </Text>
-          <Text color="foreground" fontWeight="light">
-            {dateRangeLabel}
-          </Text>
+          <HStack justify="center" gap={2} flexWrap="wrap" align="center" minH="32px">
+            <Text color="foreground" fontWeight="light" whiteSpace="nowrap">
+              {dateRangeLabel}
+            </Text>
+            {isViewingCurrentPeriod ? (
+              <Badge variant="currentPeriod">
+                Current
+              </Badge>
+            ) : null}
+            {isViewingUpcomingPeriod ? (
+              <Badge variant="upcomingPeriod">
+                Upcoming
+              </Badge>
+            ) : null}
+          </HStack>
         </VStack>
 
-        <Flex justify="flex-end">
+        <Flex justify="flex-end" align="center" minH="32px">
           <HStack gap={0}>
             <Button
               variant="outline"
@@ -254,6 +310,7 @@ function StaffRosterSchedule() {
               rounded="none"
               borderLeftWidth="0"
               onClick={handleBack}
+              disabled={!canGoBack}
             >
               Back
             </Button>
@@ -264,6 +321,7 @@ function StaffRosterSchedule() {
               roundedRight="full"
               borderLeftWidth="0"
               onClick={handleNext}
+              disabled={!canGoNext}
             >
               Next
             </Button>
@@ -726,7 +784,7 @@ function StaffRosterSchedule() {
                           borderColor="blackAlpha.100"
                         >
                           <Text fontSize="sm" color="black" fontWeight={isCurrentUser ? "medium" : "normal"}>
-                            {isCurrentUser ? `{${row.name}}` : row.name}
+                            {row.name}
                           </Text>
                         </Table.Cell>
                         <Table.Cell

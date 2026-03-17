@@ -12,19 +12,23 @@ import moment from "moment";
 import {
   RosterGrid,
   ShiftSummaryTable,
+  EditHistoryDialog,
   useWards,
   useRosterPeriods,
+  useRosterPeriodWindow,
   useWardStatistics,
   usePublishRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
   useShiftCodes,
+  useRosterChangelog,
   getShiftDurationHours,
   type Ward,
   type RosterPeriod,
   type ViewMode,
   type ShiftCode,
   type RosterRow,
+  type EditHistoryEntry,
   type DailyStaffingGuideline,
 } from "@/components/NurseManager/RosterTable";
 import { RosterPlanningHeader, getWardGuidelines } from "@/components/NurseManager/RosterPlanning";
@@ -76,6 +80,7 @@ function RosterPlanningPage() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+  const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
   const [rosterData, setRosterData] = useState<RosterRow[]>([]);
   
   // Algorithm generation state
@@ -92,7 +97,12 @@ function RosterPlanningPage() {
   // Data hooks
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
+  const { data: periodWindow } = useRosterPeriodWindow();
   const { data: wardStatistics } = useWardStatistics(selectedWard?.wardId ?? null);
+  const { data: changelogEntries = [] } = useRosterChangelog(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToXLSX } = useRosterExport();
   const publishRoster = usePublishRoster();
@@ -115,27 +125,57 @@ function RosterPlanningPage() {
     return [
       {
         periodId: 1,
-        name: `${today.clone().subtract(14, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().subtract(14, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().subtract(14, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
-        endDate: today.clone().subtract(14, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
-        status: 'Finalized' as const,
-      },
-      {
-        periodId: 2,
-        name: `${today.clone().startOf('isoWeek').format('MMM DD')} - ${today.clone().startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
-        startDate: today.clone().startOf('isoWeek').format('YYYY-MM-DD'),
-        endDate: today.clone().startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
-        status: 'RequestOpen' as const,
-      },
-      {
-        periodId: 3,
         name: `${today.clone().add(14, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
         startDate: today.clone().add(14, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
         endDate: today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
-        status: 'RequestOpen' as const,
+        status: 'Pending' as const,
+      },
+      {
+        periodId: 2,
+        name: `${today.clone().add(28, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(28, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().add(28, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().add(28, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
+        status: 'Pending' as const,
+      },
+      {
+        periodId: 3,
+        name: `${today.clone().add(42, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(42, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().add(42, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().add(42, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
+        status: 'Pending' as const,
       },
     ];
   }, [periods]);
+
+  const initialPlanningPeriod = useMemo(
+    () => periodWindow?.upcomingPeriod ?? periodWindow?.currentPeriod ?? null,
+    [periodWindow],
+  );
+  const visiblePlanningPeriods = useMemo(() => {
+    if (displayPeriods.length === 0) {
+      return [];
+    }
+
+    const ascendingPeriods = [...displayPeriods].sort((left, right) =>
+      moment(left.startDate).diff(moment(right.startDate)),
+    );
+
+    if (initialPlanningPeriod) {
+      const firstVisibleIndex = ascendingPeriods.findIndex(
+        (period) => period.periodId === initialPlanningPeriod.periodId,
+      );
+
+      if (firstVisibleIndex >= 0) {
+        return ascendingPeriods.slice(firstVisibleIndex, firstVisibleIndex + 3);
+      }
+    }
+
+    const futurePeriods = ascendingPeriods.filter((period) =>
+      moment(period.startDate).isAfter(moment().startOf("day")),
+    );
+
+    return (futurePeriods.length > 0 ? futurePeriods : ascendingPeriods).slice(0, 3);
+  }, [displayPeriods, initialPlanningPeriod]);
 
   // Set default ward if not set
   useEffect(() => {
@@ -158,10 +198,33 @@ function RosterPlanningPage() {
 
   // Set default period if not set
   useEffect(() => {
-    if (displayPeriods.length > 0 && !selectedPeriod) {
-      setSelectedPeriod(displayPeriods[1]); // Current period
+    if (visiblePlanningPeriods.length > 0 && !selectedPeriod) {
+      const defaultPeriod =
+        (initialPlanningPeriod
+          ? visiblePlanningPeriods.find(
+              (period) => period.periodId === initialPlanningPeriod.periodId,
+            )
+          : null) ??
+        visiblePlanningPeriods[0];
+      setSelectedPeriod(defaultPeriod);
+      setCurrentStartDate(moment(defaultPeriod.startDate).toDate());
     }
-  }, [displayPeriods, selectedPeriod]);
+  }, [initialPlanningPeriod, selectedPeriod, visiblePlanningPeriods]);
+
+  useEffect(() => {
+    if (
+      !selectedPeriod ||
+      visiblePlanningPeriods.some((period) => period.periodId === selectedPeriod.periodId)
+    ) {
+      return;
+    }
+
+    const fallbackPeriod = visiblePlanningPeriods[0] ?? null;
+    setSelectedPeriod(fallbackPeriod);
+    if (fallbackPeriod) {
+      setCurrentStartDate(moment(fallbackPeriod.startDate).toDate());
+    }
+  }, [selectedPeriod, visiblePlanningPeriods]);
 
   // Populate roster rows with real nurses from the selected ward whenever the ward changes
   useEffect(() => {
@@ -207,6 +270,20 @@ function RosterPlanningPage() {
       };
     });
   }, [rosterData, currentStartDate, viewMode, shiftDurationMap]);
+
+  const editHistory = useMemo<EditHistoryEntry[]>(() => {
+    return changelogEntries.map((entry) => ({
+      id: entry.changeid,
+      modifiedDate: entry.changedat,
+      changeType: entry.changetype === "comment" ? "comment" : "shift_change",
+      previousShiftCode: entry.oldshiftcode as ShiftCode | undefined,
+      newShiftCode: entry.newshiftcode as ShiftCode | undefined,
+      comment: entry.reason ?? undefined,
+      shiftDate: entry.shiftdate ?? entry.changedat,
+      nurseName: entry.nursename,
+      modifiedBy: entry.modifiedby,
+    }));
+  }, [changelogEntries]);
 
   // Handlers
   
@@ -288,7 +365,14 @@ const handleGenerateAlgorithm = useCallback(async () => {
   }, [currentStartDate, showSuccessToast]);
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
-  }, []);
+
+    const matchingPeriod =
+      visiblePlanningPeriods.find((period) =>
+        moment(date).isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+      ) ?? null;
+
+    setSelectedPeriod(matchingPeriod);
+  }, [visiblePlanningPeriods]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -356,6 +440,10 @@ const handleGenerateAlgorithm = useCallback(async () => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
   }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
 
+  const handleViewEditHistory = useCallback(() => {
+    setIsEditHistoryOpen(true);
+  }, []);
+
   const handlePublishClick = useCallback(() => {
     setIsPublishDialogOpen(true);
   }, []);
@@ -396,7 +484,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
           selectedWard={selectedWard}
           selectedPeriod={selectedPeriod}
           wards={displayWards}
-          periods={displayPeriods}
+          periods={visiblePlanningPeriods}
           isAlgorithmGenerated={isAlgorithmGenerated}
           isGenerating={generateAlgorithmRoster.isPending}
           generationProgress={generationProgress}
@@ -406,6 +494,7 @@ const handleGenerateAlgorithm = useCallback(async () => {
           onPeriodChange={handlePeriodChange}
           onPublishRoster={handlePublishClick}
           onDownloadRoster={handleDownloadRoster}
+          onViewEditHistory={handleViewEditHistory}
           onGenerateAlgorithm={handleGenerateAlgorithm}
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
@@ -514,6 +603,12 @@ const handleGenerateAlgorithm = useCallback(async () => {
           </DialogFooter>
         </DialogContent>
       </DialogRoot>
+
+      <EditHistoryDialog
+        isOpen={isEditHistoryOpen}
+        onClose={() => setIsEditHistoryOpen(false)}
+        entries={editHistory}
+      />
     </Flex>
   );
 }

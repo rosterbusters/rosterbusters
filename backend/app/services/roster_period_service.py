@@ -45,8 +45,8 @@ def build_roster_period_definitions(today: date | None = None) -> list[RosterPer
         for period_index in range(PERIODS_PER_ROSTER_YEAR):
             startdate = roster_year_start + timedelta(days=period_index * PERIOD_LENGTH_DAYS)
             enddate = startdate + timedelta(days=PERIOD_LENGTH_DAYS - 1)
-            requestopendate = startdate - timedelta(days=10)
-            requestclosedate = startdate - timedelta(days=3)
+            requestopendate = startdate - timedelta(days=14)
+            requestclosedate = startdate - timedelta(days=10)
 
             if today > enddate:
                 status = "Published"
@@ -63,10 +63,7 @@ def build_roster_period_definitions(today: date | None = None) -> list[RosterPer
                     enddate=enddate,
                     requestopendate=requestopendate,
                     requestclosedate=requestclosedate,
-                    name=(
-                        f"Roster Year {roster_year_label} Period {period_index + 1:02d} "
-                        f"({startdate.strftime('%b %d')} - {enddate.strftime('%b %d %Y')})"
-                    ),
+                    name=f"{startdate.strftime('%b %d')} - {enddate.strftime('%b %d %Y')}",
                     status=status,
                 )
             )
@@ -114,3 +111,24 @@ def ensure_roster_period_window(
     return list(
         session.exec(select(RosterPeriod).order_by(RosterPeriod.startdate.desc())).all()
     )
+
+
+def get_period_window(
+    periods: list[RosterPeriod], today: date | None = None
+) -> tuple[RosterPeriod | None, RosterPeriod | None, RosterPeriod | None]:
+    today = today or date.today()
+    periods_by_start = sorted(periods, key=lambda period: period.startdate)
+
+    current_period = next(
+        (period for period in periods_by_start if period.startdate <= today <= period.enddate),
+        None,
+    )
+    upcoming_period = next(
+        (period for period in periods_by_start if period.startdate > today),
+        None,
+    )
+    request_open_period = next(
+        (period for period in periods_by_start if period.status == "RequestOpen"),
+        None,
+    )
+    return current_period, upcoming_period, request_open_period

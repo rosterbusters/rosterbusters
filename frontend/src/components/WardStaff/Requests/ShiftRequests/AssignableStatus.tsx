@@ -2,28 +2,13 @@ import { Text, Badge, HStack } from "@chakra-ui/react";
 import { useQuery } from "@tanstack/react-query";
 import { ShiftRequestsService } from "@/client";
 import { useMemo } from "react";
+import { useRosterPeriodWindow } from "@/components/NurseManager/RosterTable/useRosterData";
 
 const MAX_REQUESTS = 3;
 
 export function AssignableStatus() {
-  const { data: periods } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-  });
-
-  const activePeriod = useMemo(() => {
-    if (!periods) return undefined;
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    return (
-      periods.find(
-        (p) =>
-          p.status === "RequestOpen" &&
-          p.startdate <= todayStr &&
-          p.enddate >= todayStr,
-      ) ?? periods.find((p) => p.status === "RequestOpen")
-    );
-  }, [periods]);
+  const { data: periodWindow } = useRosterPeriodWindow();
+  const activePeriod = periodWindow?.requestOpenPeriod;
 
   const { data: userRequests } = useQuery({
     queryKey: ["shift-requests", "user"],
@@ -44,7 +29,7 @@ export function AssignableStatus() {
   const count = activePeriod && userRequests
     ? userRequests.filter(
         (r) =>
-          r.periodid === activePeriod.periodid &&
+          r.periodid === activePeriod.periodId &&
           workingCodeSet.has(r.preferredshifttype),
       ).length
     : 0;

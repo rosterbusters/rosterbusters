@@ -4,12 +4,14 @@ import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
+import { NewShiftRequest } from "./NewShiftRequest";
 import moment from "moment";
 
 interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
   events: Event[];
+  wardId?: number | null;
 
   [key: string]: unknown;
 }
@@ -60,6 +62,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   wardId,
 }: CustomWeekViewProps) {
   const [selectedGroup, setSelectedGroup] = useState<ShiftRequestEntry[] | null>(null);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
@@ -99,20 +102,27 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
           {currRange.map((day, i) => {
             const eventsForDay = getEventsForDay(day, events);
             const grouped = groupByShift(eventsForDay);
+            const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
 
             return (
               <GridItem
                 key={i}
-                bg="white"
+                bg={isPastDate ? "gray.100" : "white"}
                 textAlign={"start"}
-                color="foreground"
+                color={isPastDate ? "gray.500" : "foreground"}
                 p={2}
                 minH="250px"
                 borderColor="border"
                 borderWidth="1px"
                 bgColor={
-                  moment(day).isSame(moment(), "day") ? "menuactive" : "white"
+                  moment(day).isSame(moment(), "day") ? "menuactive" : isPastDate ? "gray.100" : "white"
                 }
+                onClick={() => {
+                  if (isPastDate) return;
+                  setSelectedDay(day);
+                }}
+                cursor={isPastDate ? "default" : "pointer"}
+                opacity={isPastDate ? 0.7 : 1}
               >
                 {localizer.format(day, "D")}
                 <Box mt={2}>
@@ -138,7 +148,12 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                       }));
 
                       return (
-                        <Box key={shiftType} pb={2} maxW="100%">
+                        <Box
+                          key={shiftType}
+                          pb={2}
+                          maxW="100%"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <CalendarRequestBlock
                             shift={shiftType}
                             nurseName={nurseNames}
@@ -163,6 +178,13 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
           wardId={wardId as number | null | undefined}
         />
       )}
+
+      <NewShiftRequest
+        isOpen={!!selectedDay}
+        onClose={() => setSelectedDay(null)}
+        selectedDate={selectedDay}
+        wardId={wardId}
+      />
     </>
   );
 };
