@@ -105,6 +105,7 @@ function generateEmptyRosterData(): RosterRow[] {
     nurseId: nurse.id,
     name: nurse.name,
     designation: nurse.designation,
+    staffingRole: nurse.designation.includes("Staff Nurse") ? "RN" : "NA",
     hours: nurse.hours,
     shifts: {}, // Empty shifts - will show "Select" placeholder
     hasOvertime: false,
@@ -150,6 +151,8 @@ function RosterPlanningPage() {
   );
   const [isPublishSuccessDialogOpen, setIsPublishSuccessDialogOpen] =
     useState(false);
+  const [isGenerationSuccessDialogOpen, setIsGenerationSuccessDialogOpen] =
+    useState(false);
   const [isDownloadSuccessDialogOpen, setIsDownloadSuccessDialogOpen] =
     useState(false);
   const navigate = useNavigate();
@@ -160,6 +163,9 @@ function RosterPlanningPage() {
   // Algorithm generation state
   const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [generatedAlgorithmMethod, setGeneratedAlgorithmMethod] = useState<
+    string | null
+  >(null);
 
   // Mock shift request overlays (Algorithm and Nurse Manager categories only)
   const mockPlanningOverlays = useMemo(
@@ -301,6 +307,7 @@ function RosterPlanningPage() {
           nurseId: nurse.nurseId,
           name: nurse.name,
           designation: nurse.designation,
+          staffingRole: nurse.staffing_role ?? null,
           hours: { worked: 0, contracted: 44 },
           shifts: {},
           hasOvertime: false,
@@ -351,652 +358,27 @@ function RosterPlanningPage() {
       showErrorToast("Please select a ward and period first");
       return;
     }
-    const mockData = {
-      method: "GA",
-      roster: {
-        nurses: [
-          {
-            id: 1,
-            name: "Nurse 1",
-            rank: "A",
-            schedule: [
-              "DO",
-              "A",
-              "A",
-              "P",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 2,
-            name: "Nurse 2",
-            rank: "A",
-            schedule: [
-              "DO",
-              "A",
-              "P",
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 3,
-            name: "Nurse 3",
-            rank: "A",
-            schedule: [
-              "P",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 4,
-            name: "Nurse 4",
-            rank: "A",
-            schedule: [
-              "P",
-              "P",
-              "DO",
-              "A",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 5,
-            name: "Nurse 5",
-            rank: "A",
-            schedule: [
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 6,
-            name: "Nurse 6",
-            rank: "A",
-            schedule: [
-              "N",
-              "DO",
-              "A",
-              "DO",
-              "A",
-              "A",
-              "P",
-              "P",
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 7,
-            name: "Nurse 7",
-            rank: "A",
-            schedule: [
-              "P",
-              "N",
-              "N",
-              "DO",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "A",
-              "DO",
-              "P",
-              "A",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 8,
-            name: "Nurse 8",
-            rank: "A",
-            schedule: [
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 9,
-            name: "Nurse 9",
-            rank: "A",
-            schedule: [
-              "DO",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "A",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 10,
-            name: "Nurse 10",
-            rank: "A",
-            schedule: [
-              "A",
-              "P",
-              "N",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "DO",
-              "A",
-              "P",
-              "A",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 11,
-            name: "Nurse 11",
-            rank: "A",
-            schedule: [
-              "P",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 12,
-            name: "Nurse 12",
-            rank: "B",
-            schedule: [
-              "N",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 13,
-            name: "Nurse 13",
-            rank: "B",
-            schedule: [
-              "N",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 14,
-            name: "Nurse 14",
-            rank: "B",
-            schedule: [
-              "P",
-              "A",
-              "N",
-              "DO",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 15,
-            name: "Nurse 15",
-            rank: "B",
-            schedule: [
-              "A",
-              "A",
-              "A",
-              "P",
-              "DO",
-              "DO",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 16,
-            name: "Nurse 16",
-            rank: "B",
-            schedule: [
-              "DO",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 17,
-            name: "Nurse 17",
-            rank: "B",
-            schedule: [
-              "A",
-              "A",
-              "DO",
-              "P",
-              "P",
-              "DO",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 18,
-            name: "Nurse 18",
-            rank: "B",
-            schedule: [
-              "A",
-              "N",
-              "DO",
-              "P",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 19,
-            name: "Nurse 19",
-            rank: "B",
-            schedule: [
-              "N",
-              "N",
-              "DO",
-              "A",
-              "DO",
-              "A",
-              "P",
-              "A",
-              "DO",
-              "P",
-              "N",
-              "DO",
-              "P",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 20,
-            name: "Nurse 20",
-            rank: "B",
-            schedule: [
-              "P",
-              "P",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 21,
-            name: "Nurse 21",
-            rank: "B",
-            schedule: [
-              "DO",
-              "P",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 22,
-            name: "Nurse 22",
-            rank: "B",
-            schedule: [
-              "P",
-              "P",
-              "DO",
-              "P",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "DO",
-              "A",
-              "A",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 23,
-            name: "Nurse 23",
-            rank: "B",
-            schedule: [
-              "A",
-              "P",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 24,
-            name: "Nurse 24",
-            rank: "C",
-            schedule: [
-              "N",
-              "DO",
-              "P",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 25,
-            name: "Nurse 25",
-            rank: "C",
-            schedule: [
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 26,
-            name: "Nurse 26",
-            rank: "C",
-            schedule: [
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-        ],
-      },
-    }; //Put mock data in here
-
     try {
+      setGenerationProgress(0);
       const result = await generateAlgorithmRoster.mutateAsync({
         wardId: selectedWard.wardId, // CamelCase to match hook params
         periodId: selectedPeriod.periodId,
         startDate: currentStartDate, // Pass the actual Date object
-
+        onProgress: (percent) => {
+          setGenerationProgress(percent);
+        },
       });
 
       // The hook now returns exactly what we need
       setRosterData(result.rosterData);
       setIsAlgorithmGenerated(true);
+      setGenerationProgress(100);
+      setGeneratedAlgorithmMethod(result.algorithm);
+      setIsGenerationSuccessDialogOpen(true);
       showSuccessToast("Algorithm roster generated successfully!");
     } catch (error) {
       console.error("Failed:", error);
+      setGenerationProgress(0);
       showErrorToast("Failed to generate roster.");
     }
   }, [
@@ -1004,6 +386,7 @@ function RosterPlanningPage() {
     selectedPeriod,
     currentStartDate,
     generateAlgorithmRoster,
+    setGenerationProgress,
     showSuccessToast,
     showErrorToast,
   ]);
@@ -1052,6 +435,8 @@ function RosterPlanningPage() {
           name: nurse.name,
           designation:
             nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          staffingRole:
+            nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
           hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,
@@ -1065,7 +450,7 @@ function RosterPlanningPage() {
         `Loaded mock data: ${mockKey.replace(/_/g, " ").toUpperCase()}`,
       );
     },
-    [currentStartDate, showSuccessToast],
+    [currentStartDate, shiftDurationMap, showSuccessToast],
   );
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
@@ -1273,6 +658,66 @@ function RosterPlanningPage() {
           }
         />
       </Box>
+
+      {/* Generation Success Dialog */}
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isGenerationSuccessDialogOpen}
+        onOpenChange={(e) => setIsGenerationSuccessDialogOpen(e.open)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content maxW="380px">
+              <Dialog.Body py={8} px={6}>
+                <VStack gap={6} align="center">
+                  <Box position="relative" w="full">
+                    <Text
+                      fontSize="xl"
+                      fontWeight="bold"
+                      color="primary"
+                      textAlign="center"
+                      w="full"
+                    >
+                      Roster Generated!
+                    </Text>
+                    <Dialog.CloseTrigger asChild>
+                      <CloseButton
+                        size="sm"
+                        position="absolute"
+                        top="-2.5"
+                        right="-2"
+                      />
+                    </Dialog.CloseTrigger>
+                  </Box>
+                  <ClipboardCheck size={80} color="#16a34a" strokeWidth={1.5} />
+                  <VStack gap={2}>
+                    {generatedAlgorithmMethod && (
+                      <Text fontSize="sm" color="gray.500" textAlign="center">
+                        Generated with {generatedAlgorithmMethod}
+                      </Text>
+                    )}
+                    <Text fontSize="sm" color="gray.500" textAlign="center">
+                      The roster is ready for review and publishing.
+                    </Text>
+                  </VStack>
+                  <Button
+                    w="full"
+                    variant="outline"
+                    borderColor="#E6E6E6"
+                    color="#4A4A4A"
+                    _hover={{ bg: "gray.50" }}
+                    onClick={() => setIsGenerationSuccessDialogOpen(false)}
+                  >
+                    Review Generated Roster
+                  </Button>
+                </VStack>
+              </Dialog.Body>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
 
       {/* Publish Success Dialog */}
       <Dialog.Root

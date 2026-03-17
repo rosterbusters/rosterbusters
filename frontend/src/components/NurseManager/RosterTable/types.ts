@@ -109,6 +109,7 @@ export interface RosterRow {
   nurseId: number;
   name: string;
   designation: StaffDesignation | string;
+  staffingRole?: StaffRole | null;
   hours: HoursSummary;
   // Dynamic shift properties for each day
   shifts: Record<string, ShiftAssignment | null>;
@@ -155,6 +156,8 @@ export interface NurseInfo {
   nurseId: number;
   name: string;
   designation: string;
+  staffing_role?: StaffRole | null;
+  roster_rank?: "A" | "B" | "C" | null;
   email: string;
   contactNumber: string;
   wardId: number;

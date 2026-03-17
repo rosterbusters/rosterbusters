@@ -106,8 +106,4 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.prod.yml build
           docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
-          # Seed database
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend python app/seed_admin.py
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend python app/seed_staff_list_wards.py
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend python app/seed_data.py
           EOF

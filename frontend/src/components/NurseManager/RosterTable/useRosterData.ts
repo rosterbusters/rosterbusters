@@ -275,6 +275,7 @@ export function transformRosterData(
       nurseId: nurse.nurseId,
       name: nurse.name,
       designation: nurse.designation,
+      staffingRole: nurse.staffing_role ?? null,
       hours: {
         worked: workedHours,
         contracted: contractedHours,
@@ -343,6 +344,33 @@ export interface AlgorithmRosterResponse {
   rosterData: RosterRow[];
 }
 
+type AlgorithmTaskStatus =
+  | { task_id: string; status: "pending" | "started" }
+  | {
+      task_id: string;
+      status: "in_progress";
+      percent?: number;
+      generation?: number;
+      total?: number;
+      best_score?: number;
+    }
+  | {
+      task_id: string;
+      status: "complete";
+      method: string;
+      roster: {
+        nurses: Array<{
+          id: number;
+          name: string;
+          rank: string;
+          schedule: string[];
+        }>;
+      };
+    }
+  | { task_id: string; status: "failed"; error?: string };
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 
 // Hook to generate algorithm-based roster
 export function useGenerateAlgorithmRoster() {
@@ -360,48 +388,45 @@ export function useGenerateAlgorithmRoster() {
       startDate: Date;
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
-      // 1. Stream the SSE endpoint to get real-time progress + final result
-      const token = localStorage.getItem("access_token") || "";
-      const response = await fetch(`${API_BASE}/api/v1/roster/generate-algorithm-stream`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const queuedTask: { task_id: string; status: string } = await fetchWithAuth(
+        "/api/v1/roster/generate-algorithm-async",
+        {
+          method: "POST",
+          body: JSON.stringify({ ward_id: wardId, period_id: periodId }),
         },
-        body: JSON.stringify({ ward_id: wardId, period_id: periodId }),
-      });
+      );
+      onProgress?.(5, 0, 0, 0);
 
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
-      }
+      let algorithmResult: Extract<AlgorithmTaskStatus, { status: "complete" }> | null =
+        null;
 
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let algorithmResult: any = null;
+      for (let attempt = 0; attempt < 240; attempt += 1) {
+        const taskStatus = await fetchWithAuth(
+          `/api/v1/roster/task/${queuedTask.task_id}/status`,
+        ) as AlgorithmTaskStatus;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const event = JSON.parse(line.slice(6));
-          if (event.type === "progress") {
-            onProgress?.(event.percent, event.generation, event.total, event.best_score);
-          } else if (event.type === "complete") {
-            algorithmResult = event;
-          } else if (event.type === "error") {
-            throw new Error(event.message);
-          }
+        if (taskStatus.status === "in_progress") {
+          onProgress?.(
+            taskStatus.percent ?? 0,
+            taskStatus.generation ?? 0,
+            taskStatus.total ?? 0,
+            taskStatus.best_score ?? 0,
+          );
+        } else if (taskStatus.status === "pending") {
+          onProgress?.(10, 0, 0, 0);
+        } else if (taskStatus.status === "started") {
+          onProgress?.(15, 0, 0, 0);
+        } else if (taskStatus.status === "complete") {
+          algorithmResult = taskStatus;
+          break;
+        } else if (taskStatus.status === "failed") {
+          throw new Error(taskStatus.error || "Algorithm generation failed.");
         }
+
+        await sleep(1000);
       }
 
-      if (!algorithmResult) throw new Error("Algorithm did not return a result");
+      if (!algorithmResult) throw new Error("Algorithm generation timed out.");
 
       // 2. Fetch shift codes for accurate duration calculation
       let shiftDurationMap: Map<string, number> = new Map();
@@ -417,23 +442,33 @@ export function useGenerateAlgorithmRoster() {
         // Fall back to static SHIFT_CODE_MAP via getShiftDurationHours
       }
 
+      const toUiShiftCode = (shiftCode: string): ShiftCode => {
+        const normalized = shiftCode.toUpperCase();
+        if (normalized === "AM") return "A";
+        if (normalized === "PM") return "P";
+        if (normalized === "NIGHT") return "N";
+        if (normalized === "OFF") return "DO";
+        return normalized as ShiftCode;
+      };
+
       // 3. Transform backend format → RosterRow[]
-      const rosterData: RosterRow[] = algorithmResult.roster.nurses.map((nurse: any) => {
+      const rosterData: RosterRow[] = algorithmResult.roster.nurses.map((nurse) => {
         const shiftsObject: Record<string, any> = {};
 
-        nurse.schedule.forEach((shiftCode: string, index: number) => {
+        nurse.schedule.forEach((shiftCode, index) => {
           const dateKey = moment(startDate).add(index, "days").format("YYYY-MM-DD");
+          const uiShiftCode = toUiShiftCode(shiftCode);
           shiftsObject[dateKey] = {
             nurseId: nurse.id,
             shiftDate: dateKey,
-            shiftCode: shiftCode,
+            shiftCode: uiShiftCode,
             status: "Pending",
           };
         });
 
         const workedHours = nurse.schedule.reduce(
           (sum: number, shiftCode: string) =>
-            sum + getShiftDurationHours(shiftCode, shiftDurationMap),
+            sum + getShiftDurationHours(toUiShiftCode(shiftCode), shiftDurationMap),
           0,
         );
         const contractedHours = 44;
@@ -442,6 +477,7 @@ export function useGenerateAlgorithmRoster() {
           nurseId: nurse.id,
           name: nurse.name,
           designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          staffingRole: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
           hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,
