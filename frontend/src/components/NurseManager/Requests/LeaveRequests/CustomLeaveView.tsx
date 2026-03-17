@@ -11,6 +11,7 @@ interface CustomMonthViewProps {
   date: Date;
   localizer: DateLocalizer;
   events: Event[];
+  wardId?: number | null;
   [key: string]: unknown;
 }
 
@@ -40,21 +41,33 @@ function getEventsForDay(day: Date, events: Event[]): Event[] {
   });
 }
 
+function groupByLeaveType(events: Event[]) {
+  const grouped = new Map<string, Event[]>();
+  events.forEach((event) => {
+    const key = event.resource?.leaveType ?? event.title;
+    const existing = grouped.get(key) ?? [];
+    existing.push(event);
+    grouped.set(key, existing);
+  });
+  return grouped;
+}
+
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
   localizer,
   events,
+  wardId,
 }: CustomMonthViewProps) {
-  const [selectedRequest, setSelectedRequest] = useState<{
+  const [selectedRequest, setSelectedRequest] = useState<Array<{
     requestId: number;
+    nurseName: string;
     leaveType: string;
     startDate: string;
     endDate: string;
-    nurseName: string;
     status: string;
-  } | null>(null);
+  }> | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
   const currRange = useMemo(
@@ -105,6 +118,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
           >
             {week.map((day, di) => {
               const eventsForDay = getEventsForDay(day, events);
+              const grouped = groupByLeaveType(eventsForDay);
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
               const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
@@ -128,32 +142,40 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
-                    {eventsForDay.length > 0 &&
-                      [...eventsForDay]
-                        .sort(
-                          (a, b) =>
-                            (b.resource?.isOwn ? 1 : 0) -
-                            (a.resource?.isOwn ? 1 : 0),
-                        )
-                        .map((ev, idx) => (
-                          <Box key={idx} pb={2} maxW="100%" onClick={(e) => e.stopPropagation()}>
+                    {Array.from(grouped.entries())
+                      .sort(([, a], [, b]) => {
+                        const aOwn = a.some((event) => event.resource?.isOwn);
+                        const bOwn = b.some((event) => event.resource?.isOwn);
+                        return (bOwn ? 1 : 0) - (aOwn ? 1 : 0);
+                      })
+                      .map(([leaveType, groupedEvents]) => {
+                        const isOwn = groupedEvents.some(
+                          (event) => event.resource?.isOwn,
+                        );
+                        const requests = groupedEvents.flatMap(
+                          (event) => event.resource?.requests ?? [],
+                        );
+                        const nurseNames = requests
+                          .map((request) => request.nurseName)
+                          .filter(Boolean)
+                          .join(", ");
+
+                        return (
+                          <Box
+                            key={`${moment(day).format("YYYY-MM-DD")}-${leaveType}`}
+                            pb={2}
+                            maxW="100%"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <CalendarRequestBlock
-                              shift={ev.title}
-                              nurseName={ev.resource?.nurseName}
-                              owned={ev.resource?.isOwn}
-                              onClick={() =>
-                                setSelectedRequest({
-                                  requestId: ev.resource.requestId,
-                                  leaveType: ev.resource.shiftType,
-                                  startDate: ev.resource.startDate,
-                                  endDate: ev.resource.endDate,
-                                  nurseName: ev.resource.nurseName,
-                                  status: ev.resource.status,
-                                })
-                              }
+                              shift={leaveType}
+                              nurseName={nurseNames}
+                              owned={isOwn}
+                              onClick={() => setSelectedRequest(requests)}
                             />
                           </Box>
-                        ))}
+                        );
+                      })}
                   </Box>
                 </GridItem>
               );
@@ -166,12 +188,13 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         <NMReviewLeaveRequest
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
-          requestId={selectedRequest.requestId}
-          leaveType={selectedRequest.leaveType}
-          startDate={selectedRequest.startDate}
-          endDate={selectedRequest.endDate}
-          nurseName={selectedRequest.nurseName}
-          currentStatus={selectedRequest.status}
+          requestId={selectedRequest[0].requestId}
+          leaveType={selectedRequest[0].leaveType}
+          startDate={selectedRequest[0].startDate}
+          endDate={selectedRequest[0].endDate}
+          nurseName={selectedRequest[0].nurseName}
+          currentStatus={selectedRequest[0].status}
+          requests={selectedRequest}
         />
       )}
 
@@ -179,6 +202,8 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         isOpen={!!newLeaveDate}
         onClose={() => setNewLeaveDate(null)}
         selectedDate={newLeaveDate}
+        wardId={wardId}
+        allowNurseOverride
       />
     </>
   );

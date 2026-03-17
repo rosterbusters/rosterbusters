@@ -3,6 +3,9 @@ import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
+import { NewShiftRequest } from "./NewShiftRequest";
+import { ReviewShiftRequest } from "./ReviewShiftRequest";
+import useAuth from "@/hooks/useAuth";
 import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 import { NewShiftRequest } from "./NewShiftRequest";
 import moment from "moment";
@@ -61,6 +64,15 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   events,
   wardId,
 }: CustomWeekViewProps) {
+  const [selectedReviewRequest, setSelectedReviewRequest] = useState<{
+    requestId: number;
+    nurseName: string;
+    shiftType: string;
+    preferredDate: string;
+    status: string;
+    reason: string | null;
+  } | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
   const [selectedGroup, setSelectedGroup] = useState<ShiftRequestEntry[] | null>(null);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
@@ -68,6 +80,16 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
   );
+
+  const handleReviewAction = (
+    requestId: number,
+    action: "Approved" | "Rejected",
+    _comment: string,
+  ) => {
+    setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
+  };
+
+  
 
   return (
     <>

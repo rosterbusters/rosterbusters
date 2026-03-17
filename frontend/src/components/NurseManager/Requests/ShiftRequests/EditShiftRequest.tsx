@@ -9,6 +9,7 @@ import {
   Badge,
   Text,
   VStack,
+  HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
@@ -28,6 +29,24 @@ interface EditShiftRequestProps {
   onClose: () => void;
   requests: ShiftRequestEntry[];
   wardId?: number | null;
+  selectedRequestId?: number;
+}
+
+function parseRequestDate(value?: string | null): Date | undefined {
+  if (!value) return undefined;
+
+  const firstSegment = value.split("–")[0]?.trim() ?? value;
+  const normalizedValue = firstSegment.replace(/\s+/g, " ").trim();
+  const slashMatch = normalizedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  const parsed = new Date(normalizedValue);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 export const EditShiftRequest = ({
@@ -35,28 +54,27 @@ export const EditShiftRequest = ({
   onClose,
   requests,
   wardId,
+  selectedRequestId,
 }: EditShiftRequestProps) => {
-  const [selectedIdx, setSelectedIdx] = useState(0);
-
-  // Reset to first entry whenever the dialog opens or requests change
-  useEffect(() => {
-    if (isOpen) setSelectedIdx(0);
-  }, [isOpen, requests]);
-
-  const active = requests[selectedIdx] ?? requests[0];
+  const active = useMemo(
+    () =>
+      (selectedRequestId != null
+        ? requests.find((request) => request.requestId === selectedRequestId)
+        : undefined) ?? requests[0],
+    [requests, selectedRequestId],
+  );
 
   const [shiftType, setShiftType] = useState<string[]>([active?.initialShiftType ?? ""]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    active ? new Date(active.initialDate) : undefined,
+    parseRequestDate(active?.initialDate),
   );
 
-  // Sync form fields when selected nurse changes
   useEffect(() => {
     if (active) {
       setShiftType([active.initialShiftType]);
-      setRequestDate(new Date(active.initialDate));
+      setRequestDate(parseRequestDate(active.initialDate));
     }
-  }, [selectedIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active]);
 
   const queryClient = useQueryClient();
 
@@ -78,14 +96,6 @@ export const EditShiftRequest = ({
         })),
       }),
     [shiftCodes],
-  );
-
-  const nurseCollection = useMemo(
-    () =>
-      createListCollection({
-        items: requests.map((r, i) => ({ value: String(i), label: r.nurseName })),
-      }),
-    [requests],
   );
 
   const updateMutation = useMutation({
@@ -156,36 +166,10 @@ export const EditShiftRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems={"start"} gap={4} maxWidth={"225px"}>
-                {requests.length > 1 && (
-                  <Select.Root
-                    collection={nurseCollection}
-                    size="sm"
-                    value={[String(selectedIdx)]}
-                    onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
-                  >
-                    <Select.Label>Nurse</Select.Label>
-                    <Select.Control>
-                      <Select.Trigger>
-                        <Select.ValueText placeholder="Select nurse" />
-                      </Select.Trigger>
-                      <Select.IndicatorGroup>
-                        <Select.Indicator />
-                      </Select.IndicatorGroup>
-                    </Select.Control>
-                    <Portal>
-                      <Select.Positioner>
-                        <Select.Content>
-                          {nurseCollection.items.map((item) => (
-                            <Select.Item item={item.value} key={item.value}>
-                              {item.label}
-                              <Select.ItemIndicator />
-                            </Select.Item>
-                          ))}
-                        </Select.Content>
-                      </Select.Positioner>
-                    </Portal>
-                  </Select.Root>
-                )}
+                <HStack alignItems="start">
+                  <Text fontWeight={"medium"}>Nurse</Text>
+                  <Text>{active.nurseName || "—"}</Text>
+                </HStack>
 
                 <Select.Root
                   collection={shiftCollection}

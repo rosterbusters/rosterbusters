@@ -1,9 +1,9 @@
-name: Deploy to Staging
+name: Deploy to Production
 
 on:
   push:
     branches:
-      - main
+      - production
 
 jobs:
   deploy:
@@ -17,7 +17,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.EC2_HOST_PROD }} >> ~/.ssh/known_hosts
           cat >> ~/.ssh/config << 'EOF'
           Host *
             ServerAliveInterval 30
@@ -28,11 +28,11 @@ jobs:
 
       - name: Copy credentials to EC2
         run: |
-          echo '${{ secrets.GOOGLEOAUTHCREDENTIALS }}' | ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ~/rosterbusters/backend && cat > ~/rosterbusters/backend/google_oauth_credentials.json"
+          echo '${{ secrets.GOOGLEOAUTHCREDENTIALS }}' | ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "mkdir -p ~/rosterbusters/backend && cat > ~/rosterbusters/backend/google_oauth_credentials.json"
 
       - name: Sync code to EC2
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << EOF
           set -e
           mkdir -p ~/rosterbusters
           cd ~/rosterbusters
@@ -42,23 +42,24 @@ jobs:
           fi
           git remote set-url origin https://oauth2:${{ secrets.GH_PAT }}@github.com/rosterbusters/rosterbusters.git
           git fetch origin
-          git reset --hard origin/main
+          git reset --hard origin/production
           git remote set-url origin https://github.com/rosterbusters/rosterbusters.git
           EOF
 
       - name: Create .env file on EC2
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ~/rosterbusters/.env" << 'EOF'
-          ENVIRONMENT=staging
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "cat > ~/rosterbusters/.env" << 'EOF'
+          ENVIRONMENT=production
           PROJECT_NAME=RosterBusters
-          FRONTEND_HOST=https://dashboard.${{ secrets.DOMAIN_STAGING }}
-          DOMAIN=${{ secrets.DOMAIN_STAGING }}
-          STACK_NAME=${{ secrets.STACK_NAME_STAGING }}
+          FRONTEND_HOST=https://${{ secrets.DOMAIN_PROD }}
+          DOMAIN=${{ secrets.DOMAIN_PROD }}
+          STACK_NAME=${{ secrets.STACK_NAME_PROD }}
           SECRET_KEY=${{ secrets.SECRET_KEY }}
-          POSTGRES_SERVER=db
-          POSTGRES_USER=postgres
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB=app
+          POSTGRES_SERVER=${{ secrets.RDS_PROD_HOST }}
+          POSTGRES_USER=${{ secrets.RDS_PROD_USER }}
+          POSTGRES_PASSWORD=${{ secrets.RDS_PROD_PASSWORD }}
+          POSTGRES_DB=${{ secrets.RDS_PROD_DB }}
+          POSTGRES_PORT=5432
           GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_OAUTH_ALLOWED_DOMAINS=${{ secrets.GOOGLE_OAUTH_ALLOWED_DOMAINS }}
@@ -73,10 +74,9 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
           DOCKER_IMAGE_BACKEND=backend
           DOCKER_IMAGE_FRONTEND=frontend
-          BACKEND_CORS_ORIGINS=["https://dashboard.${{ secrets.DOMAIN_STAGING }}"]
+          BACKEND_CORS_ORIGINS=["https://${{ secrets.DOMAIN_PROD }}","https://www.${{ secrets.DOMAIN_PROD }}"]
           ACCESS_TOKEN_EXPIRE_MINUTES=10080
           ALGORITHM=HS256
-          POSTGRES_PORT=5432
           EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
           USERNAME=${{ secrets.TRAEFIK_USERNAME }}
           HASHED_PASSWORD=${{ secrets.TRAEFIK_HASHED_PASSWORD }}
@@ -84,32 +84,26 @@ jobs:
 
       - name: Strip whitespace from .env
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sed -i 's/^[[:space:]]*//' ~/rosterbusters/.env"
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "sed -i 's/^[[:space:]]*//' ~/rosterbusters/.env"
 
       - name: Build & run Docker on EC2
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
           set -e
           cd ~/rosterbusters
 
-          # Stop all containers including Traefik and any orphans
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
           docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
 
-          # Clean up unused images and build cache to free disk space
           docker image prune -a -f
           docker builder prune -a -f
 
-          # Create the external network for Traefik (idempotent)
           docker network create traefik-public 2>/dev/null || true
 
-          # Start Traefik reverse proxy (handles SSL via Let's Encrypt)
           docker compose -f docker-compose.traefik.yml up -d
 
-          # Build and start the app in production mode
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml build
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
           EOF
-      
