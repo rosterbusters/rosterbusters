@@ -21,7 +21,7 @@ import { Route as WardStaffIndexRouteImport } from './routes/ward-staff/index'
 import { Route as NurseManagerIndexRouteImport } from './routes/nurse-manager/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as WardStaffStaffrosterscheduleRouteImport } from './routes/ward-staff/staffrosterschedule'
-import { Route as WardStaffShiftRequestRouteImport } from './routes/ward-staff/shift-request'
+import { Route as WardStaffRequestOverviewRouteImport } from './routes/ward-staff/request-overview'
 import { Route as WardStaffSettingsRouteImport } from './routes/ward-staff/settings'
 import { Route as WardStaffRequestApplicationRouteImport } from './routes/ward-staff/request-application'
 import { Route as WardStaffProfileRouteImport } from './routes/ward-staff/profile'
@@ -101,9 +101,9 @@ const WardStaffStaffrosterscheduleRoute =
     path: '/staffrosterschedule',
     getParentRoute: () => WardStaffRoute,
   } as any)
-const WardStaffShiftRequestRoute = WardStaffShiftRequestRouteImport.update({
-  id: '/shift-request',
-  path: '/shift-request',
+const WardStaffRequestOverviewRoute = WardStaffRequestOverviewRouteImport.update({
+  id: '/request-overview',
+  path: '/request-overview',
   getParentRoute: () => WardStaffRoute,
 } as any)
 const WardStaffSettingsRoute = WardStaffSettingsRouteImport.update({
@@ -224,7 +224,7 @@ export interface FileRoutesByFullPath {
   '/ward-staff/profile': typeof WardStaffProfileRoute
   '/ward-staff/request-application': typeof WardStaffRequestApplicationRoute
   '/ward-staff/settings': typeof WardStaffSettingsRoute
-  '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
+  '/ward-staff/request-overview': typeof WardStaffRequestOverviewRoute
   '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/admin/': typeof AdminIndexRoute
   '/nurse-manager/': typeof NurseManagerIndexRoute
@@ -253,7 +253,7 @@ export interface FileRoutesByTo {
   '/ward-staff/profile': typeof WardStaffProfileRoute
   '/ward-staff/request-application': typeof WardStaffRequestApplicationRoute
   '/ward-staff/settings': typeof WardStaffSettingsRoute
-  '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
+  '/ward-staff/request-overview': typeof WardStaffRequestOverviewRoute
   '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/admin': typeof AdminIndexRoute
   '/nurse-manager': typeof NurseManagerIndexRoute
@@ -286,7 +286,7 @@ export interface FileRoutesById {
   '/ward-staff/profile': typeof WardStaffProfileRoute
   '/ward-staff/request-application': typeof WardStaffRequestApplicationRoute
   '/ward-staff/settings': typeof WardStaffSettingsRoute
-  '/ward-staff/shift-request': typeof WardStaffShiftRequestRoute
+  '/ward-staff/request-overview': typeof WardStaffRequestOverviewRoute
   '/ward-staff/staffrosterschedule': typeof WardStaffStaffrosterscheduleRoute
   '/admin/': typeof AdminIndexRoute
   '/nurse-manager/': typeof NurseManagerIndexRoute
@@ -320,7 +320,7 @@ export interface FileRouteTypes {
     | '/ward-staff/profile'
     | '/ward-staff/request-application'
     | '/ward-staff/settings'
-    | '/ward-staff/shift-request'
+    | '/ward-staff/request-overview'
     | '/ward-staff/staffrosterschedule'
     | '/admin/'
     | '/nurse-manager/'
@@ -349,7 +349,7 @@ export interface FileRouteTypes {
     | '/ward-staff/profile'
     | '/ward-staff/request-application'
     | '/ward-staff/settings'
-    | '/ward-staff/shift-request'
+    | '/ward-staff/request-overview'
     | '/ward-staff/staffrosterschedule'
     | '/admin'
     | '/nurse-manager'
@@ -381,7 +381,7 @@ export interface FileRouteTypes {
     | '/ward-staff/profile'
     | '/ward-staff/request-application'
     | '/ward-staff/settings'
-    | '/ward-staff/shift-request'
+    | '/ward-staff/request-overview'
     | '/ward-staff/staffrosterschedule'
     | '/admin/'
     | '/nurse-manager/'
@@ -486,11 +486,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WardStaffStaffrosterscheduleRouteImport
       parentRoute: typeof WardStaffRoute
     }
-    '/ward-staff/shift-request': {
-      id: '/ward-staff/shift-request'
-      path: '/shift-request'
-      fullPath: '/ward-staff/shift-request'
-      preLoaderRoute: typeof WardStaffShiftRequestRouteImport
+    '/ward-staff/request-overview': {
+      id: '/ward-staff/request-overview'
+      path: '/request-overview'
+      fullPath: '/ward-staff/request-overview'
+      preLoaderRoute: typeof WardStaffRequestOverviewRouteImport
       parentRoute: typeof WardStaffRoute
     }
     '/ward-staff/settings': {
@@ -664,7 +664,7 @@ interface WardStaffRouteChildren {
   WardStaffProfileRoute: typeof WardStaffProfileRoute
   WardStaffRequestApplicationRoute: typeof WardStaffRequestApplicationRoute
   WardStaffSettingsRoute: typeof WardStaffSettingsRoute
-  WardStaffShiftRequestRoute: typeof WardStaffShiftRequestRoute
+  WardStaffRequestOverviewRoute: typeof WardStaffRequestOverviewRoute
   WardStaffStaffrosterscheduleRoute: typeof WardStaffStaffrosterscheduleRoute
   WardStaffIndexRoute: typeof WardStaffIndexRoute
 }
@@ -676,7 +676,7 @@ const WardStaffRouteChildren: WardStaffRouteChildren = {
   WardStaffProfileRoute: WardStaffProfileRoute,
   WardStaffRequestApplicationRoute: WardStaffRequestApplicationRoute,
   WardStaffSettingsRoute: WardStaffSettingsRoute,
-  WardStaffShiftRequestRoute: WardStaffShiftRequestRoute,
+  WardStaffRequestOverviewRoute: WardStaffRequestOverviewRoute,
   WardStaffStaffrosterscheduleRoute: WardStaffStaffrosterscheduleRoute,
   WardStaffIndexRoute: WardStaffIndexRoute,
 }
