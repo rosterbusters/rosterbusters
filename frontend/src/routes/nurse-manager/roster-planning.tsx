@@ -160,7 +160,8 @@ function RosterPlanningPage() {
     useState(false);
   const [isDownloadSuccessDialogOpen, setIsDownloadSuccessDialogOpen] =
     useState(false);
-  const navigate = useNavigate();
+  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+  const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
   const [rosterData, setRosterData] = useState<RosterRow[]>(() =>
     generateEmptyRosterData(),
   );

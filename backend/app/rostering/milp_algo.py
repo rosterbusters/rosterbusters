@@ -624,6 +624,7 @@ def run_milp_pipeline(
     non_working_shift_codes=None,
     ward_name="DEFAULT",
     milp_config=None,
+    progress_callback=None,
 ):
     """
     Main entry point for MILP nurse rostering.
@@ -643,6 +644,10 @@ def run_milp_pipeline(
     -------
     Standardised roster dict (same shape as GA output)
     """
+    print("[MILP] Starting MILP roster generation")
+    if progress_callback:
+        progress_callback(0, 4, 0.0)
+
     parsed = _parse_inputs(
         nurses,
         shifts,
@@ -651,6 +656,14 @@ def run_milp_pipeline(
         prev_last_shift,
         non_working_shift_codes,
     )
+
+    print(f"[MILP] Inputs parsed — {len(nurses)} nurses, {len(shifts)} days")
+    if progress_callback:
+        progress_callback(1, 4, 0.0)
+
+    print("[MILP] Building model and running solver (this may take a moment)...")
+    if progress_callback:
+        progress_callback(2, 4, 0.0)
 
     try:
         roster_rn, roster_en, roster_hca = _solve(
@@ -674,7 +687,12 @@ def run_milp_pipeline(
             non_working_shift_codes=non_working_shift_codes,
         )
     except RuntimeError as e:
+        print(f"[MILP] Solver failed: {e}")
         raise MILPError(f"MILP solver failed: {e}") from e
+
+    print("[MILP] Solver finished — formatting output")
+    if progress_callback:
+        progress_callback(4, 4, 0.0)
 
     return _format_output(
         nurses, roster_rn, roster_en, roster_hca, parsed["num_days"]

@@ -139,6 +139,7 @@ def generate_roster(
     validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes)
 
     # ── Primary: MILP ──────────────────────────────────────────────────────
+    print("[SCHEDULER] Running MILP (primary algorithm)")
     try:
         roster = run_milp_pipeline(
             nurses,
@@ -149,15 +150,18 @@ def generate_roster(
             non_working_shift_codes=non_working_shift_codes,
             ward_name=ward_name,
             milp_config=milp_config,
+            progress_callback=progress_callback,
         )
+        print("[SCHEDULER] MILP succeeded — returning result")
         return {"method": "MILP", "roster": roster}
 
     except MILPError as e:
-        print(f"MILP failed: {e}")
+        print(f"[SCHEDULER] MILP failed: {e} — falling back to GA")
     except Exception as e:
-        print(f"MILP failed with unexpected error, falling back to GA: {e}")
+        print(f"[SCHEDULER] MILP failed with unexpected error: {e} — falling back to GA")
 
     # ── Fallback: GA ───────────────────────────────────────────────────────
+    print("[SCHEDULER] Running GA (fallback algorithm)")
     roster = run_ga_pipeline(
         nurses,
         shifts,
@@ -168,6 +172,7 @@ def generate_roster(
         progress_callback=progress_callback,
         shift_hours=shift_hours,
     )
+    print("[SCHEDULER] GA succeeded — returning result")
     return {"method": "GA", "roster": roster}
 
 
