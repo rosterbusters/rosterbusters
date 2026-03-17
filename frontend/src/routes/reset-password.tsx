@@ -1,28 +1,24 @@
 import {
   Box,
-  Button as ChakraButton,
+  Button,
   Container,
   Flex,
   Heading,
+  IconButton,
+  Image,
   Input,
   Text,
   VStack,
-  IconButton,
 } from "@chakra-ui/react"
 import { createFileRoute, redirect, useNavigate, useSearch } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiEye, FiEyeOff, FiLock } from "react-icons/fi"
 import { useState } from "react"
 
-import { type ApiError } from "@/client"
-interface NewPassword {
-  new_password: string
-}
-import { Button } from "@/components/ui/button"
-import { PasswordInput } from "@/components/ui/password-input"
-import { showSuccessToast } from "@/components/ui/toast"
+import { Field } from "@/components/ui/field"
+import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"
-import { confirmPasswordRules, handleError, passwordRules } from "@/utils"
+import { confirmPasswordRules, passwordRules } from "@/utils"
 
 interface ResetForm {
   new_password: string
@@ -55,32 +51,10 @@ function ResetPassword() {
     criteriaMode: "all",
     defaultValues: { new_password: "", confirm_password: "" },
   })
-  const navigate = useNavigate()
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-
-  // If no token in URL, show explicit error immediately
-  if (!token) {
-    return (
-      <Flex minH="100vh" align="center" justify="center" bg="gray.50">
-        <Container maxW="sm">
-          <Box bg="white" p={8} rounded="xl" shadow="md" textAlign="center">
-            <Heading size="md" color="red.500" mb={3}>
-              Invalid Reset Link
-            </Heading>
-            <Text color="gray.600" mb={5}>
-              No reset token was found in this link. Please request a new password reset.
-            </Text>
-            <Button onClick={() => navigate({ to: "/recover-password" })}>
-              Back to Forgot Password
-            </Button>
-          </Box>
-        </Container>
-      </Flex>
-    )
-  }
 
   const onSubmit: SubmitHandler<ResetForm> = async (data) => {
     setErrorMsg(null)
@@ -105,7 +79,6 @@ function ResetPassword() {
         return
       }
 
-      // Success – navigate to login with a flag to show success toast
       navigate({
         to: "/login",
         search: { message: "Password reset successfully. Please log in with your new password.", error: "" },
@@ -118,121 +91,175 @@ function ResetPassword() {
   }
 
   return (
-    <Flex minH="100vh" align="center" justify="center" bg="gray.50">
-      <Container maxW="sm" py={8}>
-        <VStack gap={6}>
-          <VStack gap={1} textAlign="center">
-            <Heading size="xl" color="teal.700">
-              Reset Password
-            </Heading>
-            <Text color="gray.500" fontSize="sm">
-              Enter your new password below.
-            </Text>
-          </VStack>
+    <Flex
+      h="100vh"
+      w="100vw"
+      direction={{ base: "column", lg: "row" }}
+      overflowY={{ base: "auto", lg: "hidden" }}
+      bg="white"
+    >
+      {/* Visual Side */}
+      <Box
+        flex={{ base: "0 0 50%", lg: "1" }}
+        position="relative"
+        overflow="hidden"
+      >
+        <Image
+          src="/assets/images/sach-entrance.jpg"
+          alt="St. Andrew's Community Hospital"
+          objectFit="cover"
+          w="100%"
+          h="100%"
+          objectPosition="center"
+        />
+        <Box
+          position="absolute"
+          bottom="0"
+          left="0"
+          right="0"
+          h="32"
+          bgGradient="to-t"
+          gradientFrom="blackAlpha.700"
+          gradientTo="transparent"
+        />
+      </Box>
 
-          <Box
-            as="form"
-            onSubmit={handleSubmit(onSubmit)}
-            bg="white"
-            p={8}
-            rounded="xl"
-            shadow="md"
-            w="full"
-          >
-            <VStack gap={5}>
-              {/* New Password */}
-              <Field
-                label="New Password"
-                invalid={!!errors.new_password}
-                errorText={errors.new_password?.message}
-              >
-                <InputGroup
-                  w="100%"
-                  startElement={<FiLock color="gray" />}
-                  endElement={
-                    <IconButton
-                      aria-label={showNew ? "Hide password" : "Show password"}
-                      onClick={() => setShowNew((p) => !p)}
-                      variant="ghost"
-                      size="sm"
-                      color="gray.400"
-                    >
-                      {showNew ? <FiEyeOff /> : <FiEye />}
-                    </IconButton>
-                  }
-                >
-                  <Input
-                    {...register("new_password", passwordRules())}
-                    placeholder="New Password"
-                    type={showNew ? "text" : "password"}
-                    size="md"
-                    variant="subtle"
-                    bg="gray.50"
-                  />
-                </InputGroup>
-              </Field>
-
-              {/* Confirm Password */}
-              <Field
-                label="Confirm Password"
-                invalid={!!errors.confirm_password}
-                errorText={errors.confirm_password?.message}
-              >
-                <InputGroup
-                  w="100%"
-                  startElement={<FiLock color="gray" />}
-                  endElement={
-                    <IconButton
-                      aria-label={showConfirm ? "Hide password" : "Show password"}
-                      onClick={() => setShowConfirm((p) => !p)}
-                      variant="ghost"
-                      size="sm"
-                      color="gray.400"
-                    >
-                      {showConfirm ? <FiEyeOff /> : <FiEye />}
-                    </IconButton>
-                  }
-                >
-                  <Input
-                    {...register("confirm_password", confirmPasswordRules(getValues))}
-                    placeholder="Confirm Password"
-                    type={showConfirm ? "text" : "password"}
-                    size="md"
-                    variant="subtle"
-                    bg="gray.50"
-                  />
-                </InputGroup>
-              </Field>
-
-              {errorMsg && (
-                <Text color="red.600" fontSize="sm" textAlign="center" w="full">
-                  {errorMsg}
-                </Text>
-              )}
-
-              <Box w="full">
-                <ChakraButton
-                  type="submit"
-                  loading={isSubmitting}
-                  w="full"
-                >
-                  Reset Password
-                </ChakraButton>
-              </Box>
-
-              <Text fontSize="sm" color="gray.500" textAlign="center">
-                Link expired?{" "}
-                <a
-                  href="/recover-password"
-                  style={{ color: "var(--chakra-colors-teal-600)", fontWeight: 600 }}
-                >
-                  Request a new one
-                </a>
+      {/* Form Side */}
+      <Flex
+        flex="1"
+        direction="column"
+        bg="white"
+        mt={{ base: "-10vh", lg: "0" }}
+        roundedTop="none"
+        position="relative"
+        zIndex="2"
+        align="center"
+        justify={{ base: "start", lg: "center" }}
+        pt={{ base: 6, lg: 0 }}
+        pb={4}
+      >
+        <Container maxW="md" w="100%" px={6}>
+          {!token ? (
+            <VStack gap={3} align="stretch">
+              <Heading as="h1" size="lg" fontWeight="700" color="red.500">
+                Invalid Reset Link
+              </Heading>
+              <Text color="gray.600" fontSize="sm">
+                No reset token was found in this link. Please request a new password reset.
               </Text>
+              <Button onClick={() => navigate({ to: "/recover-password" })} mt={1}>
+                Back to Forgot Password
+              </Button>
             </VStack>
-          </Box>
-        </VStack>
-      </Container>
+          ) : (
+            <VStack gap={3} align="stretch">
+              <VStack gap={0} align="start" mb={1}>
+                <Heading as="h1" size="lg" fontWeight="700" color="teal.700">
+                  Reset Password
+                </Heading>
+                <Text color="gray.500" fontSize="sm">
+                  Enter your new password below.
+                </Text>
+              </VStack>
+
+              <Box as="form" onSubmit={handleSubmit(onSubmit)}>
+                <VStack gap={3} align="stretch">
+                  <Field
+                    label="New Password"
+                    invalid={!!errors.new_password}
+                    errorText={errors.new_password?.message}
+                  >
+                    <InputGroup
+                      w="100%"
+                      startElement={<FiLock color="gray" />}
+                      endElement={
+                        <IconButton
+                          aria-label={showNew ? "Hide password" : "Show password"}
+                          onClick={() => setShowNew((p) => !p)}
+                          variant="ghost"
+                          size="sm"
+                          color="gray.400"
+                        >
+                          {showNew ? <FiEyeOff /> : <FiEye />}
+                        </IconButton>
+                      }
+                    >
+                      <Input
+                        {...register("new_password", passwordRules())}
+                        placeholder="New Password"
+                        type={showNew ? "text" : "password"}
+                        size="md"
+                        variant="subtle"
+                        bg="gray.50"
+                      />
+                    </InputGroup>
+                  </Field>
+
+                  <Field
+                    label="Confirm Password"
+                    invalid={!!errors.confirm_password}
+                    errorText={errors.confirm_password?.message}
+                  >
+                    <InputGroup
+                      w="100%"
+                      startElement={<FiLock color="gray" />}
+                      endElement={
+                        <IconButton
+                          aria-label={showConfirm ? "Hide password" : "Show password"}
+                          onClick={() => setShowConfirm((p) => !p)}
+                          variant="ghost"
+                          size="sm"
+                          color="gray.400"
+                        >
+                          {showConfirm ? <FiEyeOff /> : <FiEye />}
+                        </IconButton>
+                      }
+                    >
+                      <Input
+                        {...register("confirm_password", confirmPasswordRules(getValues))}
+                        placeholder="Confirm Password"
+                        type={showConfirm ? "text" : "password"}
+                        size="md"
+                        variant="subtle"
+                        bg="gray.50"
+                      />
+                    </InputGroup>
+                  </Field>
+
+                  {errorMsg && (
+                    <Text color="red.600" fontSize="sm" textAlign="center">
+                      {errorMsg}
+                    </Text>
+                  )}
+
+                  <Button
+                    type="submit"
+                    loading={isSubmitting}
+                    w="full"
+                    mt={1}
+                  >
+                    Reset Password
+                  </Button>
+
+                  <Flex justify="center" pt={1}>
+                    <a
+                      href="/recover-password"
+                      style={{
+                        color: "var(--chakra-colors-teal-600)",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Link expired? Request a new one
+                    </a>
+                  </Flex>
+                </VStack>
+              </Box>
+            </VStack>
+          )}
+        </Container>
+      </Flex>
     </Flex>
   )
 }
