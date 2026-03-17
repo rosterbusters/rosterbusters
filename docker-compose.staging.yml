@@ -12,6 +12,11 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_SERVER=db
+      - GRB_WLSACCESSID=${WLSACCESSID}
+      - GRB_WLSSECRET=${WLSSECRET}
+      - GRB_LICENSEID=${LICENSEID}
+    volumes:
+      - ~/gurobi.lic:/root/gurobi.lic:ro
 
   frontend:
     ports: []
