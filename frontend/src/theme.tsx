@@ -59,6 +59,12 @@ export const system = createSystem(defaultConfig, {
           roster: { value: "cyan.700" },
           probation: { value: "yellow.500" },
         },
+        periodbadge: {
+          currentBg: { value: "#DCFCE7" },
+          currentText: { value: "#166534" },
+          upcomingBg: { value: "#DBEAFE" },
+          upcomingText: { value: "#1D4ED8" },
+        },
         ui: {
           main: { value: "#155E75" },
         },

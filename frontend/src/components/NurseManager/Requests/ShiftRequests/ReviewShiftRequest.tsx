@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Badge,
   Box,
@@ -14,13 +15,14 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { Trash2 } from "lucide-react";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+import { ShiftRequestsService } from "@/client";
+import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 import {
   SHIFT_CODE_MAP,
   type ShiftCode,
 } from "@/components/NurseManager/RosterTable/types";
-import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 
-// Reverse map: full description -> shift code letter.
 const SHIFT_NAME_TO_CODE: Record<string, string> = {
   "Day Shift": "D",
   "AM Shift": "A",
@@ -29,11 +31,13 @@ const SHIFT_NAME_TO_CODE: Record<string, string> = {
   "Night 12h": "N-12",
 };
 
-function resolveShiftCode(value?: string | null): string {
-  if (!value) return "";
-  return SHIFT_CODE_MAP[value as ShiftCode]
-    ? value
-    : (SHIFT_NAME_TO_CODE[value] ?? value);
+interface ReviewShiftRequestOption {
+  requestId: number;
+  nurseName: string;
+  shiftCode: string;
+  date: string;
+  status: string;
+  comment?: string | null;
 }
 
 interface ReviewShiftRequestProps {
@@ -46,13 +50,19 @@ interface ReviewShiftRequestProps {
   status: string;
   comment?: string | null;
   wardId?: number | null;
-  requests?: ReviewShiftRequestEntry[];
-  onAction: (requestId: number, action: "Approved" | "Rejected", comment: string) => void;
+  requests?: ReviewShiftRequestOption[];
+  onAction?: (
+    requestId: number,
+    action: "Approved" | "Rejected",
+    comment: string,
+  ) => void;
 }
 
-interface ReviewShiftRequestEntry extends ShiftRequestEntry {
-  status: string;
-  comment?: string | null;
+function resolveShiftCode(value?: string | null): string {
+  if (!value) return "";
+  return SHIFT_CODE_MAP[value as ShiftCode]
+    ? value
+    : (SHIFT_NAME_TO_CODE[value] ?? value);
 }
 
 export const ReviewShiftRequest = ({
@@ -68,26 +78,31 @@ export const ReviewShiftRequest = ({
   requests,
   onAction,
 }: ReviewShiftRequestProps) => {
-  const requestOptions = useMemo<ReviewShiftRequestEntry[]>(
+  const requestOptions = useMemo(
     () =>
       requests && requests.length > 0
         ? requests
         : [
             {
               requestId,
-              nurseName: nurseName ?? "",
-              initialShiftType: shiftCode,
-              initialDate: date,
+              nurseName: nurseName ?? "Unknown Nurse",
+              shiftCode,
+              date,
               status,
               comment,
             },
           ],
     [comment, date, nurseName, requestId, requests, shiftCode, status],
   );
+
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0];
-  const [localComment, setLocalComment] = useState<string>(activeRequest?.comment ?? "");
+  const [localComment, setLocalComment] = useState<string>(
+    requestOptions[0]?.comment ?? comment ?? "",
+  );
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0];
 
   const nurseCollection = useMemo(
     () =>
@@ -100,24 +115,51 @@ export const ReviewShiftRequest = ({
     [requestOptions],
   );
 
+  const reviewMutation = useMutation({
+    mutationFn: (action: "Approved" | "Rejected") =>
+      ShiftRequestsService.reviewShiftRequest({
+        requestId: activeRequest.requestId,
+        requestBody: {
+          status: action,
+          rejectionreason:
+            action === "Rejected" ? (localComment.trim() || undefined) : undefined,
+        },
+      }),
+    onSuccess: (_, action) => {
+      showSuccessToast(`Request ${action.toLowerCase()}.`);
+      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      onClose();
+    },
+    onError: (error: unknown) => {
+      const detail = (error as { body?: { detail?: string } })?.body?.detail;
+      showErrorToast(detail || "Failed to update request");
+    },
+  });
+
   useEffect(() => {
-    if (isOpen) {
-      setSelectedIdx(0);
-      setLocalComment(requestOptions[0]?.comment ?? comment ?? "");
-    } else {
-      setIsEditOpen(false);
-    }
+    if (!isOpen) return;
+    setSelectedIdx(0);
+    setLocalComment(requestOptions[0]?.comment ?? comment ?? "");
   }, [comment, isOpen, requestOptions]);
 
   useEffect(() => {
-    if (activeRequest) {
-      setLocalComment(activeRequest.comment ?? "");
-    }
+    if (!activeRequest) return;
+    setLocalComment(activeRequest.comment ?? "");
   }, [activeRequest]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEditOpen(false);
+    }
+  }, [isOpen]);
+
   const handleAction = (action: "Approved" | "Rejected") => {
-    onAction(activeRequest.requestId, action, localComment);
-    onClose();
+    if (onAction) {
+      onAction(activeRequest.requestId, action, localComment);
+      onClose();
+      return;
+    }
+    reviewMutation.mutate(action);
   };
 
   const statusColor =
@@ -127,10 +169,16 @@ export const ReviewShiftRequest = ({
         ? "#dc2626"
         : "#d97706";
 
-  const activeShiftCode = activeRequest?.initialShiftType ?? shiftCode;
-  const resolvedCode = resolveShiftCode(activeShiftCode);
+  const resolvedCode = resolveShiftCode(activeRequest.shiftCode);
   const shiftDescription =
-    SHIFT_CODE_MAP[resolvedCode as ShiftCode]?.description ?? activeShiftCode;
+    SHIFT_CODE_MAP[resolvedCode as ShiftCode]?.description ?? activeRequest.shiftCode;
+
+  const editRequests: ShiftRequestEntry[] = requestOptions.map((request) => ({
+    requestId: request.requestId,
+    nurseName: request.nurseName,
+    initialShiftType: request.shiftCode,
+    initialDate: request.date,
+  }));
 
   return (
     <>
@@ -151,13 +199,13 @@ export const ReviewShiftRequest = ({
               </Dialog.Header>
 
               <Dialog.Body>
-                <VStack align="stretch" gap={4}>
-                  {requestOptions.length > 1 && (
+                <VStack align="stretch" gap={3}>
+                  {requestOptions.length > 1 ? (
                     <Select.Root
                       collection={nurseCollection}
                       size="sm"
                       value={[String(selectedIdx)]}
-                      onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
+                      onValueChange={(event) => setSelectedIdx(Number(event.value[0]))}
                     >
                       <Select.Label>Nurse</Select.Label>
                       <Select.Control>
@@ -181,20 +229,20 @@ export const ReviewShiftRequest = ({
                         </Select.Positioner>
                       </Portal>
                     </Select.Root>
-                  )}
+                  ) : null}
 
                   <HStack gap={2}>
                     <Text fontWeight="medium" color="gray.600" minW="70px">
                       Nurse:
                     </Text>
-                    <Text color="#4A4A4A">{activeRequest?.nurseName || "—"}</Text>
+                    <Text color="#4A4A4A">{activeRequest.nurseName ?? "—"}</Text>
                   </HStack>
 
                   <HStack gap={2}>
                     <Text fontWeight="medium" color="gray.600" minW="70px">
                       Date:
                     </Text>
-                    <Text color="#4A4A4A">{activeRequest?.initialDate ?? date}</Text>
+                    <Text color="#4A4A4A">{activeRequest.date}</Text>
                   </HStack>
 
                   <HStack gap={2} align="center">
@@ -214,7 +262,7 @@ export const ReviewShiftRequest = ({
                       Status:
                     </Text>
                     <Text fontWeight="medium" color={statusColor}>
-                      {activeRequest?.status ?? status}
+                      {activeRequest.status}
                     </Text>
                   </HStack>
 
@@ -262,29 +310,35 @@ export const ReviewShiftRequest = ({
               </Dialog.Body>
 
               <Dialog.Footer>
-                <HStack gap={2} justify="space-between" w="full">
-                  <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
-                    Edit Request
+                <HStack gap={2}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditOpen(true)}
+                  >
+                    Edit
                   </Button>
-                  <HStack gap={2}>
-                    <Button
-                      variant="outline"
-                      colorPalette="red"
-                      size="sm"
-                      onClick={() => handleAction("Rejected")}
-                    >
-                      Deny
-                    </Button>
-                    <Button
-                      bg="#4B8798"
-                      color="white"
-                      _hover={{ bg: "#3d6f7e" }}
-                      size="sm"
-                      onClick={() => handleAction("Approved")}
-                    >
-                      Approve
-                    </Button>
-                  </HStack>
+                  <Button
+                    variant="outline"
+                    colorPalette="red"
+                    size="sm"
+                    onClick={() => handleAction("Rejected")}
+                    loading={reviewMutation.isPending}
+                    disabled={activeRequest.status === "Rejected"}
+                  >
+                    Deny
+                  </Button>
+                  <Button
+                    bg="#4B8798"
+                    color="white"
+                    _hover={{ bg: "#3d6f7e" }}
+                    size="sm"
+                    onClick={() => handleAction("Approved")}
+                    loading={reviewMutation.isPending}
+                    disabled={activeRequest.status === "Approved"}
+                  >
+                    Approve
+                  </Button>
                 </HStack>
               </Dialog.Footer>
 
@@ -299,14 +353,8 @@ export const ReviewShiftRequest = ({
       <EditShiftRequest
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
-        requests={requestOptions.map((request) => ({
-          requestId: request.requestId,
-          nurseName: request.nurseName,
-          initialShiftType: resolveShiftCode(request.initialShiftType),
-          initialDate: request.initialDate,
-        }))}
+        requests={editRequests}
         wardId={wardId}
-        selectedRequestId={activeRequest?.requestId}
       />
     </>
   );

@@ -3,8 +3,9 @@ from datetime import timedelta
 
 from sqlmodel import Session, select
 
-from app.api.routes.run_rostering import _map_rank, _staffing_to_algo_inputs
+from app.api.routes.run_rostering import _staffing_to_algo_inputs
 from app.core.db import engine
+from app.designation_mapping import classify_designation
 from app.models.rbac import Nurse
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.rostering.algo_scheduler import generate_roster
@@ -31,7 +32,11 @@ def generate_roster_task(self, ward_id: int, period_id: int):
                 select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
             ).all()
             nurses_data = [
-                {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+                {
+                    "id": n.nurseid,
+                    "name": n.name,
+                    "rank": classify_designation(n.designation).roster_rank or "C",
+                }
                 for n in nurses_db
             ]
 
@@ -87,7 +92,11 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
             ).all()
             nurses_data = [
-                {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+                {
+                    "id": n.nurseid,
+                    "name": n.name,
+                    "rank": classify_designation(n.designation).roster_rank or "C",
+                }
                 for n in nurses_db
             ]
 

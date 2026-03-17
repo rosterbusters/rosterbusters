@@ -8,6 +8,7 @@ import {
   ShiftSummaryTable,
   EditHistoryDialog,
   useRosterPeriods,
+  useRosterPeriodWindow,
   useRosterPageData,
   useRosterExport,
   useShiftCodes,
@@ -143,6 +144,7 @@ function NurseManagerHome() {
 
   // Data hooks
   const { data: periods = [] } = useRosterPeriods();
+  const { data: periodWindow } = useRosterPeriodWindow();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToXLSX } = useRosterExport();
 
@@ -169,19 +171,50 @@ function NurseManagerHome() {
   // Local state for roster data (allows updates in mock mode)
   const [localRosterData, setLocalRosterData] = useState<RosterRow[]>([]);
 
+  const currentPeriod = useMemo(
+    () => periodWindow?.currentPeriod ?? null,
+    [periodWindow],
+  );
+  const upcomingPeriod = useMemo(
+    () => periodWindow?.upcomingPeriod ?? null,
+    [periodWindow],
+  );
+  const visiblePeriods = useMemo(() => {
+    if (!upcomingPeriod) {
+      return periods;
+    }
+
+    return periods.filter((period) =>
+      moment(period.startDate).isSameOrBefore(moment(upcomingPeriod.endDate), "day"),
+    );
+  }, [periods, upcomingPeriod]);
+
   useEffect(() => {
     setLocalRosterData(apiRows);
   }, [apiRows]);
 
   // Set default period when periods are loaded
   useEffect(() => {
-    if (periods.length > 0 && !selectedPeriod) {
-      const currentPeriod = periods.find(p =>
-        moment().isBetween(moment(p.startDate), moment(p.endDate), 'day', '[]')
-      ) || periods[Math.floor(periods.length / 2)];
-      setSelectedPeriod(currentPeriod);
+    if (visiblePeriods.length > 0 && !selectedPeriod) {
+      const initialPeriod =
+        (currentPeriod
+          ? visiblePeriods.find((period) => period.periodId === currentPeriod.periodId)
+          : null) ??
+        visiblePeriods.find((period) =>
+          moment().isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+        ) ??
+        visiblePeriods[Math.floor(visiblePeriods.length / 2)];
+      setSelectedPeriod(initialPeriod);
     }
-  }, [periods, selectedPeriod]);
+  }, [currentPeriod, selectedPeriod, visiblePeriods]);
+
+  useEffect(() => {
+    if (!selectedPeriod || visiblePeriods.some((period) => period.periodId === selectedPeriod.periodId)) {
+      return;
+    }
+
+    setSelectedPeriod(upcomingPeriod ?? currentPeriod ?? visiblePeriods[visiblePeriods.length - 1] ?? null);
+  }, [currentPeriod, selectedPeriod, upcomingPeriod, visiblePeriods]);
 
   // Map API changelog entries to the EditHistoryEntry shape the dialog expects
   const editHistory = useMemo<EditHistoryEntry[]>(() => {
@@ -223,7 +256,14 @@ function NurseManagerHome() {
   // Handlers
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
-  }, []);
+
+    const matchingPeriod =
+      visiblePeriods.find((period) =>
+        moment(date).isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+      ) ?? null;
+
+    setSelectedPeriod(matchingPeriod);
+  }, [visiblePeriods]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -607,8 +647,10 @@ function NurseManagerHome() {
             viewMode={viewMode}
             selectedWard={selectedWard}
             selectedPeriod={selectedPeriod}
+            currentPeriod={currentPeriod}
+            upcomingPeriod={upcomingPeriod}
             wards={wards}
-            periods={periods}
+            periods={visiblePeriods}
             onDateChange={handleDateChange}
             onViewModeChange={handleViewModeChange}
             onWardChange={handleWardChange}

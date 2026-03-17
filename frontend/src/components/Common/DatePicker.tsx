@@ -35,7 +35,7 @@ export function DatePickerDemo({ selected, onSelect, placeholder = "Pick a date"
   React.useEffect(() => {
     if (!open) return
     const handleClick = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+      if (!wrapperRef.current?.contains(event.target as Node)) {
         setOpen(false)
       }
     }
@@ -43,11 +43,32 @@ export function DatePickerDemo({ selected, onSelect, placeholder = "Pick a date"
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
 
-  return (
+  const calendarPopup = (
     <div
-      ref={wrapperRef}
-      style={{ position: "relative", display: "inline-block" }}
+      data-datepicker-popup="true"
+      style={{
+        position: "absolute",
+        top: "calc(100% + 4px)",
+        left: 0,
+        zIndex: 9999,
+        background: "white",
+        borderRadius: "12px",
+        boxShadow:
+          "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)",
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
     >
+      <Calendar
+        mode="single"
+        selected={date}
+        onSelect={handleSelect}
+        defaultMonth={date}
+      />
+    </div>
+  )
+
+  return (
+    <div ref={wrapperRef} style={{ position: "relative", display: "inline-block" }}>
       <Button
         variant="outline"
         data-empty={!date}
@@ -57,28 +78,7 @@ export function DatePickerDemo({ selected, onSelect, placeholder = "Pick a date"
         {date ? format(date, "PPP") : <span>{placeholder}</span>}
         <ChevronDownIcon />
       </Button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: 0,
-            zIndex: 1500,
-            background: "white",
-            borderRadius: "12px",
-            boxShadow:
-              "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)",
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <Calendar
-            mode="single"
-            selected={date}
-            onSelect={handleSelect}
-            defaultMonth={date}
-          />
-        </div>
-      )}
+      {open && calendarPopup}
     </div>
   )
 }

@@ -1,11 +1,12 @@
 import { Calendar, momentLocalizer, View, Views } from 'react-big-calendar'
 import moment from 'moment'
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { SHIFT_COLOR_MAP } from '@/components/NurseManager/RosterTable/types'
 import { HomeService } from '@/client'
 
 const localizer = momentLocalizer(moment);
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 interface ShiftEvent {
   start: Date;
@@ -14,14 +15,62 @@ interface ShiftEvent {
   shiftCode: string;
 }
 
+interface PeriodWindowResponse {
+  current_period: {
+    periodid: number;
+    name: string;
+    startdate: string;
+    enddate: string;
+    status: string;
+  } | null;
+}
+
+async function fetchWithAuth(url: string) {
+  const token = localStorage.getItem("access_token") || "";
+  const response = await fetch(`${API_BASE}${url}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 export default function StaffCalendar() {
   const [view, setView] = useState<View>(Views.MONTH);
   const [date, setDate] = useState(new Date());
 
-  const { data: shiftsData, isLoading } = useQuery({
-    queryKey: ['my-roster-shifts'],
-    queryFn: () => HomeService.getMyShifts(),
+  const { data: periodWindow, isLoading: isPeriodLoading } = useQuery<PeriodWindowResponse>({
+    queryKey: ['roster-period-window'],
+    queryFn: () => fetchWithAuth('/api/v1/shift-requests/periods/current-upcoming'),
   });
+
+  const currentPeriod = periodWindow?.current_period ?? null;
+
+  const { data: shiftsData, isLoading: isShiftsLoading } = useQuery({
+    queryKey: ['my-roster-shifts', currentPeriod?.periodid ?? null],
+    queryFn: () =>
+      HomeService.getMyShifts(
+        currentPeriod
+          ? {
+              startDate: currentPeriod.startdate,
+              endDate: currentPeriod.enddate,
+            }
+          : undefined,
+      ),
+    enabled: currentPeriod !== null,
+  });
+
+  useEffect(() => {
+    if (!currentPeriod) {
+      return;
+    }
+    setDate(moment(currentPeriod.startdate).toDate());
+  }, [currentPeriod]);
 
   const events = useMemo((): ShiftEvent[] => {
     if (!shiftsData) return [];
@@ -65,7 +114,7 @@ export default function StaffCalendar() {
     };
   }, []);
 
-  if (isLoading) {
+  if (isPeriodLoading || isShiftsLoading) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <p>Loading your shifts...</p>

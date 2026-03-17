@@ -37,6 +37,7 @@ from app.models.roster import (
     RosterChangeLogPublic,
     RosterPeriod,
     RosterPeriodPublic,
+    RosterPeriodWindowPublic,
     Ward,
 )
 
@@ -84,7 +85,7 @@ __all__ = [
     "NotificationType",
     # Roster
     "NotificationQueue", "Roster", "RosterChangeLog", "RosterChangeLogPublic",
-    "RosterPeriod", "RosterPeriodPublic", "Ward",
+    "RosterPeriod", "RosterPeriodPublic", "RosterPeriodWindowPublic", "Ward",
     # Leave
     "LeaveRequest", "LeaveRequestCreate", "LeaveRequestPublic", "LeaveRequestUpdate",
     # Shifts
