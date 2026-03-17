@@ -1,9 +1,20 @@
 #this is the algorithm scheduler
-from app.rostering.milp_algo import run_milp_pipeline, MILPError
 from app.rostering.ga_algo import run_ga_pipeline
+from app.rostering.milp_algo import MILPError, run_milp_pipeline
 
 
-def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress_callback=None, milp_config=None):
+def generate_roster(
+    nurses,
+    shifts,
+    hard_requests=None,
+    soft_requests=None,
+    prev_last_shift=None,
+    shift_hours=None,
+    non_working_shift_codes=None,
+    ward_name="DEFAULT",
+    progress_callback=None,
+    milp_config=None,
+):
     """
     Generate a nurse roster using MILP (primary) or GA (fallback).
 
@@ -23,10 +34,20 @@ def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress
             ...  (one entry per day, must be exactly 14 entries)
         ]
 
-    requests : dict, optional
-        {
-            nurse_id: [(day_index_0based, "AM"|"PM"|"NIGHT"|"OFF"|"AL"), ...]
-        }
+    hard_requests : dict, optional
+        Approved requests keyed by nurse_id.
+
+    soft_requests : dict, optional
+        Pending requests keyed by nurse_id.
+
+    prev_last_shift : dict, optional
+        Previous-period final shift keyed by nurse_id.
+
+    shift_hours : dict, optional
+        DB-derived GA shift durations keyed by AM/PM/NIGHT/OFF.
+
+    non_working_shift_codes : collection[str], optional
+        Shift codes that should be treated as non-working by GA fallback.
 
     ward_name : str, optional
         Key into WARD_CONFIG (e.g. "WARD 04", "WARD 08").
@@ -73,22 +94,40 @@ def generate_roster(nurses, shifts, requests=None, ward_name="DEFAULT", progress
     ValueError
         If input validation fails.
     """
-    validate_inputs(nurses, shifts, requests)
+    validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes)
 
     # ── Primary: MILP ──────────────────────────────────────────────────────
     try:
-        roster = run_milp_pipeline(nurses, shifts, requests, ward_name=ward_name, milp_config=milp_config)
+        roster = run_milp_pipeline(
+            nurses,
+            shifts,
+            hard_requests=hard_requests,
+            soft_requests=soft_requests,
+            prev_last_shift=prev_last_shift,
+            non_working_shift_codes=non_working_shift_codes,
+            ward_name=ward_name,
+            milp_config=milp_config,
+        )
         return {"method": "MILP", "roster": roster}
 
     except MILPError as e:
         print(f"MILP failed: {e}")
 
     # ── Fallback: GA ───────────────────────────────────────────────────────
-    roster = run_ga_pipeline(nurses, shifts, requests, progress_callback=progress_callback)
+    roster = run_ga_pipeline(
+        nurses,
+        shifts,
+        hard_requests=hard_requests,
+        soft_requests=soft_requests,
+        prev_last_shift=prev_last_shift,
+        non_working_shift_codes=non_working_shift_codes,
+        progress_callback=progress_callback,
+        shift_hours=shift_hours,
+    )
     return {"method": "GA", "roster": roster}
 
 
-def validate_inputs(nurses, shifts, requests):
+def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes=None):
     """
     Validate the structure and values of all inputs.
 
@@ -147,36 +186,40 @@ def validate_inputs(nurses, shifts, requests):
                     )
 
     # ---- requests (optional) ----
-    if requests is None:
-        return
-
-    if not isinstance(requests, dict):
-        raise ValueError("requests must be a dictionary")
-
     num_days = len(shifts)
     valid_request_shifts = {"AM", "PM", "NIGHT", "OFF", "AL"}
+    non_working_shift_codes = {
+        str(code).upper() for code in (non_working_shift_codes or set())
+    }
 
-    for nurse_id, req_list in requests.items():
-        if nurse_id not in nurse_ids:
-            raise ValueError(f"Request for unknown nurse ID: {nurse_id}")
+    for request_group, label in ((hard_requests, "hard_requests"), (soft_requests, "soft_requests")):
+        if request_group is None:
+            continue
+        if not isinstance(request_group, dict):
+            raise ValueError(f"{label} must be a dictionary")
 
-        if not isinstance(req_list, list):
-            raise ValueError(f"Requests for nurse {nurse_id} must be a list")
+        for nurse_id, req_list in request_group.items():
+            if nurse_id not in nurse_ids:
+                raise ValueError(f"Request for unknown nurse ID: {nurse_id}")
 
-        for item in req_list:
-            if not (isinstance(item, (list, tuple)) and len(item) == 2):
-                raise ValueError(
-                    f"Each request must be a (day_index, shift_name) pair; "
-                    f"got {item!r} for nurse {nurse_id}"
-                )
-            day_idx, shift_name = item
-            if not (0 <= day_idx < num_days):
-                raise ValueError(
-                    f"Invalid day index {day_idx} for nurse {nurse_id} "
-                    f"(must be 0–{num_days - 1})"
-                )
-            if str(shift_name).upper() not in valid_request_shifts:
-                raise ValueError(
-                    f"Invalid shift name '{shift_name}' in request for nurse {nurse_id}. "
-                    f"Must be one of {valid_request_shifts}"
-                )
+            if not isinstance(req_list, list):
+                raise ValueError(f"Requests for nurse {nurse_id} must be a list")
+
+            for item in req_list:
+                if not (isinstance(item, (list, tuple)) and len(item) == 2):
+                    raise ValueError(
+                        f"Each request must be a (day_index, shift_name) pair; "
+                        f"got {item!r} for nurse {nurse_id}"
+                    )
+                day_idx, shift_name = item
+                if not (0 <= day_idx < num_days):
+                    raise ValueError(
+                        f"Invalid day index {day_idx} for nurse {nurse_id} "
+                        f"(must be 0–{num_days - 1})"
+                    )
+                normalized_shift = str(shift_name).upper()
+                if normalized_shift not in valid_request_shifts and normalized_shift not in non_working_shift_codes:
+                    raise ValueError(
+                        f"Invalid shift name '{shift_name}' in request for nurse {nurse_id}. "
+                        f"Must be one of {valid_request_shifts} or a configured non-working shift code"
+                    )

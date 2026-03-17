@@ -2,7 +2,7 @@ import json
 import queue
 import threading
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,9 +11,10 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser, SessionDep, get_db
+from app.designation_mapping import classify_designation
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
-from app.models.shifts import ShiftRequest
+from app.models.shifts import ShiftCode, ShiftRequest
 from app.rostering.algo_scheduler import generate_roster
 
 
@@ -34,6 +35,23 @@ class RosterCommentUpdate(BaseModel):
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
+
+
+class TriggeredItem(BaseModel):
+    ward_id: int
+    period_id: int
+    task_id: str
+
+
+class SkippedItem(BaseModel):
+    ward_id: int
+    period_id: int
+    reason: str
+
+
+class ScheduledGenerationResponse(BaseModel):
+    triggered: list[TriggeredItem]
+    skipped: list[SkippedItem]
 
 
 router = APIRouter()
@@ -58,6 +76,8 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 "name": n.name,
                 "designation": n.designation,
                 "employmentType": n.employmenttype,
+                "staffing_role": classify_designation(n.designation).staffing_role,
+                "roster_rank": classify_designation(n.designation).roster_rank,
             }
             for n in nurses
         ],
@@ -302,21 +322,17 @@ def generate_roster_endpoint(
 ):
     """Run the MILP/GA rostering algorithm for a ward and roster period."""
     try:
-        ward = db.get(Ward, request_data.ward_id)
-        if not ward:
-            raise HTTPException(status_code=404, detail="Ward not found")
-
-        shifts_data, milp_config = _staffing_to_algo_inputs(ward)
-
-        nurses_db = db.exec(
-            select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
-        ).all()
-        nurses_data = [
-            {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-            for n in nurses_db
-        ]
-
-        result = generate_roster(nurses=nurses_data, shifts=shifts_data, requests=None, milp_config=milp_config)
+        generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
+        result = generate_roster(
+            nurses=generation_inputs["nurses"],
+            shifts=generation_inputs["shifts"],
+            hard_requests=generation_inputs["hard_requests"],
+            soft_requests=generation_inputs["soft_requests"],
+            prev_last_shift=generation_inputs["prev_last_shift"],
+            shift_hours=generation_inputs["shift_hours"],
+            non_working_shift_codes=generation_inputs["non_working_shift_codes"],
+            milp_config=generation_inputs["milp_config"],
+        )
         return {"method": result["method"], "roster": result["roster"]}
 
     except HTTPException:
@@ -339,6 +355,46 @@ def generate_roster_async(
 
     task = generate_roster_task.delay(request_data.ward_id, request_data.period_id)
     return {"task_id": task.id, "status": "queued"}
+
+
+@router.post("/trigger-scheduled-generation", response_model=ScheduledGenerationResponse)
+def trigger_scheduled_generation(
+    days_ahead: int = 8,
+    db: Session = Depends(get_db),
+):
+    """
+    Called by AWS Lambda on a schedule. No user auth required.
+    Finds RosterPeriods starting in `days_ahead` days, queues generate_and_save_roster_task
+    for every active ward. Existing rosters are overwritten by the task.
+    """
+    from app.tasks.roster_tasks import generate_and_save_roster_task
+
+    target_date = date.today() + timedelta(days=days_ahead)
+
+    periods = db.exec(
+        select(RosterPeriod).where(
+            RosterPeriod.startdate == target_date,
+            RosterPeriod.status == "RequestOpen",
+        )
+    ).all()
+
+    active_wards = db.exec(
+        select(Ward).where(Ward.isactive == True)  # noqa: E712
+    ).all()
+
+    triggered: list[dict] = []
+    skipped: list[dict] = []
+
+    for period in periods:
+        for ward in active_wards:
+            task = generate_and_save_roster_task.delay(ward.wardid, period.periodid)
+            triggered.append({
+                "ward_id": ward.wardid,
+                "period_id": period.periodid,
+                "task_id": task.id,
+            })
+
+    return {"triggered": triggered, "skipped": skipped}
 
 
 @router.get("/task/{task_id}/status")
@@ -368,19 +424,7 @@ def generate_roster_stream(
 ):
     """Run the MILP/GA rostering algorithm and stream SSE progress events."""
     # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
-    ward = db.get(Ward, request_data.ward_id)
-    if not ward:
-        raise HTTPException(status_code=404, detail="Ward not found")
-
-    shifts_data, milp_config = _staffing_to_algo_inputs(ward)
-
-    nurses_db = db.exec(
-        select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
-    ).all()
-    nurses_data = [
-        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-        for n in nurses_db
-    ]
+    generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
 
     q: queue.Queue = queue.Queue()
 
@@ -396,11 +440,15 @@ def generate_roster_stream(
                 })
 
             result = generate_roster(
-                nurses=nurses_data,
-                shifts=shifts_data,
-                requests=None,
+                nurses=generation_inputs["nurses"],
+                shifts=generation_inputs["shifts"],
+                hard_requests=generation_inputs["hard_requests"],
+                soft_requests=generation_inputs["soft_requests"],
+                prev_last_shift=generation_inputs["prev_last_shift"],
+                shift_hours=generation_inputs["shift_hours"],
+                non_working_shift_codes=generation_inputs["non_working_shift_codes"],
                 progress_callback=on_progress,
-                milp_config=milp_config,
+                milp_config=generation_inputs["milp_config"],
             )
             q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
         except Exception as exc:
@@ -471,6 +519,174 @@ def _staffing_to_algo_inputs(ward: Ward):
         "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
     }
     return [daily_req for _ in range(14)], None
+
+
+def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[str, Any]:
+    ward = db.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = db.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    shifts_data, milp_config = _staffing_to_algo_inputs(ward)
+
+    nurses_db = db.exec(
+        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    ).all()
+    nurses_data = [
+        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+        for n in nurses_db
+    ]
+
+    nurse_ids = [n["id"] for n in nurses_data]
+    hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data))
+    prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
+
+    for nurse_id, shift_name in prev_last_shift.items():
+        if str(shift_name).strip().upper() != "NIGHT":
+            continue
+        hard_requests[nurse_id] = [
+            item for item in hard_requests.get(nurse_id, [])
+            if item[0] != 0
+        ]
+        soft_requests[nurse_id] = [
+            item for item in soft_requests.get(nurse_id, [])
+            if item[0] != 0
+        ]
+
+    return {
+        "nurses": nurses_data,
+        "shifts": shifts_data,
+        "milp_config": milp_config,
+        "hard_requests": hard_requests,
+        "soft_requests": soft_requests,
+        "prev_last_shift": prev_last_shift,
+        "shift_hours": _load_shift_hours(db),
+        "non_working_shift_codes": _load_non_working_shift_codes(db),
+    }
+
+
+def _load_shift_requests(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: list[int],
+    num_days: int,
+) -> tuple[dict[int, list[tuple[int, str]]], dict[int, list[tuple[int, str]]]]:
+    if not nurse_ids:
+        return {}, {}
+
+    statement = (
+        select(ShiftRequest)
+        .join(Nurse, Nurse.nurseid == ShiftRequest.nurseid)
+        .where(Nurse.wardid == ward_id)
+        .where(ShiftRequest.periodid == period.periodid)
+    )
+    requests = db.exec(statement).all()
+
+    latest_by_bucket: dict[tuple[int, int, str], ShiftRequest] = {}
+    for req in requests:
+        if req.nurseid not in nurse_ids:
+            continue
+        status = str(req.status).strip()
+        if status not in {"Approved", "Pending"}:
+            continue
+
+        day_idx = (req.preferreddate - period.startdate).days
+        if day_idx < 0 or day_idx >= num_days:
+            continue
+
+        key = (req.nurseid, day_idx, status)
+        current = latest_by_bucket.get(key)
+        if current is None or req.timestamp > current.timestamp:
+            latest_by_bucket[key] = req
+
+    hard_requests: dict[int, list[tuple[int, str]]] = {}
+    soft_requests: dict[int, list[tuple[int, str]]] = {}
+
+    approved_keys = {
+        (nurse_id, day_idx)
+        for nurse_id, day_idx, status in latest_by_bucket.keys()
+        if status == "Approved"
+    }
+
+    for (nurse_id, day_idx, status), req in latest_by_bucket.items():
+        shift_name = str(req.preferredshifttype).upper()
+        if status == "Approved":
+            hard_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
+        elif (nurse_id, day_idx) not in approved_keys:
+            soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
+
+    return hard_requests, soft_requests
+
+
+def _load_previous_last_shift(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: list[int],
+) -> dict[int, str]:
+    if not nurse_ids:
+        return {}
+
+    previous_period = db.exec(
+        select(RosterPeriod)
+        .where(RosterPeriod.enddate < period.startdate)
+        .order_by(RosterPeriod.enddate.desc())
+    ).first()
+    if not previous_period:
+        return {}
+
+    roster_rows = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == previous_period.periodid,
+            Roster.shiftdate == previous_period.enddate,
+            Roster.status == "Confirmed",
+            Roster.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
+        )
+    ).all()
+
+    latest_by_nurse: dict[int, Roster] = {}
+    for row in roster_rows:
+        if row.nurseid is None:
+            continue
+        current = latest_by_nurse.get(row.nurseid)
+        current_id = current.rosterid if current and current.rosterid is not None else -1
+        row_id = row.rosterid if row.rosterid is not None else -1
+        if current is None or row_id > current_id:
+            latest_by_nurse[row.nurseid] = row
+
+    return {
+        nurse_id: str(row.shiftcode).upper()
+        for nurse_id, row in latest_by_nurse.items()
+    }
+
+
+def _load_non_working_shift_codes(db: Session) -> set[str]:
+    rows = db.exec(select(ShiftCode).where(ShiftCode.isworking == False)).all()  # noqa: E712
+    return {str(row.shiftcode).upper() for row in rows}
+
+
+def _load_shift_hours(db: Session) -> dict[str, float]:
+    code_to_label = {"A": "AM", "P": "PM", "N": "NIGHT"}
+    rows = db.exec(
+        select(ShiftCode).where(ShiftCode.shiftcode.in_(list(code_to_label.keys())))  # type: ignore[attr-defined]
+    ).all()
+    row_map = {str(row.shiftcode).upper(): row for row in rows}
+
+    shift_hours = {"OFF": 0.0}
+    for code, label in code_to_label.items():
+        row = row_map.get(code)
+        if row is None:
+            raise HTTPException(status_code=500, detail=f"Missing shift code configuration for {code}")
+        if row.shiftdurationhours is None:
+            raise HTTPException(status_code=500, detail=f"Missing shiftdurationhours for shift code {code}")
+        shift_hours[label] = float(row.shiftdurationhours)
+
+    return shift_hours
 
 
 def _map_rank(designation: str) -> str:
