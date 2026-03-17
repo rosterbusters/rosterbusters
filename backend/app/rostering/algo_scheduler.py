@@ -3,6 +3,44 @@ from app.rostering.ga_algo import run_ga_pipeline
 from app.rostering.milp_algo import MILPError, run_milp_pipeline
 
 
+def _normalize_shift_name(shift_name):
+    normalized = str(shift_name).strip().upper()
+    return {
+        "A": "AM",
+        "AM": "AM",
+        "P": "PM",
+        "PM": "PM",
+        "N": "NIGHT",
+        "NIGHT": "NIGHT",
+        "DO": "OFF",
+        "OFF": "OFF",
+        "AL": "AL",
+    }.get(normalized, normalized)
+
+
+def _normalize_request_groups(request_groups):
+    if request_groups is None:
+        return None
+
+    normalized_groups = {}
+    for nurse_id, req_list in request_groups.items():
+        normalized_groups[nurse_id] = [
+            (day_idx, _normalize_shift_name(shift_name))
+            for day_idx, shift_name in req_list
+        ]
+    return normalized_groups
+
+
+def _normalize_prev_last_shift(prev_last_shift):
+    if prev_last_shift is None:
+        return None
+
+    return {
+        nurse_id: _normalize_shift_name(shift_name)
+        for nurse_id, shift_name in prev_last_shift.items()
+    }
+
+
 def generate_roster(
     nurses,
     shifts,
@@ -94,9 +132,14 @@ def generate_roster(
     ValueError
         If input validation fails.
     """
+    hard_requests = _normalize_request_groups(hard_requests)
+    soft_requests = _normalize_request_groups(soft_requests)
+    prev_last_shift = _normalize_prev_last_shift(prev_last_shift)
+
     validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes)
 
     # ── Primary: MILP ──────────────────────────────────────────────────────
+    print("[SCHEDULER] Running MILP (primary algorithm)")
     try:
         roster = run_milp_pipeline(
             nurses,
@@ -107,13 +150,18 @@ def generate_roster(
             non_working_shift_codes=non_working_shift_codes,
             ward_name=ward_name,
             milp_config=milp_config,
+            progress_callback=progress_callback,
         )
+        print("[SCHEDULER] MILP succeeded — returning result")
         return {"method": "MILP", "roster": roster}
 
     except MILPError as e:
-        print(f"MILP failed: {e}")
+        print(f"[SCHEDULER] MILP failed: {e} — falling back to GA")
+    except Exception as e:
+        print(f"[SCHEDULER] MILP failed with unexpected error: {e} — falling back to GA")
 
     # ── Fallback: GA ───────────────────────────────────────────────────────
+    print("[SCHEDULER] Running GA (fallback algorithm)")
     roster = run_ga_pipeline(
         nurses,
         shifts,
@@ -124,6 +172,7 @@ def generate_roster(
         progress_callback=progress_callback,
         shift_hours=shift_hours,
     )
+    print("[SCHEDULER] GA succeeded — returning result")
     return {"method": "GA", "roster": roster}
 
 
@@ -217,7 +266,7 @@ def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_sh
                         f"Invalid day index {day_idx} for nurse {nurse_id} "
                         f"(must be 0–{num_days - 1})"
                     )
-                normalized_shift = str(shift_name).upper()
+                normalized_shift = _normalize_shift_name(shift_name)
                 if normalized_shift not in valid_request_shifts and normalized_shift not in non_working_shift_codes:
                     raise ValueError(
                         f"Invalid shift name '{shift_name}' in request for nurse {nurse_id}. "

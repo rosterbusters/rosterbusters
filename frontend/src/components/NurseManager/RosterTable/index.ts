@@ -15,6 +15,7 @@ export {
   useRosterPeriodWindow,
   useWardStatistics,
   useWardRoster,
+  useBulkUpsertRoster,
   useUpdateRoster,
   usePublishRoster,
   useRosterPageData,

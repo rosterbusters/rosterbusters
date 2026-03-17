@@ -15,6 +15,7 @@ from app.designation_mapping import classify_designation
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
 from app.models.shifts import ShiftCode, ShiftRequest
+from app.rbac import user_has_role
 from app.rostering.algo_scheduler import generate_roster
 
 
@@ -54,7 +55,114 @@ class ScheduledGenerationResponse(BaseModel):
     skipped: list[SkippedItem]
 
 
+class RosterUpsertRequest(BaseModel):
+    ward_id: int
+    nurse_id: int
+    period_id: int
+    shift_date: date
+    shift_code: str
+    comment: Optional[str] = None
+    status: str = "Pending"
+    assignment_method: str = "Manual"
+
+
+class BulkRosterUpsertRequest(BaseModel):
+    entries: list[RosterUpsertRequest]
+
+
 router = APIRouter()
+
+
+def _get_celery_app():
+    try:
+        from app.worker import celery_app
+    except ModuleNotFoundError as exc:
+        if exc.name != "celery":
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="Celery is not available in the backend service.",
+        ) from exc
+    return celery_app
+
+
+def _can_manage_ward(session: Session, current_user: CurrentUser, ward: Ward) -> bool:
+    if current_user.managerid == ward.managerid:
+        return True
+    if current_user.email:
+        return user_has_role(session, current_user.email, "Admin")
+    return False
+
+
+def _get_existing_roster_entry(
+    session: Session,
+    ward_id: int,
+    nurse_id: int,
+    period_id: int,
+    shift_date: date,
+) -> Roster | None:
+    return session.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.nurseid == nurse_id,
+            Roster.periodid == period_id,
+            Roster.shiftdate == shift_date,
+        )
+    ).first()
+
+
+def _upsert_roster_entry(
+    session: Session,
+    payload: RosterUpsertRequest,
+    current_user: CurrentUser,
+) -> Roster:
+    ward = session.get(Ward, payload.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = session.get(RosterPeriod, payload.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    nurse = session.get(Nurse, payload.nurse_id)
+    if not nurse:
+        raise HTTPException(status_code=404, detail="Nurse not found")
+    if nurse.wardid != payload.ward_id:
+        raise HTTPException(status_code=400, detail="Nurse does not belong to the selected ward")
+
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    entry = _get_existing_roster_entry(
+        session=session,
+        ward_id=payload.ward_id,
+        nurse_id=payload.nurse_id,
+        period_id=payload.period_id,
+        shift_date=payload.shift_date,
+    )
+
+    if entry:
+        entry.shiftcode = payload.shift_code
+        entry.comment = payload.comment
+        entry.status = payload.status
+        entry.assignmentmethod = payload.assignment_method
+        entry.assignedby = current_user.managerid
+    else:
+        entry = Roster(
+            nurseid=payload.nurse_id,
+            wardid=payload.ward_id,
+            periodid=payload.period_id,
+            shiftdate=payload.shift_date,
+            shiftcode=payload.shift_code,
+            status=payload.status,
+            assignmentmethod=payload.assignment_method,
+            assignedby=current_user.managerid,
+            comment=payload.comment,
+        )
+        session.add(entry)
+
+    session.flush()
+    return entry
 
 
 @router.get("/manager/statistics")
@@ -122,6 +230,106 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
             }
             for e in entries
         ],
+    }
+
+
+@router.post("/create")
+def create_or_update_roster_entry(
+    body: RosterUpsertRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Create or update a single roster assignment."""
+    entry = _upsert_roster_entry(session, body, current_user)
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return {
+        "roster_id": entry.rosterid,
+        "nurse_id": entry.nurseid,
+        "ward_id": entry.wardid,
+        "period_id": entry.periodid,
+        "shift_date": entry.shiftdate,
+        "shift_code": entry.shiftcode,
+        "status": entry.status,
+        "comment": entry.comment,
+    }
+
+
+@router.post("/bulk-upsert")
+def bulk_upsert_roster_entries(
+    body: BulkRosterUpsertRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Create or update many roster assignments in one request."""
+    if not body.entries:
+        return {"entries": [], "count": 0}
+
+    saved_entries: list[dict[str, Any]] = []
+    for entry_payload in body.entries:
+        entry = _upsert_roster_entry(session, entry_payload, current_user)
+        session.add(entry)
+        session.flush()
+        saved_entries.append(
+            {
+                "roster_id": entry.rosterid,
+                "nurse_id": entry.nurseid,
+                "ward_id": entry.wardid,
+                "period_id": entry.periodid,
+                "shift_date": entry.shiftdate,
+                "shift_code": entry.shiftcode,
+                "status": entry.status,
+                "comment": entry.comment,
+            }
+        )
+
+    session.commit()
+    return {"entries": saved_entries, "count": len(saved_entries)}
+
+
+@router.post("/ward/{ward_id}/publish")
+def publish_ward_roster(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Finalize a ward roster for a given period by confirming all assignments."""
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = session.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to publish this ward roster")
+
+    entries = session.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).all()
+
+    if not entries:
+        raise HTTPException(status_code=400, detail="No roster assignments found to publish")
+
+    for entry in entries:
+        entry.status = "Confirmed"
+        session.add(entry)
+
+    period.status = "Finalized"
+    session.add(period)
+    session.commit()
+
+    return {
+        "ward_id": ward_id,
+        "period_id": period_id,
+        "published_count": len(entries),
+        "status": period.status,
     }
 
 
@@ -347,13 +555,14 @@ def generate_roster_async(
     db: Session = Depends(get_db),
 ):
     """Queue roster generation as a Celery background task. Returns a task_id to poll."""
-    from app.tasks.roster_tasks import generate_roster_task
-
     ward = db.get(Ward, request_data.ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    task = generate_roster_task.delay(request_data.ward_id, request_data.period_id)
+    task = _get_celery_app().send_task(
+        "tasks.generate_roster",
+        args=[request_data.ward_id, request_data.period_id],
+    )
     return {"task_id": task.id, "status": "queued"}
 
 
@@ -367,8 +576,6 @@ def trigger_scheduled_generation(
     Finds RosterPeriods starting in `days_ahead` days, queues generate_and_save_roster_task
     for every active ward. Existing rosters are overwritten by the task.
     """
-    from app.tasks.roster_tasks import generate_and_save_roster_task
-
     target_date = date.today() + timedelta(days=days_ahead)
 
     periods = db.exec(
@@ -387,7 +594,10 @@ def trigger_scheduled_generation(
 
     for period in periods:
         for ward in active_wards:
-            task = generate_and_save_roster_task.delay(ward.wardid, period.periodid)
+            task = _get_celery_app().send_task(
+                "tasks.generate_and_save_roster",
+                args=[ward.wardid, period.periodid],
+            )
             triggered.append({
                 "ward_id": ward.wardid,
                 "period_id": period.periodid,
@@ -400,9 +610,7 @@ def trigger_scheduled_generation(
 @router.get("/task/{task_id}/status")
 def get_task_status(task_id: str):
     """Poll the status of a queued roster generation task."""
-    from app.worker import celery_app
-
-    result = celery_app.AsyncResult(task_id)
+    result = _get_celery_app().AsyncResult(task_id)
 
     if result.state == "PENDING":
         return {"task_id": task_id, "status": "pending"}
