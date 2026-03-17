@@ -103,6 +103,7 @@ function generateEmptyRosterData(): RosterRow[] {
     nurseId: nurse.id,
     name: nurse.name,
     designation: nurse.designation,
+    staffingRole: nurse.designation.includes("Staff Nurse") ? "RN" : "NA",
     hours: nurse.hours,
     shifts: {}, // Empty shifts - will show "Select" placeholder
     hasOvertime: false,
@@ -298,6 +299,7 @@ function RosterPlanningPage() {
           nurseId: nurse.nurseId,
           name: nurse.name,
           designation: nurse.designation,
+          staffingRole: nurse.staffing_role ?? null,
           hours: { worked: 0, contracted: 44 },
           shifts: {},
           hasOvertime: false,
@@ -1049,6 +1051,8 @@ function RosterPlanningPage() {
           name: nurse.name,
           designation:
             nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          staffingRole:
+            nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
           hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,
@@ -1062,7 +1066,7 @@ function RosterPlanningPage() {
         `Loaded mock data: ${mockKey.replace(/_/g, " ").toUpperCase()}`,
       );
     },
-    [currentStartDate, showSuccessToast],
+    [currentStartDate, shiftDurationMap, showSuccessToast],
   );
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
