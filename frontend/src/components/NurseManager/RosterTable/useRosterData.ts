@@ -426,7 +426,7 @@ export function useGenerateAlgorithmRoster() {
       let algorithmResult: Extract<AlgorithmTaskStatus, { status: "complete" }> | null =
         null;
 
-      for (let attempt = 0; attempt < 240; attempt += 1) {
+      for (let attempt = 0; attempt < 360000; attempt += 1) {
         const taskStatus = await fetchWithAuth(
           `/api/v1/roster/task/${queuedTask.task_id}/status`,
         ) as AlgorithmTaskStatus;
