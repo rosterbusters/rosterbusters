@@ -49,6 +49,7 @@ interface RosterPlanningHeaderProps {
   periods: RosterPeriod[];
   isAlgorithmGenerated?: boolean;
   isGenerating?: boolean;
+  isPublishing?: boolean;
   generationProgress?: number;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
@@ -70,6 +71,7 @@ export function RosterPlanningHeader({
   periods,
   isAlgorithmGenerated = false,
   isGenerating = false,
+  isPublishing = false,
   generationProgress = 0,
   onDateChange,
   onViewModeChange,
@@ -195,12 +197,13 @@ export function RosterPlanningHeader({
               <MenuItem
                 value="publish"
                 onClick={onPublishRoster}
+                disabled={isPublishing}
                 cursor="pointer"
                 _hover={{ bg: "#F0F9FA" }}
               >
                 <HStack gap={2}>
                   <Upload className="h-4 w-4" />
-                  <Text>Publish Roster</Text>
+                  <Text>{isPublishing ? "Publishing..." : "Publish Roster"}</Text>
                 </HStack>
               </MenuItem>
               <MenuItem

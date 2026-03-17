@@ -26,6 +26,7 @@ import {
   useWards,
   useRosterPeriods,
   useWardStatistics,
+  useBulkUpsertRoster,
   usePublishRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
@@ -35,6 +36,7 @@ import {
   type RosterPeriod,
   type ViewMode,
   type ShiftCode,
+  type ShiftAssignment,
   type RosterRow,
   type DailyStaffingGuideline,
   type ShiftRequestOverlay,
@@ -180,6 +182,7 @@ function RosterPlanningPage() {
   const { data: wardStatistics } = useWardStatistics(selectedWard?.wardId ?? null);
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToXLSX } = useRosterExport();
+  const bulkUpsertRoster = useBulkUpsertRoster();
   const publishRoster = usePublishRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
 
@@ -1141,16 +1144,50 @@ function RosterPlanningPage() {
       return;
     }
 
+    const entriesToSave = rosterData.flatMap((row) =>
+      Object.values(row.shifts)
+        .filter((shift): shift is ShiftAssignment => shift != null)
+        .map((shift) => ({
+          nurseId: row.nurseId,
+          shiftDate: shift.shiftDate,
+          shiftCode: shift.shiftCode,
+          comment: shift.comment,
+        })),
+    );
+
+    if (entriesToSave.length === 0) {
+      showErrorToast("Add at least one shift before publishing the roster");
+      return;
+    }
+
     try {
+      await bulkUpsertRoster.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+        entries: entriesToSave,
+      });
+
       await publishRoster.mutateAsync({
         wardId: selectedWard.wardId,
         periodId: selectedPeriod.periodId,
       });
+      setIsPublishSuccessDialogOpen(true);
     } catch (error) {
       console.error("Failed to publish roster:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to publish roster. Please try again.";
+      showErrorToast(message);
     }
-    setIsPublishSuccessDialogOpen(true);
-  }, [selectedWard, selectedPeriod, publishRoster, showErrorToast]);
+  }, [
+    selectedWard,
+    selectedPeriod,
+    rosterData,
+    bulkUpsertRoster,
+    publishRoster,
+    showErrorToast,
+  ]);
 
   return (
     <Flex
@@ -1179,6 +1216,9 @@ function RosterPlanningPage() {
           periods={displayPeriods}
           isAlgorithmGenerated={isAlgorithmGenerated}
           isGenerating={generateAlgorithmRoster.isPending}
+          isPublishing={
+            bulkUpsertRoster.isPending || publishRoster.isPending
+          }
           generationProgress={generationProgress}
           onDateChange={handleDateChange}
           onViewModeChange={handleViewModeChange}

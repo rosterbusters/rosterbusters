@@ -160,12 +160,14 @@ export function useUpdateRoster() {
       periodId,
       shiftDate,
       shiftCode,
+      comment,
     }: {
       wardId: number;
       nurseId: number;
       periodId: number;
       shiftDate: string;
       shiftCode: ShiftCode;
+      comment?: string;
     }) => {
       return fetchWithAuth("/api/v1/roster/create", {
         method: "POST",
@@ -175,11 +177,56 @@ export function useUpdateRoster() {
           period_id: periodId,
           shift_date: shiftDate,
           shift_code: shiftCode,
+          comment: comment ?? null,
+          status: "Pending",
+          assignment_method: "Manual",
         }),
       });
     },
     onSuccess: (_, variables) => {
       // Invalidate roster queries to refetch
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "ward", variables.wardId, variables.periodId],
+      });
+    },
+  });
+}
+
+export function useBulkUpsertRoster() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      periodId,
+      entries,
+    }: {
+      wardId: number;
+      periodId: number;
+      entries: Array<{
+        nurseId: number;
+        shiftDate: string;
+        shiftCode: ShiftCode;
+        comment?: string;
+      }>;
+    }) => {
+      return fetchWithAuth("/api/v1/roster/bulk-upsert", {
+        method: "POST",
+        body: JSON.stringify({
+          entries: entries.map((entry) => ({
+            ward_id: wardId,
+            nurse_id: entry.nurseId,
+            period_id: periodId,
+            shift_date: entry.shiftDate,
+            shift_code: entry.shiftCode,
+            comment: entry.comment ?? null,
+            status: "Pending",
+            assignment_method: "Manual",
+          })),
+        }),
+      });
+    },
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["roster", "ward", variables.wardId, variables.periodId],
       });
