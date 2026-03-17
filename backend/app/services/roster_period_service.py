@@ -46,7 +46,9 @@ def build_roster_period_definitions(today: date | None = None) -> list[RosterPer
             startdate = roster_year_start + timedelta(days=period_index * PERIOD_LENGTH_DAYS)
             enddate = startdate + timedelta(days=PERIOD_LENGTH_DAYS - 1)
             requestopendate = startdate - timedelta(days=14)
-            requestclosedate = startdate - timedelta(days=10)
+            # TODO: revert to original close date (startdate - 10 days) once request window timing is finalised
+            # requestclosedate = startdate - timedelta(days=10)
+            requestclosedate = startdate - timedelta(days=2)
 
             if today > enddate:
                 status = "Published"
