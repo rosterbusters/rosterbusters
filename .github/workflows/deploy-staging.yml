@@ -110,6 +110,7 @@ jobs:
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
           docker compose -f docker-compose.yml -f docker-compose.staging.yml build
           docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_data.py
 
           EOF
       
