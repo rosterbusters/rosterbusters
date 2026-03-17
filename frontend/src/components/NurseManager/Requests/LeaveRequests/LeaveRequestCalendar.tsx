@@ -1,4 +1,11 @@
-import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from "react-big-calendar";
+import {
+  Navigate,
+  Calendar,
+  momentLocalizer,
+  View,
+  ToolbarProps,
+  DateLocalizer,
+} from "react-big-calendar";
 import moment from "moment";
 import { useState, useCallback, useMemo, ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -103,6 +110,13 @@ interface LeaveRequestCalendarProps {
   wardId: number | null | undefined;
 }
 
+interface MonthViewProps {
+  date: Date;
+  localizer: DateLocalizer;
+  events: Event[];
+  [key: string]: unknown;
+}
+
 export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarProps) {
   const [date, setDate] = useState(() => moment().startOf("month").toDate());
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
@@ -178,26 +192,19 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
     }));
   }, [leaveRequests, nurseMap]);
 
-  const MonthViewWithWard = useMemo(() => {
-    const WrappedMonthView = (props: any) => (
+  const { views, defaultView } = useMemo(() => {
+    const MonthView = (props: MonthViewProps) => (
       <CustomMonthView {...props} wardId={wardId} />
     );
+    MonthView.range = CustomMonthView.range;
+    MonthView.navigate = CustomMonthView.navigate;
+    MonthView.title = CustomMonthView.title;
 
-    WrappedMonthView.range = CustomMonthView.range;
-    WrappedMonthView.navigate = CustomMonthView.navigate;
-    WrappedMonthView.title = CustomMonthView.title;
-
-    return WrappedMonthView;
+    return {
+      views: { month: MonthView, week: false, day: false } as any,
+      defaultView: "month" as View,
+    };
   }, [wardId]);
-
-  const { views, defaultView } = useMemo(() => ({
-    views: {
-      month: MonthViewWithWard,
-      week: false,
-      day: false,
-    } as any,
-    defaultView: "month" as View,
-  }), [MonthViewWithWard]);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>

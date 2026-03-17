@@ -69,7 +69,13 @@ export interface RosterPeriod {
   name: string;
   startDate: string;
   endDate: string;
-  status: 'RequestOpen' | 'RequestClosed' | 'Finalized';
+  status: 'RequestOpen' | 'Pending' | 'Published' | 'RequestClosed' | 'Finalized';
+}
+
+export interface RosterPeriodWindow {
+  currentPeriod: RosterPeriod | null;
+  upcomingPeriod: RosterPeriod | null;
+  requestOpenPeriod: RosterPeriod | null;
 }
 
 // ============================================

@@ -50,6 +50,7 @@ class ShiftRequest(SQLModel, table=True):
     notificationsent: bool = Field(default=False)
 
 class ShiftRequestCreate(SQLModel):
+    nurseid: int | None = None
     periodid: int
     preferreddate: date
     preferredshifttype: str

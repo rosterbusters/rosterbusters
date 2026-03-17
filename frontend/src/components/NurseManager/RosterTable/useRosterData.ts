@@ -4,6 +4,7 @@ import moment from "moment";
 import type {
   Ward,
   RosterPeriod,
+  RosterPeriodWindow,
   RosterRow,
   ShiftCode,
   WardRosterResponse,
@@ -33,6 +34,16 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
   return response.json();
 }
 
+function mapApiPeriod(data: Record<string, unknown>): RosterPeriod {
+  return {
+    periodId: data.periodid as number,
+    name: data.name as string,
+    startDate: data.startdate as string,
+    endDate: data.enddate as string,
+    status: data.status as RosterPeriod["status"],
+  };
+}
+
 // Hook to fetch accessible wards
 export function useWards() {
   return useQuery<Ward[]>({
@@ -57,15 +68,30 @@ export function useRosterPeriods() {
     queryKey: ["roster", "periods"],
     queryFn: async () => {
       const data = await fetchWithAuth("/api/v1/shift-requests/periods");
-      return data.map((p: Record<string, unknown>) => ({
-        periodId: p.periodid as number,
-        name: p.name as string,
-        startDate: p.startdate as string,
-        endDate: p.enddate as string,
-        status: p.status as RosterPeriod["status"],
-      }));
+      return data.map((p: Record<string, unknown>) => mapApiPeriod(p));
     },
     staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+export function useRosterPeriodWindow() {
+  return useQuery<RosterPeriodWindow>({
+    queryKey: ["roster", "period-window"],
+    queryFn: async () => {
+      const data = await fetchWithAuth("/api/v1/shift-requests/periods/current-upcoming");
+      return {
+        currentPeriod: data.current_period
+          ? mapApiPeriod(data.current_period as Record<string, unknown>)
+          : null,
+        upcomingPeriod: data.upcoming_period
+          ? mapApiPeriod(data.upcoming_period as Record<string, unknown>)
+          : null,
+        requestOpenPeriod: data.request_open_period
+          ? mapApiPeriod(data.request_open_period as Record<string, unknown>)
+          : null,
+      };
+    },
+    staleTime: 10 * 60 * 1000,
   });
 }
 

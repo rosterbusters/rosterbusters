@@ -12,6 +12,7 @@ export { ManpowerEditDialog } from "./ManpowerEditDialog";
 export {
   useWards,
   useRosterPeriods,
+  useRosterPeriodWindow,
   useWardStatistics,
   useWardRoster,
   useBulkUpsertRoster,

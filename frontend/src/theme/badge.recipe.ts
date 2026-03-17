@@ -11,6 +11,18 @@ export const badgeRecipe = defineRecipe({
       shiftRequest: { bgColor: "cyan.600", color: "white" },
       roster: { bgColor: "cyan.500", color: "white" },
       requests: { bgColor: "#DDE8EA", color: "#155E75" },
+      currentPeriod: {
+        bgColor: "periodbadge.currentBg",
+        color: "periodbadge.currentText",
+        borderRadius: "full",
+        px: 2,
+      },
+      upcomingPeriod: {
+        bgColor: "periodbadge.upcomingBg",
+        color: "periodbadge.upcomingText",
+        borderRadius: "full",
+        px: 2,
+      },
       AShift: { bgColor: "cyan.500", color: "white" },
       AShiftOutline: {
         bgColor: "white",
