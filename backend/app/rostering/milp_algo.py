@@ -4,13 +4,15 @@
 # compatible with the algo_scheduler.py pipeline interface.
 #
 # Expected call from algo_scheduler:
-#   run_milp_pipeline(nurses, shifts, requests, ward_name="DEFAULT")
+#   run_milp_pipeline(nurses, shifts, hard_requests, soft_requests, prev_last_shift, ward_name="DEFAULT")
 #
 # Input formats (as produced by algo_scheduler / validate_inputs):
 #   nurses   : [{"id": int|str, "name": str, "rank": "A"|"B"|"C"}, ...]
 #   shifts   : 14-element list of {"AM": {"A":int,"B":int,"C":int}, "PM":..., "NIGHT":...}
-#   requests : {nurse_id: [(day_idx_0based, "AM"|"PM"|"NIGHT"|"OFF"|"AL"), ...], ...}
-#              OR None
+#   hard_requests : {nurse_id: [(day_idx_0based, shift_code), ...], ...} OR None
+#   soft_requests : {nurse_id: [(day_idx_0based, shift_code), ...], ...} OR None
+#   prev_last_shift : {nurse_id: "AM"|"PM"|"NIGHT"|"OFF"|"AL"|...} OR None
+#   non_working_shift_codes : set[str] of DB shift codes that should count as non-working
 #   ward_name: str key into WARD_CONFIG (defaults to "DEFAULT")
 
 import random
@@ -38,7 +40,8 @@ _WORK_SHIFTS     = {"A", "P", "N"}
 _OFF_CODES       = {"DO", "OFF"}
 _EQUIV_LEAVE     = {"AL"}
 
-def _classify(raw):
+
+def _classify(raw, non_working_shift_codes=None):
     """
     Returns (kind, val).
     kind in {"NONE", "WORK_SHIFT", "OFF", "EQUIV_LEAVE", "EQUIV_WORK"}
@@ -52,7 +55,7 @@ def _classify(raw):
         return ("WORK_SHIFT", s)
     if s in _OFF_CODES:
         return ("OFF", s)
-    if s in _EQUIV_LEAVE:
+    if s in _EQUIV_LEAVE or s in {str(code).upper() for code in (non_working_shift_codes or set())}:
         return ("EQUIV_LEAVE", s)
     return ("EQUIV_WORK", s)   # INHT / BL / …
 
@@ -60,7 +63,68 @@ def _classify(raw):
 # ---------------------------------------------------------------------------
 # Input parser
 # ---------------------------------------------------------------------------
-def _parse_inputs(nurses, shifts, requests):
+def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None):
+    requests = requests or {}
+
+    # Rank → class
+    _rank_class = {"A": "RN", "B": "EN", "C": "HCA"}
+    non_working_shift_codes = {
+        str(code).upper() for code in (non_working_shift_codes or set())
+    }
+    _sched_to_milp = {
+        "AM": "A",
+        "PM": "P",
+        "NIGHT": "N",
+        "OFF": "DO",
+        "AL": "AL",
+    }
+
+    id_to_nurse = {n["id"]: n for n in nurses}
+    hard_rn, hard_en, hard_hca = {}, {}, {}
+
+    for nurse_id, req_list in requests.items():
+        nurse = id_to_nurse.get(nurse_id)
+        if nurse is None:
+            continue
+
+        name = nurse["name"]
+        cls = _rank_class.get(nurse["rank"])
+        target = {"RN": hard_rn, "EN": hard_en, "HCA": hard_hca}.get(cls)
+        if target is None:
+            continue
+
+        target.setdefault(name, {})
+        for day_idx, shift_name in req_list:
+            if 0 <= day_idx < num_days:
+                normalized_shift = str(shift_name).upper()
+                milp_code = _sched_to_milp.get(normalized_shift, normalized_shift if normalized_shift in non_working_shift_codes else "")
+                if milp_code:
+                    target[name][f"Day {day_idx + 1}"] = milp_code
+
+    return hard_rn, hard_en, hard_hca
+
+
+def _parse_prev_last_shift(nurses, prev_last_shift):
+    prev_last_shift = prev_last_shift or {}
+    _rank_class = {"A": "RN", "B": "EN", "C": "HCA"}
+    id_to_nurse = {n["id"]: n for n in nurses}
+    output = {"RN": {}, "EN": {}, "HCA": {}}
+
+    for nurse_id, shift_name in prev_last_shift.items():
+        nurse = id_to_nurse.get(nurse_id)
+        if nurse is None:
+            continue
+        cls = _rank_class.get(nurse["rank"])
+        if cls is None:
+            continue
+        mapped = str(shift_name).strip().upper()
+        if mapped == "NIGHT":
+            output[cls][nurse["name"]] = "N"
+
+    return output
+
+
+def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift, non_working_shift_codes=None):
     """
     Convert algo_scheduler-style inputs into notebook-style dicts.
 
@@ -69,22 +133,18 @@ def _parse_inputs(nurses, shifts, requests):
     dict with keys:
         rn_list, en_list, hca_list          - name lists
         hard_requests_rn/en/hca             - {name: {"Day X": code}}
-        soft_requests_rn/en/hca             - always {} (scheduler has no soft channel yet)
-        annual_leave_rn/en/hca              - always {} (AL folded into hard_requests)
-        prev_week_roster_rn/en/hca          - always {} (not yet surfaced by scheduler)
+        soft_requests_rn/en/hca             - {name: {"Day X": code}}
+        annual_leave_rn/en/hca              - always {} (AL folded into requests)
+        prev_week_roster_rn/en/hca          - {name: "N"} for previous last-day night
         num_days                            - int
     """
-    requests = requests or {}
     num_days = len(shifts)
 
     # Rank → class
     _rank_class = {"A": "RN", "B": "EN", "C": "HCA"}
 
     rn_list, en_list, hca_list = [], [], []
-    id_to_nurse = {}
-
     for n in nurses:
-        id_to_nurse[n["id"]] = n
         cls = _rank_class.get(n["rank"])
         if cls == "RN":
             rn_list.append(n["name"])
@@ -93,35 +153,9 @@ def _parse_inputs(nurses, shifts, requests):
         elif cls == "HCA":
             hca_list.append(n["name"])
 
-    # Shift-name translation: scheduler uses AM/PM/NIGHT/OFF/AL
-    # notebook model uses A/P/N/DO/AL
-    _sched_to_milp = {
-        "AM":    "A",
-        "PM":    "P",
-        "NIGHT": "N",
-        "OFF":   "DO",
-        "AL":    "AL",
-    }
-
-    hard_rn, hard_en, hard_hca = {}, {}, {}
-
-    for nurse_id, req_list in requests.items():
-        if nurse_id not in id_to_nurse:
-            continue
-        nurse = id_to_nurse[nurse_id]
-        name  = nurse["name"]
-        cls   = _rank_class.get(nurse["rank"])
-
-        target = {"RN": hard_rn, "EN": hard_en, "HCA": hard_hca}.get(cls)
-        if target is None:
-            continue
-
-        target.setdefault(name, {})
-        for day_idx, shift_name in req_list:
-            if 0 <= day_idx < num_days:
-                milp_code = _sched_to_milp.get(str(shift_name).upper(), "")
-                if milp_code:
-                    target[name][f"Day {day_idx + 1}"] = milp_code
+    hard_rn, hard_en, hard_hca = _parse_request_dict(nurses, num_days, hard_requests, non_working_shift_codes)
+    soft_rn, soft_en, soft_hca = _parse_request_dict(nurses, num_days, soft_requests, non_working_shift_codes)
+    prev_roster = _parse_prev_last_shift(nurses, prev_last_shift)
 
     return {
         "rn_list":  rn_list,
@@ -130,15 +164,15 @@ def _parse_inputs(nurses, shifts, requests):
         "hard_requests_rn":  hard_rn,
         "hard_requests_en":  hard_en,
         "hard_requests_hca": hard_hca,
-        "soft_requests_rn":  {},
-        "soft_requests_en":  {},
-        "soft_requests_hca": {},
+        "soft_requests_rn":  soft_rn,
+        "soft_requests_en":  soft_en,
+        "soft_requests_hca": soft_hca,
         "annual_leave_rn":   {},
         "annual_leave_en":   {},
         "annual_leave_hca":  {},
-        "prev_week_roster_rn":  {},
-        "prev_week_roster_en":  {},
-        "prev_week_roster_hca": {},
+        "prev_week_roster_rn":  prev_roster["RN"],
+        "prev_week_roster_en":  prev_roster["EN"],
+        "prev_week_roster_hca": prev_roster["HCA"],
         "num_days": num_days,
     }
 
@@ -213,6 +247,7 @@ def _solve(
     annual_leave_en=None,   prev_week_roster_en=None,
     hard_requests_hca=None, soft_requests_hca=None,
     annual_leave_hca=None,  prev_week_roster_hca=None,
+    non_working_shift_codes=None,
     solver_name="gurobi",
     weights=None,
 ):
@@ -248,6 +283,9 @@ def _solve(
     soft_requests_hca    = soft_requests_hca    or {}
     annual_leave_hca     = annual_leave_hca     or {}
     prev_week_roster_hca = prev_week_roster_hca or {}
+    non_working_shift_codes = {
+        str(code).upper() for code in (non_working_shift_codes or set())
+    }
 
     rn_nurses  = list(rn_list);  random.shuffle(rn_nurses)
     en_nurses  = list(en_list);  random.shuffle(en_nurses)
@@ -299,7 +337,7 @@ def _solve(
 
             for d in DAYS:
                 raw = hard_dict.get(n, {}).get(f"Day {d}", "")
-                kind, _ = _classify(raw)
+                kind, _ = _classify(raw, non_working_shift_codes)
                 if kind == "EQUIV_LEAVE":
                     al_days.add(d)
                 elif kind == "EQUIV_WORK":
@@ -307,7 +345,7 @@ def _solve(
 
             for d in DAYS:
                 raw = hard_dict.get(n, {}).get(f"Day {d}", "")
-                kind, val = _classify(raw)
+                kind, val = _classify(raw, non_working_shift_codes)
 
                 if kind == "WORK_SHIFT":
                     m.cons.add(off_var[n, d] == 0)
@@ -448,10 +486,10 @@ def _solve(
         for n in class_nurses:
             for d in DAYS:
                 hard_raw = hard_dict.get(n, {}).get(f"Day {d}", "")
-                if _classify(hard_raw)[0] != "NONE":
+                if _classify(hard_raw, non_working_shift_codes)[0] != "NONE":
                     continue  # hard request already pinned this day
                 soft_raw = soft_dict.get(n, {}).get(f"Day {d}", "")
-                kind, val = _classify(soft_raw)
+                kind, val = _classify(soft_raw, non_working_shift_codes)
                 if kind == "WORK_SHIFT":
                     m.cons.add(x_var[n, d, val] >= 1 - pref_viol[n, d])
                 elif kind in ("OFF", "EQUIV_LEAVE", "EQUIV_WORK"):
@@ -532,7 +570,7 @@ def _solve(
             for d in DAYS:
                 key = f"Day {d}"
                 raw = hard_dict.get(n, {}).get(key, "")
-                kind, val = _classify(raw)
+                kind, val = _classify(raw, non_working_shift_codes)
                 if kind in ("OFF", "EQUIV_LEAVE", "EQUIV_WORK"):
                     df.loc[n, key] = val
                 elif off_var[n, d]() and off_var[n, d]() > 0.5:
@@ -556,7 +594,16 @@ def _solve(
 # ---------------------------------------------------------------------------
 # Public entry point (called by algo_scheduler.py)
 # ---------------------------------------------------------------------------
-def run_milp_pipeline(nurses, shifts, requests=None, ward_name="DEFAULT", milp_config=None):
+def run_milp_pipeline(
+    nurses,
+    shifts,
+    hard_requests=None,
+    soft_requests=None,
+    prev_last_shift=None,
+    non_working_shift_codes=None,
+    ward_name="DEFAULT",
+    milp_config=None,
+):
     """
     Main entry point for MILP nurse rostering.
 
@@ -564,7 +611,10 @@ def run_milp_pipeline(nurses, shifts, requests=None, ward_name="DEFAULT", milp_c
     ----------
     nurses      : list of {"id", "name", "rank"} dicts  (rank A/B/C)
     shifts      : 14-element list of per-day shift-requirement dicts
-    requests    : optional {nurse_id: [(day_0based, shift_str), ...]}
+    hard_requests : optional approved requests
+    soft_requests : optional pending requests
+    prev_last_shift : optional previous-period final shift per nurse
+    non_working_shift_codes : optional non-working DB shift codes
     ward_name   : key into WARD_CONFIG; falls back to "DEFAULT" if unknown
     milp_config : optional WARD_CONFIG-compatible override dict (from staffing_json)
 
@@ -572,7 +622,14 @@ def run_milp_pipeline(nurses, shifts, requests=None, ward_name="DEFAULT", milp_c
     -------
     Standardised roster dict (same shape as GA output)
     """
-    parsed = _parse_inputs(nurses, shifts, requests)
+    parsed = _parse_inputs(
+        nurses,
+        shifts,
+        hard_requests,
+        soft_requests,
+        prev_last_shift,
+        non_working_shift_codes,
+    )
 
     try:
         roster_rn, roster_en, roster_hca = _solve(
@@ -593,6 +650,7 @@ def run_milp_pipeline(nurses, shifts, requests=None, ward_name="DEFAULT", milp_c
             soft_requests_hca=parsed["soft_requests_hca"],
             annual_leave_hca=parsed["annual_leave_hca"],
             prev_week_roster_hca=parsed["prev_week_roster_hca"],
+            non_working_shift_codes=non_working_shift_codes,
         )
     except RuntimeError as e:
         raise MILPError(f"MILP solver failed: {e}") from e
