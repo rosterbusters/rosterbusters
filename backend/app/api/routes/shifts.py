@@ -255,6 +255,7 @@ def get_shift_codes_by_ward(
             select(ShiftCode)
             .join(WardShiftCode, ShiftCode.shiftcode == WardShiftCode.shiftcode)
             .where(WardShiftCode.wardid == ward_id)
+            .where(ShiftCode.isworking == True)  # noqa: E712
         )
         codes = list(session.exec(statement).all())
         if codes:
