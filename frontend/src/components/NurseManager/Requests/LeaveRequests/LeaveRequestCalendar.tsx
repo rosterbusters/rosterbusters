@@ -81,6 +81,24 @@ interface Event {
   resource?: any;
 }
 
+interface GroupedLeaveRequestResource {
+  nurseName: string;
+  isOwn: boolean;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  requestId: number;
+  requests: Array<{
+    requestId: number;
+    nurseName: string;
+    leaveType: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  }>;
+}
+
 interface LeaveRequestCalendarProps {
   wardId: number | null | undefined;
 }
@@ -110,27 +128,76 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
 
   const events: Event[] = useMemo(() => {
     if (!leaveRequests) return [];
-    return leaveRequests.map((lr) => ({
-      title: lr.leavetype,
-      start: new Date(lr.startdate),
-      end: new Date(lr.enddate),
-      allDay: true,
-      resource: {
-        nurseName: nurseMap.get(lr.nurseid) ?? `Nurse ${lr.nurseid}`,
+    const grouped = new Map<string, GroupedLeaveRequestResource>();
+
+    leaveRequests.forEach((lr) => {
+      const nurseName = nurseMap.get(lr.nurseid) ?? `Nurse ${lr.nurseid}`;
+      const key = `${lr.startdate}__${lr.enddate}__${lr.leavetype}`;
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.requests.push({
+          requestId: lr.leaveid,
+          nurseName,
+          leaveType: lr.leavetype,
+          startDate: lr.startdate,
+          endDate: lr.enddate,
+          status: lr.status,
+        });
+        existing.nurseName = existing.requests.map((request) => request.nurseName).join(", ");
+        return;
+      }
+
+      grouped.set(key, {
+        nurseName,
         isOwn: false,
         requestId: lr.leaveid,
-        shiftType: lr.leavetype,
+        leaveType: lr.leavetype,
         startDate: lr.startdate,
         endDate: lr.enddate,
         status: lr.status,
-      },
+        requests: [
+          {
+            requestId: lr.leaveid,
+            nurseName,
+            leaveType: lr.leavetype,
+            startDate: lr.startdate,
+            endDate: lr.enddate,
+            status: lr.status,
+          },
+        ],
+      });
+    });
+
+    return Array.from(grouped.values()).map((group) => ({
+      title: group.leaveType,
+      start: new Date(group.startDate),
+      end: new Date(group.endDate),
+      allDay: true,
+      resource: group,
     }));
   }, [leaveRequests, nurseMap]);
 
+  const MonthViewWithWard = useMemo(() => {
+    const WrappedMonthView = (props: any) => (
+      <CustomMonthView {...props} wardId={wardId} />
+    );
+
+    WrappedMonthView.range = CustomMonthView.range;
+    WrappedMonthView.navigate = CustomMonthView.navigate;
+    WrappedMonthView.title = CustomMonthView.title;
+
+    return WrappedMonthView;
+  }, [wardId]);
+
   const { views, defaultView } = useMemo(() => ({
-    views: { month: CustomMonthView, week: false, day: false } as any,
+    views: {
+      month: MonthViewWithWard,
+      week: false,
+      day: false,
+    } as any,
     defaultView: "month" as View,
-  }), []);
+  }), [MonthViewWithWard]);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>

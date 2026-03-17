@@ -18,6 +18,20 @@ router = APIRouter(prefix="/leave", tags=["leave-requests"])
 OFF_DAY_CODES = ["DO", "RD", "HOL", "FD", "SD", "OFF", "REST"]
 
 
+def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
+    ward_ids = session.exec(
+        select(UserRole.wardid)
+        .join(Role, UserRole.roleid == Role.roleid)
+        .where(
+            UserRole.userid == user_id,
+            UserRole.isactive == True,  # noqa: E712
+            UserRole.wardid.is_not(None),
+            Role.rolename == "NurseManager",
+        )
+    ).all()
+    return {ward_id for ward_id in ward_ids if ward_id is not None}
+
+
 @router.get("/leave-codes", response_model=list[ShiftCodePublic])
 def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get leave request codes, excluding off-day codes (DO, RD, etc.)."""
@@ -48,15 +62,37 @@ def create_leave_request(
     current_user: CurrentUser,
     leave_in: LeaveRequestCreate,
 ) -> Any:
-    """Submit a new leave request for the logged-in nurse."""
-    if not current_user.nurseid:
+    """Submit a new leave request.
+
+    Nurses can submit for themselves. Nurse managers can submit on behalf of
+    nurses in wards they manage by passing `nurseid`.
+    """
+    target_nurse_id = current_user.nurseid
+
+    if leave_in.nurseid is not None and leave_in.nurseid != current_user.nurseid:
+        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
+        if not managed_ward_ids:
+            raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+
+        target_nurse = session.get(Nurse, leave_in.nurseid)
+        if not target_nurse:
+            raise HTTPException(status_code=404, detail="Nurse profile not found")
+        if target_nurse.wardid not in managed_ward_ids:
+            raise HTTPException(status_code=403, detail="Not authorized to create request for this nurse")
+
+        target_nurse_id = leave_in.nurseid
+
+    if not target_nurse_id:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
-    nurse = session.get(Nurse, current_user.nurseid)
+    nurse = session.get(Nurse, target_nurse_id)
     if not nurse:
         raise HTTPException(status_code=404, detail="Nurse profile not found")
 
-    leave = LeaveRequest(**leave_in.model_dump(), nurseid=current_user.nurseid)
+    leave = LeaveRequest(
+        **leave_in.model_dump(exclude={"nurseid"}),
+        nurseid=target_nurse_id,
+    )
     session.add(leave)
     session.commit()
     session.refresh(leave)
@@ -144,15 +180,19 @@ def update_leave_request(
     current_user: CurrentUser,
     update_in: LeaveRequestUpdate,
 ) -> Any:
-    """Update a leave request's type. Only the owning nurse can update."""
-    if not current_user.nurseid:
-        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+    """Update a leave request.
 
+    The owning nurse can update their own request, and nurse managers can
+    update leave requests for nurses in wards they manage.
+    """
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")
-    if leave_request.nurseid != current_user.nurseid:
-        raise HTTPException(status_code=403, detail="Not authorized to update this request")
+    if current_user.nurseid != leave_request.nurseid:
+        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
+        nurse = session.get(Nurse, leave_request.nurseid)
+        if not nurse or nurse.wardid not in managed_ward_ids:
+            raise HTTPException(status_code=403, detail="Not authorized to update this request")
 
     if update_in.leavetype is not None:
         leave_request.leavetype = update_in.leavetype
@@ -173,15 +213,19 @@ def delete_leave_request(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> None:
-    """Withdraw/delete a leave request. Only the owning nurse can delete."""
-    if not current_user.nurseid:
-        raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
+    """Delete a leave request.
 
+    The owning nurse can delete their own request, and nurse managers can
+    delete leave requests for nurses in wards they manage.
+    """
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")
-    if leave_request.nurseid != current_user.nurseid:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this request")
+    if current_user.nurseid != leave_request.nurseid:
+        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
+        nurse = session.get(Nurse, leave_request.nurseid)
+        if not nurse or nurse.wardid not in managed_ward_ids:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this request")
 
     session.delete(leave_request)
     session.commit()

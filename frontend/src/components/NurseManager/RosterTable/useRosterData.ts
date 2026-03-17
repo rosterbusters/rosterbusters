@@ -44,6 +44,7 @@ export function useWards() {
         wardName: w.wardname,
         wardType: w.wardtype ?? "",
         campus: w.campus ?? "",
+        managerId: w.managerid ?? null,
       }));
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -110,6 +111,30 @@ export function useShiftCodes() {
       return map;
     },
     staleTime: 30 * 60 * 1000, // 30 minutes
+  });
+}
+
+export interface ShiftCodeOption {
+  shiftcode: string;
+  description: string;
+  isworking: boolean;
+  shiftdurationhours: number | null;
+}
+
+export function useAllShiftCodes() {
+  return useQuery<ShiftCodeOption[]>({
+    queryKey: ["allShiftCodes"],
+    queryFn: async () => {
+      const data: Array<{
+        shiftcode: string;
+        description: string;
+        isworking: boolean;
+        shiftdurationhours: number | null;
+      }> = await fetchWithAuth("/api/v1/shift-requests/shift-codes");
+
+      return data;
+    },
+    staleTime: 30 * 60 * 1000,
   });
 }
 
@@ -203,6 +228,7 @@ export function transformRosterData(
       nurseId: nurse.nurseId,
       name: nurse.name,
       designation: nurse.designation,
+      staffingRole: nurse.staffing_role ?? null,
       hours: {
         worked: workedHours,
         contracted: contractedHours,
@@ -370,6 +396,7 @@ export function useGenerateAlgorithmRoster() {
           nurseId: nurse.id,
           name: nurse.name,
           designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          staffingRole: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
           hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,
