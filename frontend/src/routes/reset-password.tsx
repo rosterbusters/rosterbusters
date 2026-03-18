@@ -1,25 +1,26 @@
-import { Container, Heading, Text } from "@chakra-ui/react"
+import { Container, Flex, Heading, Text } from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
+import { createFileRoute, Link as RouterLink, redirect, useNavigate } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
-import { FiLock } from "react-icons/fi"
+import { FiArrowLeft, FiLock } from "react-icons/fi"
 
 import { type ApiError } from "@/client"
-interface NewPassword {
-  new_password: string
-}
 import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
 import { showSuccessToast } from "@/components/ui/toast"
 import { isLoggedIn } from "@/hooks/useAuth"
 import { confirmPasswordRules, handleError, passwordRules } from "@/utils"
 
-interface NewPasswordForm extends NewPassword {
+interface NewPasswordForm {
+  new_password: string
   confirm_password: string
 }
 
 export const Route = createFileRoute("/reset-password")({
   component: ResetPassword,
+  validateSearch: (search: Record<string, unknown>) => ({
+    token: (search.token as string) ?? "",
+  }),
   beforeLoad: async () => {
     if (isLoggedIn()) {
       throw redirect({
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/reset-password")({
 })
 
 function ResetPassword() {
+  const { token } = Route.useSearch()
   const {
     register,
     handleSubmit,
@@ -41,13 +43,22 @@ function ResetPassword() {
     criteriaMode: "all",
     defaultValues: {
       new_password: "",
+      confirm_password: "",
     },
   })
   const navigate = useNavigate()
 
-  const resetPassword = async (_data: NewPassword) => {
-    // TODO: Backend endpoint not implemented yet
-    throw new Error("Password reset not implemented")
+  const resetPassword = async (data: NewPasswordForm) => {
+    const BASE = import.meta.env.VITE_API_URL || ""
+    const response = await fetch(`${BASE}/api/v1/reset-password/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, new_password: data.new_password }),
+    })
+    if (!response.ok) {
+      const err = await response.json()
+      throw { body: err, status: response.status } as ApiError
+    }
   }
 
   const mutation = useMutation({
@@ -97,9 +108,28 @@ function ResetPassword() {
         {...register("confirm_password", confirmPasswordRules(getValues))}
         placeholder="Confirm Password"
       />
-      <Button variant="default" type="submit">
-        Reset Password
+      <Button variant="default" type="submit" disabled={mutation.isPending}>
+        {mutation.isPending ? "Resetting..." : "Reset Password"}
       </Button>
+
+      {/* #10 — Back to Login link */}
+      <Flex justify="center" pt={1}>
+        <RouterLink
+          to="/login"
+          style={{
+            color: "var(--chakra-colors-teal-600)",
+            fontSize: "13px",
+            fontWeight: 600,
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+          }}
+        >
+          <FiArrowLeft />
+          Back to Login
+        </RouterLink>
+      </Flex>
     </Container>
   )
 }

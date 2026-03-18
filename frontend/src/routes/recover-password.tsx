@@ -9,8 +9,8 @@ import { Button } from "@chakra-ui/react"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"
-import { showSuccessToast } from "@/components/ui/toast"
 import { emailPattern, handleError } from "@/utils"
+import { useState } from "react"
 
 interface FormData {
   email: string
@@ -28,22 +28,31 @@ export const Route = createFileRoute("/recover-password")({
 })
 
 function RecoverPassword() {
+  const [submittedEmail, setSubmittedEmail] = useState<string | null>(null)
+
   const {
     register,
     handleSubmit,
-    reset,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormData>()
-  const recoverPassword = async (_data: FormData) => {
-    // TODO: Backend endpoint not implemented yet
-    throw new Error("Password recovery not implemented")
+
+  const recoverPassword = async (data: FormData) => {
+    const BASE = import.meta.env.VITE_API_URL || ""
+    const response = await fetch(
+      `${BASE}/api/v1/password-recovery/${encodeURIComponent(data.email)}`,
+      { method: "POST" }
+    )
+    if (!response.ok) {
+      const err = await response.json()
+      throw { body: err, status: response.status } as ApiError
+    }
   }
 
   const mutation = useMutation({
     mutationFn: recoverPassword,
     onSuccess: () => {
-      showSuccessToast("Password recovery email sent successfully.")
-      reset()
+      setSubmittedEmail(getValues("email"))
     },
     onError: (err: ApiError) => {
       handleError(err)
@@ -103,74 +112,128 @@ function RecoverPassword() {
         pb={4}
       >
         <Container maxW="md" w="100%" px={6}>
-          <VStack gap={3} align="stretch">
 
-            {/* Header */}
-            <VStack gap={0} align="start" mb={1}>
-              <Heading
-                as="h1"
-                size="lg"
-                fontWeight="700"
-                color="teal.700"
+          {/* ── "Check your email" confirmation state ── */}
+          {submittedEmail ? (
+            <VStack gap={5} align="stretch">
+              {/* Icon */}
+              <Flex justify="center">
+                <Box
+                  bg="teal.50"
+                  borderRadius="full"
+                  p={4}
+                  display="inline-flex"
+                >
+                  <FiMail size={32} color="var(--chakra-colors-teal-600)" />
+                </Box>
+              </Flex>
+
+              {/* Copy */}
+              <VStack gap={1} align="center">
+                <Heading as="h1" size="lg" fontWeight="700" color="teal.700" textAlign="center">
+                  Check your inbox
+                </Heading>
+                <Text color="gray.500" fontSize="sm" textAlign="center">
+                  If <Text as="span" fontWeight="600" color="gray.700">{submittedEmail}</Text> is
+                  registered, we've sent a password reset link. It expires in 48 hours.
+                </Text>
+              </VStack>
+
+              {/* Resend */}
+              <Button
+                variant="outline"
+                size="md"
+                w="100%"
+                loading={mutation.isPending}
+                onClick={() => mutation.mutate({ email: submittedEmail })}
               >
-                Password Recovery
-              </Heading>
-              <Text color="gray.500" fontSize="sm">
-                Enter your email and we'll send you a recovery link.
-              </Text>
+                Resend email
+              </Button>
+
+              {/* Back to login */}
+              <Flex justify="center" pt={1}>
+                <RouterLink
+                  to="/login"
+                  style={{
+                    color: "var(--chakra-colors-teal-600)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <FiArrowLeft />
+                  Back to Login
+                </RouterLink>
+              </Flex>
             </VStack>
 
-            {/* Form */}
-            <Box as="form" onSubmit={handleSubmit(onSubmit)}>
-              <VStack gap={3} align="stretch">
-                <Field invalid={!!errors.email} errorText={errors.email?.message}>
-                  <InputGroup startElement={<FiMail color="gray" />} w="100%">
-                    <Input
-                      {...register("email", {
-                        required: "Email is required",
-                        pattern: emailPattern,
-                      })}
-                      placeholder="Email"
-                      type="email"
-                      size="md"
-                      variant="subtle"
-                      bg="gray.50"
-                    />
-                  </InputGroup>
-                </Field>
+          ) : (
 
-                <Button
-                  type="submit"
-                  variant="solid"
-                  size="md"
-                  w="100%"
-                  loading={isSubmitting}
-                  mt={1}
-                >
-                  Continue
-                </Button>
-
-                <Flex justify="center" pt={1}>
-                  <RouterLink
-                    to="/login"
-                    style={{
-                      color: "var(--chakra-colors-teal-600)",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      textDecoration: "none",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    <FiArrowLeft />
-                    Back to Login
-                  </RouterLink>
-                </Flex>
+            /* ── Default: email form ── */
+            <VStack gap={3} align="stretch">
+              <VStack gap={0} align="start" mb={1}>
+                <Heading as="h1" size="lg" fontWeight="700" color="teal.700">
+                  Password Recovery
+                </Heading>
+                <Text color="gray.500" fontSize="sm">
+                  Enter your email and we'll send you a recovery link.
+                </Text>
               </VStack>
-            </Box>
 
-          </VStack>
+              <Box as="form" onSubmit={handleSubmit(onSubmit)}>
+                <VStack gap={3} align="stretch">
+                  <Field invalid={!!errors.email} errorText={errors.email?.message}>
+                    <InputGroup startElement={<FiMail color="gray" />} w="100%">
+                      <Input
+                        {...register("email", {
+                          required: "Email is required",
+                          pattern: emailPattern,
+                        })}
+                        placeholder="Email"
+                        type="email"
+                        size="md"
+                        variant="subtle"
+                        bg="gray.50"
+                      />
+                    </InputGroup>
+                  </Field>
+
+                  <Button
+                    type="submit"
+                    variant="solid"
+                    size="md"
+                    w="100%"
+                    loading={isSubmitting || mutation.isPending}
+                    mt={1}
+                  >
+                    Continue
+                  </Button>
+
+                  <Flex justify="center" pt={1}>
+                    <RouterLink
+                      to="/login"
+                      style={{
+                        color: "var(--chakra-colors-teal-600)",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <FiArrowLeft />
+                      Back to Login
+                    </RouterLink>
+                  </Flex>
+                </VStack>
+              </Box>
+            </VStack>
+          )}
+
         </Container>
       </Flex>
     </Flex>
