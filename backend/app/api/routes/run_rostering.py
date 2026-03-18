@@ -1,9 +1,12 @@
 import json
+import logging
 import queue
 import threading
 
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -36,6 +39,7 @@ class RosterCommentUpdate(BaseModel):
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
+    algorithm: Optional[str] = None  # "MILP" | "GA" | None (auto)
 
 
 class TriggeredItem(BaseModel):
@@ -540,6 +544,7 @@ def generate_roster_endpoint(
             shift_hours=generation_inputs["shift_hours"],
             non_working_shift_codes=generation_inputs["non_working_shift_codes"],
             milp_config=generation_inputs["milp_config"],
+            algorithm=request_data.algorithm,
         )
         return {"method": result["method"], "roster": result["roster"]}
 
@@ -562,6 +567,7 @@ def generate_roster_async(
     task = _get_celery_app().send_task(
         "tasks.generate_roster",
         args=[request_data.ward_id, request_data.period_id],
+        kwargs={"algorithm": request_data.algorithm},
     )
     return {"task_id": task.id, "status": "queued"}
 
@@ -657,6 +663,7 @@ def generate_roster_stream(
                 non_working_shift_codes=generation_inputs["non_working_shift_codes"],
                 progress_callback=on_progress,
                 milp_config=generation_inputs["milp_config"],
+                algorithm=request_data.algorithm,
             )
             q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
         except Exception as exc:
@@ -676,6 +683,29 @@ def generate_roster_stream(
                 break
 
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
+
+@router.post("/ward/{ward_id}/seed-requests")
+def seed_ward_requests(
+    ward_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Seed deterministic test shift requests for a ward (dev/demo helper)."""
+    from app.test_algo import seed_requests as _seed_requests
+
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward")
+
+    try:
+        _seed_requests(session, ward_id)
+    except SystemExit as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "ok", "ward_id": ward_id}
 
 
 def _staffing_to_algo_inputs(ward: Ward):
@@ -749,8 +779,15 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     ]
 
     nurse_ids = [n["id"] for n in nurses_data]
-    hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data))
+    shift_label_map = _load_shift_label_map(db)
+    hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
     prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
+
+    logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
+    logger.warning(f"[DEBUG] nurses={len(nurses_data)} hard_requests={sum(len(v) for v in hard_requests.values())} soft_requests={sum(len(v) for v in soft_requests.values())}")
+    if soft_requests:
+        for nid, reqs in list(soft_requests.items())[:3]:
+            logger.warning(f"[DEBUG]   nurse {nid}: {reqs}")
 
     for nurse_id, shift_name in prev_last_shift.items():
         if str(shift_name).strip().upper() != "NIGHT":
@@ -782,6 +819,7 @@ def _load_shift_requests(
     period: RosterPeriod,
     nurse_ids: list[int],
     num_days: int,
+    shift_label_map: dict[str, str] | None = None,
 ) -> tuple[dict[int, list[tuple[int, str]]], dict[int, list[tuple[int, str]]]]:
     if not nurse_ids:
         return {}, {}
@@ -821,7 +859,9 @@ def _load_shift_requests(
     }
 
     for (nurse_id, day_idx, status), req in latest_by_bucket.items():
-        shift_name = str(req.preferredshifttype).upper()
+        raw = str(req.preferredshifttype).upper()
+        # Use DB-driven map if available; fall back to OFF for unknown codes
+        shift_name = (shift_label_map or {}).get(raw, "OFF")
         if status == "Approved":
             hard_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
         elif (nurse_id, day_idx) not in approved_keys:
@@ -871,6 +911,24 @@ def _load_previous_last_shift(
         nurse_id: str(row.shiftcode).upper()
         for nurse_id, row in latest_by_nurse.items()
     }
+
+
+def _load_shift_label_map(db: Session) -> dict[str, str]:
+    """
+    Build a mapping from every DB shift code to an algorithm label.
+    Working shifts (A→AM, P→PM, N→NIGHT) keep their label; all non-working
+    codes (AL, MAR, FCL, HOL, CCL, DO, …) map to "OFF".
+    """
+    _WORKING = {"A": "AM", "P": "PM", "N": "NIGHT"}
+    rows = db.exec(select(ShiftCode)).all()
+    result: dict[str, str] = {}
+    for row in rows:
+        code = str(row.shiftcode).upper()
+        result[code] = _WORKING.get(code, "OFF") if row.isworking else "OFF"
+    # Ensure the three working codes are always present even if missing from DB
+    for code, label in _WORKING.items():
+        result.setdefault(code, label)
+    return result
 
 
 def _load_non_working_shift_codes(db: Session) -> set[str]:

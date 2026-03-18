@@ -407,18 +407,20 @@ export function useGenerateAlgorithmRoster() {
       wardId,
       periodId,
       startDate,
+      algorithm,
       onProgress,
     }: {
       wardId: number;
       periodId: number;
       startDate: Date;
+      algorithm?: "MILP" | "GA";
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
       const queuedTask: { task_id: string; status: string } = await fetchWithAuth(
         "/api/v1/roster/generate-algorithm-async",
         {
           method: "POST",
-          body: JSON.stringify({ ward_id: wardId, period_id: periodId }),
+          body: JSON.stringify({ ward_id: wardId, period_id: periodId, algorithm: algorithm ?? null }),
         },
       );
       onProgress?.(5, 0, 0, 0);
@@ -645,6 +647,82 @@ export function useCreateChangelog(wardId: number | null, periodId: number | nul
       queryClient.invalidateQueries({
         queryKey: ["roster", "changelog", wardId, periodId],
       });
+    },
+  });
+}
+
+// ─────────────────────────────────────────────
+// Auto-review shift requests on publish
+// ─────────────────────────────────────────────
+
+interface PendingShiftRequest {
+  requestid: number;
+  nurseid: number;
+  preferreddate: string;
+  preferredshifttype: string;
+  status: string;
+}
+
+/**
+ * After a roster is published, fetch all pending shift requests for the
+ * ward+period and approve/reject each one based on whether the published
+ * roster matches what was requested.
+ */
+export function useAutoReviewShiftRequests() {
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      periodId,
+      rosterData,
+    }: {
+      wardId: number;
+      periodId: number;
+      rosterData: RosterRow[];
+    }) => {
+      // Build a quick lookup: nurseId → date → assignedShiftCode
+      const rosterLookup = new Map<number, Map<string, string>>();
+      for (const row of rosterData) {
+        const dateMap = new Map<string, string>();
+        for (const [date, shift] of Object.entries(row.shifts)) {
+          if (shift) dateMap.set(date, shift.shiftCode);
+        }
+        rosterLookup.set(row.nurseId, dateMap);
+      }
+
+      // Fetch all shift requests for this ward+period
+      const requests: PendingShiftRequest[] = await fetchWithAuth(
+        `/api/v1/shift-requests/ward/${wardId}?period_id=${periodId}`,
+      );
+
+      const pending = requests.filter((r) => r.status === "Pending");
+      if (pending.length === 0) return { approved: 0, rejected: 0 };
+
+      let approved = 0;
+      let rejected = 0;
+
+      await Promise.all(
+        pending.map(async (req) => {
+          const assignedShift = rosterLookup
+            .get(req.nurseid)
+            ?.get(req.preferreddate);
+          const isApproved = assignedShift === req.preferredshifttype;
+
+          await fetchWithAuth(`/api/v1/shift-requests/${req.requestid}/review`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: isApproved ? "Approved" : "Rejected",
+              rejectionreason: isApproved
+                ? null
+                : "Shift could not be accommodated in the published roster.",
+            }),
+          });
+
+          if (isApproved) approved++;
+          else rejected++;
+        }),
+      );
+
+      return { approved, rejected };
     },
   });
 }

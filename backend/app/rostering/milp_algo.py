@@ -98,9 +98,9 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
         for day_idx, shift_name in req_list:
             if 0 <= day_idx < num_days:
                 normalized_shift = str(shift_name).upper()
-                milp_code = _sched_to_milp.get(normalized_shift, normalized_shift if normalized_shift in non_working_shift_codes else "")
-                if milp_code:
-                    target[name][f"Day {day_idx + 1}"] = milp_code
+                # Any code not explicitly mapped is treated as a day off (DO)
+                milp_code = _sched_to_milp.get(normalized_shift, "DO")
+                target[name][f"Day {day_idx + 1}"] = milp_code
 
     return hard_rn, hard_en, hard_hca
 

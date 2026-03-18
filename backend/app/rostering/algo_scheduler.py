@@ -52,6 +52,7 @@ def generate_roster(
     ward_name="DEFAULT",
     progress_callback=None,
     milp_config=None,
+    algorithm=None,
 ):
     """
     Generate a nurse roster using MILP (primary) or GA (fallback).
@@ -138,7 +139,42 @@ def generate_roster(
 
     validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes)
 
-    # ── Primary: MILP ──────────────────────────────────────────────────────
+    forced = str(algorithm).upper() if algorithm else None
+
+    # ── GA-only path ───────────────────────────────────────────────────────
+    if forced == "GA":
+        print("[SCHEDULER] Running GA (forced by caller)")
+        roster = run_ga_pipeline(
+            nurses,
+            shifts,
+            hard_requests=hard_requests,
+            soft_requests=soft_requests,
+            prev_last_shift=prev_last_shift,
+            non_working_shift_codes=non_working_shift_codes,
+            progress_callback=progress_callback,
+            shift_hours=shift_hours,
+        )
+        print("[SCHEDULER] GA succeeded — returning result")
+        return {"method": "GA", "roster": roster}
+
+    # ── MILP-only path ─────────────────────────────────────────────────────
+    if forced == "MILP":
+        print("[SCHEDULER] Running MILP (forced by caller)")
+        roster = run_milp_pipeline(
+            nurses,
+            shifts,
+            hard_requests=hard_requests,
+            soft_requests=soft_requests,
+            prev_last_shift=prev_last_shift,
+            non_working_shift_codes=non_working_shift_codes,
+            ward_name=ward_name,
+            milp_config=milp_config,
+            progress_callback=progress_callback,
+        )
+        print("[SCHEDULER] MILP succeeded — returning result")
+        return {"method": "MILP", "roster": roster}
+
+    # ── Auto: MILP primary, GA fallback ────────────────────────────────────
     print("[SCHEDULER] Running MILP (primary algorithm)")
     try:
         roster = run_milp_pipeline(

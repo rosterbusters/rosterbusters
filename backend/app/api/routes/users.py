@@ -17,6 +17,7 @@ from app.models import (
     RBACUserPublic,
     UpdatePassword,
 )
+from app.models.roster import Ward
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -121,13 +122,16 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
             wardid = nurse.wardid
             name = nurse.name
     elif current_user.managerid:
-        # Nurse Manager: look up their display name from the NurseManager table.
-        # They manage multiple wards so wardid stays None.
         manager = session.exec(
             select(NurseManager).where(NurseManager.managerid == current_user.managerid)
         ).first()
         if manager:
             name = manager.name
+        ward = session.exec(
+            select(Ward).where(Ward.managerid == current_user.managerid, Ward.isactive == True)  # noqa: E712
+        ).first()
+        if ward:
+            wardid = ward.wardid
 
     return RBACUserPublic(
         userid=current_user.userid,

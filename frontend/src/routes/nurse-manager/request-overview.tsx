@@ -30,10 +30,8 @@ function ShiftOverviewPage() {
   useEffect(() => {
     if (wards.length === 0 || selectedWard !== null) return;
 
-    const userWardId = (user as any)?.wardid;
     const defaultWard =
-      wards.find((ward) => ward.wardid === userWardId) ??
-      wards.find((ward) => ward.wardid === 4) ??
+      wards.find((ward) => ward.wardid === user?.wardid) ??
       wards[0];
 
     setSelectedWard(defaultWard);

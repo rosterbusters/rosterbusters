@@ -68,3 +68,59 @@ Check the console output after seeding for the actual generated emails.
 Managers: lim.weiling@sach.org.sg, manager123
 Nurses: chan.meiyin@sach.org.sg, nurse123
 
+## Testing the Algorithm
+
+This is the full end-to-end flow to test roster generation from scratch.
+
+### Step 1 — Seed base data (if not already done)
+
+Make sure the database has wards, nurses, and shift codes. If you haven't already:
+
+```bash
+docker compose exec backend python app/seed_data.py
+```
+
+This creates mock managers, nurses, roster periods, and shift codes. See [Database Seeding](#database-seeding) for details. Note the ward IDs printed during seeding — you'll need one for the next step.
+
+### Step 2 — Seed shift requests for a ward
+
+`test_algo.py` populates shift requests for nurses in a given ward so the algorithm has something to work with:
+
+```bash
+docker compose exec backend python app/test_algo.py --ward-id 1
+```
+
+Options:
+- `--ward-id` — Ward ID to generate requests for (required)
+
+**What it seeds:**
+- The script targets the upcoming (or current) roster period for the ward.
+- ~10% of nurses (lowest nurse IDs) receive **1 off-day request** (a non-working shift such as `DO`).
+- The remaining ~90% receive **2 working shift requests** (`A`, `P`, or `N` only).
+- Day assignments and shift types are fully deterministic based on each nurse's ID — results are identical on every run.
+- If a request already exists for a nurse on that date, it is skipped (safe to re-run).
+
+### Step 3 — Trigger generation from the frontend
+
+1. Open the app at `http://localhost:5173` and log in as a manager (e.g. `lim.weiling@sach.org.sg` / `manager123`).
+2. Navigate to **Nurse Manager → Roster Planning**.
+3. Select the **Ward** (top-right dropdown) that you seeded in Step 2.
+4. Select the **Roster Period** that matches the period seeded by `test_algo.py` (upcoming or current).
+5. Choose an algorithm using the **Auto / MILP / GA** toggle:
+
+   | Option | Behaviour |
+   |--------|-----------|
+   | **Auto** | Tries MILP first. If MILP fails or is unavailable, automatically falls back to GA. This is the default. |
+   | **MILP** | Forces the Mixed-Integer Linear Programming solver. Produces optimal, constraint-satisfying schedules. Requires Gurobi licence (`gurobi.lic`). Will error if Gurobi is not available — does **not** fall back to GA. |
+   | **GA** | Forces the Genetic Algorithm solver. Slower and heuristic but works without any external solver licence. |
+
+6. Click **Generate Algorithm Roster**.
+7. A progress bar and percentage indicator will appear while the Celery worker runs the algorithm in the background.
+8. Once complete, the roster grid is populated with the generated schedule. The badge at the top-left confirms which algorithm was used (MILP or GA).
+
+### Step 4 — Review and publish
+
+- Edit individual cells in the grid as needed.
+- Use **View Edit History** to review changes.
+- When satisfied, open the menu (top-right ⋮) and click **Publish Roster** to finalise all assignments.
+
