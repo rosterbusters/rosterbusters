@@ -1,4 +1,3 @@
-# ward_config.py
 # Hand-tuned ward configurations matching the original MILP notebook.
 # Each ward entry defines:
 #   LOW_DAYS      – day numbers (1-based, 1–14) that use low/weekend coverage rules
@@ -64,7 +63,7 @@ WARD_CONFIG = {
     # WARD 08
     # ------------------------------------------------------------------
     "WARD 08": {
-        "LOW_DAYS": {6,7,13,14}, #set(),
+        "LOW_DAYS": set(),  # no low-coverage weekends for Ward 08
 
         "RN": {
             "normal_min":   {"A": 3, "P": 3, "N": 2},
