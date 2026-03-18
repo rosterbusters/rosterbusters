@@ -39,19 +39,28 @@ export const NewShiftRequest = ({
 
   const { data: periodWindow } = useRosterPeriodWindow();
 
-  const { data: shiftCodes } = useQuery({
+  const { data: workingShiftCodes } = useQuery({
     queryKey: ["shift-codes", wardId ?? "default"],
     queryFn: () =>
       wardId != null
         ? ShiftRequestsService.getShiftCodesByWard({ wardId })
         : ShiftRequestsService.getWorkingShiftCodes(),
-    // enabled: wardId !== undefined,
   });
+
+  const { data: leaveCodes } = useQuery({
+    queryKey: ["leave-codes"],
+    queryFn: () => ShiftRequestsService.getLeaveCodes(),
+  });
+
+  const shiftCodes = useMemo(
+    () => [...(workingShiftCodes ?? []), ...(leaveCodes ?? [])],
+    [workingShiftCodes, leaveCodes],
+  );
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: (shiftCodes ?? []).map((sc) => ({
+        items: shiftCodes.map((sc) => ({
           value: sc.shiftcode,
           label: sc.shiftcode,
           description: sc.description,

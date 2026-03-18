@@ -23,7 +23,7 @@ SHIFT_CODE_TO_DB = {
 
 
 @celery_app.task(bind=True, name="tasks.generate_roster", max_retries=2)
-def generate_roster_task(self, ward_id: int, period_id: int):
+def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | None = None):
     """
     Celery task to run the roster generation algorithm.
     Results are stored in Redis and retrievable via task_id.
@@ -55,6 +55,7 @@ def generate_roster_task(self, ward_id: int, period_id: int):
             non_working_shift_codes=generation_inputs["non_working_shift_codes"],
             progress_callback=on_progress,
             milp_config=generation_inputs["milp_config"],
+            algorithm=algorithm,
         )
 
         return {

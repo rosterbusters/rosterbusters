@@ -1,10 +1,15 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import gaWard4 from "@/mockData/ga_ward4.json";
-import gaWard5 from "@/mockData/ga_ward5.json";
-import gaWard6 from "@/mockData/ga_ward6.json";
-import milpWard4 from "@/mockData/milp_ward4.json";
-import milpWard5 from "@/mockData/milp_ward5.json";
-import milpWard6 from "@/mockData/milp_ward6.json";
+import milpWard4Run1 from "@/mockData/milp_ward4_run1.json";
+import milpWard4Run2 from "@/mockData/milp_ward4_run2.json";
+import milpWard5Run1 from "@/mockData/milp_ward5_run1.json";
+import milpWard5Run2 from "@/mockData/milp_ward5_run2.json";
+import milpWard6Run1 from "@/mockData/milp_ward6_run1.json";
+import milpWard6Run2 from "@/mockData/milp_ward6_run2.json";
+import milpWard7Run1 from "@/mockData/milp_ward7_run1.json";
+import milpWard7Run2 from "@/mockData/milp_ward7_run2.json";
+import milpWard8Run1 from "@/mockData/milp_ward8_run1.json";
+import milpWard8Run2 from "@/mockData/milp_ward8_run2.json";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Flex,
@@ -34,6 +39,8 @@ import {
   useGenerateAlgorithmRoster,
   useShiftCodes,
   useRosterChangelog,
+  useCreateChangelog,
+  useAutoReviewShiftRequests,
   getShiftDurationHours,
   type Ward,
   type RosterPeriod,
@@ -172,6 +179,8 @@ function RosterPlanningPage() {
   const [generatedAlgorithmMethod, setGeneratedAlgorithmMethod] = useState<
     string | null
   >(null);
+  const [algorithmType, setAlgorithmType] = useState<"MILP" | "GA" | null>(null);
+  const [isSeedingRequests, setIsSeedingRequests] = useState(false);
 
   // Mock shift request overlays (Algorithm and Nurse Manager categories only)
   const mockPlanningOverlays = useMemo(
@@ -197,11 +206,16 @@ function RosterPlanningPage() {
     selectedWard?.wardId ?? null,
     selectedPeriod?.periodId ?? null,
   );
+  const { mutate: createChangelog } = useCreateChangelog(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
   const { exportToXLSX } = useRosterExport();
   const bulkUpsertRoster = useBulkUpsertRoster();
   const publishRoster = usePublishRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
+  const autoReviewShiftRequests = useAutoReviewShiftRequests();
 
   // Generate mock wards if API wards are empty
   const displayWards = useMemo(() => {
@@ -408,6 +422,31 @@ function RosterPlanningPage() {
 
   // Handlers
 
+  // Seed test shift requests handler
+  const handleSeedRequests = useCallback(async () => {
+    if (!selectedWard) {
+      showErrorToast("Please select a ward first");
+      return;
+    }
+    setIsSeedingRequests(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`/api/v1/roster/ward/${selectedWard.wardId}/seed-requests`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Seeding failed");
+      }
+      showSuccessToast("Test requests seeded successfully");
+    } catch (e: any) {
+      showErrorToast(e.message ?? "Failed to seed requests");
+    } finally {
+      setIsSeedingRequests(false);
+    }
+  }, [selectedWard]);
+
   // Generate algorithm roster handler
   const handleGenerateAlgorithm = useCallback(async () => {
     if (!selectedWard || !selectedPeriod) {
@@ -420,6 +459,7 @@ function RosterPlanningPage() {
         wardId: selectedWard.wardId, // CamelCase to match hook params
         periodId: selectedPeriod.periodId,
         startDate: currentStartDate, // Pass the actual Date object
+        algorithm: algorithmType ?? undefined,
         onProgress: (percent) => {
           setGenerationProgress(percent);
         },
@@ -457,11 +497,17 @@ function RosterPlanningPage() {
     (mockKey: string) => {
       const mockMap: Record<string, typeof gaWard4> = {
         ga_ward4: gaWard4,
-        ga_ward5: gaWard5,
-        ga_ward6: gaWard6,
-        milp_ward4: milpWard4,
-        milp_ward5: milpWard5,
-        milp_ward6: milpWard6,
+      
+        milp_ward4_run1: milpWard4Run1,
+        milp_ward4_run2: milpWard4Run2,
+        milp_ward5_run1: milpWard5Run1,
+        milp_ward5_run2: milpWard5Run2,
+        milp_ward6_run1: milpWard6Run1,
+        milp_ward6_run2: milpWard6Run2,
+        milp_ward7_run1: milpWard7Run1,
+        milp_ward7_run2: milpWard7Run2,
+        milp_ward8_run1: milpWard8Run1,
+        milp_ward8_run2: milpWard8Run2,
       };
       const mock = mockMap[mockKey];
       if (!mock) return;
@@ -538,13 +584,26 @@ function RosterPlanningPage() {
       setRosterData((prevData) =>
         prevData.map((row) => {
           if (row.nurseId !== nurseId) return row;
+          const existingShift = row.shifts[date];
+          const rosterId = existingShift?.rosterId || null;
+          // Only log to changelog when editing a previously saved shift
+          if (rosterId) {
+            createChangelog({
+              rosterid: rosterId,
+              oldnurseid: nurseId,
+              oldshiftcode: existingShift?.shiftCode ?? null,
+              newshiftcode: newShiftCode,
+              changetype: "shift_change",
+              changesource: "Manual",
+            });
+          }
           return {
             ...row,
             shifts: {
               ...row.shifts,
               [date]: {
-                ...(row.shifts[date] || {}),
-                rosterId: row.shifts[date]?.rosterId || 0,
+                ...(existingShift || {}),
+                rosterId: existingShift?.rosterId || 0,
                 nurseId,
                 shiftDate: date,
                 shiftCode: newShiftCode,
@@ -555,7 +614,7 @@ function RosterPlanningPage() {
         }),
       );
     },
-    [],
+    [createChangelog],
   );
 
   const handleCommentChange = useCallback(
@@ -628,6 +687,14 @@ function RosterPlanningPage() {
         wardId: selectedWard.wardId,
         periodId: selectedPeriod.periodId,
       });
+
+      // Auto-approve/reject pending shift requests based on the published roster
+      await autoReviewShiftRequests.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+        rosterData,
+      });
+
       setIsPublishDialogOpen(false);
       setIsPublishSuccessDialogOpen(true);
     } catch (error) {
@@ -644,6 +711,7 @@ function RosterPlanningPage() {
     rosterData,
     bulkUpsertRoster,
     publishRoster,
+    autoReviewShiftRequests,
     showErrorToast,
   ]);
 
@@ -685,9 +753,13 @@ function RosterPlanningPage() {
           onPublishRoster={handlePublishClick}
           onDownloadRoster={handleDownloadRoster}
           onViewEditHistory={handleViewEditHistory}
+          algorithmType={algorithmType}
+          onAlgorithmTypeChange={(t) => setAlgorithmType(t)}
           onGenerateAlgorithm={handleGenerateAlgorithm}
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
+          onSeedRequests={handleSeedRequests}
+          isSeedingRequests={isSeedingRequests}
         />
       </Box>
 

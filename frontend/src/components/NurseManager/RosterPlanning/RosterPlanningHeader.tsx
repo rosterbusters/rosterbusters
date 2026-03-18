@@ -22,6 +22,7 @@ import {
   Wand2,
   RefreshCw,
   X,
+  FlaskConical,
 } from "lucide-react";
 import moment from "moment";
 import type { Ward, RosterPeriod, ViewMode } from "../RosterTable/types";
@@ -38,9 +39,16 @@ const MOCK_DATA_OPTIONS = [
   { value: "ga_ward4", label: "GA Ward 4" },
   { value: "ga_ward5", label: "GA Ward 5" },
   { value: "ga_ward6", label: "GA Ward 6" },
-  { value: "milp_ward4", label: "MILP Ward 4" },
-  { value: "milp_ward5", label: "MILP Ward 5" },
-  { value: "milp_ward6", label: "MILP Ward 6" },
+  { value: "milp_ward4_run1", label: "MILP Ward 4 Run 1" },
+  { value: "milp_ward4_run2", label: "MILP Ward 4 Run 2" },
+  { value: "milp_ward5_run1", label: "MILP Ward 5 Run 1" },
+  { value: "milp_ward5_run2", label: "MILP Ward 5 Run 2" },
+  { value: "milp_ward6_run1", label: "MILP Ward 6 Run 1" },
+  { value: "milp_ward6_run2", label: "MILP Ward 6 Run 2" },
+  { value: "milp_ward7_run1", label: "MILP Ward 7 Run 1" },
+  { value: "milp_ward7_run2", label: "MILP Ward 7 Run 2" },
+  { value: "milp_ward8_run1", label: "MILP Ward 8 Run 1" },
+  { value: "milp_ward8_run2", label: "MILP Ward 8 Run 2" },
 ];
 
 interface RosterPlanningHeaderProps {
@@ -54,6 +62,8 @@ interface RosterPlanningHeaderProps {
   isGenerating?: boolean;
   isPublishing?: boolean;
   generationProgress?: number;
+  algorithmType?: "MILP" | "GA" | null;
+  onAlgorithmTypeChange?: (type: "MILP" | "GA" | null) => void;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
@@ -64,6 +74,8 @@ interface RosterPlanningHeaderProps {
   onGenerateAlgorithm?: () => void;
   onClearRoster?: () => void;
   onLoadMockData?: (mockKey: string) => void;
+  onSeedRequests?: () => void;
+  isSeedingRequests?: boolean;
 }
 
 export function RosterPlanningHeader({
@@ -77,6 +89,8 @@ export function RosterPlanningHeader({
   isGenerating = false,
   isPublishing = false,
   generationProgress = 0,
+  algorithmType = null,
+  onAlgorithmTypeChange,
   onDateChange,
   onViewModeChange,
   onWardChange,
@@ -87,6 +101,8 @@ export function RosterPlanningHeader({
   onGenerateAlgorithm,
   onClearRoster,
   onLoadMockData,
+  onSeedRequests,
+  isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
   const today = moment().startOf("day");
   const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
@@ -287,6 +303,20 @@ export function RosterPlanningHeader({
                   <Text>Download Roster</Text>
                 </HStack>
               </MenuItem>
+              {onSeedRequests && (
+                <MenuItem
+                  value="seed-requests"
+                  onClick={onSeedRequests}
+                  disabled={isSeedingRequests}
+                  cursor="pointer"
+                  _hover={{ bg: "#F0F9FA" }}
+                >
+                  <HStack gap={2}>
+                    <FlaskConical className="h-4 w-4" />
+                    <Text>{isSeedingRequests ? "Seeding..." : "Seed Test Requests"}</Text>
+                  </HStack>
+                </MenuItem>
+              )}
             </MenuContent>
           </MenuRoot>
         </HStack>
@@ -462,6 +492,57 @@ export function RosterPlanningHeader({
               </Box>
             )}
           <HStack gap={4} flexWrap="wrap" justify="center">
+            {/* Algorithm type toggle */}
+            <HStack
+              gap={0}
+              borderRadius="lg"
+              border="1px solid #E6E6E6"
+              overflow="hidden"
+            >
+              <Button
+                size="sm"
+                variant={"outlinegrey" as any}
+                fontWeight="normal"
+                onClick={() => onAlgorithmTypeChange?.(null)}
+                bg={algorithmType == null ? "#4B8798" : "transparent"}
+                color={algorithmType == null ? "white" : "foreground"}
+                _hover={{ bg: algorithmType == null ? "#4B8798" : "#F8FAFC" }}
+                borderRadius={0}
+                px={4}
+                disabled={isGenerating}
+              >
+                Auto
+              </Button>
+              <Button
+                size="sm"
+                variant={"outlinegrey" as any}
+                fontWeight="normal"
+                onClick={() => onAlgorithmTypeChange?.("MILP")}
+                bg={algorithmType === "MILP" ? "#4B8798" : "transparent"}
+                color={algorithmType === "MILP" ? "white" : "foreground"}
+                _hover={{ bg: algorithmType === "MILP" ? "#4B8798" : "#F8FAFC" }}
+                borderRadius={0}
+                px={4}
+                disabled={isGenerating}
+              >
+                MILP
+              </Button>
+              <Button
+                size="sm"
+                variant={"outlinegrey" as any}
+                fontWeight="normal"
+                onClick={() => onAlgorithmTypeChange?.("GA")}
+                bg={algorithmType === "GA" ? "#4B8798" : "transparent"}
+                color={algorithmType === "GA" ? "white" : "foreground"}
+                _hover={{ bg: algorithmType === "GA" ? "#4B8798" : "#F8FAFC" }}
+                borderRadius={0}
+                px={4}
+                disabled={isGenerating}
+              >
+                GA
+              </Button>
+            </HStack>
+
             <Button
               size="md"
               bg="#4B8798"

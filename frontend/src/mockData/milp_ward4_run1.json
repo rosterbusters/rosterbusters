@@ -1,5 +1,5 @@
 {
-  "method": "GA",
+  "method": "MILP",
   "roster": {
     "nurses": [
       {
@@ -7,20 +7,20 @@
         "name": "ARCHUNAN Kalpana",
         "rank": "A",
         "schedule": [
-          "P",
-          "DO",
-          "P",
           "A",
-          "N",
           "DO",
-          "N",
-          "DO",
+          "A",
           "P",
           "A",
+          "DO",
           "A",
+          "P",
           "N",
           "N",
-          "DO"
+          "DO",
+          "P",
+          "DO",
+          "A"
         ],
         "stats": {
           "total_shifts": 10
@@ -33,17 +33,17 @@
         "schedule": [
           "P",
           "A",
-          "N",
+          "P",
+          "A",
+          "A",
           "DO",
           "DO",
           "P",
           "A",
+          "N",
+          "N",
           "DO",
           "P",
-          "P",
-          "A",
-          "N",
-          "N",
           "DO"
         ],
         "stats": {
@@ -58,17 +58,17 @@
           "N",
           "N",
           "DO",
+          "A",
           "P",
+          "P",
+          "DO",
+          "A",
           "P",
           "A",
+          "A",
+          "A",
           "DO",
-          "P",
-          "N",
-          "DO",
-          "P",
-          "DO",
-          "P",
-          "A"
+          "DO"
         ],
         "stats": {
           "total_shifts": 10
@@ -80,18 +80,18 @@
         "rank": "A",
         "schedule": [
           "N",
-          "DO",
-          "P",
-          "DO",
-          "P",
-          "A",
           "N",
           "DO",
           "A",
           "P",
+          "DO",
           "A",
           "A",
-          "N",
+          "P",
+          "P",
+          "A",
+          "P",
+          "DO",
           "DO"
         ],
         "stats": {
@@ -104,19 +104,19 @@
         "rank": "A",
         "schedule": [
           "A",
+          "P",
           "A",
-          "N",
+          "A",
+          "A",
+          "DO",
           "DO",
           "N",
-          "DO",
-          "P",
-          "N",
           "N",
           "DO",
-          "P",
           "DO",
           "P",
-          "A"
+          "A",
+          "P"
         ],
         "stats": {
           "total_shifts": 10
@@ -127,20 +127,20 @@
         "name": "Lakshana D/O Rajendran",
         "rank": "A",
         "schedule": [
+          "P",
           "A",
-          "A",
+          "N",
+          "N",
           "DO",
-          "N",
-          "N",
+          "DO",
+          "P",
+          "A",
+          "A",
           "DO",
           "P",
           "A",
           "DO",
-          "N",
-          "DO",
-          "P",
-          "P",
-          "N"
+          "A"
         ],
         "stats": {
           "total_shifts": 10
@@ -151,20 +151,20 @@
         "name": "Logeswary Vazhamunian",
         "rank": "A",
         "schedule": [
-          "N",
-          "DO",
-          "P",
           "A",
-          "DO",
-          "P",
-          "N",
-          "DO",
-          "N",
-          "DO",
           "P",
           "P",
+          "P",
+          "P",
+          "DO",
+          "DO",
+          "DO",
           "A",
-          "P"
+          "A",
+          "P",
+          "N",
+          "N",
+          "DO"
         ],
         "stats": {
           "total_shifts": 10
@@ -176,19 +176,19 @@
         "rank": "A",
         "schedule": [
           "DO",
+          "A",
+          "A",
           "P",
           "A",
+          "DO",
+          "N",
           "N",
           "DO",
           "P",
-          "A",
-          "A",
           "P",
-          "N",
-          "N",
-          "DO",
           "A",
-          "DO"
+          "DO",
+          "P"
         ],
         "stats": {
           "total_shifts": 10
@@ -200,18 +200,18 @@
         "rank": "A",
         "schedule": [
           "A",
+          "A",
+          "P",
+          "DO",
+          "N",
+          "N",
+          "DO",
+          "P",
+          "P",
           "P",
           "A",
-          "N",
-          "DO",
-          "N",
           "DO",
           "A",
-          "A",
-          "A",
-          "N",
-          "DO",
-          "N",
           "DO"
         ],
         "stats": {
@@ -223,20 +223,20 @@
         "name": "Nang Voe Phong",
         "rank": "A",
         "schedule": [
-          "N",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "A",
-          "DO",
+          "P",
           "P",
           "N",
+          "N",
+          "DO",
+          "P",
           "DO",
           "A",
           "A",
+          "A",
+          "A",
+          "A",
           "DO",
-          "P"
+          "DO"
         ],
         "stats": {
           "total_shifts": 10
@@ -247,19 +247,19 @@
         "name": "Nurul Farhanah Binte Haslan",
         "rank": "A",
         "schedule": [
+          "P",
+          "P",
           "N",
           "N",
           "DO",
-          "P",
           "A",
           "DO",
-          "P",
-          "N",
+          "DO",
           "DO",
           "P",
-          "DO",
           "P",
-          "A",
+          "P",
+          "P",
           "N"
         ],
         "stats": {
@@ -269,22 +269,22 @@
       {
         "id": 12,
         "name": "Xavier Babista",
-        "rank": "B",
+        "rank": "A",
         "schedule": [
           "DO",
+          "DO",
           "A",
           "P",
+          "P",
+          "A",
+          "P",
+          "P",
+          "P",
+          "A",
+          "N",
           "N",
           "DO",
-          "P",
-          "P",
-          "DO",
-          "A",
-          "A",
-          "A",
-          "DO",
-          "A",
-          "N"
+          "DO"
         ],
         "stats": {
           "total_shifts": 10
@@ -295,20 +295,20 @@
         "name": "Anthoni Pererage Prabodi Dewmini Perera",
         "rank": "B",
         "schedule": [
+          "DO",
           "P",
+          "A",
+          "P",
+          "A",
           "DO",
+          "A",
+          "A",
+          "A",
+          "N",
           "N",
           "DO",
-          "A",
-          "A",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "A",
-          "DO",
-          "N"
+          "P",
+          "DO"
         ],
         "stats": {
           "total_shifts": 10
@@ -320,19 +320,19 @@
         "rank": "B",
         "schedule": [
           "A",
-          "A",
-          "DO",
-          "A",
-          "A",
-          "N",
-          "DO",
           "DO",
           "P",
           "A",
-          "A",
-          "P",
           "N",
-          "DO"
+          "N",
+          "DO",
+          "DO",
+          "A",
+          "A",
+          "DO",
+          "P",
+          "P",
+          "A"
         ],
         "stats": {
           "total_shifts": 10
@@ -343,20 +343,20 @@
         "name": "CHHAKCHHUAK Lalbiaknungi",
         "rank": "B",
         "schedule": [
+          "A",
+          "A",
+          "DO",
           "DO",
           "P",
           "A",
-          "P",
-          "P",
-          "N",
-          "DO",
-          "P",
-          "N",
-          "DO",
-          "P",
-          "DO",
           "A",
-          "P"
+          "P",
+          "DO",
+          "P",
+          "A",
+          "DO",
+          "N",
+          "N"
         ],
         "stats": {
           "total_shifts": 10
@@ -367,20 +367,20 @@
         "name": "Marilyn Cruz ROSARIO",
         "rank": "B",
         "schedule": [
-          "N",
-          "N",
           "DO",
-          "A",
-          "A",
           "DO",
-          "P",
           "P",
           "A",
           "A",
+          "P",
+          "A",
+          "A",
+          "P",
+          "DO",
+          "N",
           "N",
           "DO",
-          "DO",
-          "P"
+          "A"
         ],
         "stats": {
           "total_shifts": 10
@@ -391,20 +391,20 @@
         "name": "Merete Rhea Marie Oronan",
         "rank": "B",
         "schedule": [
-          "DO",
-          "P",
-          "A",
-          "A",
-          "A",
+          "N",
           "N",
           "DO",
+          "DO",
           "A",
+          "A",
+          "P",
           "DO",
-          "N",
           "DO",
+          "A",
+          "A",
           "P",
           "A",
-          "A"
+          "P"
         ],
         "stats": {
           "total_shifts": 10
@@ -415,20 +415,20 @@
         "name": "Naw Law La",
         "rank": "B",
         "schedule": [
+          "A",
           "P",
           "DO",
-          "A",
-          "A",
-          "N",
           "DO",
+          "P",
           "A",
-          "A",
+          "P",
           "DO",
           "N",
           "N",
           "DO",
           "A",
-          "A"
+          "A",
+          "P"
         ],
         "stats": {
           "total_shifts": 10
@@ -439,20 +439,20 @@
         "name": "Ngaoshonii Radone",
         "rank": "B",
         "schedule": [
+          "P",
           "A",
+          "DO",
+          "P",
           "N",
           "N",
           "DO",
-          "DO",
           "A",
           "A",
           "DO",
           "A",
+          "DO",
           "P",
-          "DO",
-          "A",
-          "P",
-          "N"
+          "A"
         ],
         "stats": {
           "total_shifts": 10
@@ -463,20 +463,20 @@
         "name": "Phyu Phyu Aung",
         "rank": "B",
         "schedule": [
-          "A",
+          "DO",
           "A",
           "N",
-          "DO",
-          "DO",
-          "A",
-          "A",
-          "A",
           "N",
           "DO",
+          "P",
           "A",
           "A",
+          "P",
           "DO",
-          "A"
+          "DO",
+          "A",
+          "P",
+          "P"
         ],
         "stats": {
           "total_shifts": 10
@@ -487,20 +487,20 @@
         "name": "Sangmantling",
         "rank": "B",
         "schedule": [
-          "A",
+          "P",
           "DO",
           "P",
+          "A",
+          "P",
+          "DO",
+          "N",
           "N",
           "DO",
-          "P",
           "A",
-          "A",
-          "A",
-          "N",
           "DO",
           "A",
-          "P",
-          "DO"
+          "A",
+          "A"
         ],
         "stats": {
           "total_shifts": 10
@@ -514,17 +514,17 @@
           "DO",
           "A",
           "A",
+          "A",
+          "DO",
           "P",
           "P",
           "DO",
+          "A",
+          "P",
+          "P",
           "N",
-          "DO",
-          "P",
-          "P",
-          "P",
           "N",
-          "DO",
-          "A"
+          "DO"
         ],
         "stats": {
           "total_shifts": 10
@@ -533,21 +533,21 @@
       {
         "id": 23,
         "name": "YALONG Joehana Casal @Casal Joehana Penaloza",
-        "rank": "C",
+        "rank": "B",
         "schedule": [
-          "DO",
-          "N",
-          "DO",
-          "P",
-          "A",
           "A",
           "P",
           "A",
+          "DO",
+          "DO",
+          "P",
+          "N",
+          "N",
+          "DO",
           "A",
-          "N",
+          "P",
           "DO",
-          "N",
-          "DO",
+          "A",
           "P"
         ],
         "stats": {
@@ -557,22 +557,22 @@
       {
         "id": 24,
         "name": "Zirsangliani",
-        "rank": "C",
+        "rank": "B",
         "schedule": [
           "P",
           "DO",
-          "N",
+          "A",
           "DO",
+          "A",
+          "A",
           "P",
-          "A",
-          "A",
-          "N",
+          "P",
+          "P",
           "DO",
-          "P",
           "A",
-          "P",
-          "N",
-          "DO"
+          "A",
+          "DO",
+          "N"
         ],
         "stats": {
           "total_shifts": 10
@@ -583,17 +583,17 @@
         "name": "Aye Aye Mon",
         "rank": "C",
         "schedule": [
-          "DO",
-          "DO",
-          "P",
+          "A",
           "P",
           "A",
+          "DO",
           "N",
           "N",
           "DO",
           "P",
-          "A",
           "N",
+          "N",
+          "DO",
           "DO",
           "P",
           "A"
@@ -607,20 +607,20 @@
         "name": "Nant Mary Win War Tun",
         "rank": "C",
         "schedule": [
-          "A",
-          "P",
           "DO",
+          "DO",
+          "P",
+          "P",
+          "P",
+          "P",
+          "N",
           "N",
           "DO",
-          "P",
-          "A",
-          "N",
           "DO",
-          "DO",
-          "P",
           "A",
           "A",
-          "A"
+          "A",
+          "P"
         ],
         "stats": {
           "total_shifts": 10
@@ -631,20 +631,44 @@
         "name": "Saw Henry Tun",
         "rank": "C",
         "schedule": [
+          "N",
+          "N",
+          "DO",
+          "DO",
           "A",
           "A",
           "A",
           "DO",
-          "N",
-          "N",
+          "P",
+          "A",
+          "P",
+          "P",
+          "DO",
+          "N"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 28,
+        "name": "Saw Thae Thar Moo",
+        "rank": "C",
+        "schedule": [
+          "P",
+          "A",
+          "DO",
+          "A",
+          "A",
           "DO",
           "P",
           "A",
           "A",
+          "P",
           "DO",
           "N",
-          "DO",
-          "P"
+          "N",
+          "DO"
         ],
         "stats": {
           "total_shifts": 10

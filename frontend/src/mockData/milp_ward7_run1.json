@@ -1,21 +1,21 @@
 {
-  "method": "GA",
+  "method": "MILP",
   "roster": {
     "nurses": [
       {
         "id": 1,
-        "name": "ARCHUNAN Kalpana",
+        "name": "CONCEICAO Edith Nariz",
         "rank": "A",
         "schedule": [
+          "A",
+          "P",
           "P",
           "DO",
           "P",
           "A",
-          "N",
-          "DO",
-          "N",
           "DO",
           "P",
+          "DO",
           "A",
           "A",
           "N",
@@ -28,22 +28,22 @@
       },
       {
         "id": 2,
-        "name": "Angkico-Rueda Carreyl Ann Limbo",
+        "name": "CREENCIA Elvira Suazo",
         "rank": "A",
         "schedule": [
-          "P",
-          "A",
-          "N",
-          "DO",
-          "DO",
-          "P",
           "A",
           "DO",
           "P",
           "P",
+          "N",
+          "N",
+          "DO",
+          "DO",
           "A",
-          "N",
-          "N",
+          "P",
+          "P",
+          "P",
+          "P",
           "DO"
         ],
         "stats": {
@@ -52,46 +52,22 @@
       },
       {
         "id": 3,
-        "name": "BAISA Ma Caren Beringuel",
+        "name": "Darsshini Mudi Yarasan",
         "rank": "A",
         "schedule": [
-          "N",
-          "N",
-          "DO",
           "P",
           "P",
           "A",
           "DO",
           "P",
-          "N",
-          "DO",
-          "P",
-          "DO",
-          "P",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 4,
-        "name": "Bellinna Lamit",
-        "rank": "A",
-        "schedule": [
-          "N",
-          "DO",
-          "P",
-          "DO",
-          "P",
           "A",
+          "DO",
+          "A",
+          "N",
           "N",
           "DO",
           "A",
-          "P",
           "A",
-          "A",
-          "N",
           "DO"
         ],
         "stats": {
@@ -99,23 +75,23 @@
         }
       },
       {
-        "id": 5,
-        "name": "John Joseph Delin",
+        "id": 4,
+        "name": "Khin Win",
         "rank": "A",
         "schedule": [
+          "P",
           "A",
+          "N",
+          "N",
+          "DO",
+          "DO",
           "A",
-          "N",
-          "DO",
-          "N",
           "DO",
           "P",
-          "N",
-          "N",
-          "DO",
+          "A",
+          "P",
           "P",
           "DO",
-          "P",
           "A"
         ],
         "stats": {
@@ -123,23 +99,47 @@
         }
       },
       {
-        "id": 6,
-        "name": "Lakshana D/O Rajendran",
+        "id": 5,
+        "name": "Nesperos Karina Pepito",
         "rank": "A",
         "schedule": [
-          "A",
-          "A",
-          "DO",
           "N",
           "N",
           "DO",
+          "A",
+          "P",
+          "DO",
+          "A",
+          "A",
+          "P",
+          "P",
+          "N",
+          "N",
+          "DO",
+          "DO"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 6,
+        "name": "OLORES Honey Lynne Catriz",
+        "rank": "A",
+        "schedule": [
+          "DO",
+          "A",
+          "A",
           "P",
           "A",
           "DO",
-          "N",
+          "P",
+          "P",
+          "P",
+          "DO",
           "DO",
           "P",
-          "P",
+          "N",
           "N"
         ],
         "stats": {
@@ -148,23 +148,23 @@
       },
       {
         "id": 7,
-        "name": "Logeswary Vazhamunian",
+        "name": "Prakasam Anusuya",
         "rank": "A",
         "schedule": [
-          "N",
+          "A",
           "DO",
-          "P",
+          "A",
           "A",
           "DO",
           "P",
           "N",
-          "DO",
           "N",
           "DO",
           "P",
           "P",
           "A",
-          "P"
+          "DO",
+          "A"
         ],
         "stats": {
           "total_shifts": 10
@@ -172,22 +172,22 @@
       },
       {
         "id": 8,
-        "name": "Maila Bernadas MADELO",
+        "name": "Rodriguez Mary Lianne Orolfo",
         "rank": "A",
         "schedule": [
-          "DO",
-          "P",
-          "A",
-          "N",
-          "DO",
-          "P",
-          "A",
-          "A",
-          "P",
           "N",
           "N",
           "DO",
           "A",
+          "A",
+          "DO",
+          "P",
+          "P",
+          "A",
+          "N",
+          "N",
+          "DO",
+          "P",
           "DO"
         ],
         "stats": {
@@ -196,23 +196,23 @@
       },
       {
         "id": 9,
-        "name": "Malonzo Jenella Marie Baluyut",
+        "name": "SARMIENTO Gladys De Vera",
         "rank": "A",
         "schedule": [
+          "P",
+          "DO",
           "A",
           "P",
           "A",
-          "N",
           "DO",
+          "N",
           "N",
           "DO",
           "A",
-          "A",
-          "A",
-          "N",
           "DO",
-          "N",
-          "DO"
+          "A",
+          "A",
+          "P"
         ],
         "stats": {
           "total_shifts": 10
@@ -220,17 +220,17 @@
       },
       {
         "id": 10,
-        "name": "Nang Voe Phong",
+        "name": "Sarina Binte Abdul Karim",
         "rank": "A",
         "schedule": [
-          "N",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "A",
-          "DO",
           "P",
+          "A",
+          "P",
+          "DO",
+          "N",
+          "N",
+          "DO",
+          "N",
           "N",
           "DO",
           "A",
@@ -244,22 +244,22 @@
       },
       {
         "id": 11,
-        "name": "Nurul Farhanah Binte Haslan",
+        "name": "Tifany John",
         "rank": "A",
         "schedule": [
+          "A",
+          "P",
           "N",
           "N",
           "DO",
           "P",
+          "DO",
+          "A",
           "A",
           "DO",
-          "P",
-          "N",
-          "DO",
-          "P",
-          "DO",
-          "P",
           "A",
+          "P",
+          "DO",
           "N"
         ],
         "stats": {
@@ -268,20 +268,20 @@
       },
       {
         "id": 12,
-        "name": "Xavier Babista",
+        "name": "C Zothansangi",
         "rank": "B",
         "schedule": [
           "DO",
+          "P",
           "A",
           "P",
-          "N",
+          "A",
           "DO",
           "P",
           "P",
+          "P",
+          "A",
           "DO",
-          "A",
-          "A",
-          "A",
           "DO",
           "A",
           "N"
@@ -292,23 +292,23 @@
       },
       {
         "id": 13,
-        "name": "Anthoni Pererage Prabodi Dewmini Perera",
+        "name": "Ganuelas Glesie Anne Rodriguez",
         "rank": "B",
         "schedule": [
+          "A",
+          "DO",
+          "DO",
+          "A",
           "P",
-          "DO",
-          "N",
-          "DO",
+          "A",
           "A",
           "A",
           "N",
           "N",
           "DO",
-          "A",
-          "A",
-          "A",
-          "DO",
-          "N"
+          "P",
+          "P",
+          "DO"
         ],
         "stats": {
           "total_shifts": 10
@@ -316,21 +316,21 @@
       },
       {
         "id": 14,
-        "name": "Aye Phyu Khine",
+        "name": "Javonillo Teddy Jr Marciano",
         "rank": "B",
         "schedule": [
           "A",
           "A",
+          "P",
+          "A",
+          "DO",
+          "DO",
+          "P",
+          "A",
           "DO",
           "A",
-          "A",
+          "P",
           "N",
-          "DO",
-          "DO",
-          "P",
-          "A",
-          "A",
-          "P",
           "N",
           "DO"
         ],
@@ -340,20 +340,20 @@
       },
       {
         "id": 15,
-        "name": "CHHAKCHHUAK Lalbiaknungi",
+        "name": "Julie Khawlthangpui",
         "rank": "B",
         "schedule": [
+          "A",
+          "DO",
+          "P",
           "DO",
           "P",
           "A",
+          "A",
           "P",
-          "P",
-          "N",
           "DO",
-          "P",
           "N",
-          "DO",
-          "P",
+          "N",
           "DO",
           "A",
           "P"
@@ -364,7 +364,7 @@
       },
       {
         "id": 16,
-        "name": "Marilyn Cruz ROSARIO",
+        "name": "Nan Aye Aye Aung",
         "rank": "B",
         "schedule": [
           "N",
@@ -372,13 +372,13 @@
           "DO",
           "A",
           "A",
+          "A",
           "DO",
-          "P",
+          "A",
           "P",
           "A",
-          "A",
-          "N",
           "DO",
+          "P",
           "DO",
           "P"
         ],
@@ -388,90 +388,18 @@
       },
       {
         "id": 17,
-        "name": "Merete Rhea Marie Oronan",
-        "rank": "B",
-        "schedule": [
-          "DO",
-          "P",
-          "A",
-          "A",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "DO",
-          "N",
-          "DO",
-          "P",
-          "A",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 18,
-        "name": "Naw Law La",
+        "name": "Nilar",
         "rank": "B",
         "schedule": [
           "P",
           "DO",
-          "A",
-          "A",
-          "N",
-          "DO",
-          "A",
-          "A",
-          "DO",
-          "N",
-          "N",
-          "DO",
-          "A",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 19,
-        "name": "Ngaoshonii Radone",
-        "rank": "B",
-        "schedule": [
-          "A",
-          "N",
-          "N",
-          "DO",
-          "DO",
-          "A",
-          "A",
-          "DO",
-          "A",
           "P",
-          "DO",
-          "A",
           "P",
-          "N"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 20,
-        "name": "Phyu Phyu Aung",
-        "rank": "B",
-        "schedule": [
-          "A",
-          "A",
+          "N",
           "N",
           "DO",
-          "DO",
+          "P",
           "A",
-          "A",
-          "A",
-          "N",
           "DO",
           "A",
           "A",
@@ -483,21 +411,21 @@
         }
       },
       {
-        "id": 21,
-        "name": "Sangmantling",
+        "id": 18,
+        "name": "Nwe Yee",
         "rank": "B",
         "schedule": [
+          "DO",
+          "A",
           "A",
           "DO",
           "P",
-          "N",
-          "DO",
           "P",
-          "A",
-          "A",
-          "A",
+          "N",
           "N",
           "DO",
+          "A",
+          "A",
           "A",
           "P",
           "DO"
@@ -507,22 +435,94 @@
         }
       },
       {
-        "id": 22,
-        "name": "Siingeipunath Hingba Kistaila",
+        "id": 19,
+        "name": "PACHUAU Zorinfeli",
         "rank": "B",
         "schedule": [
           "DO",
           "A",
           "A",
           "P",
+          "N",
+          "N",
+          "DO",
+          "DO",
+          "A",
+          "P",
           "P",
           "DO",
+          "A",
+          "A"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 20,
+        "name": "Sandar Win",
+        "rank": "B",
+        "schedule": [
+          "P",
+          "A",
+          "DO",
+          "A",
+          "A",
+          "DO",
+          "P",
+          "N",
+          "N",
+          "DO",
+          "A",
+          "DO",
+          "A",
+          "P"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 21,
+        "name": "Tatoy Joymae Robante",
+        "rank": "B",
+        "schedule": [
+          "A",
+          "N",
+          "N",
+          "DO",
+          "DO",
+          "A",
+          "A",
+          "DO",
+          "A",
+          "P",
+          "DO",
+          "P",
+          "P",
+          "A"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 22,
+        "name": "Thida Oo",
+        "rank": "B",
+        "schedule": [
+          "P",
+          "P",
+          "N",
           "N",
           "DO",
           "P",
+          "DO",
+          "A",
           "P",
-          "P",
-          "N",
+          "DO",
+          "A",
+          "A",
           "DO",
           "A"
         ],
@@ -532,23 +532,23 @@
       },
       {
         "id": 23,
-        "name": "YALONG Joehana Casal @Casal Joehana Penaloza",
-        "rank": "C",
+        "name": "William Poonam",
+        "rank": "B",
         "schedule": [
           "DO",
-          "N",
-          "DO",
           "P",
           "A",
+          "DO",
           "A",
           "P",
           "A",
+          "DO",
           "A",
-          "N",
+          "P",
+          "P",
+          "A",
           "DO",
-          "N",
-          "DO",
-          "P"
+          "N"
         ],
         "stats": {
           "total_shifts": 10
@@ -556,21 +556,69 @@
       },
       {
         "id": 24,
-        "name": "Zirsangliani",
+        "name": "Cynthia Snow White",
+        "rank": "C",
+        "schedule": [
+          "A",
+          "A",
+          "P",
+          "P",
+          "DO",
+          "DO",
+          "N",
+          "N",
+          "DO",
+          "DO",
+          "P",
+          "P",
+          "P",
+          "P"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 25,
+        "name": "Naw Aye Tha Ta Htoo Yar Aye",
+        "rank": "C",
+        "schedule": [
+          "DO",
+          "P",
+          "N",
+          "N",
+          "DO",
+          "A",
+          "P",
+          "A",
+          "DO",
+          "A",
+          "A",
+          "DO",
+          "A",
+          "P"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 26,
+        "name": "Saw Aung Aung",
         "rank": "C",
         "schedule": [
           "P",
           "DO",
-          "N",
           "DO",
+          "A",
+          "P",
           "P",
           "A",
-          "A",
-          "N",
           "DO",
-          "P",
           "A",
           "P",
+          "P",
+          "N",
           "N",
           "DO"
         ],
@@ -579,72 +627,48 @@
         }
       },
       {
-        "id": 25,
-        "name": "Aye Aye Mon",
-        "rank": "C",
-        "schedule": [
-          "DO",
-          "DO",
-          "P",
-          "P",
-          "A",
-          "N",
-          "N",
-          "DO",
-          "P",
-          "A",
-          "N",
-          "DO",
-          "P",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
-        "id": 26,
-        "name": "Nant Mary Win War Tun",
-        "rank": "C",
-        "schedule": [
-          "A",
-          "P",
-          "DO",
-          "N",
-          "DO",
-          "P",
-          "A",
-          "N",
-          "DO",
-          "DO",
-          "P",
-          "A",
-          "A",
-          "A"
-        ],
-        "stats": {
-          "total_shifts": 10
-        }
-      },
-      {
         "id": 27,
-        "name": "Saw Henry Tun",
+        "name": "Saw Lar Htoo Eh",
         "rank": "C",
         "schedule": [
+          "N",
+          "N",
+          "DO",
+          "A",
+          "DO",
+          "P",
+          "P",
+          "DO",
+          "P",
+          "DO",
           "A",
           "A",
           "A",
+          "A"
+        ],
+        "stats": {
+          "total_shifts": 10
+        }
+      },
+      {
+        "id": 28,
+        "name": "TARIMAN Mart David Javonillo",
+        "rank": "C",
+        "schedule": [
+          "DO",
+          "DO",
+          "A",
+          "P",
+          "A",
+          "A",
+          "A",
+          "P",
           "DO",
           "N",
           "N",
           "DO",
           "P",
-          "A",
-          "A",
-          "DO",
-          "N",
-          "DO",
-          "P"
+          "A"
         ],
         "stats": {
           "total_shifts": 10
