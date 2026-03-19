@@ -1189,6 +1189,7 @@ function RosterPlanningPage() {
             viewMode={viewMode}
             currentStartDate={currentStartDate}
             onShiftChange={handleShiftChange}
+            onCommentChange={handleCommentChange}
             showSummary={false}
             isLoading={generateAlgorithmRoster.isPending}
             guidelines={guidelines}
