@@ -84,9 +84,10 @@ interface Event {
 
 interface LeaveRequestCalendarProps {
   wardId: number | null | undefined;
+  isLocked?: boolean;
 }
 
-export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarProps) {
+export default function LeaveRequestCalendar({ wardId, isLocked = false }: LeaveRequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
@@ -165,6 +166,7 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
         date={date}
         showAllEvents
         onNavigate={onNavigate}
+        isLocked={isLocked}
       />
     </Box>
   );

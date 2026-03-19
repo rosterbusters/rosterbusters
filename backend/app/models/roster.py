@@ -112,6 +112,8 @@ class RosterPeriodPublic(SQLModel):
     name: str
     startdate: date
     enddate: date
+    requestopendate: date
+    requestclosedate: date
     status: str
 
 

@@ -48,6 +48,7 @@ export const CustomToolbar: ComponentType<ToolbarProps> = ({
 
 interface RequestCalendarProps {
   wardId: number | null | undefined;
+  isLocked?: boolean;
 }
 
 /**
@@ -61,7 +62,7 @@ interface RequestCalendarProps {
  * - The `enabled` guard now cleanly waits for both wardId AND periodId.
  * - Period selection logic is aligned with NewShiftRequest (today-first, then fallback).
  */
-export default function RequestCalendar({ wardId }: RequestCalendarProps) {
+export default function RequestCalendar({ wardId, isLocked = false }: RequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
@@ -179,6 +180,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         date={date}
         showAllEvents
         onNavigate={onNavigate}
+        isLocked={isLocked}
       />
     </Box>
   );

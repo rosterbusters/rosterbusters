@@ -46,7 +46,9 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
   localizer,
   events,
+  isLocked,
 }: CustomMonthViewProps) {
+  const locked = Boolean(isLocked);
   const [selectedRequests, setSelectedRequests] = useState<LeaveRequestEntry[] | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
@@ -111,8 +113,8 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                   minH="120px"
                   borderColor="border"
                   borderWidth="1px"
-                  cursor="pointer"
-                  onClick={() => setNewLeaveDate(day)}
+                  cursor={locked ? "default" : "pointer"}
+                  onClick={locked ? undefined : () => setNewLeaveDate(day)}
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
@@ -130,7 +132,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               nurseName={ev.resource?.nurseName}
                               owned={ev.resource?.isOwn}
                               onClick={
-                                ev.resource?.isOwn
+                                ev.resource?.isOwn && !locked
                                   ? () => {
                                       const ownedForDay = eventsForDay
                                         .filter((e) => e.resource?.isOwn)
@@ -156,7 +158,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         ))}
       </VStack>
 
-      {selectedRequests && (
+      {!locked && selectedRequests && (
         <EditLeaveRequest
           isOpen={!!selectedRequests}
           onClose={() => setSelectedRequests(null)}
@@ -164,11 +166,13 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         />
       )}
 
-      <NewLeaveRequest
-        isOpen={!!newLeaveDate}
-        onClose={() => setNewLeaveDate(null)}
-        selectedDate={newLeaveDate}
-      />
+      {!locked && (
+        <NewLeaveRequest
+          isOpen={!!newLeaveDate}
+          onClose={() => setNewLeaveDate(null)}
+          selectedDate={newLeaveDate}
+        />
+      )}
     </>
   );
 };
