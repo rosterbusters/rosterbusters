@@ -5,6 +5,8 @@ import gaWard6 from "@/mockData/ga_ward6.json";
 import milpWard4 from "@/mockData/milp_ward4.json";
 import milpWard5 from "@/mockData/milp_ward5.json";
 import milpWard6 from "@/mockData/milp_ward6.json";
+import ward06Run1 from "@/mockData/ward_06_run_1.json";
+import ward06Run2 from "@/mockData/ward_06_run_2.json";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Flex,
@@ -45,6 +47,8 @@ import {
 } from "@/components/NurseManager/RosterPlanning";
 
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+import { LockdownBanner } from "@/components/Common/LockdownBanner";
+import { useRosterPlanningLockStatus } from "@/hooks/useRosterPlanningLockStatus";
 
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
@@ -170,6 +174,9 @@ function RosterPlanningPage() {
   const [dateOverrides, setDateOverrides] = useState<
     Record<string, DailyStaffingGuideline>
   >({});
+
+  // Roster planning lock
+  const { isLocked, nextWindowStart, nextWindowEnd } = useRosterPlanningLockStatus();
 
   // Data hooks
   const { data: wards = [] } = useWards();
@@ -999,6 +1006,8 @@ function RosterPlanningPage() {
         milp_ward4: milpWard4,
         milp_ward5: milpWard5,
         milp_ward6: milpWard6,
+        ward_06_run_1: ward06Run1,
+        ward_06_run_2: ward06Run2,
       };
       const mock = mockMap[mockKey];
       if (!mock) return;
@@ -1136,10 +1145,33 @@ function RosterPlanningPage() {
       h="100vh"
       w="100vw"
       direction="column"
-      overflowY="auto"
       bgColor="background2"
-      p={5}
     >
+      {/* Roster planning lock — banner is full-width, outside padded area */}
+      {isLocked && (
+        <>
+          <LockdownBanner
+            title="Roster Planning Period Closed."
+            nextLabel="Next Roster Planning Period:"
+            nextWindowStart={nextWindowStart}
+            nextWindowEnd={nextWindowEnd}
+          />
+          <Box
+            position="fixed"
+            top="64px"
+            left={0}
+            right={0}
+            bottom={0}
+            bg="rgba(0, 0, 0, 0.08)"
+            zIndex={40}
+            pointerEvents="all"
+          />
+        </>
+      )}
+
+      {/* Padded content area */}
+      <Flex direction="column" flex={1} overflowY="auto" p={5}>
+
       {/* Header Section */}
       <Box
         bgColor="white"
@@ -1356,6 +1388,8 @@ function RosterPlanningPage() {
           </Dialog.Positioner>
         </Portal>
       </Dialog.Root>
+
+      </Flex>{/* end padded content area */}
     </Flex>
   );
 }

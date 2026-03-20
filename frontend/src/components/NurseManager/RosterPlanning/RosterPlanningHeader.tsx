@@ -38,6 +38,8 @@ const MOCK_DATA_OPTIONS = [
   { value: "milp_ward4", label: "MILP Ward 4" },
   { value: "milp_ward5", label: "MILP Ward 5" },
   { value: "milp_ward6", label: "MILP Ward 6" },
+  { value: "ward_06_run_1", label: "Ward 06 Run 1" },
+  { value: "ward_06_run_2", label: "Ward 06 Run 2" },
 ];
 
 interface RosterPlanningHeaderProps {
