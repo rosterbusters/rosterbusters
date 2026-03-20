@@ -107,6 +107,11 @@ jobs:
 
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
           docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans || {
+            echo "=== PRESTART LOGS ==="
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml logs prestart
+            exit 1
+          }
 
           EOF
