@@ -31,6 +31,15 @@ const usersSearchSchema = z.object({
 
 const PER_PAGE = 10
 
+const NURSE_DESIGNATION_OPTIONS = ["RN", "EN", "HCA"] as const
+
+const isNurseDesignationOption = (
+  value: string,
+): value is (typeof NURSE_DESIGNATION_OPTIONS)[number] =>
+  NURSE_DESIGNATION_OPTIONS.includes(
+    value as (typeof NURSE_DESIGNATION_OPTIONS)[number],
+  )
+
 export const Route = createFileRoute("/admin/users")({
   component: AdminUsers,
   validateSearch: (search) => usersSearchSchema.parse(search),
@@ -562,7 +571,6 @@ function UserFormDialog({
       updateMutation.mutate(payload)
     } else {
       const payload: AdminUserCreate = {
-        username: data.username,
         name: data.name || undefined,
         is_active: data.is_active,
         role: data.role,
@@ -602,33 +610,46 @@ function UserFormDialog({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Name
-                {(isEdit
-                  ? currentRole === "Nurse" || currentRole === "NurseManager"
-                  : selectedRole === "Nurse" || selectedRole === "NurseManager"
-                ) && <span className="text-red-500"> *</span>}
+                {!isEdit && <span className="text-red-500"> *</span>}
               </label>
               <input
-                {...register("name")}
+                {...register("name", {
+                  validate: (value) => {
+                    if (!isEdit && !value?.trim()) {
+                      return "Name is required"
+                    }
+                    return true
+                  },
+                })}
                 type="text"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="LEE Chuen Shu"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username <span className="text-red-500">*</span>
-              </label>
-              <input
-                {...register("username", { required: "Username is required" })}
-                type="text"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="johndoe"
-              />
-              {errors.username && (
-                <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
+              {errors.name && (
+                <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>
               )}
             </div>
+
+            {isEdit ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Username <span className="text-red-500">*</span>
+                </label>
+                <input
+                  {...register("username", { required: "Username is required" })}
+                  type="text"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="johndoe"
+                />
+                {errors.username && (
+                  <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">
+                Username will be auto-generated from Name.
+              </p>
+            )}
 
             {/* Email */}
             <div>
@@ -650,6 +671,47 @@ function UserFormDialog({
                 <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
               )}
             </div>
+
+            {/* Role (editable on create, read-only on edit) */}
+            {!isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register("role")}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Nurse">Nurse</option>
+                  <option value="NurseManager">Nurse Manager</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+            )}
+
+            {isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <div className="flex flex-wrap gap-1 py-2">
+                  {editUser!.roles.map((role) => (
+                    <span
+                      key={role}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        role === "Admin"
+                          ? "bg-orange-100 text-orange-700"
+                          : role === "NurseManager"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {role === "NurseManager" ? "Nurse Manager" : role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {(isEdit
               ? currentRole === "Nurse" || currentRole === "NurseManager"
@@ -674,14 +736,36 @@ function UserFormDialog({
             {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Designation
+                  Designation <span className="text-red-500">*</span>
                 </label>
-                <input
-                  {...register("designation")}
-                  type="text"
+                <select
+                  {...register("designation", {
+                    validate: (value) => {
+                      const isNurse = isEdit
+                        ? currentRole === "Nurse"
+                        : selectedRole === "Nurse"
+                      if (!isNurse) return true
+                      if (!value?.trim()) return "Designation is required for nurses"
+                      return true
+                    },
+                  })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Staff Nurse I"
-                />
+                >
+                  <option value="">Select designation</option>
+                  {NURSE_DESIGNATION_OPTIONS.map((designation) => (
+                    <option key={designation} value={designation}>
+                      {designation}
+                    </option>
+                  ))}
+                  {isEdit &&
+                    editUser?.designation &&
+                    !isNurseDesignationOption(editUser.designation) && (
+                      <option value={editUser.designation}>{editUser.designation}</option>
+                    )}
+                </select>
+                {errors.designation && (
+                  <p className="text-red-500 text-xs mt-1">{errors.designation.message}</p>
+                )}
               </div>
             )}
 
@@ -729,48 +813,6 @@ function UserFormDialog({
                 <p className="text-red-500 text-xs mt-1">{errors.confirm_password.message}</p>
               )}
             </div>
-
-            {/* Role (only on create) */}
-            {!isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role <span className="text-red-500">*</span>
-                </label>
-                <select
-                  {...register("role")}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Nurse">Nurse</option>
-                  <option value="NurseManager">Nurse Manager</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-            )}
-
-            {/* Role display (read-only on edit) */}
-            {isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <div className="flex flex-wrap gap-1 py-2">
-                  {editUser!.roles.map((role) => (
-                    <span
-                      key={role}
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        role === "Admin"
-                          ? "bg-orange-100 text-orange-700"
-                          : role === "NurseManager"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {role === "NurseManager" ? "Nurse Manager" : role}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Ward assignment — show for Nurse / NurseManager */}
             {(isEdit
@@ -1279,7 +1321,7 @@ function AdminUsers() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           type="text"
-          placeholder="Search by name or email..."
+          placeholder="Search by name, email, or employee ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

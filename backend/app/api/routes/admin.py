@@ -5,6 +5,7 @@ All endpoints require the Admin role.
 """
 
 from datetime import datetime, timezone
+import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -61,7 +62,7 @@ class AdminPasswordResetResponse(SQLModel):
 
 
 class AdminUserCreate(SQLModel):
-    username: str = Field(min_length=1, max_length=255)
+    username: Optional[str] = Field(default=None, min_length=1, max_length=255)
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
@@ -86,6 +87,37 @@ class AdminUserUpdate(SQLModel):
 # ---------------------------------------------------------------------------
 #  Helpers
 # ---------------------------------------------------------------------------
+
+def _slugify_username(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", ".", value.lower()).strip(".")
+    slug = re.sub(r"\.+", ".", slug)
+    return slug
+
+
+def _truncate_username(value: str, max_tokens: int = 3) -> str:
+    normalized = _slugify_username(value)
+    if not normalized:
+        return ""
+    return ".".join(normalized.split(".")[:max_tokens])
+
+
+def _truncate_name(value: str, max_words: int = 3) -> str:
+    words = value.split()
+    if not words:
+        return ""
+    return " ".join(words[:max_words])
+
+
+def _generate_unique_username(session, seed: str) -> str:
+    base = _slugify_username(seed) or "user"
+    candidate = base
+    suffix = 2
+    while session.exec(
+        select(RBACUser).where(RBACUser.username == candidate)
+    ).first():
+        candidate = f"{base}{suffix}"
+        suffix += 1
+    return candidate
 
 def _enrich(session, user: RBACUser) -> AdminUserPublic:
     """Convert an RBACUser row to the public response model."""
@@ -149,9 +181,13 @@ def list_users(
 
     if search:
         pattern = f"%{search}%"
+        matching_nurse_ids = select(Nurse.nurseid).where(Nurse.employeeid.ilike(pattern))  # type: ignore[union-attr]
+        matching_manager_ids = select(NurseManager.managerid).where(NurseManager.employeeid.ilike(pattern))  # type: ignore[union-attr]
         search_filter = or_(
             RBACUser.username.ilike(pattern),  # type: ignore[union-attr]
             RBACUser.email.ilike(pattern),  # type: ignore[union-attr]
+            RBACUser.nurseid.in_(matching_nurse_ids),  # type: ignore[union-attr]
+            RBACUser.managerid.in_(matching_manager_ids),  # type: ignore[union-attr]
         )
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
@@ -177,8 +213,11 @@ def get_user(session: SessionDep, userid: int) -> Any:
 def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     """Create a new RBACUser and assign a role."""
     employee_id = body.employee_id.strip() if body.employee_id else None
-    name = body.name.strip() if body.name else None
+    name = _truncate_name(body.name.strip()) if body.name else None
     designation = body.designation.strip() if body.designation else None
+    requested_username = (
+        _truncate_username(body.username.strip()) if body.username else ""
+    )
 
     # Check duplicate email (only if email provided)
     if body.email:
@@ -191,15 +230,22 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
                 detail="A user with this email already exists.",
             )
 
-    # Check duplicate username
-    existing_username = session.exec(
-        select(RBACUser).where(RBACUser.username == body.username)
-    ).first()
-    if existing_username:
-        raise HTTPException(
-            status_code=400,
-            detail="A user with this username already exists.",
-        )
+    if requested_username:
+        # Check duplicate username only when one is explicitly provided
+        existing_username = session.exec(
+            select(RBACUser).where(RBACUser.username == requested_username)
+        ).first()
+        if existing_username:
+            raise HTTPException(
+                status_code=400,
+                detail="A user with this username already exists.",
+            )
+
+    # Generate username from name (fallback email prefix) when omitted
+    username = requested_username or _generate_unique_username(
+        session,
+        name or (body.email.split("@")[0] if body.email else ""),
+    )
 
     if employee_id:
         existing_nurse = session.exec(
@@ -239,7 +285,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     raw_password = body.password if body.password else generate_random_password()
 
     user = RBACUser(
-        username=body.username,
+        username=username,
         email=body.email,
         passwordhash=get_password_hash(raw_password),
         isactive=body.is_active,
@@ -253,7 +299,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     # Create linked Nurse/NurseManager record and assign wards
     if body.role == "Nurse":
         nurse = Nurse(
-            name=name or body.username,
+            name=name or username,
             employeeid=employee_id,
             designation=designation or "RN",
             email=body.email or "",
@@ -272,7 +318,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
 
     elif body.role == "NurseManager":
         manager = NurseManager(
-            name=name or body.username,
+            name=name or username,
             employeeid=employee_id,
             email=body.email or "",
             contactnumber="",
