@@ -97,7 +97,9 @@ jobs:
 
           docker stop $(docker ps -q) 2>/dev/null || true
           docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose.yml -f docker-compose.override.yml down --remove-orphans 2>/dev/null || true
           docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
+          docker container prune -f
 
           docker image prune -a -f
           docker builder prune -a -f
