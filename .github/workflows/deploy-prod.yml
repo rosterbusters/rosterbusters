@@ -74,7 +74,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
           DOCKER_IMAGE_BACKEND=backend
           DOCKER_IMAGE_FRONTEND=frontend
-          BACKEND_CORS_ORIGINS=["https://${{ secrets.DOMAIN_PROD }}","https://www.${{ secrets.DOMAIN_PROD }}"]
+          BACKEND_CORS_ORIGINS='["https://${{ secrets.DOMAIN_PROD }}","https://www.${{ secrets.DOMAIN_PROD }}"]'
           ACCESS_TOKEN_EXPIRE_MINUTES=10080
           ALGORITHM=HS256
           EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
