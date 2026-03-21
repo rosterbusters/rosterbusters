@@ -6,6 +6,32 @@
 2. Place google_auth_credentials.json into the backend/
 3. docker-compose up
 
+# E2E Testing (Playwright)
+
+Playwright uses `http://localhost:5174` so it doesn’t conflict with the Docker frontend on `5173`.
+
+1. Start your Docker stack (backend + db):
+```bash
+docker compose up -d backend db
+```
+2. Apply the E2E env overrides and restart backend so CORS allows `5174`:
+```bash
+copy /Y .env .env.bak
+type .env.e2e >> .env
+docker compose restart backend
+```
+3. Set the E2E superuser credentials in `.env.e2e`:
+```dotenv
+E2E_SUPERUSER=admin@sach.org.sg
+E2E_SUPERUSER_PASSWORD=admin123
+```
+4. Install browsers and run tests:
+```bash
+cd frontend
+npx playwright install
+npm run test:e2e
+```
+
 # Troubleshooting
 If you get a package/dependency error, try to delete local volumes and rebuild images:
 ```bash
