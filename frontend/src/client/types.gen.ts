@@ -42,6 +42,7 @@ export type Message = {
 export type NursePublic = {
     nurseid: number;
     name: string;
+    designation: string;
 };
 
 export type PrivateUserCreate = {
@@ -69,6 +70,7 @@ export type ShiftCodePublic = {
 };
 
 export type ShiftRequestCreate = {
+    nurseid?: (number | null);
     periodid: number;
     preferreddate: string;
     preferredshifttype: string;

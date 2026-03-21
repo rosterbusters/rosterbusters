@@ -1,39 +1,38 @@
 import logging
 from datetime import timedelta
 
-from sqlmodel import Session, select
+from sqlmodel import Session, delete, select
 
-from app.api.routes.run_rostering import _map_rank, _staffing_to_algo_inputs
 from app.core.db import engine
-from app.models.rbac import Nurse
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.rostering.algo_scheduler import generate_roster
 from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
 
+SHIFT_CODE_TO_DB = {
+    "AM": "A",
+    "PM": "P",
+    "NIGHT": "N",
+    "OFF": "DO",
+    "DO": "DO",
+    "A": "A",
+    "P": "P",
+    "N": "N",
+}
+
 
 @celery_app.task(bind=True, name="tasks.generate_roster", max_retries=2)
-def generate_roster_task(self, ward_id: int, period_id: int):
+def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | None = None):
     """
     Celery task to run the roster generation algorithm.
     Results are stored in Redis and retrievable via task_id.
     """
     try:
         with Session(engine) as db:
-            ward = db.get(Ward, ward_id)
-            if not ward:
-                raise ValueError(f"Ward {ward_id} not found")
+            from app.api.routes.run_rostering import _load_generation_inputs
 
-            shifts_data, milp_config = _staffing_to_algo_inputs(ward)
-
-            nurses_db = db.exec(
-                select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
-            ).all()
-            nurses_data = [
-                {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-                for n in nurses_db
-            ]
+            generation_inputs = _load_generation_inputs(db, ward_id, period_id)
 
         def on_progress(gen: int, total_gens: int, best_score: float) -> None:
             self.update_state(
@@ -47,14 +46,20 @@ def generate_roster_task(self, ward_id: int, period_id: int):
             )
 
         result = generate_roster(
-            nurses=nurses_data,
-            shifts=shifts_data,
-            requests=None,
+            nurses=generation_inputs["nurses"],
+            shifts=generation_inputs["shifts"],
+            hard_requests=generation_inputs["hard_requests"],
+            soft_requests=generation_inputs["soft_requests"],
+            prev_last_shift=generation_inputs["prev_last_shift"],
+            shift_hours=generation_inputs["shift_hours"],
+            non_working_shift_codes=generation_inputs["non_working_shift_codes"],
             progress_callback=on_progress,
-            milp_config=milp_config,
+            milp_config=generation_inputs["milp_config"],
+            algorithm=algorithm,
         )
 
         return {
+            "task_id": self.request.id,
             "status": "complete",
             "method": result["method"],
             "roster": result["roster"],
@@ -73,34 +78,13 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
     """
     try:
         with Session(engine) as db:
-            ward = db.get(Ward, ward_id)
-            if not ward:
-                raise ValueError(f"Ward {ward_id} not found")
-
             period = db.get(RosterPeriod, period_id)
             if not period:
                 raise ValueError(f"Period {period_id} not found")
 
-            shifts_data, milp_config = _staffing_to_algo_inputs(ward)
+            from app.api.routes.run_rostering import _load_generation_inputs
 
-            nurses_db = db.exec(
-                select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
-            ).all()
-            nurses_data = [
-                {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-                for n in nurses_db
-            ]
-
-            # Delete existing roster entries for this ward+period (overwrite)
-            existing = db.exec(
-                select(Roster).where(
-                    Roster.wardid == ward_id,
-                    Roster.periodid == period_id,
-                )
-            ).all()
-            for entry in existing:
-                db.delete(entry)
-            db.commit()
+            generation_inputs = _load_generation_inputs(db, ward_id, period_id)
 
             def on_progress(gen: int, total_gens: int, best_score: float) -> None:
                 self.update_state(
@@ -114,14 +98,24 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 )
 
             result = generate_roster(
-                nurses=nurses_data,
-                shifts=shifts_data,
-                requests=None,
+                nurses=generation_inputs["nurses"],
+                shifts=generation_inputs["shifts"],
+                hard_requests=generation_inputs["hard_requests"],
+                soft_requests=generation_inputs["soft_requests"],
+                prev_last_shift=generation_inputs["prev_last_shift"],
+                shift_hours=generation_inputs["shift_hours"],
+                non_working_shift_codes=generation_inputs["non_working_shift_codes"],
                 progress_callback=on_progress,
-                milp_config=milp_config,
+                milp_config=generation_inputs["milp_config"],
             )
 
-            # Save to DB
+            db.exec(
+                delete(Roster).where(
+                    Roster.wardid == ward_id,
+                    Roster.periodid == period_id,
+                )
+            )
+
             start_date = period.startdate
             for nurse_result in result["roster"]["nurses"]:
                 for day_idx, shift_label in enumerate(nurse_result["schedule"]):
@@ -130,7 +124,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                         wardid=ward_id,
                         periodid=period_id,
                         shiftdate=start_date + timedelta(days=day_idx),
-                        shiftcode=shift_label,  # "A", "P", "N", "DO" — matches DB directly
+                        shiftcode=SHIFT_CODE_TO_DB.get(shift_label, shift_label),
                         status="Pending",
                         assignmentmethod="Auto",
                         assignedby=None,
@@ -138,6 +132,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
             db.commit()
 
             return {
+                "task_id": self.request.id,
                 "status": "complete",
                 "method": result["method"],
                 "nurses_saved": len(result["roster"]["nurses"]),

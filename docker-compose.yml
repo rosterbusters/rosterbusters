@@ -206,6 +206,11 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - GRB_WLSACCESSID=${WLSACCESSID}
+      - GRB_WLSSECRET=${WLSSECRET}
+      - GRB_LICENSEID=${LICENSEID}
+    volumes:
+      - ./gurobi.lic:/root/gurobi.lic:ro
     networks:
       - traefik-public
       - default

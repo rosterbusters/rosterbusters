@@ -8,8 +8,14 @@ from sqlmodel import or_, select
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.models.enums import NotificationType
-from app.models.rbac import Nurse, NurseManager, NursePublic, Role, UserRole
-from app.models.roster import Roster, RosterPeriod, RosterPeriodPublic, Ward
+from app.models.rbac import Nurse, NurseManager, NursePublic
+from app.models.roster import (
+    Roster,
+    RosterPeriod,
+    RosterPeriodPublic,
+    RosterPeriodWindowPublic,
+    Ward,
+)
 from app.models.shifts import (
     ShiftCode,
     ShiftCodePublic,
@@ -19,7 +25,8 @@ from app.models.shifts import (
     ShiftRequestReview,
     ShiftRequestUpdate,
 )
-from app.rbac import get_rbac_user_by_email
+from app.rbac import get_rbac_user_by_email, user_has_role
+from app.services.roster_period_service import ensure_roster_period_window, get_period_window
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -248,6 +255,7 @@ def get_shift_codes_by_ward(
             select(ShiftCode)
             .join(WardShiftCode, ShiftCode.shiftcode == WardShiftCode.shiftcode)
             .where(WardShiftCode.wardid == ward_id)
+            .where(ShiftCode.isworking == True)  # noqa: E712
         )
         codes = list(session.exec(statement).all())
         if codes:
@@ -266,8 +274,7 @@ def get_shift_codes_by_ward(
 @router.get("/periods", response_model=list[RosterPeriodPublic])
 def get_roster_periods(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all roster periods."""
-    statement = select(RosterPeriod).order_by(RosterPeriod.startdate.desc())
-    return list(session.exec(statement).all())
+    return ensure_roster_period_window(session)
 
 
 @router.get("/period", response_model=RosterPeriodPublic)
@@ -277,6 +284,7 @@ def get_roster_period(
     target_date: date = Query(..., description="Date to find the roster period for"),
 ) -> Any:
     """Get the roster period that contains the given date."""
+    ensure_roster_period_window(session)
     statement = select(RosterPeriod).where(
         RosterPeriod.startdate <= target_date,
         RosterPeriod.enddate >= target_date,
@@ -285,6 +293,20 @@ def get_roster_period(
     if not period:
         raise HTTPException(status_code=404, detail="No roster period found for the given date")
     return period
+
+
+@router.get("/periods/current-upcoming", response_model=RosterPeriodWindowPublic)
+def get_current_and_upcoming_roster_periods(
+    session: SessionDep, current_user: CurrentUser
+) -> Any:
+    """Get the current, upcoming, and request-open roster periods."""
+    periods = ensure_roster_period_window(session)
+    current_period, upcoming_period, request_open_period = get_period_window(periods)
+    return RosterPeriodWindowPublic(
+        current_period=current_period,
+        upcoming_period=upcoming_period,
+        request_open_period=request_open_period,
+    )
 
 
 # ─────────────────────────────────────────────
@@ -308,15 +330,39 @@ def create_shift_request(
     current_user: CurrentUser,
     request_in: ShiftRequestCreate,
 ) -> Any:
-    """Create a shift request for the logged-in nurse."""
+    """Create a shift request for the logged-in nurse or a ward nurse (manager only)."""
     rbac_user = get_rbac_user_by_email(session, current_user.email)
-    if not rbac_user or not rbac_user.nurseid:
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
+
+    target_nurse_id = rbac_user.nurseid
+    if request_in.nurseid is not None:
+        if not user_has_role(session, current_user.email, "NurseManager"):
+            raise HTTPException(
+                status_code=403,
+                detail="Only nurse managers can create a request for another nurse",
+            )
+        if not rbac_user.managerid:
+            raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
+
+        managed_ward = session.exec(
+            select(Ward).where(Ward.managerid == rbac_user.managerid)
+        ).first()
+        if not managed_ward:
+            raise HTTPException(status_code=400, detail="Nurse manager is not assigned to a ward")
+
+        target_nurse = session.get(Nurse, request_in.nurseid)
+        if not target_nurse or target_nurse.wardid != managed_ward.wardid:
+            raise HTTPException(status_code=403, detail="Selected nurse is not in your ward")
+        target_nurse_id = request_in.nurseid
+
+    if not target_nurse_id:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
     existing_requests = list(
         session.exec(
             select(ShiftRequest).where(
-                ShiftRequest.nurseid == rbac_user.nurseid,
+                ShiftRequest.nurseid == target_nurse_id,
                 ShiftRequest.periodid == request_in.periodid,
             )
         ).all()
@@ -334,7 +380,7 @@ def create_shift_request(
                 select(ShiftRequest)
                 .join(ShiftCode, ShiftRequest.preferredshifttype == ShiftCode.shiftcode)
                 .where(
-                    ShiftRequest.nurseid == rbac_user.nurseid,
+                    ShiftRequest.nurseid == target_nurse_id,
                     ShiftRequest.periodid == request_in.periodid,
                     or_(ShiftCode.isworking == True, ShiftCode.shiftcode.in_(list(_CAPPED_CODES))),  # noqa: E712
                 )
@@ -350,8 +396,8 @@ def create_shift_request(
     next_number = next(n for n in range(1, len(existing_requests) + 2) if n not in used_numbers)
 
     shift_request = ShiftRequest(
-        **request_in.model_dump(),
-        nurseid=rbac_user.nurseid,
+        **request_in.model_dump(exclude={"nurseid"}),
+        nurseid=target_nurse_id,
         requestnumber=next_number,
     )
     session.add(shift_request)
@@ -367,15 +413,30 @@ def update_shift_request(
     current_user: CurrentUser,
     request_in: ShiftRequestUpdate,
 ) -> Any:
-    """Update a shift request.
-
-    The owning nurse can update their own request, and nurse managers can
-    update requests belonging to nurses in wards they manage.
-    """
+    """Update a shift request. The owning nurse or their nurse manager can update."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
     shift_request = session.get(ShiftRequest, request_id)
     if not shift_request:
         raise HTTPException(status_code=404, detail="Shift request not found")
-    if not _can_manage_nurse_shift_request(session, current_user, shift_request):
+
+    can_update = shift_request.nurseid == rbac_user.nurseid
+    if not can_update and user_has_role(session, current_user.email, "NurseManager"):
+        if not rbac_user.managerid:
+            raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
+
+        managed_ward = session.exec(
+            select(Ward).where(Ward.managerid == rbac_user.managerid)
+        ).first()
+        target_nurse = session.get(Nurse, shift_request.nurseid)
+        can_update = bool(
+            managed_ward
+            and target_nurse
+            and target_nurse.wardid == managed_ward.wardid
+        )
+
+    if not can_update:
         raise HTTPException(status_code=403, detail="Not authorized to update this request")
 
     update_data = request_in.model_dump(exclude_unset=True)
@@ -435,15 +496,30 @@ def delete_shift_request(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> None:
-    """Delete a shift request.
-
-    The owning nurse can delete their own request, and nurse managers can
-    delete requests belonging to nurses in wards they manage.
-    """
+    """Delete a shift request. The owning nurse or their nurse manager can delete."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
     shift_request = session.get(ShiftRequest, request_id)
     if not shift_request:
         raise HTTPException(status_code=404, detail="Shift request not found")
-    if not _can_manage_nurse_shift_request(session, current_user, shift_request):
+
+    can_delete = shift_request.nurseid == rbac_user.nurseid
+    if not can_delete and user_has_role(session, current_user.email, "NurseManager"):
+        if not rbac_user.managerid:
+            raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
+
+        managed_ward = session.exec(
+            select(Ward).where(Ward.managerid == rbac_user.managerid)
+        ).first()
+        target_nurse = session.get(Nurse, shift_request.nurseid)
+        can_delete = bool(
+            managed_ward
+            and target_nurse
+            and target_nurse.wardid == managed_ward.wardid
+        )
+
+    if not can_delete:
         raise HTTPException(status_code=403, detail="Not authorized to delete this request")
 
     session.delete(shift_request)

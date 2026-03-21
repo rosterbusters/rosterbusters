@@ -142,9 +142,10 @@ def parse_inputs(
                 continue
             for day_idx, shift_name in req_list:
                 shift_key = str(shift_name).upper()
-                if shift_key in non_working_shift_codes:
+                # Any code not a working shift (or explicitly non-working) → OFF
+                if shift_key not in SHIFT_CODE or shift_key in non_working_shift_codes:
                     shift_key = "OFF"
-                if 0 <= day_idx < num_days and shift_key in SHIFT_CODE:
+                if 0 <= day_idx < num_days:
                     output[nurse_idx].append((day_idx, SHIFT_CODE[shift_key]))
         return output
 
@@ -792,10 +793,10 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 pen -= SOFT_W_PENDING_REQUEST
         return pen
 
-    def tournament(pop, k=TOURNAMENT_K):
-        picks = random.sample(pop, k)
-        best = min(picks, key=evaluate)  # minimize penalty
-        return deepcopy(best)
+    def tournament(pop, scores, k=TOURNAMENT_K):
+        indices = random.sample(range(len(pop)), k)
+        best_idx = min(indices, key=lambda i: scores[i])
+        return [list(nurse) for nurse in pop[best_idx]]
 
     def crossover(parent1, parent2):
         """
@@ -941,15 +942,15 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
         # Build rest
         while len(new_pop) < pop_size:
-            p1 = tournament(pop)
-            p2 = tournament(pop)
+            p1 = tournament(pop, scores)
+            p2 = tournament(pop, scores)
             child = crossover(p1, p2)
             child = mutate(child, mutation_rate)
             if random.random() < PATTERN_SWAP_PROB + ((PATTERN_SWAP_MAX-PATTERN_SWAP_PROB)/(1+np.exp(-0.2 * (gen-149)))):
                 child = pattern_swap_mutation(child)
-            child = repair_individual(child)
+                child = repair_individual(child)
             if random.random() < REBALANCE_PROB:
-                child = rebalance_night_blocks(child) #rebalance_nights_weekly(child)
+                child = rebalance_night_blocks(child)
             child = repair_coverage(child)
             child = repair_individual(child)
             new_pop.append(child)
@@ -973,6 +974,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
             )
             if progress_callback:
                 progress_callback(gen, generations, best_score)
+
+        if best_score == 0:
+            break
     return best, best_score
 
 OFF, AM, PM, NIGHT = 0, 1, 2, 3

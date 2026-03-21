@@ -3,6 +3,7 @@ import {
   Flex,
   Text,
   Button,
+  Badge,
   HStack,
   IconButton,
   Spinner,
@@ -10,15 +11,18 @@ import {
   Portal,
   createListCollection,
 } from "@chakra-ui/react";
+import { useMemo } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Eye,
   MoreVertical,
   Upload,
   Download,
   Wand2,
   RefreshCw,
   X,
+  FlaskConical,
 } from "lucide-react";
 import moment from "moment";
 import type { Ward, RosterPeriod, ViewMode } from "../RosterTable/types";
@@ -35,9 +39,16 @@ const MOCK_DATA_OPTIONS = [
   { value: "ga_ward4", label: "GA Ward 4" },
   { value: "ga_ward5", label: "GA Ward 5" },
   { value: "ga_ward6", label: "GA Ward 6" },
-  { value: "milp_ward4", label: "MILP Ward 4" },
-  { value: "milp_ward5", label: "MILP Ward 5" },
-  { value: "milp_ward6", label: "MILP Ward 6" },
+  { value: "milp_ward4_run1", label: "MILP Ward 4 Run 1" },
+  { value: "milp_ward4_run2", label: "MILP Ward 4 Run 2" },
+  { value: "milp_ward5_run1", label: "MILP Ward 5 Run 1" },
+  { value: "milp_ward5_run2", label: "MILP Ward 5 Run 2" },
+  { value: "milp_ward6_run1", label: "MILP Ward 6 Run 1" },
+  { value: "milp_ward6_run2", label: "MILP Ward 6 Run 2" },
+  { value: "milp_ward7_run1", label: "MILP Ward 7 Run 1" },
+  { value: "milp_ward7_run2", label: "MILP Ward 7 Run 2" },
+  { value: "milp_ward8_run1", label: "MILP Ward 8 Run 1" },
+  { value: "milp_ward8_run2", label: "MILP Ward 8 Run 2" },
 ];
 
 interface RosterPlanningHeaderProps {
@@ -49,16 +60,22 @@ interface RosterPlanningHeaderProps {
   periods: RosterPeriod[];
   isAlgorithmGenerated?: boolean;
   isGenerating?: boolean;
+  isPublishing?: boolean;
   generationProgress?: number;
+  algorithmType?: "MILP" | "GA" | null;
+  onAlgorithmTypeChange?: (type: "MILP" | "GA" | null) => void;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
   onPeriodChange: (period: RosterPeriod) => void;
   onPublishRoster: () => void;
   onDownloadRoster: () => void;
+  onViewEditHistory: () => void;
   onGenerateAlgorithm?: () => void;
   onClearRoster?: () => void;
   onLoadMockData?: (mockKey: string) => void;
+  onSeedRequests?: () => void;
+  isSeedingRequests?: boolean;
 }
 
 export function RosterPlanningHeader({
@@ -70,35 +87,105 @@ export function RosterPlanningHeader({
   periods,
   isAlgorithmGenerated = false,
   isGenerating = false,
+  isPublishing = false,
   generationProgress = 0,
+  algorithmType = null,
+  onAlgorithmTypeChange,
   onDateChange,
   onViewModeChange,
   onWardChange,
   onPeriodChange,
   onPublishRoster,
   onDownloadRoster,
+  onViewEditHistory,
   onGenerateAlgorithm,
   onClearRoster,
   onLoadMockData,
+  onSeedRequests,
+  isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
-  const endDate = moment(currentStartDate).add(
-    viewMode === "week" ? 6 : 13,
-    "days",
+  const today = moment().startOf("day");
+  const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
+  const sortedPeriods = useMemo(
+    () =>
+      [...periods].sort((left, right) =>
+        moment(left.startDate).diff(moment(right.startDate)),
+      ),
+    [periods],
   );
-  const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
+  const earliestVisibleStartDate = sortedPeriods[0]?.startDate ?? null;
+  const latestVisibleEndDate = sortedPeriods[sortedPeriods.length - 1]?.endDate ?? null;
+  const dateRangeText = selectedPeriod
+    ? `${moment(selectedPeriod.startDate).format("MMMM DD")} - ${moment(selectedPeriod.endDate).format("MMMM DD")}`
+    : `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
 
-  const handleToday = () => {
-    const today = moment().startOf("isoWeek").toDate();
-    onDateChange(today);
+  const currentPeriodId =
+    periods.find((period) =>
+      today.isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+    )?.periodId ?? null;
+
+  const upcomingPeriodId =
+    periods
+      .filter((period) => moment(period.startDate).isAfter(today, "day"))
+      .sort((left, right) => moment(left.startDate).diff(moment(right.startDate)))[0]
+      ?.periodId ?? null;
+
+  const getPeriodFlag = (period: RosterPeriod) => {
+    if (period.periodId === currentPeriodId) return "Current";
+    if (period.periodId === upcomingPeriodId) return "Upcoming";
+    return null;
   };
 
+  const renderPeriodLabel = (period: RosterPeriod) => {
+    const flag = getPeriodFlag(period);
+    return (
+      <HStack gap={2} minW={0} flexWrap="nowrap">
+        <Text whiteSpace="nowrap">{period.name}</Text>
+        {flag ? (
+          <Badge variant={(flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any}>
+            {flag}
+          </Badge>
+        ) : null}
+      </HStack>
+    );
+  };
+
+  const canGoBack = useMemo(() => {
+    if (!earliestVisibleStartDate) {
+      return true;
+    }
+    const days = viewMode === "week" ? 7 : 14;
+    const previousStart = moment(currentStartDate).subtract(days, "days").startOf("day");
+
+    return previousStart.isSameOrAfter(moment(earliestVisibleStartDate).startOf("day"));
+  }, [currentStartDate, earliestVisibleStartDate, viewMode]);
+
+  const canGoNext = useMemo(() => {
+    if (!latestVisibleEndDate) {
+      return true;
+    }
+    const days = viewMode === "week" ? 7 : 14;
+    const nextStart = moment(currentStartDate).add(days, "days").startOf("day");
+    const latestAllowedStart = moment(latestVisibleEndDate)
+      .subtract(days - 1, "days")
+      .startOf("day");
+
+    return nextStart.isSameOrBefore(latestAllowedStart);
+  }, [currentStartDate, latestVisibleEndDate, viewMode]);
+
   const handleBack = () => {
+    if (!canGoBack) {
+      return;
+    }
     const days = viewMode === "week" ? 7 : 14;
     const newDate = moment(currentStartDate).subtract(days, "days").toDate();
     onDateChange(newDate);
   };
 
   const handleNext = () => {
+    if (!canGoNext) {
+      return;
+    }
     const days = viewMode === "week" ? 7 : 14;
     const newDate = moment(currentStartDate).add(days, "days").toDate();
     onDateChange(newDate);
@@ -107,16 +194,17 @@ export function RosterPlanningHeader({
   
   const wardCollection = createListCollection({
     items: wards,
-    itemToString: (ward) => ward.wardName,
-    itemToValue: (ward) => String(ward.wardId),
+    itemToString: (ward: Ward) => ward.wardName,
+    itemToValue: (ward: Ward) => String(ward.wardId),
   });
 
   const periodCollection = createListCollection({
     items: periods,
-    itemToString: (period) =>
-      period.name ||
-      `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`,
-    itemToValue: (period) => String(period.periodId),
+    itemToString: (period: RosterPeriod) => {
+      const flag = getPeriodFlag(period);
+      return flag ? `${period.name} ${flag}` : period.name;
+    },
+    itemToValue: (period: RosterPeriod) => String(period.periodId),
   });
   
   return (
@@ -184,7 +272,7 @@ export function RosterPlanningHeader({
             <MenuTrigger asChild>
               <IconButton
                 aria-label="More options"
-                variant="outlinegrey"
+                variant={"outlinegrey" as any}
                 size="sm"
                 _hover={{ bg: "#F8FAFC" }}
               >
@@ -195,12 +283,13 @@ export function RosterPlanningHeader({
               <MenuItem
                 value="publish"
                 onClick={onPublishRoster}
+                disabled={isPublishing}
                 cursor="pointer"
                 _hover={{ bg: "#F0F9FA" }}
               >
                 <HStack gap={2}>
                   <Upload className="h-4 w-4" />
-                  <Text>Publish Roster</Text>
+                  <Text>{isPublishing ? "Publishing..." : "Publish Roster"}</Text>
                 </HStack>
               </MenuItem>
               <MenuItem
@@ -214,6 +303,20 @@ export function RosterPlanningHeader({
                   <Text>Download Roster</Text>
                 </HStack>
               </MenuItem>
+              {onSeedRequests && (
+                <MenuItem
+                  value="seed-requests"
+                  onClick={onSeedRequests}
+                  disabled={isSeedingRequests}
+                  cursor="pointer"
+                  _hover={{ bg: "#F0F9FA" }}
+                >
+                  <HStack gap={2}>
+                    <FlaskConical className="h-4 w-4" />
+                    <Text>{isSeedingRequests ? "Seeding..." : "Seed Test Requests"}</Text>
+                  </HStack>
+                </MenuItem>
+              )}
             </MenuContent>
           </MenuRoot>
         </HStack>
@@ -234,35 +337,39 @@ export function RosterPlanningHeader({
           w="full"
           flexWrap="wrap"
           gap={3}
+          position="relative"
         >
           {/* Left Section: Date Navigation */}
           <HStack gap={2}>
             <Button
               size="sm"
-              variant="outlinegrey"
-              onClick={handleToday}
+              variant={"outlinegrey" as any}
+              onClick={onViewEditHistory}
               _hover={{ bg: "#F8FAFC" }}
             >
-              Today
+              <Eye className="h-4 w-4" />
+              View Edit History
             </Button>
             <HStack gap={0}>
               <Button
-                size="sm"
-                variant="outlinegrey"
-                onClick={handleBack}
-                _hover={{ bg: "#F8FAFC" }}
-                p={2}
-              >
+              size="sm"
+              variant={"outlinegrey" as any}
+              onClick={handleBack}
+              disabled={!canGoBack}
+              _hover={{ bg: "#F8FAFC" }}
+              p={2}
+            >
                 <ChevronLeft className="h-4 w-4" />
                 Back
               </Button>
               <Button
-                size="sm"
-                variant="outlinegrey"
-                onClick={handleNext}
-                _hover={{ bg: "#F8FAFC" }}
-                p={2}
-              >
+              size="sm"
+              variant={"outlinegrey" as any}
+              onClick={handleNext}
+              disabled={!canGoNext}
+              _hover={{ bg: "#F8FAFC" }}
+              p={2}
+            >
                 Next
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -275,6 +382,11 @@ export function RosterPlanningHeader({
             fontWeight="semibold"
             color="brand.fg"
             textAlign="center"
+            position="absolute"
+            left="50%"
+            top="50%"
+            transform="translate(-50%, -50%)"
+            whiteSpace="nowrap"
           >
             {dateRangeText}
           </Text>
@@ -288,7 +400,7 @@ export function RosterPlanningHeader({
           >
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               fontWeight="normal"
               onClick={() => onViewModeChange("week")}
               bg={viewMode === "week" ? "menuactive" : "transparent"}
@@ -303,7 +415,7 @@ export function RosterPlanningHeader({
             </Button>
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               fontWeight="normal"
               onClick={() => onViewModeChange("twoWeeks")}
               bg={viewMode === "twoWeeks" ? "primary" : "transparent"}
@@ -320,14 +432,14 @@ export function RosterPlanningHeader({
         </Flex>
 
         {/* Roster Period Dropdown */}
-        <HStack gap={2}>
+        <HStack gap={2} align="center" minH="32px">
           <Text fontSize="sm" color="foreground" fontWeight="medium">
             Roster Period:
           </Text>
           <Select.Root
             collection={periodCollection}
             size="sm"
-            width="220px"
+            width="270px"
             color="foreground"
             value={selectedPeriod ? [String(selectedPeriod.periodId)] : []}
             onValueChange={(details) => {
@@ -340,7 +452,11 @@ export function RosterPlanningHeader({
             <Select.HiddenSelect />
             <Select.Control>
               <Select.Trigger>
-                <Select.ValueText placeholder="Select period" />
+                {selectedPeriod ? (
+                  renderPeriodLabel(selectedPeriod)
+                ) : (
+                  <Select.ValueText placeholder="Select period" />
+                )}
               </Select.Trigger>
               <Select.IndicatorGroup>
                 <Select.Indicator />
@@ -351,8 +467,7 @@ export function RosterPlanningHeader({
                 <Select.Content>
                   {periodCollection.items.map((period) => (
                     <Select.Item key={period.periodId} item={period}>
-                      {period.name ||
-                        `${moment(period.startDate).format("MMM DD")} - ${moment(period.endDate).format("MMM DD")}`}
+                      {renderPeriodLabel(period)}
                     </Select.Item>
                   ))}
                 </Select.Content>
@@ -367,7 +482,7 @@ export function RosterPlanningHeader({
           <Flex direction="column" align="center" gap={2} w="full">
             {/* Progress bar — visible only while generating */}
             {isGenerating && (
-              <Box w="320px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
+              <Box w="250px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
                 <Box
                   h="full"
                   bg="#4B8798"
@@ -377,6 +492,57 @@ export function RosterPlanningHeader({
               </Box>
             )}
           <HStack gap={4} flexWrap="wrap" justify="center">
+            {/* Algorithm type toggle */}
+            <HStack
+              gap={0}
+              borderRadius="lg"
+              border="1px solid #E6E6E6"
+              overflow="hidden"
+            >
+              <Button
+                size="sm"
+                variant={"outlinegrey" as any}
+                fontWeight="normal"
+                onClick={() => onAlgorithmTypeChange?.(null)}
+                bg={algorithmType == null ? "#4B8798" : "transparent"}
+                color={algorithmType == null ? "white" : "foreground"}
+                _hover={{ bg: algorithmType == null ? "#4B8798" : "#F8FAFC" }}
+                borderRadius={0}
+                px={4}
+                disabled={isGenerating}
+              >
+                Auto
+              </Button>
+              <Button
+                size="sm"
+                variant={"outlinegrey" as any}
+                fontWeight="normal"
+                onClick={() => onAlgorithmTypeChange?.("MILP")}
+                bg={algorithmType === "MILP" ? "#4B8798" : "transparent"}
+                color={algorithmType === "MILP" ? "white" : "foreground"}
+                _hover={{ bg: algorithmType === "MILP" ? "#4B8798" : "#F8FAFC" }}
+                borderRadius={0}
+                px={4}
+                disabled={isGenerating}
+              >
+                MILP
+              </Button>
+              <Button
+                size="sm"
+                variant={"outlinegrey" as any}
+                fontWeight="normal"
+                onClick={() => onAlgorithmTypeChange?.("GA")}
+                bg={algorithmType === "GA" ? "#4B8798" : "transparent"}
+                color={algorithmType === "GA" ? "white" : "foreground"}
+                _hover={{ bg: algorithmType === "GA" ? "#4B8798" : "#F8FAFC" }}
+                borderRadius={0}
+                px={4}
+                disabled={isGenerating}
+              >
+                GA
+              </Button>
+            </HStack>
+
             <Button
               size="md"
               bg="#4B8798"
@@ -473,7 +639,7 @@ export function RosterPlanningHeader({
             </Button>
             <Button
               size="sm"
-              variant="outlinegrey"
+              variant={"outlinegrey" as any}
               _hover={{
                 bg: "#F8FAFC",
                 borderColor: "#DC2626",
