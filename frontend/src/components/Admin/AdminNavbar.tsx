@@ -106,7 +106,10 @@ function AdminNavbar() {
           </span>
 
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer">
+            <DropdownMenuTrigger
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+              data-testid="admin-navbar-user"
+            >
               <div className="w-8 h-8 rounded-full bg-[#4B8798] flex items-center justify-center text-white text-sm font-bold">
                 {userName.charAt(0).toUpperCase()}
               </div>
@@ -117,6 +120,7 @@ function AdminNavbar() {
               <DropdownMenuItem
                 onClick={logout}
                 className="text-red-600 cursor-pointer"
+                data-testid="admin-navbar-signout"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign Out
@@ -183,6 +187,7 @@ function AdminNavbar() {
                 logout()
               }}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 w-full"
+              data-testid="admin-navbar-signout"
             >
               <LogOut className="w-4 h-4" />
               Sign Out

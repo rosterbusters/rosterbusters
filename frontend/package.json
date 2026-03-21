@@ -11,11 +11,17 @@
     "watch-routes": "npx tsr watch",
     "dev": "concurrently \"npm run watch-routes\" \"vite\"",
     "dev:server": "vite --host 0.0.0.0 --port 5173",
+    "dev:server:e2e": "vite --host 0.0.0.0 --port 5174",
     "build": "npm run typegen && tsc -p tsconfig.build.json && vite build",
     "lint": "biome check --write --unsafe --no-errors-on-unmatched --files-ignore-unknown=true ./",
     "preview": "vite preview",
     "generate-client": "openapi-ts",
-    "typegen": "npx @chakra-ui/cli typegen ./src/theme.tsx"
+    "typegen": "npx @chakra-ui/cli typegen ./src/theme.tsx",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:install": "playwright install"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.33.0",

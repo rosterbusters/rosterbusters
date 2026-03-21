@@ -146,6 +146,7 @@ function Login() {
                   <InputGroup startElement={<FiUser color="gray" />} w="100%">
                     <Input
                       {...register("username", { required: "Required" })}
+                      data-testid="login-username"
                       placeholder="Username, Email, or Employee ID"
                       type="text"
                       size="md"
@@ -174,6 +175,7 @@ function Login() {
                   >
                     <Input
                       {...register("password", passwordRules())}
+                      data-testid="login-password"
                       placeholder="Password"
                       type={showPassword ? "text" : "password"}
                       size="md"
