@@ -78,11 +78,11 @@ jobs:
           ACCESS_TOKEN_EXPIRE_MINUTES=10080
           ALGORITHM=HS256
           EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
-          USERNAME=${{ secrets.TRAEFIK_USERNAME }}
-          HASHED_PASSWORD=${{ secrets.TRAEFIK_HASHED_PASSWORD }}
+          USERNAME=${{ secrets.USERNAME }}
+          HASHED_PASSWORD=${{ secrets.HASHED_PASSWORD }}
           GRB_WLSACCESSID=${{ secrets.GRB_WLSACCESSID }}
-          GRB_WLSSECRET=${{ secrets.GRB_WLSSECRET }}
-          GRB_LICENSEID=${{ secrets.GRB_LICENSEID }}
+          GRB_WLSSECRET=${{ secrets.WLSSECRET }}
+          GRB_LICENSEID=${{ secrets.LICENSEID }}
           EOF
 
       - name: Strip whitespace from .env
