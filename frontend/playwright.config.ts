@@ -27,6 +27,9 @@ export default defineConfig({
   webServer: {
     command: "npm run dev:server:e2e",
     url: "http://localhost:5174",
+    env: {
+      VITE_API_URL: process.env.VITE_API_URL || "http://127.0.0.1:8000",
+    },
     reuseExistingServer: !isCI,
     timeout: 120_000,
   },

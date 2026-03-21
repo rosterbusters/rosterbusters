@@ -19,6 +19,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare backend env
+        working-directory: .
+        run: cp .env.e2e .env
+
+      - name: Create dummy Google OAuth credentials
+        working-directory: .
+        run: echo '{}' > backend/google_oauth_credentials.json
+
+      - name: Create docker network
+        working-directory: .
+        run: docker network create traefik-public || true
+
+      - name: Start backend stack
+        working-directory: .
+        run: docker compose up -d db backend
+
+      - name: Wait for backend
+        working-directory: .
+        run: |
+          for i in {1..30}; do
+            curl -f http://localhost:8000/api/v1/utils/health-check/ && exit 0
+            sleep 2
+          done
+          exit 1
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -43,3 +68,8 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report
+
+      - name: Tear down
+        if: always()
+        working-directory: .
+        run: docker compose down -v --remove-orphans
