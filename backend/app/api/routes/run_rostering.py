@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import queue
 import threading
 
@@ -17,6 +18,7 @@ from app.api.deps import CurrentUser, SessionDep, get_db
 from app.designation_mapping import classify_designation
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
+from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
 from app.rostering.algo_scheduler import generate_roster
@@ -96,6 +98,14 @@ def _can_manage_ward(session: Session, current_user: CurrentUser, ward: Ward) ->
     if current_user.email:
         return user_has_role(session, current_user.email, "Admin")
     return False
+
+
+def _can_generate_roster(session: Session, current_user: CurrentUser) -> bool:
+    if not current_user.email:
+        return False
+    return user_has_role(session, current_user.email, "NurseManager") or user_has_role(
+        session, current_user.email, "Admin"
+    )
 
 
 def _get_existing_roster_entry(
@@ -530,9 +540,12 @@ def get_ward_requests(ward_id: int, period_id: int, db: Session = Depends(get_db
 @router.post("/generate-algorithm")
 def generate_roster_endpoint(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
     """Run the MILP/GA rostering algorithm for a ward and roster period."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     try:
         generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
         result = generate_roster(
@@ -557,9 +570,12 @@ def generate_roster_endpoint(
 @router.post("/generate-algorithm-async")
 def generate_roster_async(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
     """Queue roster generation as a Celery background task. Returns a task_id to poll."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     ward = db.get(Ward, request_data.ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
@@ -634,9 +650,12 @@ def get_task_status(task_id: str):
 @router.post("/generate-algorithm-stream")
 def generate_roster_stream(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
     """Run the MILP/GA rostering algorithm and stream SSE progress events."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
     generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
 
@@ -781,6 +800,14 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     nurse_ids = [n["id"] for n in nurses_data]
     shift_label_map = _load_shift_label_map(db)
     hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
+    leave_hard = _load_leave_requests(db, ward_id, period, set(nurse_ids), len(shifts_data))
+    for nurse_id, days in leave_hard.items():
+        existing = hard_requests.setdefault(nurse_id, [])
+        leave_days = {day_idx for day_idx, _ in days}
+        existing[:] = [(d, s) for d, s in existing if d not in leave_days]
+        existing.extend(days)
+        if nurse_id in soft_requests:
+            soft_requests[nurse_id] = [(d, s) for d, s in soft_requests[nurse_id] if d not in leave_days]
     prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
 
     logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
@@ -811,6 +838,35 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         "shift_hours": _load_shift_hours(db),
         "non_working_shift_codes": _load_non_working_shift_codes(db),
     }
+
+
+def _jsonify_algo_inputs(payload: Any) -> Any:
+    """Convert algorithm inputs to JSON-serializable types (e.g., sets -> lists)."""
+    if isinstance(payload, dict):
+        return {k: _jsonify_algo_inputs(v) for k, v in payload.items()}
+    if isinstance(payload, (list, tuple)):
+        return [_jsonify_algo_inputs(v) for v in payload]
+    if isinstance(payload, set):
+        return [_jsonify_algo_inputs(v) for v in sorted(payload)]
+    return payload
+
+
+@router.get("/generation-inputs")
+def get_generation_inputs(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Return the exact inputs that will be fed into the rostering algorithm."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    inputs = _load_generation_inputs(session, ward_id, period_id)
+    cpu_count = os.cpu_count() or 1
+    inputs["cpu_count"] = cpu_count
+    inputs["ga_worker_count"] = max(1, cpu_count - 1)
+    return _jsonify_algo_inputs(inputs)
 
 
 def _load_shift_requests(
@@ -868,6 +924,40 @@ def _load_shift_requests(
             soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
 
     return hard_requests, soft_requests
+
+
+def _load_leave_requests(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: set[int],
+    num_days: int,
+) -> dict[int, list[tuple[int, str]]]:
+    """Return approved leave days as hard OFF entries.
+    Format: nurse_id -> [(day_idx, "OFF"), ...]
+    """
+    statement = (
+        select(LeaveRequest)
+        .join(Nurse, Nurse.nurseid == LeaveRequest.nurseid)
+        .where(Nurse.wardid == ward_id)
+        .where(LeaveRequest.status == "Approved")
+        .where(LeaveRequest.enddate >= period.startdate)
+        .where(LeaveRequest.startdate <= period.enddate)
+    )
+    leaves = db.exec(statement).all()
+
+    result: dict[int, list[tuple[int, str]]] = {}
+    for leave in leaves:
+        if leave.nurseid not in nurse_ids:
+            continue
+        current = max(leave.startdate, period.startdate)
+        end = min(leave.enddate, period.enddate)
+        while current <= end:
+            day_idx = (current - period.startdate).days
+            if 0 <= day_idx < num_days:
+                result.setdefault(leave.nurseid, []).append((day_idx, "OFF"))
+            current += timedelta(days=1)
+    return result
 
 
 def _load_previous_last_shift(

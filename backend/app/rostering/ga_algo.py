@@ -1,7 +1,203 @@
 # Genetic Algorithm with Standardized Input/Output
+import os
 import random
 import numpy as np
 from copy import deepcopy
+from dataclasses import dataclass
+from itertools import repeat
+from concurrent.futures import ProcessPoolExecutor
+
+
+@dataclass(frozen=True)
+class GAContext:
+    num_days: int
+    num_nurses: int
+    off: int
+    am: int
+    pm: int
+    night: int
+    patterns: dict
+    shift_hours: dict
+    nurse_ranks: list
+    demand: list
+    approved_requests: list
+    pending_requests: list
+    hard_requests: list
+    min_hours: int
+    max_hours: int
+    hard_pen_shift: float
+    hard_pen_hour: float
+    hard_pen_dayoff: float
+    hard_pen_ndo: float
+    hard_pen_nights: float
+    soft_w_approved_request: float
+    soft_w_pending_request: float
+    soft_w_night_fair: float
+    soft_w_weekend_fair: float
+    soft_w_weekday_pref: float
+    soft_w_morning_pref: float
+    soft_w_daily_balance: float
+    soft_w_overtime: float
+
+
+def _expand_pattern_list(pattern_list, patterns):
+    shifts = []
+    for p in pattern_list:
+        shifts.extend(patterns[p])
+    return shifts
+
+
+def _expand_individual(individual, ctx: GAContext):
+    schedule = [_expand_pattern_list(individual[n], ctx.patterns) for n in range(ctx.num_nurses)]
+    for seq in schedule:
+        if len(seq) != ctx.num_days:
+            raise ValueError("Expanded sequence length mismatch")
+    return schedule
+
+
+def _night_weekly_penalty(schedule, ctx: GAContext):
+    penalty = 0
+    for n in range(ctx.num_nurses):
+        for week in (range(0, 7), range(7, 14)):
+            night_count = sum(1 for d in week if schedule[n][d] == ctx.night)
+            if night_count < 1:
+                penalty += (1 - night_count) * ctx.hard_pen_nights * 0.8
+            elif night_count > 2:
+                penalty += (night_count - 2) * ctx.hard_pen_nights
+    return penalty
+
+
+def evaluate_individual(individual, ctx: GAContext):
+    schedule = _expand_individual(individual, ctx)
+    penalty = 0
+
+    # 1) Shift coverage minima (hard)
+    for d in range(ctx.num_days):
+        for shift in [ctx.am, ctx.pm, ctx.night]:
+            available = {"A": 0, "B": 0, "C": 0}
+            for n in range(ctx.num_nurses):
+                if schedule[n][d] == shift:
+                    r = ctx.nurse_ranks[n]
+                    available[r] += 1
+
+            req = ctx.demand[d][shift]
+            remaining = available.copy()
+
+            used_A_for_A = min(remaining["A"], req["A"])
+            remaining["A"] -= used_A_for_A
+            missing_A = req["A"] - used_A_for_A
+
+            needed_B = req["B"]
+            used_B_for_B = min(remaining["B"], needed_B)
+            remaining["B"] -= used_B_for_B
+            needed_B -= used_B_for_B
+
+            used_A_for_B = min(remaining["A"], needed_B)
+            remaining["A"] -= used_A_for_B
+            needed_B -= used_A_for_B
+            missing_B = needed_B
+
+            needed_C = req["C"]
+            used_C_for_C = min(remaining["C"], needed_C)
+            remaining["C"] -= used_C_for_C
+            needed_C -= used_C_for_C
+
+            used_B_for_C = min(remaining["B"], needed_C)
+            remaining["B"] -= used_B_for_C
+            needed_C -= used_B_for_C
+
+            used_A_for_C = min(remaining["A"], needed_C)
+            remaining["A"] -= used_A_for_C
+            needed_C -= used_A_for_C
+
+            missing_C = needed_C
+            penalty += (missing_A + missing_B + missing_C) * ctx.hard_pen_shift
+
+    # 2) Hours per nurse (hard)
+    hours_per_nurse = []
+    for n in range(ctx.num_nurses):
+        h = sum(ctx.shift_hours[s] for s in schedule[n][:ctx.num_days])
+        hours_per_nurse.append(h)
+        if h < ctx.min_hours:
+            penalty += (ctx.min_hours - h) * ctx.hard_pen_hour * 1.2
+        if h > ctx.max_hours:
+            penalty += (h - ctx.max_hours) * ctx.hard_pen_hour * 0.8
+
+    # 3) 2 days off per week (hard)
+    for n in range(ctx.num_nurses):
+        for week in (range(0, 7), range(7, 14)):
+            offs = sum(1 for d in week if schedule[n][d] == ctx.off)
+            if offs < 2:
+                penalty += (2 - offs) * ctx.hard_pen_dayoff
+            elif offs > 2:
+                penalty += (offs - 2) * 0.9 * ctx.hard_pen_dayoff
+
+    # 5) Requests (soft)
+    for n in range(ctx.num_nurses):
+        for (d, s) in ctx.approved_requests[n]:
+            if d < ctx.num_days and schedule[n][d] != s:
+                penalty += ctx.soft_w_approved_request
+
+    for n in range(ctx.num_nurses):
+        for (d, s) in ctx.pending_requests[n]:
+            if d < ctx.num_days and schedule[n][d] != s:
+                penalty += ctx.soft_w_pending_request
+
+    # 5.5) DO after last-week night
+    for n in range(ctx.num_nurses):
+        for (d, s) in ctx.hard_requests[n]:
+            if schedule[n][d] != s:
+                penalty += ctx.hard_pen_ndo
+
+    # 6) Night fairness
+    night_counts = [sum(1 for d in range(ctx.num_days) if schedule[n][d] == ctx.night) for n in range(ctx.num_nurses)]
+    if len(night_counts) > 1:
+        penalty += (max(night_counts) - min(night_counts)) * ctx.soft_w_night_fair
+
+    # 7) Weekend fairness
+    weekend_days = [5, 6, 12, 13]
+    weekend_counts = [sum(1 for d in weekend_days if schedule[n][d] != ctx.off) for n in range(ctx.num_nurses)]
+    if len(weekend_counts) > 1:
+        penalty += (max(weekend_counts) - min(weekend_counts)) * ctx.soft_w_weekend_fair
+
+    # 8) Weekday coverage preference & daily balance
+    weekday_days = [d for d in range(ctx.num_days) if d not in weekend_days and d != ctx.num_days]
+    daily_totals = [sum(1 for n in range(ctx.num_nurses) if schedule[n][d] != ctx.off) for d in range(ctx.num_days)]
+    avg_min = 0
+    if weekday_days:
+        avg_min = sum(
+            (ctx.demand[d][s]["A"] + ctx.demand[d][s]["B"] + ctx.demand[d][s]["C"])
+            for d in weekday_days
+            for s in [ctx.am, ctx.pm, ctx.night]
+        ) / (len(weekday_days) * 3)
+    avg_weekday_coverage = sum(daily_totals[d] for d in weekday_days) / (len(weekday_days)) if weekday_days else 0
+    if avg_weekday_coverage < avg_min:
+        penalty += (avg_min - avg_weekday_coverage) * ctx.soft_w_weekday_pref * 5
+
+    if len(daily_totals) > 1:
+        penalty += (max(daily_totals) - min(daily_totals)) * ctx.soft_w_daily_balance
+
+    # 9) Preference for mornings (soft)
+    am_count = sum(1 for n in range(ctx.num_nurses) for d in range(ctx.num_days) if schedule[n][d] == ctx.am)
+    penalty -= (am_count) * ctx.soft_w_morning_pref * 0.05
+
+    # 10) Overtime soft
+    for h in hours_per_nurse:
+        if h > ctx.max_hours:
+            penalty += (h - ctx.max_hours) * ctx.soft_w_overtime
+
+    penalty += _night_weekly_penalty(schedule, ctx)
+    return penalty
+
+
+def _evaluate_worker(individual, ctx: GAContext):
+    return evaluate_individual(individual, ctx)
+
+
+def _score_population(population, ctx: GAContext, executor=None):
+    if executor is None:
+        return [evaluate_individual(ind, ctx) for ind in population]
+    return list(executor.map(_evaluate_worker, population, repeat(ctx)))
 
 
 def run_ga_pipeline(
@@ -274,6 +470,11 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     PLATEAU_GENS = 10 #change back to 20/25
     ELITISM = 3
 
+    # ===================== CPU CONFIG =====================
+    cpu_count = os.cpu_count() or 1
+    worker_count = max(1, cpu_count - 1)
+    print(f"GA workers: {worker_count} (cpu_count={cpu_count})")
+
     # ===================== UTILITIES =====================
     def extract_night_blocks(schedule, nurse):
         blocks = []
@@ -542,143 +743,39 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
         return penalty
 
+    ctx = GAContext(
+        num_days=NUM_DAYS,
+        num_nurses=NUM_NURSES,
+        off=OFF,
+        am=AM,
+        pm=PM,
+        night=NIGHT,
+        patterns=PATTERNS,
+        shift_hours=SHIFT_HOURS,
+        nurse_ranks=NURSE_RANKS,
+        demand=DEMAND,
+        approved_requests=APPROVED_REQUESTS,
+        pending_requests=PENDING_REQUESTS,
+        hard_requests=HARD_REQUESTS,
+        min_hours=MIN_HOURS,
+        max_hours=MAX_HOURS,
+        hard_pen_shift=HARD_PEN_SHIFT,
+        hard_pen_hour=HARD_PEN_HOUR,
+        hard_pen_dayoff=HARD_PEN_DAYOFF,
+        hard_pen_ndo=HARD_PEN_NDO,
+        hard_pen_nights=HARD_PEN_NIGHTS,
+        soft_w_approved_request=SOFT_W_APPROVED_REQUEST,
+        soft_w_pending_request=SOFT_W_PENDING_REQUEST,
+        soft_w_night_fair=SOFT_W_NIGHT_FAIR,
+        soft_w_weekend_fair=SOFT_W_WEEKEND_FAIR,
+        soft_w_weekday_pref=SOFT_W_WEEKDAY_PREF,
+        soft_w_morning_pref=SOFT_W_MORNING_PREF,
+        soft_w_daily_balance=SOFT_W_DAILY_BALANCE,
+        soft_w_overtime=SOFT_W_OVERTIME,
+    )
+
     def evaluate(individual):
-        """
-        Returns a penalty (lower is better). We will minimize penalty.
-        Hard constraints produce huge penalties to strongly discourage infeasible schedules.
-        """
-        schedule = expand_individual(individual)
-        penalty = 0
-
-        # 1) Shift coverage minima (hard)
-        for d in range(14):
-            for shift in [AM, PM, NIGHT]:
-
-                # Count exact ranks only
-                available = {'A': 0, 'B': 0, 'C': 0}
-
-                for n in range(NUM_NURSES):
-                    if schedule[n][d] == shift:
-                        r = NURSE_RANKS[n]
-                        available[r] += 1
-
-                req = DEMAND[d][shift]
-
-                # Copy because we will modify
-                remaining = available.copy()
-
-                # 1. Satisfy A demand using A only
-                used_A_for_A = min(remaining['A'], req['A'])
-                remaining['A'] -= used_A_for_A
-                missing_A = req['A'] - used_A_for_A
-
-                # 2. Satisfy B demand using B first, then leftover A
-                needed_B = req['B']
-                used_B_for_B = min(remaining['B'], needed_B)
-                remaining['B'] -= used_B_for_B
-                needed_B -= used_B_for_B
-
-                used_A_for_B = min(remaining['A'], needed_B)
-                remaining['A'] -= used_A_for_B
-                needed_B -= used_A_for_B
-
-                missing_B = needed_B
-
-                # 3. Satisfy C demand using C first, then B, then A
-                needed_C = req['C']
-
-                used_C_for_C = min(remaining['C'], needed_C)
-                remaining['C'] -= used_C_for_C
-                needed_C -= used_C_for_C
-
-                used_B_for_C = min(remaining['B'], needed_C)
-                remaining['B'] -= used_B_for_C
-                needed_C -= used_B_for_C
-
-                used_A_for_C = min(remaining['A'], needed_C)
-                remaining['A'] -= used_A_for_C
-                needed_C -= used_A_for_C
-
-                missing_C = needed_C
-
-                # Add penalties
-                penalty += (missing_A + missing_B + missing_C) * HARD_PEN_SHIFT
-
-        # 2) Hours per nurse (hard)
-        hours_per_nurse = []
-        for n in range(NUM_NURSES):
-            h = sum(SHIFT_HOURS[s] for s in schedule[n][:14])
-            hours_per_nurse.append(h)
-            if h < MIN_HOURS:
-                penalty += (MIN_HOURS - h) * HARD_PEN_HOUR * 1.2
-            if h > MAX_HOURS:
-                penalty += (h - MAX_HOURS) * HARD_PEN_HOUR * 0.8
-
-        # 3) 2 days off per week (hard): for weeks [0..6] and [7..13]
-        for n in range(NUM_NURSES):
-            for week in (range(0,7), range(7,14)):
-                offs = sum(1 for d in week if schedule[n][d] == OFF)
-                if offs < 2:
-                    penalty += (2 - offs) * HARD_PEN_DAYOFF
-                elif offs > 2:
-                    penalty += (offs - 2) * 0.9 * HARD_PEN_DAYOFF
-
-        # 5) Requests (soft)
-        for n in range(NUM_NURSES):
-            for (d, s) in APPROVED_REQUESTS[n]:
-                if d < 14 and schedule[n][d] != s:
-                    penalty += SOFT_W_APPROVED_REQUEST
-
-        for n in range(NUM_NURSES):
-            for (d, s) in PENDING_REQUESTS[n]:
-                if d < 14 and schedule[n][d] != s:
-                    penalty += SOFT_W_PENDING_REQUEST
-    
-        # 5.5) This is for DO after last week's night shift on the last day.
-        for n in range(NUM_NURSES):
-            for (d,s) in HARD_REQUESTS[n]:
-                if schedule[n][d] != s:
-                    penalty += HARD_PEN_NDO
-
-        # 6) Night fairness (soft): variance of night counts
-        night_counts = [sum(1 for d in range(14) if schedule[n][d] == NIGHT) for n in range(NUM_NURSES)]
-        if len(night_counts) > 1:
-            penalty += (max(night_counts) - min(night_counts)) * SOFT_W_NIGHT_FAIR
-
-        # 7) Weekend fairness (soft) - treat days 5,6 and 12,13 as weekends (example)
-        weekend_days = [5,6, 12,13]
-        weekend_counts = [sum(1 for d in weekend_days if schedule[n][d] != OFF) for n in range(NUM_NURSES)]
-        if len(weekend_counts) > 1:
-            penalty += (max(weekend_counts) - min(weekend_counts)) * SOFT_W_WEEKEND_FAIR
-
-        # 8) Weekday coverage preference & daily balance (soft)
-        weekday_days = [d for d in range(14) if d not in weekend_days and d != 14]
-        daily_totals = [sum(1 for n in range(NUM_NURSES) if schedule[n][d] != OFF) for d in range(14)]
-        # prefer weekdays to have on-average at least a target coverage (approx from demand)
-        # compute a simple target: average of minima sums across shifts
-        avg_min = 0
-        if weekday_days:
-            avg_min = sum((DEMAND[d][s]['A'] + DEMAND[d][s]['B'] + DEMAND[d][s]['C']) for d in weekday_days for s in [AM,PM,NIGHT]) / (len(weekday_days) * 3)
-        avg_weekday_coverage = sum(daily_totals[d] for d in weekday_days) / (len(weekday_days)) if weekday_days else 0
-        if avg_weekday_coverage < avg_min:
-            penalty += (avg_min - avg_weekday_coverage) * SOFT_W_WEEKDAY_PREF * 5
-
-        # daily balance (variance)
-        if len(daily_totals) > 1:
-            penalty += (max(daily_totals) - min(daily_totals)) * SOFT_W_DAILY_BALANCE
-
-        # 9) Preference for mornings (soft) -> reward AM counts by decreasing penalty
-        am_count = sum(1 for n in range(NUM_NURSES) for d in range(14) if schedule[n][d] == AM)
-        penalty -= (am_count) * SOFT_W_MORNING_PREF * 0.05
-
-        # 10) Overtime soft (beyond MAX_HOURS)
-        for h in hours_per_nurse:
-            if h > MAX_HOURS:
-                penalty += (h - MAX_HOURS) * SOFT_W_OVERTIME
-        
-        penalty += night_weekly_penalty(schedule)
-
-        return penalty
+        return evaluate_individual(individual, ctx)
 
     # ===================== REPAIR & VALIDATION =====================
 
@@ -907,77 +1004,85 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     # ===================== GA MAIN LOOP =====================
     generations = GENERATIONS
     pop_size = POP_SIZE
-    # init population
-    pop = [create_individual() for _ in range(pop_size)]
-    scores = [evaluate(ind) for ind in pop]
+    executor = None
+    try:
+        if worker_count > 1:
+            executor = ProcessPoolExecutor(max_workers=worker_count)
 
-    best_idx = min(range(len(scores)), key=lambda i: scores[i])
-    best = deepcopy(pop[best_idx])
-    best_score = scores[best_idx]
-    last_improve_gen = 0
+        # init population
+        pop = [create_individual() for _ in range(pop_size)]
+        scores = _score_population(pop, ctx, executor)
 
-    mutation_rate = BASE_MUTATION_RATE
+        best_idx = min(range(len(scores)), key=lambda i: scores[i])
+        best = deepcopy(pop[best_idx])
+        best_score = scores[best_idx]
+        last_improve_gen = 0
 
-    print(f"Init best penalty: {best_score:.2f}")
+        mutation_rate = BASE_MUTATION_RATE
 
-    for gen in range(generations):
-        # sort population by score (ascending penalty)
-        gens_since_improve = gen - last_improve_gen
-        if gens_since_improve >= PLATEAU_GENS:
-            mutation_rate = min(MAX_MUTATION_RATE,
-                                BASE_MUTATION_RATE * (1 + gens_since_improve / PLATEAU_GENS))
-        else:
-            mutation_rate = BASE_MUTATION_RATE
-        rank_idx = sorted(range(len(pop)), key=lambda i: scores[i])
-        new_pop = []
+        print(f"Init best penalty: {best_score:.2f}")
 
-        # Elitism: copy top ELITISM individuals unchanged
-        
-        for e in range(ELITISM):
-            elite = deepcopy(pop[rank_idx[e]])
-            if gen > 70 and gen % 5 == 0:
-                elite = local_search(elite)
-            new_pop.append(elite)
-            #new_pop.append(deepcopy(pop[rank_idx[e]]))
+        for gen in range(generations):
+            # sort population by score (ascending penalty)
+            gens_since_improve = gen - last_improve_gen
+            if gens_since_improve >= PLATEAU_GENS:
+                mutation_rate = min(MAX_MUTATION_RATE,
+                                    BASE_MUTATION_RATE * (1 + gens_since_improve / PLATEAU_GENS))
+            else:
+                mutation_rate = BASE_MUTATION_RATE
+            rank_idx = sorted(range(len(pop)), key=lambda i: scores[i])
+            new_pop = []
 
-        # Build rest
-        while len(new_pop) < pop_size:
-            p1 = tournament(pop, scores)
-            p2 = tournament(pop, scores)
-            child = crossover(p1, p2)
-            child = mutate(child, mutation_rate)
-            if random.random() < PATTERN_SWAP_PROB + ((PATTERN_SWAP_MAX-PATTERN_SWAP_PROB)/(1+np.exp(-0.2 * (gen-149)))):
-                child = pattern_swap_mutation(child)
+            # Elitism: copy top ELITISM individuals unchanged
+            
+            for e in range(ELITISM):
+                elite = deepcopy(pop[rank_idx[e]])
+                if gen > 70 and gen % 5 == 0:
+                    elite = local_search(elite)
+                new_pop.append(elite)
+                #new_pop.append(deepcopy(pop[rank_idx[e]]))
+
+            # Build rest
+            while len(new_pop) < pop_size:
+                p1 = tournament(pop, scores)
+                p2 = tournament(pop, scores)
+                child = crossover(p1, p2)
+                child = mutate(child, mutation_rate)
+                if random.random() < PATTERN_SWAP_PROB + ((PATTERN_SWAP_MAX-PATTERN_SWAP_PROB)/(1+np.exp(-0.2 * (gen-149)))):
+                    child = pattern_swap_mutation(child)
+                    child = repair_individual(child)
+                if random.random() < REBALANCE_PROB:
+                    child = rebalance_night_blocks(child)
+                child = repair_coverage(child)
                 child = repair_individual(child)
-            if random.random() < REBALANCE_PROB:
-                child = rebalance_night_blocks(child)
-            child = repair_coverage(child)
-            child = repair_individual(child)
-            new_pop.append(child)
+                new_pop.append(child)
 
-        pop = new_pop
-        scores = [evaluate(ind) for ind in pop]
-        gen_best_idx = min(range(len(scores)), key=lambda i: scores[i])
-        gen_best_score = scores[gen_best_idx]
-        if gen_best_score < best_score:
-            if (best_score - gen_best_score) > 49:
-                last_improve_gen = gen
-            best_score = gen_best_score
-            best = deepcopy(pop[gen_best_idx])
+            pop = new_pop
+            scores = _score_population(pop, ctx, executor)
+            gen_best_idx = min(range(len(scores)), key=lambda i: scores[i])
+            gen_best_score = scores[gen_best_idx]
+            if gen_best_score < best_score:
+                if (best_score - gen_best_score) > 49:
+                    last_improve_gen = gen
+                best_score = gen_best_score
+                best = deepcopy(pop[gen_best_idx])
 
-        if gen % 25 == 0 or gen == generations - 1:
-            print(
-                f"Gen {gen:4d} "
-                f"gen_best_penalty={gen_best_score:.2f} "
-                f"best_so_far={best_score:.2f} "
-                f"mut_rate={mutation_rate:.2f}"
-            )
-            if progress_callback:
-                progress_callback(gen, generations, best_score)
+            if gen % 25 == 0 or gen == generations - 1:
+                print(
+                    f"Gen {gen:4d} "
+                    f"gen_best_penalty={gen_best_score:.2f} "
+                    f"best_so_far={best_score:.2f} "
+                    f"mut_rate={mutation_rate:.2f}"
+                )
+                if progress_callback:
+                    progress_callback(gen, generations, best_score)
 
-        if best_score == 0:
-            break
-    return best, best_score
+            if best_score == 0:
+                break
+        return best, best_score
+    finally:
+        if executor is not None:
+            executor.shutdown(wait=True)
 
 OFF, AM, PM, NIGHT = 0, 1, 2, 3
 SHIFT_LABEL = {

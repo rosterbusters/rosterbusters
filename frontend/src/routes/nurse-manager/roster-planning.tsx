@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import gaWard4 from "@/mockData/ga_ward4.json";
 import milpWard4Run1 from "@/mockData/milp_ward4_run1.json";
 import milpWard4Run2 from "@/mockData/milp_ward4_run2.json";
@@ -37,11 +37,14 @@ import {
   usePublishRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
+  useResumeAlgorithmTask,
   useShiftCodes,
   useRosterChangelog,
   useCreateChangelog,
   useAutoReviewShiftRequests,
   getShiftDurationHours,
+  loadAlgorithmTask,
+  clearAlgorithmTask,
   type Ward,
   type RosterPeriod,
   type ViewMode,
@@ -56,6 +59,7 @@ import {
   RosterPlanningHeader,
   getWardGuidelines,
 } from "@/components/NurseManager/RosterPlanning";
+import AlgorithmInputsDialog from "@/components/NurseManager/RosterPlanning/AlgorithmInputsDialog";
 
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import useAuth from "@/hooks/useAuth";
@@ -169,6 +173,10 @@ function RosterPlanningPage() {
     useState(false);
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
+  const [isInputsDialogOpen, setIsInputsDialogOpen] = useState(false);
+  const [lastAlgorithmRunAt, setLastAlgorithmRunAt] = useState<Date | null>(null);
+  const [lastAlgorithmRunMs, setLastAlgorithmRunMs] = useState<number | null>(null);
+  const [isResumingAlgorithm, setIsResumingAlgorithm] = useState(false);
   const [rosterData, setRosterData] = useState<RosterRow[]>(() =>
     generateEmptyRosterData(),
   );
@@ -215,29 +223,23 @@ function RosterPlanningPage() {
   const bulkUpsertRoster = useBulkUpsertRoster();
   const publishRoster = usePublishRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
+  const resumeAlgorithmTask = useResumeAlgorithmTask();
   const autoReviewShiftRequests = useAutoReviewShiftRequests();
+  const hasResumedTaskRef = useRef(false);
+  const resumeCancelledRef = useRef(false);
 
   // Generate mock wards if API wards are empty
-  const displayWards = useMemo(() => {
-    const availableWards =
+  const displayWards = useMemo(
+    () =>
       wards.length > 0
         ? wards
         : [
             { wardId: 4, wardName: "Ward 4", wardType: "General", campus: "Main" },
             { wardId: 5, wardName: "Ward 5", wardType: "General", campus: "Main" },
             { wardId: 6, wardName: "Ward 6", wardType: "ICU", campus: "Main" },
-          ];
-
-    if (!user?.managerid) {
-      return availableWards;
-    }
-
-    const designatedWards = availableWards.filter(
-      (ward) => ward.managerId === user.managerid,
-    );
-
-    return designatedWards.length > 0 ? designatedWards : availableWards;
-  }, [wards, user?.managerid]);
+          ],
+    [wards],
+  );
 
   // Generate mock periods if API periods are empty
   const displayPeriods = useMemo(() => {
@@ -307,9 +309,12 @@ function RosterPlanningPage() {
       : false;
 
     if (!selectedWardStillAvailable) {
-      setSelectedWard(displayWards[0]);
+      const designatedWard = user?.wardid
+        ? displayWards.find((ward) => ward.wardId === user.wardid) ?? null
+        : null;
+      setSelectedWard(designatedWard ?? displayWards[0]);
     }
-  }, [displayWards, selectedWard]);
+  }, [displayWards, selectedWard, user?.wardid]);
 
   // Reset guidelines and per-date overrides when the selected ward changes
   useEffect(() => {
@@ -453,6 +458,7 @@ function RosterPlanningPage() {
       showErrorToast("Please select a ward and period first");
       return;
     }
+    const startedAt = Date.now();
     try {
       setGenerationProgress(0);
       const result = await generateAlgorithmRoster.mutateAsync({
@@ -471,6 +477,8 @@ function RosterPlanningPage() {
       setGenerationProgress(100);
       setGeneratedAlgorithmMethod(result.algorithm);
       setIsGenerationSuccessDialogOpen(true);
+      setLastAlgorithmRunAt(new Date());
+      setLastAlgorithmRunMs(Date.now() - startedAt);
       showSuccessToast("Algorithm roster generated successfully!");
     } catch (error) {
       console.error("Failed:", error);
@@ -654,6 +662,14 @@ function RosterPlanningPage() {
     setIsPublishDialogOpen(true);
   }, []);
 
+  const handleViewGenerationInputs = useCallback(() => {
+    if (!selectedWard || !selectedPeriod) {
+      showErrorToast("Please select a ward and period first");
+      return;
+    }
+    setIsInputsDialogOpen(true);
+  }, [selectedWard, selectedPeriod]);
+
   const handleConfirmPublish = useCallback(async () => {
     if (!selectedWard || !selectedPeriod) {
       showErrorToast("Please select a ward and period first");
@@ -715,6 +731,68 @@ function RosterPlanningPage() {
     showErrorToast,
   ]);
 
+  useEffect(() => {
+    hasResumedTaskRef.current = false;
+    resumeCancelledRef.current = false;
+    setIsResumingAlgorithm(false);
+  }, [selectedWard?.wardId, selectedPeriod?.periodId]);
+
+  useEffect(() => {
+    if (!selectedWard || !selectedPeriod) return;
+    if (hasResumedTaskRef.current) return;
+    if (generateAlgorithmRoster.isPending || resumeAlgorithmTask.isPending) return;
+
+    const stored = loadAlgorithmTask(selectedWard.wardId, selectedPeriod.periodId);
+    if (!stored) return;
+
+    hasResumedTaskRef.current = true;
+    resumeCancelledRef.current = false;
+    const startedAt = new Date(stored.startedAt);
+    setLastAlgorithmRunAt(startedAt);
+    setIsResumingAlgorithm(true);
+
+    resumeAlgorithmTask.mutateAsync({
+      taskId: stored.taskId,
+      wardId: selectedWard.wardId,
+      periodId: selectedPeriod.periodId,
+      startDate: currentStartDate,
+      onProgress: (percent) => {
+        if (resumeCancelledRef.current) return;
+        setGenerationProgress(percent);
+      },
+    }).then((result) => {
+      if (resumeCancelledRef.current) return;
+      setRosterData(result.rosterData);
+      setIsAlgorithmGenerated(true);
+      setGenerationProgress(100);
+      setGeneratedAlgorithmMethod(result.algorithm);
+      setLastAlgorithmRunMs(Date.now() - startedAt.getTime());
+      setIsResumingAlgorithm(false);
+      showSuccessToast("Algorithm roster generated successfully!");
+    }).catch((error) => {
+      if (resumeCancelledRef.current) return;
+      console.error("Failed:", error);
+      setIsResumingAlgorithm(false);
+      showErrorToast("Failed to generate roster.");
+    });
+  }, [
+    selectedWard,
+    selectedPeriod,
+    currentStartDate,
+    generateAlgorithmRoster.isPending,
+    resumeAlgorithmTask,
+    showErrorToast,
+    showSuccessToast,
+  ]);
+
+  const handleCancelResume = useCallback(() => {
+    if (!selectedWard || !selectedPeriod) return;
+    resumeCancelledRef.current = true;
+    setIsResumingAlgorithm(false);
+    setGenerationProgress(0);
+    clearAlgorithmTask(selectedWard.wardId, selectedPeriod.periodId);
+  }, [selectedWard, selectedPeriod]);
+
   return (
     <Flex
       h="100vh"
@@ -761,7 +839,48 @@ function RosterPlanningPage() {
           onSeedRequests={handleSeedRequests}
           isSeedingRequests={isSeedingRequests}
         />
+        <Box mt={3} display="flex" justifyContent="flex-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleViewGenerationInputs}
+            borderColor="#E6E6E6"
+            color="#4A4A4A"
+            _hover={{ bg: "gray.50" }}
+          >
+            View Algorithm Inputs
+          </Button>
+        </Box>
       </Box>
+
+      {isResumingAlgorithm && (
+        <Box
+          mt={3}
+          bg="yellow.50"
+          border="1px solid"
+          borderColor="yellow.200"
+          rounded="md"
+          px={4}
+          py={3}
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <Text fontSize="sm" color="yellow.800">
+            Resuming algorithm… {generationProgress ? `${generationProgress}%` : ""}
+          </Text>
+          <Button
+            size="sm"
+            variant="outline"
+            borderColor="yellow.300"
+            color="yellow.800"
+            _hover={{ bg: "yellow.100" }}
+            onClick={handleCancelResume}
+          >
+            Cancel
+          </Button>
+        </Box>
+      )}
 
       {/* Roster Grid Section with Sticky Summary */}
       <Box
@@ -1071,6 +1190,20 @@ function RosterPlanningPage() {
           </Dialog.Positioner>
         </Portal>
       </Dialog.Root>
+
+      <AlgorithmInputsDialog
+        isOpen={isInputsDialogOpen}
+        onClose={() => setIsInputsDialogOpen(false)}
+        wardId={selectedWard?.wardId ?? null}
+        wardName={selectedWard?.wardName ?? null}
+        periodId={selectedPeriod?.periodId ?? null}
+        periodName={selectedPeriod?.name ?? null}
+        periodStartDate={selectedPeriod?.startDate ?? null}
+        algorithmType={algorithmType}
+        lastRunAt={lastAlgorithmRunAt}
+        lastRunMs={lastAlgorithmRunMs}
+        rosterData={rosterData}
+      />
 
       <EditHistoryDialog
         isOpen={isEditHistoryOpen}

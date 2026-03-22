@@ -110,10 +110,7 @@ def create_leave_request(
     leave = LeaveRequest(
         **leave_in.model_dump(exclude={"nurseid"}),
         nurseid=target_nurse_id,
-    )
-    leave = LeaveRequest(
-        **leave_in.model_dump(exclude={"nurseid"}),
-        nurseid=target_nurse_id,
+        status="Approved",
     )
     session.add(leave)
     session.commit()

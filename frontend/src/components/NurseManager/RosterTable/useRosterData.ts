@@ -14,6 +14,7 @@ import type {
 import { SHIFT_CODE_MAP } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
+const ALGO_TASK_STORAGE_PREFIX = "roster_algo_task";
 
 // Fetch helper with auth
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
@@ -370,6 +371,19 @@ export interface AlgorithmRosterResponse {
   rosterData: RosterRow[];
 }
 
+export interface AlgorithmInputsResponse {
+  nurses: Array<{ id: number; name: string; rank: string }>;
+  shifts: Array<Record<string, Record<string, number>>>;
+  hard_requests: Record<string, Array<[number, string]>>;
+  soft_requests: Record<string, Array<[number, string]>>;
+  prev_last_shift: Record<string, string>;
+  shift_hours: Record<string, number>;
+  non_working_shift_codes: string[];
+  milp_config: Record<string, any> | null;
+  cpu_count?: number;
+  ga_worker_count?: number;
+}
+
 type AlgorithmTaskStatus =
   | { task_id: string; status: "pending" | "started" }
   | {
@@ -397,6 +411,150 @@ type AlgorithmTaskStatus =
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export type AlgorithmTaskStorage = {
+  taskId: string;
+  startedAt: string;
+};
+
+export function getAlgorithmTaskStorageKey(wardId: number, periodId: number) {
+  return `${ALGO_TASK_STORAGE_PREFIX}:${wardId}:${periodId}`;
+}
+
+export function saveAlgorithmTask(
+  wardId: number,
+  periodId: number,
+  taskId: string,
+  startedAt: Date,
+) {
+  const key = getAlgorithmTaskStorageKey(wardId, periodId);
+  const payload: AlgorithmTaskStorage = {
+    taskId,
+    startedAt: startedAt.toISOString(),
+  };
+  localStorage.setItem(key, JSON.stringify(payload));
+}
+
+export function loadAlgorithmTask(
+  wardId: number,
+  periodId: number,
+): AlgorithmTaskStorage | null {
+  const key = getAlgorithmTaskStorageKey(wardId, periodId);
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as AlgorithmTaskStorage;
+    if (!parsed?.taskId || !parsed?.startedAt) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAlgorithmTask(wardId: number, periodId: number) {
+  const key = getAlgorithmTaskStorageKey(wardId, periodId);
+  localStorage.removeItem(key);
+}
+
+async function pollAlgorithmTask(
+  taskId: string,
+  startDate: Date,
+  onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void,
+) {
+  let algorithmResult: Extract<AlgorithmTaskStatus, { status: "complete" }> | null = null;
+
+  for (let attempt = 0; attempt < 360000; attempt += 1) {
+    const taskStatus = await fetchWithAuth(
+      `/api/v1/roster/task/${taskId}/status`,
+    ) as AlgorithmTaskStatus;
+
+    if (taskStatus.status === "in_progress") {
+      onProgress?.(
+        taskStatus.percent ?? 0,
+        taskStatus.generation ?? 0,
+        taskStatus.total ?? 0,
+        taskStatus.best_score ?? 0,
+      );
+    } else if (taskStatus.status === "pending") {
+      onProgress?.(10, 0, 0, 0);
+    } else if (taskStatus.status === "started") {
+      onProgress?.(15, 0, 0, 0);
+    } else if (taskStatus.status === "complete") {
+      algorithmResult = taskStatus;
+      break;
+    } else if (taskStatus.status === "failed") {
+      throw new Error(taskStatus.error || "Algorithm generation failed.");
+    }
+
+    await sleep(1000);
+  }
+
+  if (!algorithmResult) {
+    const timeoutError = new Error("Algorithm generation timed out.");
+    (timeoutError as { code?: string }).code = "ALGO_TIMEOUT";
+    throw timeoutError;
+  }
+
+  // Fetch shift codes for accurate duration calculation
+  let shiftDurationMap: Map<string, number> = new Map();
+  try {
+    const shiftCodes: Array<{ shiftcode: string; shiftdurationhours: number | null }> =
+      await fetchWithAuth("/api/v1/shift-requests/shift-codes");
+    shiftCodes.forEach((sc) => {
+      if (sc.shiftdurationhours != null) {
+        shiftDurationMap.set(sc.shiftcode, sc.shiftdurationhours);
+      }
+    });
+  } catch {
+    // Fall back to static SHIFT_CODE_MAP via getShiftDurationHours
+  }
+
+  const toUiShiftCode = (shiftCode: string): ShiftCode => {
+    const normalized = shiftCode.toUpperCase();
+    if (normalized === "AM") return "A";
+    if (normalized === "PM") return "P";
+    if (normalized === "NIGHT") return "N";
+    if (normalized === "OFF") return "DO";
+    return normalized as ShiftCode;
+  };
+
+  const rosterData: RosterRow[] = algorithmResult.roster.nurses.map((nurse) => {
+    const shiftsObject: Record<string, any> = {};
+
+    nurse.schedule.forEach((shiftCode, index) => {
+      const dateKey = moment(startDate).add(index, "days").format("YYYY-MM-DD");
+      const uiShiftCode = toUiShiftCode(shiftCode);
+      shiftsObject[dateKey] = {
+        nurseId: nurse.id,
+        shiftDate: dateKey,
+        shiftCode: uiShiftCode,
+        status: "Pending",
+      };
+    });
+
+    const workedHours = nurse.schedule.reduce(
+      (sum: number, shiftCode: string) =>
+        sum + getShiftDurationHours(toUiShiftCode(shiftCode), shiftDurationMap),
+      0,
+    );
+    const contractedHours = 44;
+
+    return {
+      nurseId: nurse.id,
+      name: nurse.name,
+      designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+      staffingRole: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
+      hours: { worked: workedHours, contracted: contractedHours },
+      shifts: shiftsObject,
+      hasOvertime: workedHours > contractedHours,
+      hasWarning: workedHours > contractedHours * 1.2,
+    };
+  });
+
+  return {
+    rosterData,
+    algorithm: algorithmResult.method,
+  };
+}
 
 // Hook to generate algorithm-based roster
 export function useGenerateAlgorithmRoster() {
@@ -416,6 +574,7 @@ export function useGenerateAlgorithmRoster() {
       algorithm?: "MILP" | "GA";
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
+      const startedAt = new Date();
       const queuedTask: { task_id: string; status: string } = await fetchWithAuth(
         "/api/v1/roster/generate-algorithm-async",
         {
@@ -423,102 +582,20 @@ export function useGenerateAlgorithmRoster() {
           body: JSON.stringify({ ward_id: wardId, period_id: periodId, algorithm: algorithm ?? null }),
         },
       );
+      saveAlgorithmTask(wardId, periodId, queuedTask.task_id, startedAt);
       onProgress?.(5, 0, 0, 0);
 
-      let algorithmResult: Extract<AlgorithmTaskStatus, { status: "complete" }> | null =
-        null;
-
-      for (let attempt = 0; attempt < 360000; attempt += 1) {
-        const taskStatus = await fetchWithAuth(
-          `/api/v1/roster/task/${queuedTask.task_id}/status`,
-        ) as AlgorithmTaskStatus;
-
-        if (taskStatus.status === "in_progress") {
-          onProgress?.(
-            taskStatus.percent ?? 0,
-            taskStatus.generation ?? 0,
-            taskStatus.total ?? 0,
-            taskStatus.best_score ?? 0,
-          );
-        } else if (taskStatus.status === "pending") {
-          onProgress?.(10, 0, 0, 0);
-        } else if (taskStatus.status === "started") {
-          onProgress?.(15, 0, 0, 0);
-        } else if (taskStatus.status === "complete") {
-          algorithmResult = taskStatus;
-          break;
-        } else if (taskStatus.status === "failed") {
-          throw new Error(taskStatus.error || "Algorithm generation failed.");
-        }
-
-        await sleep(1000);
-      }
-
-      if (!algorithmResult) throw new Error("Algorithm generation timed out.");
-
-      // 2. Fetch shift codes for accurate duration calculation
-      let shiftDurationMap: Map<string, number> = new Map();
       try {
-        const shiftCodes: Array<{ shiftcode: string; shiftdurationhours: number | null }> =
-          await fetchWithAuth("/api/v1/shift-requests/shift-codes");
-        shiftCodes.forEach((sc) => {
-          if (sc.shiftdurationhours != null) {
-            shiftDurationMap.set(sc.shiftcode, sc.shiftdurationhours);
-          }
-        });
-      } catch {
-        // Fall back to static SHIFT_CODE_MAP via getShiftDurationHours
+        return await pollAlgorithmTask(queuedTask.task_id, startDate, onProgress);
+      } catch (error) {
+        if ((error as { code?: string }).code !== "ALGO_TIMEOUT") {
+          clearAlgorithmTask(wardId, periodId);
+        }
+        throw error;
       }
-
-      const toUiShiftCode = (shiftCode: string): ShiftCode => {
-        const normalized = shiftCode.toUpperCase();
-        if (normalized === "AM") return "A";
-        if (normalized === "PM") return "P";
-        if (normalized === "NIGHT") return "N";
-        if (normalized === "OFF") return "DO";
-        return normalized as ShiftCode;
-      };
-
-      // 3. Transform backend format → RosterRow[]
-      const rosterData: RosterRow[] = algorithmResult.roster.nurses.map((nurse) => {
-        const shiftsObject: Record<string, any> = {};
-
-        nurse.schedule.forEach((shiftCode, index) => {
-          const dateKey = moment(startDate).add(index, "days").format("YYYY-MM-DD");
-          const uiShiftCode = toUiShiftCode(shiftCode);
-          shiftsObject[dateKey] = {
-            nurseId: nurse.id,
-            shiftDate: dateKey,
-            shiftCode: uiShiftCode,
-            status: "Pending",
-          };
-        });
-
-        const workedHours = nurse.schedule.reduce(
-          (sum: number, shiftCode: string) =>
-            sum + getShiftDurationHours(toUiShiftCode(shiftCode), shiftDurationMap),
-          0,
-        );
-        const contractedHours = 44;
-
-        return {
-          nurseId: nurse.id,
-          name: nurse.name,
-          designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
-          staffingRole: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
-          hours: { worked: workedHours, contracted: contractedHours },
-          shifts: shiftsObject,
-          hasOvertime: workedHours > contractedHours,
-          hasWarning: workedHours > contractedHours * 1.2,
-        };
-      });
-
-      return {
-        rosterData,
-        algorithm: algorithmResult.method,
-      };
     },
     onSuccess: (data, variables) => {
+      clearAlgorithmTask(variables.wardId, variables.periodId);
       // Invalidate roster queries to refetch
       queryClient.invalidateQueries({
         queryKey: ["roster", "ward", variables.wardId, variables.periodId],
@@ -528,10 +605,71 @@ export function useGenerateAlgorithmRoster() {
       // toast.success(`Roster generated using ${data.algorithm}`);
     },
     onError: (error: any) => {
+      // Leave stored task intact on timeout so the UI can resume later.
+      if ((error as { code?: string }).code !== "ALGO_TIMEOUT") {
+        // best effort cleanup, ward/period unknown here
+      }
       // Handle errors
       console.error("Algorithm generation failed:", error);
       // toast.error(error.message || "Failed to generate roster");
     },
+  });
+}
+
+export function useResumeAlgorithmTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      taskId,
+      wardId,
+      periodId,
+      startDate,
+      onProgress,
+    }: {
+      taskId: string;
+      wardId: number;
+      periodId: number;
+      startDate: Date;
+      onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
+    }) => {
+      try {
+        return await pollAlgorithmTask(taskId, startDate, onProgress);
+      } catch (error) {
+        if ((error as { code?: string }).code !== "ALGO_TIMEOUT") {
+          clearAlgorithmTask(wardId, periodId);
+        }
+        throw error;
+      }
+    },
+    onSuccess: (_data, variables) => {
+      clearAlgorithmTask(variables.wardId, variables.periodId);
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "ward", variables.wardId, variables.periodId],
+      });
+    },
+    onError: (error: any) => {
+      console.error("Algorithm resume failed:", error);
+    },
+  });
+}
+
+// Hook to fetch algorithm generation inputs (debug/inspection)
+export function useGenerationInputs(
+  wardId: number | null,
+  periodId: number | null,
+  enabled = false,
+) {
+  return useQuery<AlgorithmInputsResponse>({
+    queryKey: ["roster", "generation-inputs", wardId, periodId],
+    queryFn: async () => {
+      if (!wardId || !periodId) throw new Error("Ward ID and Period ID required");
+      return fetchWithAuth(
+        `/api/v1/roster/generation-inputs?ward_id=${wardId}&period_id=${periodId}`,
+      );
+    },
+    enabled: enabled && !!wardId && !!periodId,
+    staleTime: 30 * 1000,
   });
 }
 
