@@ -144,8 +144,7 @@ function ResetPassword() {
               </VStack>
 
               <Button
-                as={RouterLink}
-                to="/recover-password"
+                onClick={() => navigate({ to: "/recover-password" })}
                 variant="solid"
                 size="md"
                 w="100%"
