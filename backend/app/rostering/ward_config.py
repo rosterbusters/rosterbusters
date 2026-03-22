@@ -64,7 +64,7 @@ WARD_CONFIG = {
     # WARD 08
     # ------------------------------------------------------------------
     "WARD 08": {
-        "LOW_DAYS": {6,7,13,14}, #set(),
+        "LOW_DAYS": set(),  # WARD 08 has no low-coverage days (notebook v10)
 
         "RN": {
             "normal_min":   {"A": 3, "P": 3, "N": 2},

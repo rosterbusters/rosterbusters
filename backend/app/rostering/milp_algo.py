@@ -1,7 +1,17 @@
 # milp_algo.py
 # MILP nurse rostering algorithm.
-# Mirrors the logic in the original MILP.ipynb notebook while remaining
+# Mirrors the logic in scheduling_v10.ipynb while remaining
 # compatible with the algo_scheduler.py pipeline interface.
+#
+# Key changes aligned with notebook v10:
+#   1. Coverage uses hierarchical/cumulative skill-tier constraints:
+#      RN covers RN+EN+HCA demand; EN covers EN+HCA; HCA covers HCA only.
+#      (Previous version used independent per-class coverage floors.)
+#   2. Ward-wide shift priority ordering enforced each day:
+#      total_AM >= total_PM >= total_NIGHT, with tight gaps of at most 1.
+#   3. "RD" is now treated as a true off-day (alongside DO and OFF).
+#   4. Solver accepts maxTimeLimit as a valid termination condition (in
+#      addition to optimal), allowing partial solutions under time limits.
 #
 # Expected call from algo_scheduler:
 #   run_milp_pipeline(nurses, shifts, hard_requests, soft_requests, prev_last_shift, ward_name="DEFAULT")
@@ -38,7 +48,7 @@ class MILPError(Exception):
 # Day-code classifier  (identical logic to the notebook)
 # ---------------------------------------------------------------------------
 _WORK_SHIFTS     = {"A", "P", "N"}
-_OFF_CODES       = {"DO", "OFF"}
+_OFF_CODES       = {"DO", "OFF", "RD"}   # RD is a true off-day (notebook v10)
 _EQUIV_LEAVE     = {"AL"}
 
 
@@ -115,6 +125,7 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
         "PM": "P",
         "NIGHT": "N",
         "OFF": "DO",
+        "RD":  "DO",   # RD is a true off-day (notebook v10)
         "AL": "AL",
     }
 
@@ -498,31 +509,78 @@ def _solve(
     add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca,
                     annual_leave_hca, hard_requests_hca, prev_week_last2_hca)
 
-    # ---- Coverage constraints ----
-    def add_coverage(class_nurses, x_var, class_cfg):
-        normal_min = class_cfg.get("normal_min", {"A": 0, "P": 0, "N": 0})
+    # ---- Coverage constraints (hierarchical skill-tier, notebook v10) ----
+    # RN staff are qualified to cover RN + EN + HCA demand cumulatively.
+    # EN staff cover EN + HCA demand cumulatively.
+    # HCA staff cover only HCA demand.
+    def _req_for_day(class_cfg, d, s):
         low_exact  = class_cfg.get("low_exact")
-        for d in DAYS:
-            if low_exact is not None and d in LOW_DAYS:
-                for s, key in (("A","A"), ("P","P"), ("N","N")):
-                    m.cons.add(sum(x_var[n, d, s] for n in class_nurses) == low_exact[key])
-            else:
-                for s, key in (("A","A"), ("P","P"), ("N","N")):
-                    m.cons.add(sum(x_var[n, d, s] for n in class_nurses) >= normal_min[key])
+        normal_min = class_cfg.get("normal_min", {"A": 0, "P": 0, "N": 0})
+        if low_exact is not None and d in LOW_DAYS:
+            return low_exact[s]
+        return normal_min[s]
 
-    add_coverage(rn_nurses,  m.x_rn,  rn_cfg)
-    add_coverage(en_nurses,  m.x_en,  en_cfg)
-    add_coverage(hca_nurses, m.x_hca, hca_cfg)
+    for d in DAYS:
+        for s in SHIFTS:
+            r_req = _req_for_day(rn_cfg,  d, s)
+            e_req = _req_for_day(en_cfg,  d, s)
+            h_req = _req_for_day(hca_cfg, d, s)
 
+            cov_rn  = sum(m.x_rn[n,  d, s] for n in rn_nurses)
+            cov_en  = sum(m.x_en[n,  d, s] for n in en_nurses)
+            cov_hca = sum(m.x_hca[n, d, s] for n in hca_nurses)
+
+            # RN-qualified coverage must satisfy RN demand
+            m.cons.add(cov_rn >= r_req)
+            # RN + EN qualified coverage must satisfy RN + EN demand
+            m.cons.add(cov_rn + cov_en >= r_req + e_req)
+            # Total coverage must satisfy RN + EN + HCA demand
+            m.cons.add(cov_rn + cov_en + cov_hca >= r_req + e_req + h_req)
+
+    # Optional ward-wide total minimum (additional floor on top of skill coverage)
     if tot_cfg:
         for d in DAYS:
-            for s, key in (("A","A"), ("P","P"), ("N","N")):
-                total = (
-                    sum(m.x_rn[n,  d, s] for n in rn_nurses)
-                  + sum(m.x_en[n,  d, s] for n in en_nurses)
-                  + sum(m.x_hca[n, d, s] for n in hca_nurses)
-                )
-                m.cons.add(total >= tot_cfg[key])
+            total_A = (
+                sum(m.x_rn[n,  d, "A"] for n in rn_nurses)
+              + sum(m.x_en[n,  d, "A"] for n in en_nurses)
+              + sum(m.x_hca[n, d, "A"] for n in hca_nurses)
+            )
+            total_P = (
+                sum(m.x_rn[n,  d, "P"] for n in rn_nurses)
+              + sum(m.x_en[n,  d, "P"] for n in en_nurses)
+              + sum(m.x_hca[n, d, "P"] for n in hca_nurses)
+            )
+            total_N = (
+                sum(m.x_rn[n,  d, "N"] for n in rn_nurses)
+              + sum(m.x_en[n,  d, "N"] for n in en_nurses)
+              + sum(m.x_hca[n, d, "N"] for n in hca_nurses)
+            )
+            m.cons.add(total_A >= tot_cfg["A"])
+            m.cons.add(total_P >= tot_cfg["P"])
+            m.cons.add(total_N >= tot_cfg["N"])
+
+    # ---- Ward-wide shift priority ordering (notebook v10) ----
+    # AM >= PM >= NIGHT, with tight gaps of at most 1
+    for d in DAYS:
+        total_A = (
+            sum(m.x_rn[n,  d, "A"] for n in rn_nurses)
+          + sum(m.x_en[n,  d, "A"] for n in en_nurses)
+          + sum(m.x_hca[n, d, "A"] for n in hca_nurses)
+        )
+        total_P = (
+            sum(m.x_rn[n,  d, "P"] for n in rn_nurses)
+          + sum(m.x_en[n,  d, "P"] for n in en_nurses)
+          + sum(m.x_hca[n, d, "P"] for n in hca_nurses)
+        )
+        total_N = (
+            sum(m.x_rn[n,  d, "N"] for n in rn_nurses)
+          + sum(m.x_en[n,  d, "N"] for n in en_nurses)
+          + sum(m.x_hca[n, d, "N"] for n in hca_nurses)
+        )
+        m.cons.add(total_A >= total_P)
+        m.cons.add(total_P >= total_N)
+        m.cons.add(total_A - total_P <= 1)
+        m.cons.add(total_P - total_N <= 1)
 
     # ---- Shift-balance deviations (soft) ----
     def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg):
@@ -673,9 +731,10 @@ def _solve(
             f"MILP solver '{solver_name}' could not be executed: {exc}"
         ) from exc
 
-    if res.solver.termination_condition != TerminationCondition.optimal:
+    tc = res.solver.termination_condition
+    if tc not in {TerminationCondition.optimal, TerminationCondition.maxTimeLimit}:
         raise RuntimeError(
-            f"{dept_name} infeasible or not optimal: {res.solver.termination_condition}"
+            f"{dept_name} infeasible or not optimal: {tc}"
         )
 
     # ---- Build output DataFrames ----
