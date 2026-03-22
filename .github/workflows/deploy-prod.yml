@@ -50,7 +50,7 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "cat > ~/rosterbusters/.env" << 'EOF'
           ENVIRONMENT=production
-          PROJECT_NAME=RosterBusters
+          PROJECT_NAME=SACH Duby
           FRONTEND_HOST=https://${{ secrets.DOMAIN_PROD }}
           DOMAIN=${{ secrets.DOMAIN_PROD }}
           STACK_NAME=${{ secrets.STACK_NAME_PROD }}
