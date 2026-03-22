@@ -65,6 +65,8 @@ jobs:
           USERS_OPEN_REGISTRATION=True
           FIRST_SUPERUSER=${{ secrets.FIRST_SUPERUSER }}
           FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          AWS_SES_SENDER_EMAIL=${{ secrets.AWS_SES_SENDER_EMAIL }}
           SMTP_HOST=${{ secrets.SMTP_HOST }}
           SMTP_USER=${{ secrets.SMTP_USER }}
           SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
@@ -80,6 +82,9 @@ jobs:
           EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
           USERNAME=${{ secrets.TRAEFIK_USERNAME }}
           HASHED_PASSWORD=${{ secrets.TRAEFIK_HASHED_PASSWORD }}
+          GRB_WLSACCESSID=${{ secrets.GRB_WLSACCESSID }}
+          GRB_WLSSECRET=${{ secrets.GRB_WLSSECRET }}
+          GRB_LICENSEID=${{ secrets.GRB_LICENSEID }}
           EOF
 
       - name: Strip whitespace from .env

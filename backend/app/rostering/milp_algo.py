@@ -17,6 +17,7 @@
 
 import random
 import pandas as pd
+from pyomo.common.errors import ApplicationError
 from pyomo.environ import (
     ConcreteModel, Set, RangeSet, Var, Binary, NonNegativeReals,
     ConstraintList, Objective, minimize, SolverFactory, TerminationCondition,
@@ -61,6 +62,44 @@ def _classify(raw, non_working_shift_codes=None):
 
 
 # ---------------------------------------------------------------------------
+# Prev-week carry-over helpers
+# ---------------------------------------------------------------------------
+def _normalize_last2(entry):
+    """
+    Accepts None, list/tuple of 2 codes, or dict with key 'last2'.
+    Returns (code_day13, code_day14) as uppercase strings.
+    """
+    if entry is None:
+        return ("", "")
+    if isinstance(entry, dict):
+        vals = entry.get("last2", ["", ""])
+        if len(vals) < 2:
+            vals = list(vals) + [""] * (2 - len(vals))
+        return (str(vals[0]).strip().upper(), str(vals[1]).strip().upper())
+    if isinstance(entry, (list, tuple)):
+        vals = list(entry)
+        if len(vals) < 2:
+            vals = vals + [""] * (2 - len(vals))
+        return (str(vals[0]).strip().upper(), str(vals[1]).strip().upper())
+    return ("", "")
+
+
+def _carry_state_from_last2(entry):
+    """
+    Returns one of:
+      'NONE'      – no carry-in obligation
+      'NEED_DO'   – previous horizon ended N,N → day 1 must be DO
+      'NEED_N_DO' – previous horizon ended ?,N → day 1 must be N and day 2 must be DO
+    """
+    d13, d14 = _normalize_last2(entry)
+    if d13 == "N" and d14 == "N":
+        return "NEED_DO"
+    if d14 == "N":
+        return "NEED_N_DO"
+    return "NONE"
+
+
+# ---------------------------------------------------------------------------
 # Input parser
 # ---------------------------------------------------------------------------
 def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None):
@@ -97,14 +136,20 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
         for day_idx, shift_name in req_list:
             if 0 <= day_idx < num_days:
                 normalized_shift = str(shift_name).upper()
-                milp_code = _sched_to_milp.get(normalized_shift, normalized_shift if normalized_shift in non_working_shift_codes else "")
-                if milp_code:
-                    target[name][f"Day {day_idx + 1}"] = milp_code
+                # Any code not explicitly mapped is treated as a day off (DO)
+                milp_code = _sched_to_milp.get(normalized_shift, "DO")
+                target[name][f"Day {day_idx + 1}"] = milp_code
 
     return hard_rn, hard_en, hard_hca
 
 
 def _parse_prev_last_shift(nurses, prev_last_shift):
+    """
+    Convert {nurse_id: shift_name} → {class: {nurse_name: ["", "N"]}} for
+    NIGHT shifts.  The last2 format is ["day13_code", "day14_code"]; since we
+    only have a single last-shift value here we use ("", "N") to indicate the
+    final day was a night.
+    """
     prev_last_shift = prev_last_shift or {}
     _rank_class = {"A": "RN", "B": "EN", "C": "HCA"}
     id_to_nurse = {n["id"]: n for n in nurses}
@@ -119,7 +164,7 @@ def _parse_prev_last_shift(nurses, prev_last_shift):
             continue
         mapped = str(shift_name).strip().upper()
         if mapped == "NIGHT":
-            output[cls][nurse["name"]] = "N"
+            output[cls][nurse["name"]] = ["", "N"]
 
     return output
 
@@ -135,7 +180,7 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
         hard_requests_rn/en/hca             - {name: {"Day X": code}}
         soft_requests_rn/en/hca             - {name: {"Day X": code}}
         annual_leave_rn/en/hca              - always {} (AL folded into requests)
-        prev_week_roster_rn/en/hca          - {name: "N"} for previous last-day night
+        prev_week_last2_rn/en/hca          - {name: ["day13_code", "day14_code"]}
         num_days                            - int
     """
     num_days = len(shifts)
@@ -170,9 +215,9 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
         "annual_leave_rn":   {},
         "annual_leave_en":   {},
         "annual_leave_hca":  {},
-        "prev_week_roster_rn":  prev_roster["RN"],
-        "prev_week_roster_en":  prev_roster["EN"],
-        "prev_week_roster_hca": prev_roster["HCA"],
+        "prev_week_last2_rn":  prev_roster["RN"],
+        "prev_week_last2_en":  prev_roster["EN"],
+        "prev_week_last2_hca": prev_roster["HCA"],
         "num_days": num_days,
     }
 
@@ -242,11 +287,11 @@ def _solve(
     dept_name="DEFAULT",
     milp_config=None,
     hard_requests_rn=None,  soft_requests_rn=None,
-    annual_leave_rn=None,   prev_week_roster_rn=None,
+    annual_leave_rn=None,   prev_week_last2_rn=None,
     hard_requests_en=None,  soft_requests_en=None,
-    annual_leave_en=None,   prev_week_roster_en=None,
+    annual_leave_en=None,   prev_week_last2_en=None,
     hard_requests_hca=None, soft_requests_hca=None,
-    annual_leave_hca=None,  prev_week_roster_hca=None,
+    annual_leave_hca=None,  prev_week_last2_hca=None,
     non_working_shift_codes=None,
     solver_name="gurobi",
     weights=None,
@@ -272,17 +317,17 @@ def _solve(
     hard_requests_rn     = hard_requests_rn     or {}
     soft_requests_rn     = soft_requests_rn     or {}
     annual_leave_rn      = annual_leave_rn      or {}
-    prev_week_roster_rn  = prev_week_roster_rn  or {}
+    prev_week_last2_rn   = prev_week_last2_rn   or {}
 
     hard_requests_en     = hard_requests_en     or {}
     soft_requests_en     = soft_requests_en     or {}
     annual_leave_en      = annual_leave_en      or {}
-    prev_week_roster_en  = prev_week_roster_en  or {}
+    prev_week_last2_en   = prev_week_last2_en   or {}
 
     hard_requests_hca    = hard_requests_hca    or {}
     soft_requests_hca    = soft_requests_hca    or {}
     annual_leave_hca     = annual_leave_hca     or {}
-    prev_week_roster_hca = prev_week_roster_hca or {}
+    prev_week_last2_hca  = prev_week_last2_hca  or {}
     non_working_shift_codes = {
         str(code).upper() for code in (non_working_shift_codes or set())
     }
@@ -316,9 +361,13 @@ def _solve(
     m.off_en  = Var(m.N_EN,  m.D, within=Binary)
     m.off_hca = Var(m.N_HCA, m.D, within=Binary)
 
+    # Night-block start variables (N-N-DO block enforcement)
+    m.startN_rn  = Var(m.N_RN,  m.D, within=Binary)
+    m.startN_en  = Var(m.N_EN,  m.D, within=Binary)
+    m.startN_hca = Var(m.N_HCA, m.D, within=Binary)
+
     # Deviation variables for soft objectives
     for grp, nurses in (("rn", rn_nurses), ("en", en_nurses), ("hca", hca_nurses)):
-        N = Set(initialize=nurses)
         for attr in ("dev_A", "dev_P", "dev_N"):
             setattr(m, f"{attr}_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
         setattr(m, f"dev_day_{grp}",   Var(m.D, m.S, within=NonNegativeReals))
@@ -329,21 +378,48 @@ def _solve(
 
     m.cons = ConstraintList()
 
-    # ---- Nurse rules (identical to notebook) ----
-    def add_nurse_rules(class_nurses, x_var, off_var, al_dict, hard_dict):
+    # ---- Nurse rules ----
+    def add_nurse_rules(class_nurses, x_var, off_var, startN_var,
+                        al_dict, hard_dict, prev_week_last2_dict):
         for n in class_nurses:
-            al_days           = set(al_dict.get(n, []))
-            other_nonwork     = set()
+            al_days            = set(al_dict.get(n, []))
+            other_nonwork_days = set()
+            carry_state = _carry_state_from_last2(prev_week_last2_dict.get(n))
 
+            # Scan hard requests to collect AL / INHT/BL days
             for d in DAYS:
                 raw = hard_dict.get(n, {}).get(f"Day {d}", "")
                 kind, _ = _classify(raw, non_working_shift_codes)
                 if kind == "EQUIV_LEAVE":
                     al_days.add(d)
                 elif kind == "EQUIV_WORK":
-                    other_nonwork.add(d)
+                    other_nonwork_days.add(d)
 
+            # Carry-in obligations from previous horizon
+            if carry_state == "NEED_DO":
+                # Previous horizon ended N,N → day 1 must be DO
+                m.cons.add(off_var[n, 1] == 1)
+                for s in SHIFTS:
+                    m.cons.add(x_var[n, 1, s] == 0)
+
+            elif carry_state == "NEED_N_DO":
+                # Previous horizon ended ?,N → day 1 = N, day 2 = DO
+                m.cons.add(off_var[n, 1] == 0)
+                m.cons.add(x_var[n, 1, "N"] == 1)
+                m.cons.add(x_var[n, 1, "A"] == 0)
+                m.cons.add(x_var[n, 1, "P"] == 0)
+                m.cons.add(off_var[n, 2] == 1)
+                for s in SHIFTS:
+                    m.cons.add(x_var[n, 2, s] == 0)
+
+            # Daily linking
             for d in DAYS:
+                # Skip days already forced by carry-in
+                if carry_state == "NEED_DO" and d == 1:
+                    continue
+                if carry_state == "NEED_N_DO" and d in {1, 2}:
+                    continue
+
                 raw = hard_dict.get(n, {}).get(f"Day {d}", "")
                 kind, val = _classify(raw, non_working_shift_codes)
 
@@ -357,18 +433,20 @@ def _solve(
                     for s in SHIFTS:
                         m.cons.add(x_var[n, d, s] == 0)
 
-                elif kind in ("EQUIV_LEAVE", "EQUIV_WORK") or d in al_days or d in other_nonwork:
+                elif kind in ("EQUIV_LEAVE", "EQUIV_WORK") or d in al_days or d in other_nonwork_days:
+                    # AL / INHT / BL / … : non-working, NOT DO
                     m.cons.add(off_var[n, d] == 0)
                     for s in SHIFTS:
                         m.cons.add(x_var[n, d, s] == 0)
 
                 else:
+                    # Free day: exactly one of work-shifts or DO
                     m.cons.add(sum(x_var[n, d, s] for s in SHIFTS) + off_var[n, d] == 1)
 
-            # 10 equivalent shifts = work + AL + INHT/BL
+            # 10 equivalent shifts = actual shifts + AL days + INHT/BL days
             m.cons.add(
                 sum(x_var[n, d, s] for d in DAYS for s in SHIFTS)
-                + len(al_days) + len(other_nonwork)
+                + len(al_days) + len(other_nonwork_days)
                 == 10
             )
 
@@ -378,20 +456,47 @@ def _solve(
             m.cons.add(sum(x_var[n, d, s] for d in WEEK1 for s in SHIFTS) <= 5)
             m.cons.add(sum(x_var[n, d, s] for d in WEEK2 for s in SHIFTS) <= 5)
 
-            # If INHT/BL in a week → still need ≥2 DO in that week
-            if any(d in WEEK1 for d in other_nonwork):
+            # INHT/BL in a week → still need ≥2 DO in that week
+            if any(d in WEEK1 for d in other_nonwork_days):
                 m.cons.add(sum(off_var[n, d] for d in WEEK1) >= 2)
-            if any(d in WEEK2 for d in other_nonwork):
+            if any(d in WEEK2 for d in other_nonwork_days):
                 m.cons.add(sum(off_var[n, d] for d in WEEK2) >= 2)
 
-            # No A or P immediately after N
+            # ---- N-N-DO block rules ----
+            # No two block starts on consecutive days
             for d in range(1, 14):
-                m.cons.add(x_var[n, d, "N"] + x_var[n, d + 1, "A"] <= 1)
-                m.cons.add(x_var[n, d, "N"] + x_var[n, d + 1, "P"] <= 1)
+                m.cons.add(startN_var[n, d] + startN_var[n, d + 1] <= 1)
 
-    add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  annual_leave_rn,  hard_requests_rn)
-    add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  annual_leave_en,  hard_requests_en)
-    add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, annual_leave_hca, hard_requests_hca)
+            # If a block starts on day d → d and d+1 are N, d+2 is DO
+            for d in range(1, 13):
+                m.cons.add(x_var[n, d,     "N"] >= startN_var[n, d])
+                m.cons.add(x_var[n, d + 1, "N"] >= startN_var[n, d])
+                m.cons.add(off_var[n, d + 2]    >= startN_var[n, d])
+
+            # Block starting on day 13 → days 13,14 are N (next horizon handles the DO)
+            m.cons.add(x_var[n, 13, "N"] >= startN_var[n, 13])
+            m.cons.add(x_var[n, 14, "N"] >= startN_var[n, 13])
+
+            # Block starting on day 14 → day 14 is N (next horizon handles N,DO)
+            m.cons.add(x_var[n, 14, "N"] >= startN_var[n, 14])
+
+            # Every N must belong to exactly one valid block
+            if carry_state == "NEED_N_DO":
+                # Day 1 is the second N from the previous horizon's block
+                m.cons.add(x_var[n, 1, "N"] == 1)
+                m.cons.add(startN_var[n, 1] == 0)
+            else:
+                m.cons.add(x_var[n, 1, "N"] == startN_var[n, 1])
+
+            for d in range(2, 15):
+                m.cons.add(x_var[n, d, "N"] == startN_var[n, d] + startN_var[n, d - 1])
+
+    add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,
+                    annual_leave_rn,  hard_requests_rn,  prev_week_last2_rn)
+    add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,
+                    annual_leave_en,  hard_requests_en,  prev_week_last2_en)
+    add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca,
+                    annual_leave_hca, hard_requests_hca, prev_week_last2_hca)
 
     # ---- Coverage constraints ----
     def add_coverage(class_nurses, x_var, class_cfg):
@@ -460,15 +565,6 @@ def _solve(
             m.cons.add(-(y - t) <= m.dev_day_hca[d, s])
 
         # A–P balance
-        for x_var, dev_AP in (
-            (m.x_rn,  m.dev_AP_rn),
-            (m.x_en,  m.dev_AP_en),
-            (m.x_hca, m.dev_AP_hca),
-        ):
-            nurses_grp = {"x_rn": rn_nurses, "x_en": en_nurses, "x_hca": hca_nurses}
-            # resolve which nurse list belongs to this x_var
-            pass  # handled inline below
-
         A_rn = sum(m.x_rn[n, d, "A"] for n in rn_nurses)
         P_rn = sum(m.x_rn[n, d, "P"] for n in rn_nurses)
         m.cons.add(A_rn - P_rn <= m.dev_AP_rn[d]); m.cons.add(-(A_rn - P_rn) <= m.dev_AP_rn[d])
@@ -510,17 +606,20 @@ def _solve(
     add_weekend_fair(en_nurses,  m.x_en,  m.weekend_dev_en)
     add_weekend_fair(hca_nurses, m.x_hca, m.weekend_dev_hca)
 
-    # ---- Previous-week rest ----
-    def add_prev_rest(class_nurses, x_var, prev_dict, rest_viol):
+    # ---- Previous-week rest (uses last-2-days carry-over) ----
+    def add_prev_week_constraints(class_nurses, x_var, prev_week_last2_dict, rest_viol):
         for n in class_nurses:
-            if str(prev_dict.get(n, "")).strip().upper() == "N":
-                m.cons.add(rest_viol[n] >= sum(x_var[n, 1, s] for s in SHIFTS))
+            _, prev_last = _normalize_last2(prev_week_last2_dict.get(n))
+            if prev_last == "N":
+                # Previous horizon's last day was N → rest violation if day 1 is worked
+                worked_day1 = sum(x_var[n, 1, s] for s in SHIFTS)
+                m.cons.add(rest_viol[n] >= worked_day1)
             else:
                 m.cons.add(rest_viol[n] >= 0)
 
-    add_prev_rest(rn_nurses,  m.x_rn,  prev_week_roster_rn,  m.rest_violation_rn)
-    add_prev_rest(en_nurses,  m.x_en,  prev_week_roster_en,  m.rest_violation_en)
-    add_prev_rest(hca_nurses, m.x_hca, prev_week_roster_hca, m.rest_violation_hca)
+    add_prev_week_constraints(rn_nurses,  m.x_rn,  prev_week_last2_rn,  m.rest_violation_rn)
+    add_prev_week_constraints(en_nurses,  m.x_en,  prev_week_last2_en,  m.rest_violation_en)
+    add_prev_week_constraints(hca_nurses, m.x_hca, prev_week_last2_hca, m.rest_violation_hca)
 
     # ---- Objective ----
     lw = weights
@@ -552,7 +651,27 @@ def _solve(
 
     # ---- Solve ----
     solver = SolverFactory(solver_name)
-    res = solver.solve(m, tee=False)
+    if solver is None:
+        raise RuntimeError(f"MILP solver '{solver_name}' is not available")
+
+    try:
+        is_available = solver.available(False)
+    except TypeError:
+        is_available = solver.available()
+    except Exception as exc:
+        raise RuntimeError(
+            f"MILP solver '{solver_name}' availability check failed: {exc}"
+        ) from exc
+
+    if not is_available:
+        raise RuntimeError(f"MILP solver '{solver_name}' is not available")
+
+    try:
+        res = solver.solve(m, tee=False)
+    except ApplicationError as exc:
+        raise RuntimeError(
+            f"MILP solver '{solver_name}' could not be executed: {exc}"
+        ) from exc
 
     if res.solver.termination_condition != TerminationCondition.optimal:
         raise RuntimeError(
@@ -603,6 +722,7 @@ def run_milp_pipeline(
     non_working_shift_codes=None,
     ward_name="DEFAULT",
     milp_config=None,
+    progress_callback=None,
 ):
     """
     Main entry point for MILP nurse rostering.
@@ -622,6 +742,10 @@ def run_milp_pipeline(
     -------
     Standardised roster dict (same shape as GA output)
     """
+    print("[MILP] Starting MILP roster generation")
+    if progress_callback:
+        progress_callback(0, 4, 0.0)
+
     parsed = _parse_inputs(
         nurses,
         shifts,
@@ -630,6 +754,14 @@ def run_milp_pipeline(
         prev_last_shift,
         non_working_shift_codes,
     )
+
+    print(f"[MILP] Inputs parsed — {len(nurses)} nurses, {len(shifts)} days")
+    if progress_callback:
+        progress_callback(1, 4, 0.0)
+
+    print("[MILP] Building model and running solver (this may take a moment)...")
+    if progress_callback:
+        progress_callback(2, 4, 0.0)
 
     try:
         roster_rn, roster_en, roster_hca = _solve(
@@ -641,19 +773,24 @@ def run_milp_pipeline(
             hard_requests_rn=parsed["hard_requests_rn"],
             soft_requests_rn=parsed["soft_requests_rn"],
             annual_leave_rn=parsed["annual_leave_rn"],
-            prev_week_roster_rn=parsed["prev_week_roster_rn"],
+            prev_week_last2_rn=parsed["prev_week_last2_rn"],
             hard_requests_en=parsed["hard_requests_en"],
             soft_requests_en=parsed["soft_requests_en"],
             annual_leave_en=parsed["annual_leave_en"],
-            prev_week_roster_en=parsed["prev_week_roster_en"],
+            prev_week_last2_en=parsed["prev_week_last2_en"],
             hard_requests_hca=parsed["hard_requests_hca"],
             soft_requests_hca=parsed["soft_requests_hca"],
             annual_leave_hca=parsed["annual_leave_hca"],
-            prev_week_roster_hca=parsed["prev_week_roster_hca"],
+            prev_week_last2_hca=parsed["prev_week_last2_hca"],
             non_working_shift_codes=non_working_shift_codes,
         )
     except RuntimeError as e:
+        print(f"[MILP] Solver failed: {e}")
         raise MILPError(f"MILP solver failed: {e}") from e
+
+    print("[MILP] Solver finished — formatting output")
+    if progress_callback:
+        progress_callback(4, 4, 0.0)
 
     return _format_output(
         nurses, roster_rn, roster_en, roster_hca, parsed["num_days"]

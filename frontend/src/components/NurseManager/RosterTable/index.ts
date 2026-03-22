@@ -12,8 +12,10 @@ export { ManpowerEditDialog } from "./ManpowerEditDialog";
 export {
   useWards,
   useRosterPeriods,
+  useRosterPeriodWindow,
   useWardStatistics,
   useWardRoster,
+  useBulkUpsertRoster,
   useUpdateRoster,
   usePublishRoster,
   useRosterPageData,
@@ -23,6 +25,7 @@ export {
   useRosterChangelog,
   useCreateChangelog,
   useUpdateRosterComment,
+  useAutoReviewShiftRequests,
   getShiftDurationHours,
   transformRosterData,
 } from "./useRosterData";

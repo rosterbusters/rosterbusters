@@ -51,7 +51,7 @@ function Navbar() {
     return paths.some((path) => location.pathname === path);
   };
 
-  const leaveShiftPaths = ["/leave-request", "/shift-request"];
+  const leaveShiftPaths = ["/leave-request", "/request-overview"];
   const isLeaveShiftActive = isSectionActive(leaveShiftPaths);
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
@@ -165,10 +165,10 @@ function Navbar() {
                     <li>
                       <NavigationMenuLink asChild>
                         <Link
-                          to="/ward-staff/shift-request"
+                          to="/ward-staff/request-overview"
                           className={cn(
                             "w-full inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                            isActive("/shift-request")
+                            isActive("/request-overview")
                               ? "bg-[#DDE8EA] text-[#4B8798]"
                               : "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
                           )}
@@ -406,13 +406,13 @@ function Navbar() {
                       </span>
                     </Link>
                     <Link
-                      to="/ward-staff/shift-request"
+                      to="/ward-staff/request-overview"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       <span
                         className={cn(
                           "w-fit inline-flex items-center gap-1 !px-2 !py-1 !rounded-lg text-sm font-medium transition-colors",
-                          isActive("/shift-request")
+                          isActive("/request-overview")
                             ? "bg-[#DCECEF] text-[#4B8798]"
                             : "text-[#6B7280] hover:bg-[#DDE8EA]/50 hover:text-[#4A4A4A]",
                         )}

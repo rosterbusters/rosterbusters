@@ -114,10 +114,10 @@ export const NewLeaveRequest = ({
     const dateStr = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`;
 
     mutation.mutate({
+      nurseid: allowNurseOverride ? Number(selectedNurse[0]) : undefined,
       startdate: dateStr,
       enddate: dateStr,
       leavetype: leaveType[0],
-      nurseid: allowNurseOverride ? Number(selectedNurse[0]) : undefined,
     });
   };
 

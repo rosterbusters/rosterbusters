@@ -1,11 +1,22 @@
-import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from 'react-big-calendar'
+import {
+  Navigate,
+  Calendar,
+  momentLocalizer,
+  View,
+  ToolbarProps,
+  DateLocalizer,
+} from 'react-big-calendar'
 import moment from 'moment'
 import { useState, useCallback, useMemo, useEffect, ComponentType } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import CustomWeekView from './CustomRequestView'
 import { Box, Grid, Span } from '@chakra-ui/react'
 import cx from "clsx"
 import { ShiftRequestsService } from '@/client'
+import {
+  useRosterPeriodWindow,
+  useRosterPeriods,
+} from '@/components/NurseManager/RosterTable/useRosterData'
 import useAuth from '@/hooks/useAuth'
 
 const localizer = momentLocalizer(moment);
@@ -50,6 +61,13 @@ interface RequestCalendarProps {
   wardId: number | null | undefined;
 }
 
+interface FortnightViewProps {
+  date: Date;
+  localizer: DateLocalizer;
+  events: Event[];
+  [key: string]: unknown;
+}
+
 /**
  * Calendar that displays shift requests for all nurses in the ward.
  *
@@ -65,45 +83,29 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
-  // ─── Roster periods ───────────────────────────────────────────────────────
-  const { data: periods } = useQuery({
-    queryKey: ['roster-periods'],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  /**
-   * Prefer the period that contains today AND is RequestOpen.
-   * Fall back to the first RequestOpen period.
-   * This MUST match the logic in NewShiftRequest so created requests
-   * appear in the correct period on the calendar.
-   */
-  const activePeriod = useMemo(() => {
-    if (!periods) return undefined;
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    return (
-      periods.find(
-        (p) =>
-          p.status === 'RequestOpen' &&
-          p.startdate <= todayStr &&
-          p.enddate >= todayStr,
-      ) ?? periods.find((p) => p.status === 'RequestOpen')
-    );
-  }, [periods]);
+  const { data: periodWindow } = useRosterPeriodWindow();
+  const { data: periods = [] } = useRosterPeriods();
 
   // ─── Calendar navigation ──────────────────────────────────────────────────
   const [date, setDate] = useState(() => moment().startOf('isoWeek').toDate());
 
   useEffect(() => {
-    if (activePeriod?.startdate) {
-      setDate(moment(activePeriod.startdate).startOf('isoWeek').toDate());
+    if (periodWindow?.currentPeriod?.startDate) {
+      setDate(moment(periodWindow.currentPeriod.startDate).startOf('isoWeek').toDate());
     }
-  }, [activePeriod?.startdate]);
+  }, [periodWindow?.currentPeriod?.startDate]);
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
-  const periodId = activePeriod?.periodid;
+  const activePeriod = useMemo(
+    () =>
+      periods.find((period) =>
+        moment(date).isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+      ) ?? periodWindow?.currentPeriod ?? null,
+    [date, periodWindow?.currentPeriod, periods],
+  );
+
+  const periodId = activePeriod?.periodId;
 
   // ─── Shift requests for entire ward ──────────────────────────────────────
   const { data: shiftRequests } = useQuery({
@@ -148,14 +150,21 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         preferredDate: sr.preferreddate,
         shiftType: sr.preferredshifttype,
         status: sr.status,
+        reason: sr.reason,
       },
     }));
   }, [shiftRequests, nurseMap, currentNurseId]);
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {
+    const FortnightView = (props: FortnightViewProps) => (
+      <CustomWeekView {...props} wardId={wardId} />
+    );
+    FortnightView.range = CustomWeekView.range;
+    FortnightView.navigate = CustomWeekView.navigate;
+    FortnightView.title = CustomWeekView.title;
     const customViews = {
-      fortnight: CustomWeekView,
+      fortnight: FortnightView,
       week: false,
       day: false,
     };
@@ -163,7 +172,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
       views: customViews,
       defaultView: "fortnight" as View,
     };
-  }, []);
+  }, [wardId]);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>
