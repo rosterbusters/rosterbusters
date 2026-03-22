@@ -1,5 +1,5 @@
 // Shift code types matching the database ShiftCode table
-export type ShiftCode = 'D' | 'A' | 'N' | 'P' | 'DO' | 'AL' | 'MC' | 'URG' | 'N-12' | 'BCL' | 'CCL' | 'ML' | 'CL' | 'EML';
+export type ShiftCode = 'D' | 'A' | 'N' | 'P' | 'DO' | 'OFF' | 'RD' | 'AL' | 'HOL' | 'MC' | 'URG' | 'N-12' | 'BCL' | 'CCL' | 'ML' | 'CL' | 'UPL' | 'PH' | 'EML';
 
 export interface ShiftCodeInfo {
   code: ShiftCode;
@@ -18,13 +18,18 @@ export const SHIFT_CODE_MAP: Record<ShiftCode, ShiftCodeInfo> = {
   'N-12': { code: 'N-12', description: 'Night 12h', isWorking: true, defaultStart: '19:00', defaultEnd: '07:00', durationHours: 12 },
   'P': { code: 'P', description: 'PM Shift', isWorking: true, defaultStart: '13:00', defaultEnd: '21:00', durationHours: 8 },
   'DO': { code: 'DO', description: 'Day Off', isWorking: false },
+  'OFF': { code: 'OFF', description: 'Day Off', isWorking: false },
+  'RD': { code: 'RD', description: 'Rest Day', isWorking: false },
   'AL': { code: 'AL', description: 'Annual Leave', isWorking: false },
+  'HOL': { code: 'HOL', description: 'Public Holiday Leave', isWorking: false },
   'MC': { code: 'MC', description: 'Medical Certificate', isWorking: false },
   'URG': { code: 'URG', description: 'Urgent Leave', isWorking: false },
   'BCL': { code: 'BCL', description: 'Birthday Leave', isWorking: false },
   'CCL': { code: 'CCL', description: 'Childcare Leave', isWorking: false },
   'ML': { code: 'ML', description: 'Marriage Leave', isWorking: false },
   'CL': { code: 'CL', description: 'Compassionate Leave', isWorking: false },
+  'UPL': { code: 'UPL', description: 'Unpaid Leave', isWorking: false },
+  'PH': { code: 'PH', description: 'Public Holiday', isWorking: false },
   'EML': { code: 'EML', description: 'Extended Marriage Leave', isWorking: false },
 };
 
@@ -36,13 +41,18 @@ export const SHIFT_COLOR_MAP: Record<ShiftCode, string> = {
   'N-12': '#164e63', // cyan.900 - Night 12h
   'P': '#0e7490',    // cyan.700 - PM
   'DO': '#a3a3a3',   // neutral.400 - Day Off
+  'OFF': '#a3a3a3',  // neutral.400 - Day Off (algo output)
+  'RD': '#d1d5db',   // gray.300 - Rest Day
   'AL': '#94a3b8',   // slate.400 - Annual Leave
+  'HOL': '#86efac',  // green.300 - Public Holiday Leave
   'MC': '#fbbf24',   // amber.400 - Medical Certificate
   'URG': '#f87171',  // red.400 - Urgent Leave
   'BCL': '#a78bfa',  // violet.400 - Birthday Leave
   'CCL': '#34d399',  // emerald.400 - Childcare Leave
   'ML': '#f472b6',   // pink.400 - Marriage Leave
   'CL': '#60a5fa',   // blue.400 - Compassionate Leave
+  'UPL': '#fdba74',  // orange.300 - Unpaid Leave
+  'PH': '#6ee7b7',   // emerald.300 - Public Holiday
   'EML': '#c084fc',  // purple.400 - Extended Marriage Leave
 };
 

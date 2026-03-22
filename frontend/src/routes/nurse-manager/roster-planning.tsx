@@ -33,6 +33,8 @@ import {
   useRosterPeriods,
   useRosterPeriodWindow,
   useWardStatistics,
+  useWardRoster,
+  transformRosterData,
   useBulkUpsertRoster,
   usePublishRoster,
   useRosterExport,
@@ -210,6 +212,10 @@ function RosterPlanningPage() {
   const { data: periods = [] } = useRosterPeriods();
   const { data: periodWindow } = useRosterPeriodWindow();
   const { data: wardStatistics } = useWardStatistics(selectedWard?.wardId ?? null);
+  const { data: savedRoster } = useWardRoster(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
   const { data: changelogEntries = [] } = useRosterChangelog(
     selectedWard?.wardId ?? null,
     selectedPeriod?.periodId ?? null,
@@ -375,6 +381,8 @@ function RosterPlanningPage() {
   useEffect(() => {
     if (isAlgorithmGenerated) return;
     const nurses = wardStatistics?.nurses;
+    // If we have a saved roster from the DB, it will be loaded by the effect below
+    if (savedRoster?.roster_entries?.length) return;
     if (nurses && nurses.length > 0) {
       setRosterData(
         nurses.map((nurse) => ({
@@ -391,7 +399,18 @@ function RosterPlanningPage() {
     } else {
       setRosterData([]);
     }
-  }, [wardStatistics, isAlgorithmGenerated]);
+  }, [wardStatistics, isAlgorithmGenerated, savedRoster?.roster_entries?.length]);
+
+  // Load saved DB roster when available (e.g. after page refresh or ward/period switch)
+  useEffect(() => {
+    if (isAlgorithmGenerated) return;
+    const nurses = wardStatistics?.nurses;
+    const entries = savedRoster?.roster_entries;
+    if (!nurses?.length || !entries?.length) return;
+    const rows = transformRosterData(nurses, entries, shiftDurationMap);
+    setRosterData(rows);
+    setIsAlgorithmGenerated(true);
+  }, [savedRoster?.roster_entries, wardStatistics?.nurses, isAlgorithmGenerated, shiftDurationMap]);
 
   // Derive roster data with hours calculated from the visible date window only
   const displayRosterData = useMemo(() => {
