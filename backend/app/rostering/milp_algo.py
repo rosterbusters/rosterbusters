@@ -55,7 +55,7 @@ class MILPError(Exception):
 # ---------------------------------------------------------------------------
 _WORK_SHIFTS     = {"A", "P", "N"}
 _OFF_CODES       = {"DO", "OFF", "RD"}   # RD is a true off-day (notebook v10)
-_EQUIV_LEAVE     = {"AL"}
+_EQUIV_LEAVE     = {"AL", "HOL", "MC", "URG", "CL", "UPL", "PH", "BCL", "CCL", "ML", "EML"}
 
 
 def _classify(raw, non_working_shift_codes=None):
@@ -153,8 +153,9 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
         for day_idx, shift_name in req_list:
             if 0 <= day_idx < num_days:
                 normalized_shift = str(shift_name).upper()
-                # Any code not explicitly mapped is treated as a day off (DO)
-                milp_code = _sched_to_milp.get(normalized_shift, "DO")
+                # Unknown codes (HOL, MC, URG, CL, …) are preserved as-is so
+                # the original leave type flows through to the roster output.
+                milp_code = _sched_to_milp.get(normalized_shift, normalized_shift)
                 target[name][f"Day {day_idx + 1}"] = milp_code
 
     return hard_rn, hard_en, hard_hca
@@ -242,6 +243,21 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
 # ---------------------------------------------------------------------------
 # Output formatter
 # ---------------------------------------------------------------------------
+def _apply_do_rd_pattern(schedule: list) -> list:
+    """Relabel every 2nd DO (OFF) as RD across the schedule in day order.
+    Produces the DO → RD → DO → RD alternating rest-day pattern.
+    Leave days and working shifts are left unchanged.
+    """
+    result = list(schedule)
+    off_count = 0
+    for i, code in enumerate(result):
+        if code == "OFF":
+            off_count += 1
+            if off_count % 2 == 0:
+                result[i] = "RD"
+    return result
+
+
 def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days, solver_status="optimal"):
     """Convert DataFrames → standardised JSON matching GA output shape."""
     _milp_to_sched = {
@@ -249,7 +265,7 @@ def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days, solver_st
         "P":    "PM",
         "N":    "NIGHT",
         "DO":   "OFF",
-        "AL":   "LEAVE",
+        "AL":   "AL",
         "INHT": "TRAINING",
         "BL":   "STUDY",
     }
@@ -269,12 +285,14 @@ def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days, solver_st
                 code = str(roster_df.loc[nurse_name, f"Day {day}"])
                 schedule.append(_milp_to_sched.get(code, code))
 
+            schedule = _apply_do_rd_pattern(schedule)
+
             stats = {
                 "total_shifts": sum(1 for s in schedule if s in ("AM", "PM", "NIGHT")),
                 "am_shifts":    schedule.count("AM"),
                 "pm_shifts":    schedule.count("PM"),
                 "night_shifts": schedule.count("NIGHT"),
-                "days_off":     schedule.count("OFF"),
+                "days_off":     schedule.count("OFF") + schedule.count("RD"),
             }
             output_nurses.append({
                 "id":       nurse_info["id"],
@@ -479,11 +497,12 @@ def _solve(
             m.cons.add(sum(x_var[n, d, s] for d in WEEK1 for s in SHIFTS) <= 5)
             m.cons.add(sum(x_var[n, d, s] for d in WEEK2 for s in SHIFTS) <= 5)
 
-            # INHT/BL in a week → still need ≥2 DO in that week
-            if any(d in WEEK1 for d in other_nonwork_days):
-                m.cons.add(sum(off_var[n, d] for d in WEEK1) >= 2)
-            if any(d in WEEK2 for d in other_nonwork_days):
-                m.cons.add(sum(off_var[n, d] for d in WEEK2) >= 2)
+            # ≤2 DO per week unless the nurse has leave that week (AL/INHT/BL),
+            # in which case the cap is relaxed to allow flexibility.
+            if not any(d in WEEK1 for d in al_days | other_nonwork_days):
+                m.cons.add(sum(off_var[n, d] for d in WEEK1) <= 2)
+            if not any(d in WEEK2 for d in al_days | other_nonwork_days):
+                m.cons.add(sum(off_var[n, d] for d in WEEK2) <= 2)
 
             # ---- N-N-DO block rules ----
             # No two block starts on consecutive days

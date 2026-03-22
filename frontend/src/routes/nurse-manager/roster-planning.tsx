@@ -241,6 +241,11 @@ function RosterPlanningPage() {
     [wards],
   );
 
+  const getDefaultWard = useCallback((availableWards: Ward[]) => {
+    if (availableWards.length === 0) return null;
+    return [...availableWards].sort((a, b) => a.wardId - b.wardId)[0] ?? null;
+  }, []);
+
   // Generate mock periods if API periods are empty
   const displayPeriods = useMemo(() => {
     if (periods.length > 0) return periods;
@@ -304,17 +309,25 @@ function RosterPlanningPage() {
   useEffect(() => {
     if (displayWards.length === 0) return;
 
+    const designatedWard = user?.wardid
+      ? displayWards.find((ward) => ward.wardId === user.wardid) ?? null
+      : null;
     const selectedWardStillAvailable = selectedWard
       ? displayWards.some((ward) => ward.wardId === selectedWard.wardId)
       : false;
 
-    if (!selectedWardStillAvailable) {
-      const designatedWard = user?.wardid
-        ? displayWards.find((ward) => ward.wardId === user.wardid) ?? null
-        : null;
-      setSelectedWard(designatedWard ?? displayWards[0]);
+    if (designatedWard && selectedWard?.wardId !== designatedWard.wardId) {
+      setSelectedWard(designatedWard);
+      return;
     }
-  }, [displayWards, selectedWard, user?.wardid]);
+
+    if (!selectedWardStillAvailable) {
+      const fallbackWard = getDefaultWard(displayWards);
+      if (fallbackWard) {
+        setSelectedWard(fallbackWard);
+      }
+    }
+  }, [displayWards, getDefaultWard, selectedWard, user?.wardid]);
 
   // Reset guidelines and per-date overrides when the selected ward changes
   useEffect(() => {

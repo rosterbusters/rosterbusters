@@ -946,8 +946,8 @@ def _load_leave_requests(
     nurse_ids: set[int],
     num_days: int,
 ) -> dict[int, list[tuple[int, str]]]:
-    """Return approved leave days as hard AL entries.
-    Format: nurse_id -> [(day_idx, "AL"), ...]
+    """Return approved leave days as hard entries keyed by leave type.
+    Format: nurse_id -> [(day_idx, leavetype), ...]
     """
     statement = (
         select(LeaveRequest)
@@ -963,12 +963,13 @@ def _load_leave_requests(
     for leave in leaves:
         if leave.nurseid not in nurse_ids:
             continue
+        leave_code = str(leave.leavetype).upper()
         current = max(leave.startdate, period.startdate)
         end = min(leave.enddate, period.enddate)
         while current <= end:
             day_idx = (current - period.startdate).days
             if 0 <= day_idx < num_days:
-                result.setdefault(leave.nurseid, []).append((day_idx, "AL"))
+                result.setdefault(leave.nurseid, []).append((day_idx, leave_code))
             current += timedelta(days=1)
     return result
 

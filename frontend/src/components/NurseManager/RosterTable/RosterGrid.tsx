@@ -671,7 +671,10 @@ export function RosterGrid({
       {/* Shift Cells */}
       {dayColumns.map((col) => {
         const dateKey = moment(col.date).format("YYYY-MM-DD");
-        const shift = row.shifts[dateKey] || null;
+        const rawShift = row.shifts[dateKey] || null;
+        const shift = rawShift?.shiftCode === "LEAVE"
+          ? { ...rawShift, shiftCode: "AL" as const }
+          : rawShift;
 
         return (
           <Table.Cell

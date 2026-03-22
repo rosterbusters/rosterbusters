@@ -21,6 +21,40 @@ SHIFT_CODE_TO_DB = {
     "N": "N",
 }
 
+def _save_roster_result(
+    db: Session,
+    ward_id: int,
+    period_id: int,
+    roster: dict,
+    assignment_method: str,
+) -> int:
+    period = db.get(RosterPeriod, period_id)
+    if not period:
+        raise ValueError(f"Period {period_id} not found")
+
+    db.exec(
+        delete(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    )
+
+    start_date = period.startdate
+    for nurse_result in roster.get("nurses", []):
+        for day_idx, shift_label in enumerate(nurse_result["schedule"]):
+            db.add(Roster(
+                nurseid=nurse_result["id"],
+                wardid=ward_id,
+                periodid=period_id,
+                shiftdate=start_date + timedelta(days=day_idx),
+                shiftcode=SHIFT_CODE_TO_DB.get(shift_label, shift_label),
+                status="Pending",
+                assignmentmethod=assignment_method,
+                assignedby=None,
+            ))
+    db.commit()
+    return len(roster.get("nurses", []))
+
 
 @celery_app.task(bind=True, name="tasks.generate_roster", max_retries=2)
 def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | None = None):
@@ -58,6 +92,9 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             algorithm=algorithm,
         )
 
+        with Session(engine) as db:
+            _save_roster_result(db, ward_id, period_id, result["roster"], result["method"])
+
         return {
             "task_id": self.request.id,
             "status": "complete",
@@ -78,10 +115,6 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
     """
     try:
         with Session(engine) as db:
-            period = db.get(RosterPeriod, period_id)
-            if not period:
-                raise ValueError(f"Period {period_id} not found")
-
             from app.api.routes.run_rostering import _load_generation_inputs
 
             generation_inputs = _load_generation_inputs(db, ward_id, period_id)
@@ -109,33 +142,19 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 milp_config=generation_inputs["milp_config"],
             )
 
-            db.exec(
-                delete(Roster).where(
-                    Roster.wardid == ward_id,
-                    Roster.periodid == period_id,
-                )
+            nurses_saved = _save_roster_result(
+                db,
+                ward_id,
+                period_id,
+                result["roster"],
+                result["method"],
             )
-
-            start_date = period.startdate
-            for nurse_result in result["roster"]["nurses"]:
-                for day_idx, shift_label in enumerate(nurse_result["schedule"]):
-                    db.add(Roster(
-                        nurseid=nurse_result["id"],
-                        wardid=ward_id,
-                        periodid=period_id,
-                        shiftdate=start_date + timedelta(days=day_idx),
-                        shiftcode=SHIFT_CODE_TO_DB.get(shift_label, shift_label),
-                        status="Pending",
-                        assignmentmethod="Auto",
-                        assignedby=None,
-                    ))
-            db.commit()
 
             return {
                 "task_id": self.request.id,
                 "status": "complete",
                 "method": result["method"],
-                "nurses_saved": len(result["roster"]["nurses"]),
+                "nurses_saved": nurses_saved,
             }
 
     except Exception as exc:
