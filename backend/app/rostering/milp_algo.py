@@ -33,7 +33,13 @@ from pyomo.environ import (
     ConstraintList, Objective, minimize, SolverFactory, TerminationCondition,
 )
 
-from app.rostering.ward_config import WARD_CONFIG
+_DEFAULT_MILP_CONFIG = {
+    "LOW_DAYS": {6, 7, 13, 14},
+    "RN":  {"normal_min": {"A": 2, "P": 2, "N": 1}, "low_exact": None, "day_target": {"A": 4, "P": 3, "N": 2}, "shift_target": {"A": 5, "P": 3, "N": 2}},
+    "EN":  {"normal_min": {"A": 3, "P": 2, "N": 1}, "low_exact": None, "day_target": {"A": 4, "P": 3, "N": 2}, "shift_target": {"A": 5, "P": 3, "N": 2}},
+    "HCA": {"normal_min": {"A": 1, "P": 0, "N": 0}, "low_exact": None, "day_target": {"A": 1, "P": 1, "N": 1}, "shift_target": {"A": 5, "P": 3, "N": 2}},
+    "TOTAL_MIN": {"A": 6, "P": 6, "N": 3},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +242,7 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
 # ---------------------------------------------------------------------------
 # Output formatter
 # ---------------------------------------------------------------------------
-def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days):
+def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days, solver_status="optimal"):
     """Convert DataFrames → standardised JSON matching GA output shape."""
     _milp_to_sched = {
         "A":    "AM",
@@ -285,7 +291,7 @@ def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days):
             "num_days":    num_days,
             "num_nurses":  len(output_nurses),
             "algorithm":   "MILP",
-            "solver_status": "optimal",
+            "solver_status": solver_status,
         },
     }
 
@@ -306,13 +312,10 @@ def _solve(
     non_working_shift_codes=None,
     solver_name="gurobi",
     weights=None,
+    seed=None,
+    time_limit=120,
 ):
-    if milp_config is not None:
-        cfg = milp_config
-    else:
-        if dept_name not in WARD_CONFIG:
-            dept_name = "DEFAULT"
-        cfg = WARD_CONFIG[dept_name]
+    cfg = milp_config if milp_config is not None else _DEFAULT_MILP_CONFIG
     LOW_DAYS = set(cfg.get("LOW_DAYS", set()))
     rn_cfg   = cfg["RN"]
     en_cfg   = cfg["EN"]
@@ -343,13 +346,18 @@ def _solve(
         str(code).upper() for code in (non_working_shift_codes or set())
     }
 
-    rn_nurses  = list(rn_list);  random.shuffle(rn_nurses)
-    en_nurses  = list(en_list);  random.shuffle(en_nurses)
-    hca_nurses = list(hca_list); random.shuffle(hca_nurses)
+    if seed is None:
+        seed = random.randint(0, 2**31)
+    print(f"[MILP] Nurse ordering seed: {seed}")
+    rng = random.Random(seed)
+    rn_nurses  = list(rn_list);  rng.shuffle(rn_nurses)
+    en_nurses  = list(en_list);  rng.shuffle(en_nurses)
+    hca_nurses = list(hca_list); rng.shuffle(hca_nurses)
 
     _default_w = {
         "dev_shift": 1.0, "dev_day": 0.5, "AP": 3.0,
         "pref": 100.0, "weekend": 3.0, "rest": 25.0,
+        "eq": 500.0, "cov": 1000.0,
     }
     if weights is None:
         weights = _default_w
@@ -386,12 +394,15 @@ def _solve(
         setattr(m, f"weekend_dev_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
         setattr(m, f"rest_violation_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=Binary))
         setattr(m, f"pref_violate_{grp}",   Var(getattr(m, f"N_{grp.upper()}"), m.D, within=Binary))
+        setattr(m, f"eq_under_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
+        setattr(m, f"eq_over_{grp}",  Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
 
     m.cons = ConstraintList()
 
     # ---- Nurse rules ----
     def add_nurse_rules(class_nurses, x_var, off_var, startN_var,
-                        al_dict, hard_dict, prev_week_last2_dict):
+                        al_dict, hard_dict, prev_week_last2_dict,
+                        eq_under, eq_over):
         for n in class_nurses:
             al_days            = set(al_dict.get(n, []))
             other_nonwork_days = set()
@@ -454,10 +465,11 @@ def _solve(
                     # Free day: exactly one of work-shifts or DO
                     m.cons.add(sum(x_var[n, d, s] for s in SHIFTS) + off_var[n, d] == 1)
 
-            # 10 equivalent shifts = actual shifts + AL days + INHT/BL days
+            # 10 equivalent shifts = actual shifts + AL days + INHT/BL days (softened)
             m.cons.add(
                 sum(x_var[n, d, s] for d in DAYS for s in SHIFTS)
                 + len(al_days) + len(other_nonwork_days)
+                + eq_under[n] - eq_over[n]
                 == 10
             )
 
@@ -503,11 +515,14 @@ def _solve(
                 m.cons.add(x_var[n, d, "N"] == startN_var[n, d] + startN_var[n, d - 1])
 
     add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,
-                    annual_leave_rn,  hard_requests_rn,  prev_week_last2_rn)
+                    annual_leave_rn,  hard_requests_rn,  prev_week_last2_rn,
+                    m.eq_under_rn, m.eq_over_rn)
     add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,
-                    annual_leave_en,  hard_requests_en,  prev_week_last2_en)
+                    annual_leave_en,  hard_requests_en,  prev_week_last2_en,
+                    m.eq_under_en, m.eq_over_en)
     add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca,
-                    annual_leave_hca, hard_requests_hca, prev_week_last2_hca)
+                    annual_leave_hca, hard_requests_hca, prev_week_last2_hca,
+                    m.eq_under_hca, m.eq_over_hca)
 
     # ---- Coverage constraints (hierarchical skill-tier, notebook v10) ----
     # RN staff are qualified to cover RN + EN + HCA demand cumulatively.
@@ -520,63 +535,46 @@ def _solve(
             return low_exact[s]
         return normal_min[s]
 
+    m.cov_slack_rn    = Var(m.D, m.S, within=NonNegativeReals)
+    m.cov_slack_en    = Var(m.D, m.S, within=NonNegativeReals)
+    m.cov_slack_total = Var(m.D, m.S, within=NonNegativeReals)
+
+    # Pre-compute per-(day, shift) coverage sums once and reuse across all
+    # constraint sections to avoid rebuilding identical Pyomo expressions.
+    _cov_rn  = {(d, s): sum(m.x_rn[n,  d, s] for n in rn_nurses)  for d in DAYS for s in SHIFTS}
+    _cov_en  = {(d, s): sum(m.x_en[n,  d, s] for n in en_nurses)  for d in DAYS for s in SHIFTS}
+    _cov_hca = {(d, s): sum(m.x_hca[n, d, s] for n in hca_nurses) for d in DAYS for s in SHIFTS}
+
     for d in DAYS:
         for s in SHIFTS:
             r_req = _req_for_day(rn_cfg,  d, s)
             e_req = _req_for_day(en_cfg,  d, s)
             h_req = _req_for_day(hca_cfg, d, s)
 
-            cov_rn  = sum(m.x_rn[n,  d, s] for n in rn_nurses)
-            cov_en  = sum(m.x_en[n,  d, s] for n in en_nurses)
-            cov_hca = sum(m.x_hca[n, d, s] for n in hca_nurses)
+            c_rn  = _cov_rn[(d, s)]
+            c_en  = _cov_en[(d, s)]
+            c_hca = _cov_hca[(d, s)]
 
-            # RN-qualified coverage must satisfy RN demand
-            m.cons.add(cov_rn >= r_req)
-            # RN + EN qualified coverage must satisfy RN + EN demand
-            m.cons.add(cov_rn + cov_en >= r_req + e_req)
-            # Total coverage must satisfy RN + EN + HCA demand
-            m.cons.add(cov_rn + cov_en + cov_hca >= r_req + e_req + h_req)
+            # RN-qualified coverage must satisfy RN demand (softened)
+            m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
+            # RN + EN qualified coverage must satisfy RN + EN demand (softened)
+            m.cons.add(c_rn + c_en + m.cov_slack_en[d, s] >= r_req + e_req)
+            # Total coverage must satisfy RN + EN + HCA demand (softened)
+            m.cons.add(c_rn + c_en + c_hca + m.cov_slack_total[d, s] >= r_req + e_req + h_req)
 
-    # Optional ward-wide total minimum (additional floor on top of skill coverage)
-    if tot_cfg:
-        for d in DAYS:
-            total_A = (
-                sum(m.x_rn[n,  d, "A"] for n in rn_nurses)
-              + sum(m.x_en[n,  d, "A"] for n in en_nurses)
-              + sum(m.x_hca[n, d, "A"] for n in hca_nurses)
-            )
-            total_P = (
-                sum(m.x_rn[n,  d, "P"] for n in rn_nurses)
-              + sum(m.x_en[n,  d, "P"] for n in en_nurses)
-              + sum(m.x_hca[n, d, "P"] for n in hca_nurses)
-            )
-            total_N = (
-                sum(m.x_rn[n,  d, "N"] for n in rn_nurses)
-              + sum(m.x_en[n,  d, "N"] for n in en_nurses)
-              + sum(m.x_hca[n, d, "N"] for n in hca_nurses)
-            )
+    # ---- Ward-wide total minimum + shift priority ordering (notebook v10) ----
+    # AM >= PM >= NIGHT, with tight gaps of at most 1
+    for d in DAYS:
+        total_A = _cov_rn[(d, "A")] + _cov_en[(d, "A")] + _cov_hca[(d, "A")]
+        total_P = _cov_rn[(d, "P")] + _cov_en[(d, "P")] + _cov_hca[(d, "P")]
+        total_N = _cov_rn[(d, "N")] + _cov_en[(d, "N")] + _cov_hca[(d, "N")]
+
+        # Optional ward-wide total minimum (additional floor on top of skill coverage)
+        if tot_cfg:
             m.cons.add(total_A >= tot_cfg["A"])
             m.cons.add(total_P >= tot_cfg["P"])
             m.cons.add(total_N >= tot_cfg["N"])
 
-    # ---- Ward-wide shift priority ordering (notebook v10) ----
-    # AM >= PM >= NIGHT, with tight gaps of at most 1
-    for d in DAYS:
-        total_A = (
-            sum(m.x_rn[n,  d, "A"] for n in rn_nurses)
-          + sum(m.x_en[n,  d, "A"] for n in en_nurses)
-          + sum(m.x_hca[n, d, "A"] for n in hca_nurses)
-        )
-        total_P = (
-            sum(m.x_rn[n,  d, "P"] for n in rn_nurses)
-          + sum(m.x_en[n,  d, "P"] for n in en_nurses)
-          + sum(m.x_hca[n, d, "P"] for n in hca_nurses)
-        )
-        total_N = (
-            sum(m.x_rn[n,  d, "N"] for n in rn_nurses)
-          + sum(m.x_en[n,  d, "N"] for n in en_nurses)
-          + sum(m.x_hca[n, d, "N"] for n in hca_nurses)
-        )
         m.cons.add(total_A >= total_P)
         m.cons.add(total_P >= total_N)
         m.cons.add(total_A - total_P <= 1)
@@ -607,32 +605,32 @@ def _solve(
         # RN smoothing (skip LOW_DAYS when low_exact active)
         if not (rn_cfg.get("low_exact") is not None and d in LOW_DAYS):
             for s in SHIFTS:
-                y = sum(m.x_rn[n, d, s] for n in rn_nurses)
+                y = _cov_rn[(d, s)]
                 t = dt_rn[s]
                 m.cons.add(y - t <= m.dev_day_rn[d, s])
                 m.cons.add(-(y - t) <= m.dev_day_rn[d, s])
 
         for s in SHIFTS:
-            y = sum(m.x_en[n, d, s] for n in en_nurses); t = dt_en[s]
+            y = _cov_en[(d, s)]; t = dt_en[s]
             m.cons.add(y - t <= m.dev_day_en[d, s])
             m.cons.add(-(y - t) <= m.dev_day_en[d, s])
 
         for s in SHIFTS:
-            y = sum(m.x_hca[n, d, s] for n in hca_nurses); t = dt_hca[s]
+            y = _cov_hca[(d, s)]; t = dt_hca[s]
             m.cons.add(y - t <= m.dev_day_hca[d, s])
             m.cons.add(-(y - t) <= m.dev_day_hca[d, s])
 
         # A–P balance
-        A_rn = sum(m.x_rn[n, d, "A"] for n in rn_nurses)
-        P_rn = sum(m.x_rn[n, d, "P"] for n in rn_nurses)
+        A_rn = _cov_rn[(d, "A")]
+        P_rn = _cov_rn[(d, "P")]
         m.cons.add(A_rn - P_rn <= m.dev_AP_rn[d]); m.cons.add(-(A_rn - P_rn) <= m.dev_AP_rn[d])
 
-        A_en = sum(m.x_en[n, d, "A"] for n in en_nurses)
-        P_en = sum(m.x_en[n, d, "P"] for n in en_nurses)
+        A_en = _cov_en[(d, "A")]
+        P_en = _cov_en[(d, "P")]
         m.cons.add(A_en - P_en <= m.dev_AP_en[d]); m.cons.add(-(A_en - P_en) <= m.dev_AP_en[d])
 
-        A_h = sum(m.x_hca[n, d, "A"] for n in hca_nurses)
-        P_h = sum(m.x_hca[n, d, "P"] for n in hca_nurses)
+        A_h = _cov_hca[(d, "A")]
+        P_h = _cov_hca[(d, "P")]
         m.cons.add(A_h - P_h <= m.dev_AP_hca[d]); m.cons.add(-(A_h - P_h) <= m.dev_AP_hca[d])
 
     # ---- Soft preferences ----
@@ -703,6 +701,17 @@ def _solve(
           + lw["pref"]      * sum(m.pref_violate_hca[n, d] for n in hca_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_hca[n] for n in hca_nurses)
           + lw["rest"]      * sum(m.rest_violation_hca[n] for n in hca_nurses)
+
+          + lw["eq"]        * (
+                sum(m.eq_under_rn[n] + m.eq_over_rn[n] for n in rn_nurses)
+              + sum(m.eq_under_en[n] + m.eq_over_en[n] for n in en_nurses)
+              + sum(m.eq_under_hca[n] + m.eq_over_hca[n] for n in hca_nurses)
+            )
+          + lw["cov"]       * (
+                sum(m.cov_slack_rn[d, s] for d in DAYS for s in SHIFTS)
+              + sum(m.cov_slack_en[d, s] for d in DAYS for s in SHIFTS)
+              + sum(m.cov_slack_total[d, s] for d in DAYS for s in SHIFTS)
+            )
         ),
         sense=minimize,
     )
@@ -724,6 +733,15 @@ def _solve(
     if not is_available:
         raise RuntimeError(f"MILP solver '{solver_name}' is not available")
 
+    # Gurobi uses "TimeLimit"; CBC uses "seconds". Adjust if using a different solver.
+    if time_limit is not None:
+        solver.options["TimeLimit"] = time_limit
+    if solver_name == "gurobi":
+        solver.options["MIPGap"]   = 0.02  # 2% gap — sufficient for nurse schedules
+        solver.options["Threads"]  = 0     # 0 = use all available cores
+        solver.options["Method"]   = 2     # Barrier LP relaxation (faster for large MIPs)
+        solver.options["Presolve"] = 2     # Aggressive presolve
+
     try:
         res = solver.solve(m, tee=False)
     except ApplicationError as exc:
@@ -736,6 +754,8 @@ def _solve(
         raise RuntimeError(
             f"{dept_name} infeasible or not optimal: {tc}"
         )
+    if tc == TerminationCondition.maxTimeLimit:
+        print(f"[MILP] Warning: {dept_name} hit time limit ({time_limit}s) — solution may be suboptimal")
 
     # ---- Build output DataFrames ----
     days_cols = [f"Day {d}" for d in DAYS]
@@ -766,7 +786,7 @@ def _solve(
     roster_hca = fill_roster(roster_hca, hca_nurses, m.x_hca, m.off_hca, hard_requests_hca)
 
     print(f"{dept_name} roster built: RN={len(rn_nurses)}, EN={len(en_nurses)}, HCA={len(hca_nurses)}")
-    return roster_rn, roster_en, roster_hca
+    return roster_rn, roster_en, roster_hca, tc
 
 
 # ---------------------------------------------------------------------------
@@ -782,6 +802,8 @@ def run_milp_pipeline(
     ward_name="DEFAULT",
     milp_config=None,
     progress_callback=None,
+    seed=None,
+    time_limit=None,
 ):
     """
     Main entry point for MILP nurse rostering.
@@ -801,6 +823,8 @@ def run_milp_pipeline(
     -------
     Standardised roster dict (same shape as GA output)
     """
+    if time_limit is None:
+        time_limit = max(60, min(300, len(nurses) * 5))
     print("[MILP] Starting MILP roster generation")
     if progress_callback:
         progress_callback(0, 4, 0.0)
@@ -823,7 +847,7 @@ def run_milp_pipeline(
         progress_callback(2, 4, 0.0)
 
     try:
-        roster_rn, roster_en, roster_hca = _solve(
+        roster_rn, roster_en, roster_hca, tc = _solve(
             rn_list=parsed["rn_list"],
             en_list=parsed["en_list"],
             hca_list=parsed["hca_list"],
@@ -842,6 +866,8 @@ def run_milp_pipeline(
             annual_leave_hca=parsed["annual_leave_hca"],
             prev_week_last2_hca=parsed["prev_week_last2_hca"],
             non_working_shift_codes=non_working_shift_codes,
+            seed=seed,
+            time_limit=time_limit,
         )
     except RuntimeError as e:
         print(f"[MILP] Solver failed: {e}")
@@ -852,5 +878,6 @@ def run_milp_pipeline(
         progress_callback(4, 4, 0.0)
 
     return _format_output(
-        nurses, roster_rn, roster_en, roster_hca, parsed["num_days"]
+        nurses, roster_rn, roster_en, roster_hca, parsed["num_days"],
+        solver_status=str(tc),
     )

@@ -294,6 +294,8 @@ export type ShiftRequestsGetWardNursesData = {
 
 export type ShiftRequestsGetWardNursesResponse = (Array<NursePublic>);
 
+export type ShiftRequestsGetAllNursesResponse = (Array<NursePublic>);
+
 export type UsersReadUsersData = {
     limit?: number;
     skip?: number;

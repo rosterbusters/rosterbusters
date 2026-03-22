@@ -246,7 +246,7 @@ export function RosterPlanningHeader({
             >
               <Select.HiddenSelect />
               <Select.Control>
-                <Select.Trigger>
+                <Select.Trigger data-testid="roster-ward-trigger">
                   <Select.ValueText placeholder="Select Ward" />
                 </Select.Trigger>
                 <Select.IndicatorGroup>
@@ -257,7 +257,11 @@ export function RosterPlanningHeader({
                 <Select.Positioner zIndex={1500}>
                   <Select.Content>
                     {wardCollection.items.map((ward) => (
-                      <Select.Item key={ward.wardId} item={ward}>
+                      <Select.Item
+                        key={ward.wardId}
+                        item={ward}
+                        data-testid={`roster-ward-option-${ward.wardId}`}
+                      >
                         {ward.wardName}
                       </Select.Item>
                     ))}

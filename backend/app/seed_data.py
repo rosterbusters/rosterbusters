@@ -1091,10 +1091,15 @@ def seed_leave_requests(
         "MC":  ("MedicalCertificate",   4),
         "CL":  ("Urgent",               2),
         "CCL": ("PreApproved",          2),
+        "ML":  ("PreApproved",          1),
+        "EML": ("PreApproved",          1),
+        "Mar": ("PreApproved",          1),
         "FCL": ("PreApproved",          1),
+        "SPL": ("PreApproved",          1),
         "BDL": ("PreApproved",          1),
-        "URG": ("Urgent",               1),
-        "UPL": ("PreApproved",          1),
+        "HOL": ("PreApproved",          1),
+        "SD":  ("PreApproved",          1),
+        "FD":  ("PreApproved",          1),
     }
     leave_types_weighted = [lt for lt, (_, w) in leave_type_meta.items() for _ in range(w)]
 
@@ -1103,10 +1108,15 @@ def seed_leave_requests(
         "MC":  ["Fever and flu", "Medical appointment", "Doctor's visit", None],
         "CL":  ["Bereavement", "Family emergency", None],
         "CCL": ["Child's school event", "Childcare arrangement", None],
+        "ML":  ["Maternity leave", None],
+        "EML": ["Extended maternity leave", None],
+        "Mar": ["Marriage leave", None],
         "FCL": ["Caring for elderly parent", "Family care needed", None],
+        "SPL": ["Shared parental leave", None],
         "BDL": ["Birthday leave", None],
-        "URG": ["Family emergency", "Urgent personal matter", None],
-        "UPL": ["Personal matter", None],
+        "HOL": ["Public holiday", None],
+        "SD":  ["Sleeping day", None],
+        "FD":  ["Family day", None],
     }
 
     rejection_reasons = [

@@ -102,6 +102,7 @@ export function AlgorithmInputsDialog({
       if (normalized === "P") return "PM";
       if (normalized === "N") return "NIGHT";
       if (normalized === "AM" || normalized === "PM" || normalized === "NIGHT") return normalized;
+      if (normalized === "AL" || normalized === "LEAVE") return "AL";
       return "OFF";
     };
 

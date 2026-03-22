@@ -19,7 +19,7 @@ class LeaveRequest(SQLModel, table=True):
     nurseid: int
     startdate: date
     enddate: date
-    leavetype: str = Field(max_length=10)  # AL / MC / URG / UPL / CL
+    leavetype: str = Field(max_length=10)  # AL / MC / CCL / ML / EML / Mar / FCL / SPL / CL / BDL / HOL / SD / FD
     leavecategory: str = Field(default="PreApproved", max_length=20)  # PreApproved / Urgent / MedicalCertificate
     submittedduringperiod: str = Field(default="BeforeRoster", max_length=20)  # BeforeRoster / AfterFinalization
     requiresreplacement: bool = Field(default=False)

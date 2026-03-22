@@ -424,6 +424,33 @@ export function RequestsOverviewTable({
     }
   };
 
+  const competingLeaveRequests = useMemo(() => {
+    if (!selectedLeaveRequest || !wardId) return [];
+    const selectedStart = selectedLeaveRequest.rawStartDate;
+    const selectedEnd =
+      selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate;
+    if (!selectedStart || !selectedEnd) return [];
+
+    const toDate = (value: string) => new Date(value);
+    const selStart = toDate(selectedStart);
+    const selEnd = toDate(selectedEnd);
+
+    return leaveRequests
+      .filter((lr) => {
+        const lrStart = toDate(lr.startdate);
+        const lrEnd = toDate(lr.enddate);
+        return lrStart <= selEnd && lrEnd >= selStart;
+      })
+      .map((lr) => ({
+        requestId: lr.leaveid,
+        nurseName: nurseMap.get(lr.nurseid) ?? "",
+        leaveType: lr.leavetype,
+        startDate: lr.startdate,
+        endDate: lr.enddate,
+        status: lr.status as RequestStatus,
+      }));
+  }, [leaveRequests, nurseMap, selectedLeaveRequest, wardId]);
+
   const isLoading = shiftLoading || leaveLoading;
 
   return (
@@ -821,6 +848,7 @@ export function RequestsOverviewTable({
           startDate={selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
           endDate={selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
           currentStatus={selectedLeaveRequest.status}
+          requests={competingLeaveRequests}
         />
       )}
     </VStack>

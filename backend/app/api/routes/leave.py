@@ -82,16 +82,9 @@ def create_leave_request(
                 status_code=400,
                 detail="User is not linked to a nurse manager record",
             )
-
-        managed_ward = session.exec(
-            select(Ward).where(Ward.managerid == rbac_user.managerid)
-        ).first()
-        if not managed_ward:
-            raise HTTPException(status_code=400, detail="Nurse manager is not assigned to a ward")
-
         target_nurse = session.get(Nurse, leave_in.nurseid)
-        if not target_nurse or target_nurse.wardid != managed_ward.wardid:
-            raise HTTPException(status_code=403, detail="Selected nurse is not in your ward")
+        if not target_nurse:
+            raise HTTPException(status_code=404, detail="Nurse not found")
         target_nurse_id = leave_in.nurseid
 
     if not target_nurse_id:
@@ -214,14 +207,7 @@ def update_leave_request(
                 status_code=400,
                 detail="User is not linked to a nurse manager record",
             )
-
-        managed_ward = session.exec(
-            select(Ward).where(Ward.managerid == rbac_user.managerid)
-        ).first()
-        target_nurse = session.get(Nurse, leave_request.nurseid)
-        can_update = bool(
-            managed_ward and target_nurse and target_nurse.wardid == managed_ward.wardid
-        )
+        can_update = True
 
     if not can_update:
         raise HTTPException(status_code=403, detail="Not authorized to update this request")
@@ -260,14 +246,7 @@ def delete_leave_request(
                 status_code=400,
                 detail="User is not linked to a nurse manager record",
             )
-
-        managed_ward = session.exec(
-            select(Ward).where(Ward.managerid == rbac_user.managerid)
-        ).first()
-        target_nurse = session.get(Nurse, leave_request.nurseid)
-        can_delete = bool(
-            managed_ward and target_nurse and target_nurse.wardid == managed_ward.wardid
-        )
+        can_delete = True
 
     if not can_delete:
         raise HTTPException(status_code=403, detail="Not authorized to delete this request")
