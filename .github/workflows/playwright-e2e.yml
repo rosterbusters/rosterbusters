@@ -33,7 +33,7 @@ jobs:
 
       - name: Start backend stack
         working-directory: .
-        run: docker compose up -d db backend
+        run: docker compose up -d db backend mailcatcher
 
       - name: Wait for backend
         working-directory: .
@@ -60,6 +60,7 @@ jobs:
       - name: Run Playwright tests
         env:
           CI: true
+          MAILCATCHER_HOST: http://127.0.0.1:1080
         run: npm run test:e2e
 
       - name: Upload Playwright report
