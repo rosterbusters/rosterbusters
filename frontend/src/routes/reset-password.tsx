@@ -1,11 +1,11 @@
-import { Container, Flex, Heading, Text } from "@chakra-ui/react"
+import { Box, Button, Container, Flex, Heading, Image, Text, VStack } from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
 import { createFileRoute, Link as RouterLink, redirect, useNavigate } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiArrowLeft, FiLock } from "react-icons/fi"
+import { useState } from "react"
 
 import { type ApiError } from "@/client"
-import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
 import { showSuccessToast } from "@/components/ui/toast"
 import { isLoggedIn } from "@/hooks/useAuth"
@@ -32,6 +32,7 @@ export const Route = createFileRoute("/reset-password")({
 
 function ResetPassword() {
   const { token } = Route.useSearch()
+  const [invalidToken, setInvalidToken] = useState(!token)
   const {
     register,
     handleSubmit,
@@ -69,6 +70,11 @@ function ResetPassword() {
       navigate({ to: "/login" })
     },
     onError: (err: ApiError) => {
+      const errDetail = (err.body as any)?.detail
+      if (errDetail === "Invalid token") {
+        setInvalidToken(true)
+        return
+      }
       handleError(err)
     },
   })
@@ -78,58 +84,159 @@ function ResetPassword() {
   }
 
   return (
-    <Container
-      as="form"
-      onSubmit={handleSubmit(onSubmit)}
+    <Flex
       h="100vh"
-      maxW="sm"
-      alignItems="stretch"
-      justifyContent="center"
-      gap={4}
-      centerContent
+      w="100vw"
+      direction={{ base: "column", lg: "row" }}
+      overflowY={{ base: "auto", lg: "hidden" }}
+      bg="white"
     >
-      <Heading size="xl" color="ui.main" textAlign="center" mb={2}>
-        Reset Password
-      </Heading>
-      <Text textAlign="center">
-        Please enter your new password and confirm it to reset your password.
-      </Text>
-      <PasswordInput
-        startElement={<FiLock />}
-        type="new_password"
-        errors={errors}
-        {...register("new_password", passwordRules())}
-        placeholder="New Password"
-      />
-      <PasswordInput
-        startElement={<FiLock />}
-        type="confirm_password"
-        errors={errors}
-        {...register("confirm_password", confirmPasswordRules(getValues))}
-        placeholder="Confirm Password"
-      />
-      <Button variant="default" type="submit" disabled={mutation.isPending}>
-        {mutation.isPending ? "Resetting..." : "Reset Password"}
-      </Button>
+      {/* Visual Side */}
+      <Box
+        flex={{ base: "0 0 50%", lg: "1" }}
+        position="relative"
+        overflow="hidden"
+      >
+        <Image
+          src="/assets/images/sach-entrance.jpg"
+          alt="St. Andrew's Community Hospital"
+          objectFit="cover"
+          w="100%"
+          h="100%"
+          objectPosition="center"
+        />
+        <Box
+          position="absolute"
+          bottom="0"
+          left="0"
+          right="0"
+          h="32"
+          bgGradient="to-t"
+          gradientFrom="blackAlpha.700"
+          gradientTo="transparent"
+        />
+      </Box>
 
-      {/* #10 — Back to Login link */}
-      <Flex justify="center" pt={1}>
-        <RouterLink
-          to="/login"
-          style={{
-            color: "var(--chakra-colors-teal-600)",
-            fontSize: "13px",
-            fontWeight: 600,
-            textDecoration: "none",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-          }}
-        >
-          <FiArrowLeft />
-          Back to Login
-        </RouterLink>
+      {/* Form Side */}
+      <Flex
+        flex="1"
+        direction="column"
+        bg="white"
+        mt={{ base: "-10vh", lg: "0" }}
+        roundedTop="none"
+        position="relative"
+        zIndex="2"
+        align="center"
+        justify={{ base: "start", lg: "center" }}
+        pt={{ base: 6, lg: 0 }}
+        pb={4}
+      >
+        <Container maxW="md" w="100%" px={6}>
+          {invalidToken ? (
+            <VStack gap={5} align="stretch">
+              <VStack gap={1} align="center">
+                <Heading as="h1" size="lg" fontWeight="700" color="teal.700" textAlign="center">
+                  Invalid or expired link
+                </Heading>
+                <Text color="gray.500" fontSize="sm" textAlign="center">
+                  This password reset link is not valid. Please request a new reset link to continue.
+                </Text>
+              </VStack>
+
+              <Button
+                as={RouterLink}
+                to="/recover-password"
+                variant="solid"
+                size="md"
+                w="100%"
+              >
+                Request New Link
+              </Button>
+
+              {/* #10 — Back to Login link */}
+              <Flex justify="center" pt={1}>
+                <RouterLink
+                  to="/login"
+                  style={{
+                    color: "var(--chakra-colors-teal-600)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <FiArrowLeft />
+                  Back to Login
+                </RouterLink>
+              </Flex>
+            </VStack>
+          ) : (
+            <Box as="form" onSubmit={handleSubmit(onSubmit)}>
+              <VStack gap={3} align="stretch">
+                <VStack gap={0} align="start" mb={1}>
+                  <Heading as="h1" size="lg" fontWeight="700" color="teal.700">
+                    Reset Password
+                  </Heading>
+                  <Text color="gray.500" fontSize="sm">
+                    Please enter your new password and confirm it to reset your password.
+                  </Text>
+                </VStack>
+
+                <PasswordInput
+                  startElement={<FiLock color="gray" />}
+                  type="new_password"
+                  errors={errors}
+                  {...register("new_password", passwordRules())}
+                  placeholder="New Password"
+                  size="md"
+                  variant="subtle"
+                  bg="gray.50"
+                />
+                <PasswordInput
+                  startElement={<FiLock color="gray" />}
+                  type="confirm_password"
+                  errors={errors}
+                  {...register("confirm_password", confirmPasswordRules(getValues))}
+                  placeholder="Confirm Password"
+                  size="md"
+                  variant="subtle"
+                  bg="gray.50"
+                />
+                <Button
+                  type="submit"
+                  variant="solid"
+                  size="md"
+                  w="100%"
+                  loading={mutation.isPending}
+                >
+                  {mutation.isPending ? "Resetting..." : "Reset Password"}
+                </Button>
+
+                {/* #10 — Back to Login link */}
+                <Flex justify="center" pt={1}>
+                  <RouterLink
+                    to="/login"
+                    style={{
+                      color: "var(--chakra-colors-teal-600)",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <FiArrowLeft />
+                    Back to Login
+                  </RouterLink>
+                </Flex>
+              </VStack>
+            </Box>
+          )}
+        </Container>
       </Flex>
-    </Container>
+    </Flex>
   )
 }

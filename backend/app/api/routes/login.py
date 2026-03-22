@@ -166,26 +166,26 @@ def test_token(current_user: CurrentUser) -> RBACUserPublic:
 def recover_password(email: str, session: SessionDep) -> Message:
     """
     Send a password recovery email.
-    Always returns 200 regardless of whether the email exists,
-    to prevent user enumeration attacks.
     """
     user = session.exec(select(RBACUser).where(RBACUser.email == email)).first()
 
-    # Only send the email if the user actually exists in the system.
-    # We intentionally do NOT raise 404 — always return the same neutral message
-    # so attackers cannot probe which emails are registered.
-    if user:
-        password_reset_token = generate_password_reset_token(email=email)
-        email_data = generate_reset_password_email(
-            email_to=user.email, email=email, token=password_reset_token
-        )
-        send_email(
-            email_to=user.email,
-            subject=email_data.subject,
-            html_content=email_data.html_content,
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="No account found with that email.",
         )
 
-    return Message(message="If this email is registered, a password recovery link has been sent.")
+    password_reset_token = generate_password_reset_token(email=email)
+    email_data = generate_reset_password_email(
+        email_to=user.email, email=email, token=password_reset_token
+    )
+    send_email(
+        email_to=user.email,
+        subject=email_data.subject,
+        html_content=email_data.html_content,
+    )
+
+    return Message(message="Password recovery link sent.")
 
 
 @router.post("/reset-password/")

@@ -134,8 +134,11 @@ function RecoverPassword() {
                   Check your inbox
                 </Heading>
                 <Text color="gray.500" fontSize="sm" textAlign="center">
-                  If <Text as="span" fontWeight="600" color="gray.700">{submittedEmail}</Text> is
-                  registered, we've sent a password reset link. It expires in 48 hours.
+                  We've sent a password reset link to{" "}
+                  <Text as="span" fontWeight="600" color="gray.700">
+                    {submittedEmail}
+                  </Text>
+                  . It expires in 48 hours.
                 </Text>
               </VStack>
 
