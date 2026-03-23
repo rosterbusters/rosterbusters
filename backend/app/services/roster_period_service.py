@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 from sqlmodel import Session, select
+
+from app import crud
+from app.core.config import settings
+from app.models import Nurse
+from app.models.enums import NotificationType
+from app.models.roster import NotificationQueue
+from app.utils import (
+    generate_shift_request_period_closed_email,
+    generate_shift_request_period_open_email,
+    send_email,
+)
 
 from app.models import RosterPeriod
 
@@ -12,6 +24,7 @@ PERIOD_LENGTH_DAYS = 14
 PERIODS_PER_ROSTER_YEAR = 26
 ROSTER_YEAR_LENGTH_DAYS = PERIOD_LENGTH_DAYS * PERIODS_PER_ROSTER_YEAR
 ROSTER_YEARS_TO_KEEP = 2
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -110,9 +123,182 @@ def ensure_roster_period_window(
 
     session.commit()
 
-    return list(
+    periods = list(
         session.exec(select(RosterPeriod).order_by(RosterPeriod.startdate.desc())).all()
     )
+    _queue_shift_request_open_notifications(session, periods, today=today)
+    _queue_shift_request_closed_notifications(session, periods, today=today)
+    session.commit()
+
+    return periods
+
+
+def _queue_shift_request_open_notifications(
+    session: Session,
+    periods: list[RosterPeriod],
+    today: date | None = None,
+) -> int:
+    """Queue notifications for ward staff when the shift request period opens.
+
+    Notifications are created once per nurse per roster period, keyed by relatedentity.
+    """
+    today = today or date.today()
+    open_periods = [
+        period
+        for period in periods
+        if period.status == "RequestOpen" and period.requestopendate <= today <= period.requestclosedate
+    ]
+    if not open_periods:
+        return 0
+
+    nurses = list(
+        session.exec(
+            select(Nurse).where(
+                Nurse.isactive == True,  # noqa: E712
+                Nurse.wardid.is_not(None),
+            )
+        ).all()
+    )
+    if not nurses:
+        return 0
+
+    nurse_ids = [nurse.nurseid for nurse in nurses]
+    open_period_ids = [period.periodid for period in open_periods if period.periodid is not None]
+    if not open_period_ids:
+        return 0
+
+    existing_pairs = set(
+        session.exec(
+            select(NotificationQueue.recipientid, NotificationQueue.relatedentityid).where(
+                NotificationQueue.recipienttype == "Nurse",
+                NotificationQueue.notificationtype == NotificationType.SHIFT_REQUEST_PERIOD_OPEN.value,
+                NotificationQueue.relatedentitytype == "RosterPeriod",
+                NotificationQueue.relatedentityid.in_(open_period_ids),
+                NotificationQueue.recipientid.in_(nurse_ids),
+            )
+        ).all()
+    )
+
+    created = 0
+    for period in open_periods:
+        if period.periodid is None:
+            continue
+        for nurse in nurses:
+            nurse_id = nurse.nurseid
+            if (nurse_id, period.periodid) in existing_pairs:
+                continue
+            crud.create_notification(
+                session,
+                recipient_type="Nurse",
+                recipient_id=nurse_id,
+                notification_type=NotificationType.SHIFT_REQUEST_PERIOD_OPEN,
+                related_entity_type="RosterPeriod",
+                related_entity_id=period.periodid,
+                roster_period=period.name,
+            )
+            if settings.emails_enabled and nurse.email:
+                try:
+                    email_data = generate_shift_request_period_open_email(
+                        email_to=nurse.email,
+                        roster_period=period.name,
+                    )
+                    send_email(
+                        email_to=nurse.email,
+                        subject=email_data.subject,
+                        html_content=email_data.html_content,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to send shift request open email to %s: %s",
+                        nurse.email,
+                        exc,
+                    )
+            created += 1
+
+    return created
+
+
+def _queue_shift_request_closed_notifications(
+    session: Session,
+    periods: list[RosterPeriod],
+    today: date | None = None,
+) -> int:
+    """Queue notifications for ward staff when the shift request period closes."""
+    today = today or date.today()
+    closed_periods = [
+        period
+        for period in periods
+        if period.status != "RequestOpen"
+        and period.requestclosedate < today <= period.startdate
+    ]
+    if not closed_periods:
+        return 0
+
+    nurses = list(
+        session.exec(
+            select(Nurse).where(
+                Nurse.isactive == True,  # noqa: E712
+                Nurse.wardid.is_not(None),
+            )
+        ).all()
+    )
+    if not nurses:
+        return 0
+
+    nurse_ids = [nurse.nurseid for nurse in nurses]
+    closed_period_ids = [period.periodid for period in closed_periods if period.periodid is not None]
+    if not closed_period_ids:
+        return 0
+
+    existing_pairs = set(
+        session.exec(
+            select(NotificationQueue.recipientid, NotificationQueue.relatedentityid).where(
+                NotificationQueue.recipienttype == "Nurse",
+                NotificationQueue.notificationtype == NotificationType.SHIFT_REQUEST_PERIOD_CLOSED.value,
+                NotificationQueue.relatedentitytype == "RosterPeriod",
+                NotificationQueue.relatedentityid.in_(closed_period_ids),
+                NotificationQueue.recipientid.in_(nurse_ids),
+            )
+        ).all()
+    )
+
+    created = 0
+    for period in closed_periods:
+        if period.periodid is None:
+            continue
+        for nurse in nurses:
+            nurse_id = nurse.nurseid
+            if (nurse_id, period.periodid) in existing_pairs:
+                continue
+            crud.create_notification(
+                session,
+                recipient_type="Nurse",
+                recipient_id=nurse_id,
+                notification_type=NotificationType.SHIFT_REQUEST_PERIOD_CLOSED,
+                related_entity_type="RosterPeriod",
+                related_entity_id=period.periodid,
+                roster_period=period.name,
+            )
+            if settings.emails_enabled and nurse.email:
+                try:
+                    email_data = generate_shift_request_period_closed_email(
+                        email_to=nurse.email,
+                        roster_period=period.name,
+                    )
+                    send_email(
+                        email_to=nurse.email,
+                        subject=email_data.subject,
+                        html_content=email_data.html_content,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to send shift request closed email to %s: %s",
+                        nurse.email,
+                        exc,
+                    )
+            created += 1
+
+    return created
 
 
 def get_period_window(
