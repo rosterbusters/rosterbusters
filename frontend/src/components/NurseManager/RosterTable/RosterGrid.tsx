@@ -12,7 +12,6 @@ import {
   Popover,
 } from "@chakra-ui/react";
 import {
-  AlertCircle,
   Filter,
   ChevronDown,
   ChevronRight,
@@ -24,7 +23,7 @@ import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
 import { ShiftCommentPopover } from "./ShiftCommentPopover";
 import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
-import { MOCK_STAFFING_GUIDELINES, mapDesignationToRole } from "./staffingGuidelines";
+import { getRosterGroupKey, MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
 import type {
   RosterRow,
   ShiftAssignment,
@@ -36,7 +35,6 @@ import type {
   StaffRole,
   ShiftRequestOverlay,
 } from "./types";
-import { Tooltip } from "@/components/ui/tooltip";
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
 const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
@@ -90,55 +88,12 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
   return columns;
 }
 
-// Group data by designation (role)
-function getRoleGroupKey(row: RosterRow): RoleGroupKey {
-  const designation = (row.designation ?? "").toString();
-  const d = designation.toLowerCase().trim();
-  const role = row.staffingRole ?? mapDesignationToRole(designation);
-
-  if (role === "RN") return "SSN/SN";
-  if (role === "EN" || role === "NA" || role === "HCA12") return "EN/NA/HCA1/HCA2";
-  if (role === "HCA3") return "HCA3/PSA";
-
-  if (d === "ssn" || d === "sn" || d.includes("staff nurse") || d.includes("registered nurse")) {
-    return "SSN/SN";
-  }
-  if (d === "en" || d.includes("enrolled nurse") || d === "na" || d.includes("nursing aide")) {
-    return "EN/NA/HCA1/HCA2";
-  }
-  if (
-    d === "hca1" ||
-    d === "hca 1" ||
-    d === "hca-1" ||
-    d.includes("hca grade 1") ||
-    d === "hca2" ||
-    d === "hca 2" ||
-    d === "hca-2" ||
-    d.includes("hca grade 2") ||
-    d === "hca"
-  ) {
-    return "EN/NA/HCA1/HCA2";
-  }
-  if (
-    d === "hca3" ||
-    d === "hca 3" ||
-    d === "hca-3" ||
-    d.includes("hca grade 3") ||
-    d === "psa" ||
-    d.includes("patient service assistant")
-  ) {
-    return "HCA3/PSA";
-  }
-
-  return "Other";
-}
-
 function groupByRoleGroup(data: RosterRow[]): Map<RoleGroupKey, RosterRow[]> {
   const groups = new Map<RoleGroupKey, RosterRow[]>();
   ROLE_GROUP_ORDER.forEach((key) => groups.set(key, []));
 
   data.forEach((row) => {
-    const key = getRoleGroupKey(row);
+    const key = getRosterGroupKey(row);
     const existing = groups.get(key) || [];
     existing.push(row);
     groups.set(key, existing);
@@ -156,6 +111,9 @@ function getDisplayTitle(row: RosterRow): string {
   if (d === "rn" || d.includes("registered nurse")) return "RN";
   if (d === "en" || d.includes("enrolled nurse")) return "EN";
   if (d === "na" || d.includes("nursing aide")) return "NA";
+  if (d.includes("healthcare assistant iii") || d.includes("senior healthcare assistant iii")) return "HCA3";
+  if (d.includes("healthcare assistant ii") || d.includes("senior healthcare assistant ii")) return "HCA2";
+  if (d.includes("healthcare assistant i") || d.includes("senior healthcare assistant i")) return "HCA1";
   if (d === "hca1" || d === "hca 1" || d === "hca-1" || d.includes("hca grade 1")) return "HCA1";
   if (d === "hca2" || d === "hca 2" || d === "hca-2" || d.includes("hca grade 2")) return "HCA2";
   if (d === "hca3" || d === "hca 3" || d === "hca-3" || d.includes("hca grade 3")) return "HCA3";

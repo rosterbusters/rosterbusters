@@ -1,4 +1,4 @@
-from app.designation_mapping import classify_designation
+from app.designation_mapping import classify_designation, staffing_role_to_roster_rank
 
 
 def test_classify_designation_workbook_titles() -> None:
@@ -43,3 +43,12 @@ def test_classify_designation_excludes_manager_and_clinician_titles() -> None:
         result = classify_designation(designation)
         assert result.staffing_role is None
         assert result.roster_rank is None
+
+
+def test_staffing_role_to_roster_rank_uses_shared_role_mapping() -> None:
+    assert staffing_role_to_roster_rank("RN") == "A"
+    assert staffing_role_to_roster_rank("EN") == "B"
+    assert staffing_role_to_roster_rank("NA") == "B"
+    assert staffing_role_to_roster_rank("HCA12") == "B"
+    assert staffing_role_to_roster_rank("HCA3") == "C"
+    assert staffing_role_to_roster_rank("UNKNOWN") is None

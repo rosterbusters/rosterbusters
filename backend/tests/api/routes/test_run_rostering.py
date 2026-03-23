@@ -252,13 +252,32 @@ def test_milp_parse_inputs_separates_hard_soft_and_prev_context() -> None:
         non_working_shift_codes={"AL", "ML"},
     )
 
-    assert parsed["hard_requests_rn"] == {"Alice": {"Day 1": "A", "Day 2": "ML"}}
+    assert parsed["hard_requests_rn"] == {"Alice": {"Day 1": "A", "Day 2": "AL"}}
     assert parsed["soft_requests_en"] == {"Bea": {"Day 3": "P", "Day 4": "AL"}}
     assert parsed["prev_week_roster_rn"] == {"Alice": "N"}
     assert parsed["prev_week_roster_en"] == {}
 
 
-def test_ga_parse_inputs_maps_non_working_codes_to_off_and_preserves_shift_hours() -> None:
+def test_milp_parse_inputs_keeps_do_and_rd_as_off_requests() -> None:
+    nurses = [
+        {"id": 1, "name": "Alice", "rank": "A"},
+    ]
+    shifts = [{"AM": {"A": 1, "B": 0, "C": 0}, "PM": {"A": 0, "B": 0, "C": 0}, "NIGHT": {"A": 0, "B": 0, "C": 0}} for _ in range(14)]
+
+    parsed = parse_milp_inputs(
+        nurses,
+        shifts,
+        hard_requests={1: [(0, "DO")]},
+        soft_requests={1: [(1, "RD"), (2, "HOL")]},
+        prev_last_shift={},
+        non_working_shift_codes={"AL", "DO", "RD", "HOL"},
+    )
+
+    assert parsed["hard_requests_rn"] == {"Alice": {"Day 1": "DO"}}
+    assert parsed["soft_requests_rn"] == {"Alice": {"Day 2": "DO", "Day 3": "AL"}}
+
+
+def test_ga_parse_inputs_maps_non_working_leave_codes_to_al_and_preserves_shift_hours() -> None:
     nurses = [
         {"id": 10, "name": "Alice", "rank": "A"},
         {"id": 20, "name": "Bea", "rank": "B"},
@@ -275,11 +294,54 @@ def test_ga_parse_inputs_maps_non_working_codes_to_off_and_preserves_shift_hours
         non_working_shift_codes={"AL", "ML"},
     )
 
-    assert parsed["approved_requests"][0] == [(3, 0)]
+    assert parsed["al_day_requests"][0] == frozenset({3})
+    assert parsed["approved_requests"][0] == []
     assert parsed["pending_requests"][1] == [(4, 2)]
     assert parsed["hard_requests"][0] == [(0, 0)]
     assert parsed["hard_requests"][1] == []
     assert parsed["shift_hours"] == {"AM": 8.5, "PM": 8.5, "NIGHT": 11.0, "OFF": 0.0}
+
+
+def test_ga_parse_inputs_treats_hol_as_al_for_approved_leave_requests() -> None:
+    nurses = [
+        {"id": 10, "name": "Alice", "rank": "A"},
+    ]
+    shifts = [{"AM": {"A": 1, "B": 0, "C": 0}, "PM": {"A": 0, "B": 0, "C": 0}, "NIGHT": {"A": 0, "B": 0, "C": 0}} for _ in range(14)]
+
+    parsed = parse_ga_inputs(
+        nurses,
+        shifts,
+        hard_requests={10: [(2, "HOL")]},
+        soft_requests={},
+        prev_last_shift={},
+        shift_hours={"AM": 8.0, "PM": 8.0, "NIGHT": 10.0, "OFF": 0.0},
+        non_working_shift_codes={"AL", "HOL"},
+    )
+
+    assert parsed["al_nurses"] == frozenset()
+    assert parsed["al_day_requests"][0] == frozenset({2})
+    assert parsed["approved_requests"][0] == []
+
+
+def test_ga_parse_inputs_keeps_do_and_rd_as_off_requests() -> None:
+    nurses = [
+        {"id": 10, "name": "Alice", "rank": "A"},
+    ]
+    shifts = [{"AM": {"A": 1, "B": 0, "C": 0}, "PM": {"A": 0, "B": 0, "C": 0}, "NIGHT": {"A": 0, "B": 0, "C": 0}} for _ in range(14)]
+
+    parsed = parse_ga_inputs(
+        nurses,
+        shifts,
+        hard_requests={10: [(1, "DO")]},
+        soft_requests={10: [(2, "RD")]},
+        prev_last_shift={},
+        shift_hours={"AM": 8.0, "PM": 8.0, "NIGHT": 10.0, "OFF": 0.0},
+        non_working_shift_codes={"AL", "DO", "RD", "HOL"},
+    )
+
+    assert parsed["approved_requests"][0] == [(1, 0)]
+    assert parsed["pending_requests"][0] == [(2, 0)]
+    assert parsed["al_day_requests"][0] == frozenset()
 
 
 def test_load_shift_hours_requires_base_shift_durations(db: Session) -> None:

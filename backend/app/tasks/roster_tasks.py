@@ -4,6 +4,10 @@ from datetime import timedelta
 from sqlmodel import Session, delete, select
 
 from app.core.db import engine
+from app import crud
+from app.core.config import settings
+from app.models.enums import NotificationType
+from app.models.rbac import NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.rostering.algo_scheduler import generate_roster
 from app.worker import celery_app
@@ -56,6 +60,61 @@ def _save_roster_result(
     return len(roster.get("nurses", []))
 
 
+def _queue_algorithm_notification(
+    db: Session,
+    *,
+    ward_id: int,
+    period_id: int,
+    notification_type: NotificationType,
+) -> None:
+    ward = db.get(Ward, ward_id)
+    if not ward or not ward.managerid:
+        return
+
+    period = db.get(RosterPeriod, period_id)
+    if not period:
+        return
+
+    crud.create_notification(
+        db,
+        recipient_type="NurseManager",
+        recipient_id=ward.managerid,
+        notification_type=notification_type,
+        related_entity_type="RosterPeriod",
+        related_entity_id=period.periodid,
+        roster_period=period.name,
+    )
+    db.commit()
+
+    if not settings.emails_enabled:
+        return
+
+    manager = db.get(NurseManager, ward.managerid)
+    if not manager or not manager.email:
+        return
+
+    try:
+        from app.utils import generate_algorithm_notification_email, send_email
+
+        email_data = generate_algorithm_notification_email(
+            email_to=manager.email,
+            roster_period=period.name,
+            message=notification_type.template.format(roster_period=period.name),
+            manager_name=manager.name,
+        )
+        send_email(
+            email_to=manager.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send algorithm notification email for ward %s period %s",
+            ward_id,
+            period_id,
+        )
+
+
 @celery_app.task(bind=True, name="tasks.generate_roster", max_retries=2)
 def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | None = None):
     """
@@ -94,6 +153,12 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
 
         with Session(engine) as db:
             _save_roster_result(db, ward_id, period_id, result["roster"], result["method"])
+            _queue_algorithm_notification(
+                db,
+                ward_id=ward_id,
+                period_id=period_id,
+                notification_type=NotificationType.ALGORITHM_GENERATION,
+            )
 
         return {
             "task_id": self.request.id,
@@ -148,6 +213,12 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 period_id,
                 result["roster"],
                 result["method"],
+            )
+            _queue_algorithm_notification(
+                db,
+                ward_id=ward_id,
+                period_id=period_id,
+                notification_type=NotificationType.ALGORITHM_GENERATION,
             )
 
             return {

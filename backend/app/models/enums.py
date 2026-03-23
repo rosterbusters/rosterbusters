@@ -78,6 +78,6 @@ class NotificationType(str, Enum):
         "Algorithm generated for {roster_period}.",
     )
     ALGORITHM_IN_PROGRESS = (
-        "AlgorithmGeneration",
+        "AlgorithmInProgress",
         "Algorithm generation in progress for {roster_period}.",
     )

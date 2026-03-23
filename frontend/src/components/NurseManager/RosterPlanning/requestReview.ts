@@ -24,14 +24,17 @@ type BuildRequestReviewInput = {
   softRequests?: Record<string, Array<[number, string]>>;
 };
 
-const toAlgoLabel = (shiftCode: string) => {
+const OFF_CODES = new Set(["OFF", "DO", "RD"]);
+
+const toReviewLabel = (shiftCode: string) => {
   const normalized = shiftCode.toUpperCase();
   if (normalized === "A") return "AM";
   if (normalized === "P") return "PM";
   if (normalized === "N") return "NIGHT";
   if (normalized === "AM" || normalized === "PM" || normalized === "NIGHT") return normalized;
-  if (normalized === "AL" || normalized === "LEAVE") return "AL";
-  return "OFF";
+  if (normalized === "LEAVE") return "AL";
+  if (OFF_CODES.has(normalized)) return "OFF";
+  return normalized;
 };
 
 export function buildRequestReview({
@@ -49,7 +52,7 @@ export function buildRequestReview({
     const dateMap = new Map<string, string>();
     for (const [dateKey, shift] of Object.entries(row.shifts)) {
       if (!shift) continue;
-      dateMap.set(dateKey, toAlgoLabel(shift.shiftCode));
+      dateMap.set(dateKey, toReviewLabel(shift.shiftCode));
     }
     rosterLookup.set(row.nurseId, dateMap);
   }
