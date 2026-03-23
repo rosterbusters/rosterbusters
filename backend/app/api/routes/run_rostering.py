@@ -17,6 +17,7 @@ from sqlmodel import Session, select, delete
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.core.config import settings
+from app.models.enums import NotificationType
 from app.designation_mapping import classify_designation
 from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager
@@ -31,6 +32,8 @@ from app.models.roster import (
 from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
+from app.utils import generate_roster_release_email, send_email
+import app.crud as crud
 from app.rostering.algo_scheduler import generate_roster
 
 
@@ -414,6 +417,49 @@ def publish_ward_roster(
     period.status = "Finalized"
     session.add(period)
     session.commit()
+
+    roster_period_label = period.name or f"{period.startdate} to {period.enddate}"
+    nurses = session.exec(
+        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    ).all()
+
+    for nurse in nurses:
+        if not nurse.nurseid:
+            continue
+        crud.create_notification(
+            session,
+            recipient_type="Nurse",
+            recipient_id=nurse.nurseid,
+            notification_type=NotificationType.ROSTER_RELEASE,
+            channel="Email",
+            related_entity_type="RosterPeriod",
+            related_entity_id=period.periodid,
+            roster_period=roster_period_label,
+        )
+    session.commit()
+
+    if settings.emails_enabled:
+        for nurse in nurses:
+            if not nurse.email:
+                continue
+            try:
+                email_data = generate_roster_release_email(
+                    email_to=nurse.email,
+                    roster_period=roster_period_label,
+                    ward_name=ward.wardname,
+                )
+                send_email(
+                    email_to=nurse.email,
+                    subject=email_data.subject,
+                    html_content=email_data.html_content,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to send roster release email to %s",
+                    nurse.email,
+                )
+    else:
+        logger.info("Email notifications skipped: email settings not configured.")
 
     return {
         "ward_id": ward_id,

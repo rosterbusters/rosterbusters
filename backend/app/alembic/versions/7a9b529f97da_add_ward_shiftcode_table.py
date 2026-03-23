@@ -8,6 +8,7 @@ Create Date: 2026-02-19 09:37:45.382374
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel.sql.sqltypes
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision = '7a9b529f97da'
@@ -17,6 +18,11 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    insp = inspect(bind)
+    if 'ward_shiftcode' in insp.get_table_names():
+        return
+
     op.create_table(
         'ward_shiftcode',
         sa.Column('wardid', sa.Integer(), nullable=False),
@@ -28,4 +34,7 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_table('ward_shiftcode')
+    bind = op.get_bind()
+    insp = inspect(bind)
+    if 'ward_shiftcode' in insp.get_table_names():
+        op.drop_table('ward_shiftcode')
