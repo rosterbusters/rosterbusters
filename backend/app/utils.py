@@ -162,3 +162,24 @@ def generate_password_changed_email(email_to: str, username: str) -> EmailData:
         },
     )
     return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_algorithm_notification_email(
+    email_to: str,
+    roster_period: str,
+    message: str,
+    manager_name: str | None = None,
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Roster algorithm update"
+    html_content = render_email_template(
+        template_name="roster_planning.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "manager_name": manager_name or "Nurse Manager",
+            "roster_period": roster_period,
+            "message": message,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)

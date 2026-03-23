@@ -73,3 +73,16 @@ class NotificationType(str, Enum):
         "ShiftRequestReviewClosed",
         "Shift Requests Review for {roster_period} is Closed.",
     )
+
+    # ------------------------------------------------------------------ #
+    # Algorithm notifications                                              #
+    # ------------------------------------------------------------------ #
+
+    ALGORITHM_GENERATION = (
+        "AlgorithmGeneration",
+        "Algorithm generated for {roster_period}.",
+    )
+    ALGORITHM_IN_PROGRESS = (
+        "AlgorithmGeneration",
+        "Algorithm generation in progress for {roster_period}.",
+    )

@@ -14,8 +14,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
+from app.core.config import settings
 from app.designation_mapping import classify_designation
+from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
 from app.models.leave import LeaveRequest
@@ -106,6 +109,66 @@ def _can_generate_roster(session: Session, current_user: CurrentUser) -> bool:
     return user_has_role(session, current_user.email, "NurseManager") or user_has_role(
         session, current_user.email, "Admin"
     )
+
+
+def _queue_algorithm_notification(
+    session: Session,
+    *,
+    manager_id: int | None,
+    ward_id: int,
+    period_id: int,
+    notification_type: NotificationType,
+) -> None:
+    """Queue an algorithm notification (and email) for the ward's nurse manager, if applicable."""
+    if not manager_id:
+        return
+
+    ward = session.get(Ward, ward_id)
+    if not ward or ward.managerid != manager_id:
+        return
+
+    period = session.get(RosterPeriod, period_id)
+    if not period:
+        return
+
+    crud.create_notification(
+        session,
+        recipient_type="NurseManager",
+        recipient_id=manager_id,
+        notification_type=notification_type,
+        related_entity_type="RosterPeriod",
+        related_entity_id=period.periodid,
+        roster_period=period.name,
+    )
+    session.commit()
+
+    if not settings.emails_enabled:
+        return
+
+    manager = session.get(NurseManager, manager_id)
+    if not manager or not manager.email:
+        return
+
+    try:
+        from app.utils import generate_algorithm_notification_email, send_email
+
+        email_data = generate_algorithm_notification_email(
+            email_to=manager.email,
+            roster_period=period.name,
+            message=notification_type.template.format(roster_period=period.name),
+            manager_name=manager.name,
+        )
+        send_email(
+            email_to=manager.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send roster planning email for ward %s period %s",
+            ward_id,
+            period_id,
+        )
 
 
 def _get_existing_roster_entry(
@@ -548,6 +611,13 @@ def generate_roster_endpoint(
         raise HTTPException(status_code=403, detail="Nurse manager access required")
     try:
         generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
+        _queue_algorithm_notification(
+            db,
+            manager_id=current_user.managerid,
+            ward_id=request_data.ward_id,
+            period_id=request_data.period_id,
+            notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+        )
         result = generate_roster(
             nurses=generation_inputs["nurses"],
             shifts=generation_inputs["shifts"],
@@ -558,6 +628,13 @@ def generate_roster_endpoint(
             non_working_shift_codes=generation_inputs["non_working_shift_codes"],
             milp_config=generation_inputs["milp_config"],
             algorithm=request_data.algorithm,
+        )
+        _queue_algorithm_notification(
+            db,
+            manager_id=current_user.managerid,
+            ward_id=request_data.ward_id,
+            period_id=request_data.period_id,
+            notification_type=NotificationType.ALGORITHM_GENERATION,
         )
         return {"method": result["method"], "roster": result["roster"]}
 
@@ -579,6 +656,14 @@ def generate_roster_async(
     ward = db.get(Ward, request_data.ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
+
+    _queue_algorithm_notification(
+        db,
+        manager_id=current_user.managerid,
+        ward_id=request_data.ward_id,
+        period_id=request_data.period_id,
+        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+    )
 
     task = _get_celery_app().send_task(
         "tasks.generate_roster",
@@ -658,8 +743,16 @@ def generate_roster_stream(
         raise HTTPException(status_code=403, detail="Nurse manager access required")
     # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
     generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
+    _queue_algorithm_notification(
+        db,
+        manager_id=current_user.managerid,
+        ward_id=request_data.ward_id,
+        period_id=request_data.period_id,
+        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+    )
 
     q: queue.Queue = queue.Queue()
+    manager_id = current_user.managerid
 
     def _run():
         try:
@@ -685,6 +778,22 @@ def generate_roster_stream(
                 algorithm=request_data.algorithm,
             )
             q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
+            try:
+                from app.core.db import engine
+                with Session(engine) as session:
+                    _queue_algorithm_notification(
+                        session,
+                        manager_id=manager_id,
+                        ward_id=request_data.ward_id,
+                        period_id=request_data.period_id,
+                        notification_type=NotificationType.ALGORITHM_GENERATION,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to queue algorithm completion notification for ward %s period %s",
+                    request_data.ward_id,
+                    request_data.period_id,
+                )
         except Exception as exc:
             q.put({"type": "error", "message": str(exc)})
 
