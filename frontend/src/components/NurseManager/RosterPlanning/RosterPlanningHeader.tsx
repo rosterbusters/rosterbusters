@@ -72,6 +72,8 @@ interface RosterPlanningHeaderProps {
   onDownloadRoster: () => void;
   onViewEditHistory: () => void;
   onGenerateAlgorithm?: () => void;
+  onAutoRegenerate?: () => void;
+  showAutoRegenerate?: boolean;
   onClearRoster?: () => void;
   onLoadMockData?: (mockKey: string) => void;
   onSeedRequests?: () => void;
@@ -99,6 +101,8 @@ export function RosterPlanningHeader({
   onDownloadRoster,
   onViewEditHistory,
   onGenerateAlgorithm,
+  onAutoRegenerate,
+  showAutoRegenerate = false,
   onClearRoster,
   onLoadMockData,
   onSeedRequests,
@@ -308,6 +312,20 @@ export function RosterPlanningHeader({
                   <Text>Download Roster</Text>
                 </HStack>
               </MenuItem>
+              {showAutoRegenerate && onAutoRegenerate && (
+                <MenuItem
+                  value="regenerate-auto"
+                  onClick={onAutoRegenerate}
+                  disabled={isGenerating}
+                  cursor="pointer"
+                  _hover={{ bg: "#F0F9FA" }}
+                >
+                  <HStack gap={2}>
+                    <RefreshCw className="h-4 w-4" />
+                    <Text>{isGenerating ? "Regenerating..." : "Regenerate Roster (Auto)"}</Text>
+                  </HStack>
+                </MenuItem>
+              )}
               {onSeedRequests && (
                 <MenuItem
                   value="seed-requests"

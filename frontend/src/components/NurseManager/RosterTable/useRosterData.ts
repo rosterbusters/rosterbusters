@@ -373,6 +373,31 @@ export function usePublishRoster() {
   });
 }
 
+// Hook to clear a ward roster (pending only)
+export function useClearRoster() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      periodId,
+    }: {
+      wardId: number;
+      periodId: number;
+    }) => {
+      return fetchWithAuth(
+        `/api/v1/roster/ward/${wardId}/clear?period_id=${periodId}`,
+        { method: "DELETE" },
+      );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "ward", variables.wardId, variables.periodId],
+      });
+    },
+  });
+}
+
 // Algorithm roster generation response type
 export interface AlgorithmRosterResponse {
   wardId: number;
