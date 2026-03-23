@@ -211,6 +211,8 @@ def generate_shift_request_period_closed_email(email_to: str, roster_period: str
             "project_name": settings.PROJECT_NAME,
             "email": email_to,
             "roster_period": roster_period,
+            "ward_name": ward_name or "",
+            "message": message,
         },
     )
     return EmailData(html_content=html_content, subject=subject)
