@@ -108,7 +108,8 @@ export function RosterPlanningHeader({
   onSeedRequests,
   isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
-  const showAlgorithmControls = !import.meta.env.PROD;
+  // TODO: Hide algorithm controls for prod and staging once feature gating is ready.
+  const showAlgorithmControls = true;
   const today = moment().startOf("day");
   const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
   const sortedPeriods = useMemo(
