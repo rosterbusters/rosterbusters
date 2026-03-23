@@ -148,11 +148,7 @@ const inferRole = (value: string): "Admin" | "NurseManager" | "Nurse" => {
 }
 
 const parseActiveValue = (value: string) => {
-  const normalized = normalizeHeader(value)
-  if (!normalized) return true
-  if (["inactive", "false", "no", "0", "disabled"].includes(normalized)) {
-    return false
-  }
+  void value
   return true
 }
 
@@ -318,7 +314,7 @@ const parseExactStaffWorkbook = (
           email: undefined,
           employee_id: undefined,
           designation: position || undefined,
-          is_active: !remarks.toUpperCase().includes("INOP"),
+          is_active: true,
           role,
           ward_ids: wardIds,
         })
