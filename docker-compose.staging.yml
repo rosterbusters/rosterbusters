@@ -5,6 +5,18 @@ services:
   backend:
     volumes: []
     command: ["fastapi", "run", "--workers", "4", "app/main.py"]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+
+  celery_worker:
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_SERVER=db
+      - GRB_WLSACCESSID=${WLSACCESSID}
+      - GRB_WLSSECRET=${WLSSECRET}
+      - GRB_LICENSEID=${LICENSEID}
+    volumes:
+      - ~/gurobi.lic:/root/gurobi.lic:ro
 
   frontend:
     ports: []

@@ -94,7 +94,7 @@ export const getNotificationRoute = (type: string): string => {
     ShiftRequest: "/request-application",
     LeaveRequest: "/request-application",
     ShiftUpdate: "/staffrosterschedule",
-    SwapRequest: "/shift-request",
+    SwapRequest: "/request-overview",
     LeaveApproval: "/request-application",
     LeaveReminder: "/request-application",
     RosterRelease: "/staffrosterschedule",

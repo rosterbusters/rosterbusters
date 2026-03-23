@@ -18,6 +18,7 @@ from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
 from app.models.enums import NotificationType
+from app.services.roster_period_service import ensure_roster_period_window, get_roster_year_start
 # from app.models.web import User
 
 
@@ -161,6 +162,19 @@ DESIGNATIONS = ["RN", "EN", "NA", "HCA", "SSN"]
 # ============================================================================
 # Static ward data (real wards)
 # ============================================================================
+CH_GUIDELINES = {
+    "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
+    "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
+    "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+}
+
+TCF_GUIDELINES = {
+    # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
+    "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+    "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
+    "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+}
+
 WARDS_DATA = [
     # SACH Simei wards
     {
@@ -214,16 +228,36 @@ WARDS_DATA = [
     # SACH Bedok wards
     {
         "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
-        "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
-        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
-        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+        **CH_GUIDELINES,
     },
     {
-        # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
         "wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok",
-        "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
-        "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
-        "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+        **TCF_GUIDELINES,
+    },
+]
+
+# Bedok branch staff-list wards (names only; guidelines assigned in seed_core)
+STAFF_LIST_WARDS = [
+    {
+        "wardname": "Acacia Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Angsana Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Banyan Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Casuarina Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Cedar Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Dahlia Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Daisy Ward", "location": "Bedok",
     },
 ]
 
@@ -515,17 +549,18 @@ def seed_nurses(session: Session, wards: list[Ward]) -> list[Nurse]:
 def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
     """Seed admin user."""
     logger.info("Seeding admin user...")
+    admin_username = settings.FIRST_SUPERUSER.split("@")[0]
 
     existing = session.exec(
         select(RBACUser).where(
             (RBACUser.email == settings.FIRST_SUPERUSER)
-            | (RBACUser.username == settings.FIRST_SUPERUSER.split("@")[0])
+            | (RBACUser.username == admin_username)
         )
     ).first()
 
     if existing:
-        logger.info("  Admin user already exists, updating credentials to seed values")
-        existing.username = settings.FIRST_SUPERUSER.split("@")[0]
+        logger.info("  Admin user already exists, syncing credentials from env")
+        existing.username = admin_username
         existing.email = settings.FIRST_SUPERUSER
         existing.passwordhash = get_password_hash(settings.FIRST_SUPERUSER_PASSWORD)
         existing.isactive = True
@@ -534,7 +569,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         return existing
 
     admin = RBACUser(
-        username=settings.FIRST_SUPERUSER.split("@")[0],
+        username=admin_username,
         email=settings.FIRST_SUPERUSER,
         passwordhash=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD),
         isactive=True,
@@ -556,10 +591,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         session.add(user_role)
         session.commit()
 
-    logger.info(
-        f"  Created admin user: {settings.FIRST_SUPERUSER} / "
-        f"{settings.FIRST_SUPERUSER_PASSWORD}"
-    )
+    logger.info("  Created admin user: %s (password sourced from env)", settings.FIRST_SUPERUSER)
     return admin
 
 
@@ -712,80 +744,41 @@ def seed_nurse_users(
 
 
 def seed_roster_periods(session: Session) -> list[RosterPeriod]:
-    """Seed roster periods covering the previous calendar month and upcoming 2 weeks.
-
-    Periods are 2-week Mon–Sun blocks aligned to the current week's Monday.
-    Blocks step backward until the previous calendar month is fully covered,
-    then forward for the next 2-week block.
-
-    Returns the list with the current period at index 0 and the next period at
-    index 1 (preserving backward-compat for callers that use periods[0/1]),
-    followed by past periods in reverse-chronological order.
-    """
+    """Seed the maintained roster-period window and return current-first ordering."""
     logger.info("Seeding roster periods...")
-
     today = date.today()
-    current_monday = today - timedelta(days=today.weekday())
-    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    maintained_periods = ensure_roster_period_window(session, today=today)
+    current_roster_year_start = get_roster_year_start(today)
+    next_roster_year_start = current_roster_year_start + timedelta(days=364)
 
-    # Collect all period start dates needed
-    period_starts: set[date] = set()
+    current_periods: list[RosterPeriod] = []
+    next_year_periods: list[RosterPeriod] = []
 
-    # Current + next
-    period_starts.add(current_monday)
-    period_starts.add(current_monday + timedelta(weeks=2))
-
-    # Step backward in 2-week blocks until the block's end date reaches
-    # before the first day of the previous month
-    p = current_monday - timedelta(weeks=2)
-    while True:
-        period_starts.add(p)
-        if p <= first_of_prev_month:
-            break
-        p -= timedelta(weeks=2)
-
-    all_periods: dict[date, RosterPeriod] = {}
-    for start in sorted(period_starts):
-        end = start + timedelta(days=13)
-        request_open = start - timedelta(days=10)
-        request_close = start - timedelta(days=3)
-
-        if start == current_monday:
-            label, status = "Current", "RequestOpen"
-        elif start > current_monday:
-            label, status = "Next", "RequestOpen"
+    for period in maintained_periods:
+        if period.startdate <= today <= period.enddate:
+            current_periods.append(period)
+        elif current_roster_year_start <= period.startdate < next_roster_year_start:
+            current_periods.append(period)
         else:
-            label, status = "Past", "Published"
+            next_year_periods.append(period)
 
-        period_name = f"{label} Period {start.strftime('%b %d')}-{end.strftime('%b %d %Y')}"
+    ordered_periods = sorted(
+        current_periods,
+        key=lambda period: (
+            0 if period.startdate <= today <= period.enddate else 1,
+            period.startdate,
+        ),
+    ) + sorted(next_year_periods, key=lambda period: period.startdate)
 
-        existing = session.exec(
-            select(RosterPeriod).where(RosterPeriod.startdate == start)
-        ).first()
+    for period in ordered_periods:
+        logger.info(
+            "  Maintained roster period: %s (%s - %s)",
+            period.name,
+            period.startdate,
+            period.enddate,
+        )
 
-        if existing:
-            logger.info(f"  Roster period {start} already exists, skipping")
-            all_periods[start] = existing
-        else:
-            period = RosterPeriod(
-                name=period_name,
-                startdate=start,
-                enddate=end,
-                requestopendate=request_open,
-                requestclosedate=request_close,
-                status=status,
-            )
-            session.add(period)
-            session.commit()
-            session.refresh(period)
-            all_periods[start] = period
-            logger.info(f"  Created roster period: {period_name} (ID: {period.periodid})")
-
-    sorted_starts = sorted(all_periods.keys())
-    # current + future first (index 0 = current), then past in reverse-chron order
-    current_and_future = [all_periods[s] for s in sorted_starts if s >= current_monday]
-    past = [all_periods[s] for s in reversed(sorted_starts) if s < current_monday]
-    return current_and_future + past
+    return ordered_periods
 
 
 def seed_roster_entries(
@@ -1098,10 +1091,15 @@ def seed_leave_requests(
         "MC":  ("MedicalCertificate",   4),
         "CL":  ("Urgent",               2),
         "CCL": ("PreApproved",          2),
+        "ML":  ("PreApproved",          1),
+        "EML": ("PreApproved",          1),
+        "Mar": ("PreApproved",          1),
         "FCL": ("PreApproved",          1),
+        "SPL": ("PreApproved",          1),
         "BDL": ("PreApproved",          1),
-        "URG": ("Urgent",               1),
-        "UPL": ("PreApproved",          1),
+        "HOL": ("PreApproved",          1),
+        "SD":  ("PreApproved",          1),
+        "FD":  ("PreApproved",          1),
     }
     leave_types_weighted = [lt for lt, (_, w) in leave_type_meta.items() for _ in range(w)]
 
@@ -1110,10 +1108,15 @@ def seed_leave_requests(
         "MC":  ["Fever and flu", "Medical appointment", "Doctor's visit", None],
         "CL":  ["Bereavement", "Family emergency", None],
         "CCL": ["Child's school event", "Childcare arrangement", None],
+        "ML":  ["Maternity leave", None],
+        "EML": ["Extended maternity leave", None],
+        "Mar": ["Marriage leave", None],
         "FCL": ["Caring for elderly parent", "Family care needed", None],
+        "SPL": ["Shared parental leave", None],
         "BDL": ["Birthday leave", None],
-        "URG": ["Family emergency", "Urgent personal matter", None],
-        "UPL": ["Personal matter", None],
+        "HOL": ["Public holiday", None],
+        "SD":  ["Sleeping day", None],
+        "FD":  ["Family day", None],
     }
 
     rejection_reasons = [
@@ -1379,18 +1382,18 @@ def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     logger.info("Seeding ward shift code mappings...")
     DEFAULT_BASE_WORKING = {"A", "P", "N"}
     SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
-    SPECIAL_WARD_IDS = {9, 10} #CH and TCF
+    SPECIAL_WARD_NAMES = {"CH", "TCF"}
     leave_codes = {
         sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
     }
 
     for ward in wards:
-        if ward.wardid in SPECIAL_WARD_IDS:
-            base_working=SPECIAL_BASE_WORKING
+        if ward.wardname in SPECIAL_WARD_NAMES:
+            base_working = SPECIAL_BASE_WORKING
         else:
-            base_working=DEFAULT_BASE_WORKING
+            base_working = DEFAULT_BASE_WORKING
         
-        ward_codes=base_working | leave_codes
+        ward_codes = base_working | leave_codes
         for shiftcode in sorted(ward_codes):
             existing = session.exec(
                 select(WardShiftCode).where(
@@ -1447,7 +1450,7 @@ def seed_all() -> None:
     logger.info("=" * 60)
     logger.info("")
     logger.info("Test Credentials:")
-    logger.info("  admin@sach.org.sg / changethis (Admin)")
+    logger.info("  %s / [FIRST_SUPERUSER_PASSWORD from env] (Admin)", settings.FIRST_SUPERUSER)
     for mgr in MANAGERS_DATA:
         logger.info(f"  {mgr['email']} / manager123 (NurseManager)")
     for nurse in NURSES_DATA[:NUM_NURSE_USERS]:

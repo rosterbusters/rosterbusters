@@ -26,6 +26,9 @@ from app.models.rbac import (
     UserRole,
 )
 
+# Designation reference data
+from app.models.designation import Designation
+
 # Enums
 from app.models.enums import NotificationType
 
@@ -37,6 +40,7 @@ from app.models.roster import (
     RosterChangeLogPublic,
     RosterPeriod,
     RosterPeriodPublic,
+    RosterPeriodWindowPublic,
     Ward,
 )
 
@@ -80,11 +84,13 @@ __all__ = [
     # RBAC
     "Nurse", "NurseManager", "NursePublic",
     "RBACUser", "RBACUserPublic", "Role", "UserRole",
+    # Designations
+    "Designation",
     # Enums
     "NotificationType",
     # Roster
     "NotificationQueue", "Roster", "RosterChangeLog", "RosterChangeLogPublic",
-    "RosterPeriod", "RosterPeriodPublic", "Ward",
+    "RosterPeriod", "RosterPeriodPublic", "RosterPeriodWindowPublic", "Ward",
     # Leave
     "LeaveRequest", "LeaveRequestCreate", "LeaveRequestPublic", "LeaveRequestUpdate",
     # Shifts

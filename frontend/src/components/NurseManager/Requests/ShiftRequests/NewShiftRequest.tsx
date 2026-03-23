@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import {
+  Box,
   Button,
   CloseButton,
   createListCollection,
@@ -8,13 +9,24 @@ import {
   Select,
   Badge,
   Text,
+  Textarea,
   VStack,
+  HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import moment from "moment";
+import {
+  useRosterPeriodWindow,
+  useRosterPeriods,
+} from "@/components/NurseManager/RosterTable/useRosterData";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
+import type { NursePublic } from "@/client/types.gen";
+import { Trash2 } from "lucide-react";
+
+const MAX_REQUESTS = 3;
 
 interface NewShiftRequestProps {
   isOpen: boolean;
@@ -29,44 +41,125 @@ export const NewShiftRequest = ({
   selectedDate,
   wardId,
 }: NewShiftRequestProps) => {
+  const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
   const [shiftType, setShiftType] = useState<string[]>([]);
+  const [localComment, setLocalComment] = useState("");
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     selectedDate ?? undefined,
   );
   const queryClient = useQueryClient();
 
-  const { data: periods } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
+  const { data: periodWindow } = useRosterPeriodWindow();
+  const { data: periods = [] } = useRosterPeriods();
+  const activePeriod = useMemo(() => {
+    if (requestDate) {
+      const matchingPeriod = periods.find((period) =>
+        moment(requestDate).isBetween(
+          moment(period.startDate),
+          moment(period.endDate),
+          "day",
+          "[]",
+        ),
+      );
+
+      if (matchingPeriod) {
+        return matchingPeriod;
+      }
+    }
+
+    return periodWindow?.requestOpenPeriod ?? periodWindow?.currentPeriod ?? null;
+  }, [periodWindow?.currentPeriod, periodWindow?.requestOpenPeriod, periods, requestDate]);
+
+  const { data: wardNurses = [] } = useQuery<NursePublic[]>({
+    queryKey: ["ward-nurses", wardId],
+    queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
+    enabled: !!wardId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: wardRequests = [] } = useQuery({
+    queryKey: ["shift-requests", "ward", wardId, activePeriod?.periodId ?? null],
+    queryFn: () =>
+      ShiftRequestsService.getShiftRequestsByWard({
+        wardId: wardId!,
+        periodId: activePeriod?.periodId,
+      }),
+    enabled: !!wardId && !!activePeriod?.periodId,
+    staleTime: 0,
   });
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", wardId ?? "default"],
+    queryKey: ["shift-codes", "all"],
     queryFn: () =>
-      wardId != null
-        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
-        : ShiftRequestsService.getWorkingShiftCodes(),
+      ShiftRequestsService.getAllShiftCodes(),
     // enabled: wardId !== undefined,
   });
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: (shiftCodes ?? []).map((sc) => ({
-          value: sc.shiftcode,
-          label: sc.shiftcode,
-          description: sc.description,
-        })),
+        items: (shiftCodes ?? [])
+          .filter((sc) => sc.shiftcode !== "MC")
+          .map((sc) => ({
+            value: sc.shiftcode,
+            label: sc.shiftcode,
+            description: sc.description,
+          })),
       }),
     [shiftCodes],
   );
 
+  const nurseCollection = useMemo(
+    () =>
+      createListCollection({
+        items: wardNurses.map((nurse) => ({
+          value: String(nurse.nurseid),
+          label: nurse.name,
+          description: nurse.designation,
+        })),
+      }),
+    [wardNurses],
+  );
+
+  const { data: workingCodes } = useQuery({
+    queryKey: ["shift-codes", "working"],
+    queryFn: () => ShiftRequestsService.getWorkingShiftCodes(),
+  });
+
+  const workingCodeSet = useMemo(
+    () => new Set([...(workingCodes ?? []).map((code) => code.shiftcode), "DO", "RD"]),
+    [workingCodes],
+  );
+
+  const selectedNurseId = selectedNurse.length > 0 ? Number(selectedNurse[0]) : null;
+  const selectedNurseRecord =
+    selectedNurseId == null
+      ? null
+      : wardNurses.find((nurse) => nurse.nurseid === selectedNurseId) ?? null;
+  const selectedNurseRequestCount =
+    activePeriod && selectedNurseId != null
+      ? wardRequests.filter(
+          (request) =>
+            request.nurseid === selectedNurseId &&
+            request.periodid === activePeriod.periodId &&
+            workingCodeSet.has(request.preferredshifttype),
+        ).length
+      : 0;
+
   const mutation = useMutation({
     mutationFn: (data: ShiftRequestCreate) =>
       ShiftRequestsService.createShiftRequest({ requestBody: data }),
-    onSuccess: () => {
+    onSuccess: async () => {
       showSuccessToast("Shift request created!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["shift-requests"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["shift-requests", "ward", wardId, activePeriod?.periodId ?? null],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["shift-requests", "ward", wardId],
+        }),
+      ]);
       onClose();
     },
     onError: (error: unknown) => {
@@ -79,17 +172,18 @@ export const NewShiftRequest = ({
     if (isOpen) {
       setRequestDate(selectedDate ?? undefined);
       setShiftType([]);
+      setSelectedNurse([]);
+      setLocalComment("");
     }
-  }, [isOpen]);
+  }, [isOpen, selectedDate]);
 
   const handleSubmit = () => {
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const activePeriod =
-      periods?.find(p => p.status === "RequestOpen" && p.startdate <= todayStr && p.enddate >= todayStr)
-      ?? periods?.find(p => p.status === "RequestOpen");
     if (!activePeriod) {
       showErrorToast("There is no open request period available.");
+      return;
+    }
+    if (selectedNurseId == null) {
+      showErrorToast("Please select a nurse.");
       return;
     }
     if (shiftType.length === 0) {
@@ -102,9 +196,11 @@ export const NewShiftRequest = ({
     }
 
     mutation.mutate({
-      periodid: activePeriod.periodid,
+      nurseid: selectedNurseId,
+      periodid: activePeriod.periodId,
       preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
       preferredshifttype: shiftType[0],
+      reason: localComment.trim() || undefined,
     });
   };
 
@@ -125,8 +221,52 @@ export const NewShiftRequest = ({
               </Dialog.Title>
             </Dialog.Header>
             <Dialog.Body>
-              <VStack alignItems={"start"} gap={4} maxWidth={"225px"}>
-               
+              <VStack alignItems={"start"} gap={4} maxWidth={"320px"}>
+                <Select.Root
+                  collection={nurseCollection}
+                  size="sm"
+                  value={selectedNurse}
+                  onValueChange={(e) => setSelectedNurse(e.value)}
+                >
+                  <Select.Label>Nurse</Select.Label>
+                  <Select.Control>
+                    <Select.Trigger>
+                      <Select.ValueText placeholder="Select Nurse" />
+                    </Select.Trigger>
+                    <Select.IndicatorGroup>
+                      <Select.Indicator />
+                    </Select.IndicatorGroup>
+                  </Select.Control>
+                  <Portal>
+                    <Select.Positioner>
+                      <Select.Content>
+                        {nurseCollection.items.map((nurse) => (
+                          <Select.Item item={nurse.value} key={nurse.value}>
+                            <VStack alignItems="start" gap={0}>
+                              <Text>{nurse.label}</Text>
+                              <Text fontSize="xs" color="gray.500">
+                                {nurse.description}
+                              </Text>
+                            </VStack>
+                            <Select.ItemIndicator />
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select.Positioner>
+                  </Portal>
+                </Select.Root>
+
+                {selectedNurseRecord ? (
+                  <HStack gap={2}>
+                    <Text color="foreground" fontWeight="light">
+                      Assignable:
+                    </Text>
+                    <Badge variant="requests">
+                      Requests: {MAX_REQUESTS - selectedNurseRequestCount}/{MAX_REQUESTS}
+                    </Badge>
+                  </HStack>
+                ) : null}
+
                 <Select.Root
                   collection={shiftCollection}
                   size="sm"
@@ -166,6 +306,46 @@ export const NewShiftRequest = ({
                     selected={requestDate}
                     onSelect={(date) => setRequestDate(date)}
                   />
+                </VStack>
+                <VStack align="stretch" gap={1} w="full">
+                  <Text fontSize="xs" fontWeight="medium" color="gray.500">
+                    Comment
+                  </Text>
+                  <Box position="relative">
+                    <Textarea
+                      value={localComment}
+                      onChange={(event) => setLocalComment(event.target.value)}
+                      placeholder="Add a comment..."
+                      size="sm"
+                      borderRadius="md"
+                      borderColor="gray.200"
+                      _focus={{
+                        borderColor: "#4B8798",
+                        boxShadow: "0 0 0 1px #4B8798",
+                      }}
+                      resize="none"
+                      rows={3}
+                      fontSize="sm"
+                      pb="28px"
+                    />
+                    <Box
+                      as="button"
+                      position="absolute"
+                      bottom="10px"
+                      right="8px"
+                      display="flex"
+                      alignItems="center"
+                      cursor="pointer"
+                      color="gray.400"
+                      _hover={{ color: "red.400" }}
+                      transition="color 0.15s ease"
+                      onClick={() => setLocalComment("")}
+                      title="Clear comment"
+                      zIndex={1}
+                    >
+                      <Trash2 size={13} />
+                    </Box>
+                  </Box>
                 </VStack>
               </VStack>
             </Dialog.Body>

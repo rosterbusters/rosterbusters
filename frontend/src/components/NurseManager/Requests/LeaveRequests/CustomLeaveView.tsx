@@ -4,7 +4,7 @@ import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
 import { NMReviewLeaveRequest } from "./NMReviewLeaveRequest";
-import { NewLeaveRequest } from "@/components/WardStaff/Requests/LeaveRequests/NewLeaveRequest";
+import { NewLeaveRequest } from "./NewLeaveRequest";
 import moment from "moment";
 
 interface CustomMonthViewProps {
@@ -41,15 +41,28 @@ function getEventsForDay(day: Date, events: Event[]): Event[] {
   });
 }
 
-function groupByLeaveType(events: Event[]) {
+function groupByLeaveType(events: Event[]): Map<string, Event[]> {
   const grouped = new Map<string, Event[]>();
-  events.forEach((event) => {
-    const key = event.resource?.leaveType ?? event.title;
+  events.forEach((ev) => {
+    const key = ev.resource?.shiftType ?? ev.title;
     const existing = grouped.get(key) ?? [];
-    existing.push(event);
+    existing.push(ev);
     grouped.set(key, existing);
   });
   return grouped;
+}
+
+function rangesOverlap(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string,
+): boolean {
+  const aStart = new Date(startA);
+  const aEnd = new Date(endA);
+  const bStart = new Date(startB);
+  const bEnd = new Date(endB);
+  return aStart <= bEnd && bStart <= aEnd;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -60,14 +73,22 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   events,
   wardId,
 }: CustomMonthViewProps) {
-  const [selectedRequest, setSelectedRequest] = useState<Array<{
+  const [selectedRequest, setSelectedRequest] = useState<{
     requestId: number;
     nurseName: string;
     leaveType: string;
     startDate: string;
     endDate: string;
     status: string;
-  }> | null>(null);
+    requests?: Array<{
+      requestId: number;
+      nurseName: string;
+      leaveType: string;
+      startDate: string;
+      endDate: string;
+      status: string;
+    }>;
+  } | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
   const currRange = useMemo(
@@ -121,19 +142,24 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
               const grouped = groupByLeaveType(eventsForDay);
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
+              const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
 
               return (
                 <GridItem
                   key={di}
-                  bg={isToday ? "menuactive" : "white"}
+                  bg={isToday ? "menuactive" : isPastDate ? "gray.100" : "white"}
                   textAlign="start"
-                  color={isCurrentMonth ? "foreground" : "gray.400"}
+                  color={isPastDate ? "gray.500" : isCurrentMonth ? "foreground" : "gray.400"}
                   p={2}
                   minH="120px"
                   borderColor="border"
                   borderWidth="1px"
-                  cursor="pointer"
-                  onClick={() => setNewLeaveDate(day)}
+                  cursor={isPastDate ? "default" : "pointer"}
+                  opacity={isPastDate ? 0.7 : 1}
+                  onClick={() => {
+                    if (isPastDate) return;
+                    setNewLeaveDate(day);
+                  }}
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
@@ -143,21 +169,29 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                         const bOwn = b.some((event) => event.resource?.isOwn);
                         return (bOwn ? 1 : 0) - (aOwn ? 1 : 0);
                       })
-                      .map(([leaveType, groupedEvents]) => {
-                        const isOwn = groupedEvents.some(
-                          (event) => event.resource?.isOwn,
-                        );
-                        const requests = groupedEvents.flatMap(
-                          (event) => event.resource?.requests ?? [],
-                        );
-                        const nurseNames = requests
-                          .map((request) => request.nurseName)
+                      .map(([leaveType, groupEvents]) => {
+                        const isOwn = groupEvents.some((event) => event.resource?.isOwn);
+                        const nurseNames = groupEvents
+                          .map((event) => event.resource?.nurseName ?? "")
                           .filter(Boolean)
                           .join(", ");
+                        const requests = groupEvents.map((event) => ({
+                          requestId: event.resource?.requestId,
+                          nurseName: event.resource?.nurseName ?? "",
+                          leaveType: event.resource?.shiftType ?? leaveType,
+                          startDate: event.resource?.startDate ?? "",
+                          endDate: event.resource?.endDate ?? "",
+                          status: event.resource?.status ?? "Pending",
+                        }));
+                        const leadRequest = requests[0];
+
+                        if (!leadRequest) {
+                          return null;
+                        }
 
                         return (
                           <Box
-                            key={`${moment(day).format("YYYY-MM-DD")}-${leaveType}`}
+                            key={leaveType}
                             pb={2}
                             maxW="100%"
                             onClick={(e) => e.stopPropagation()}
@@ -166,7 +200,42 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               shift={leaveType}
                               nurseName={nurseNames}
                               owned={isOwn}
-                              onClick={() => setSelectedRequest(requests)}
+                              onClick={() =>
+                                setSelectedRequest(() => {
+                                  const overlapping = events
+                                    .map((event) => ({
+                                      requestId: event.resource?.requestId,
+                                      nurseName: event.resource?.nurseName ?? "",
+                                      leaveType: event.resource?.shiftType ?? event.title ?? "",
+                                      startDate: event.resource?.startDate ?? "",
+                                      endDate: event.resource?.endDate ?? "",
+                                      status: event.resource?.status ?? "Pending",
+                                    }))
+                                    .filter(
+                                      (event) =>
+                                        event.requestId != null &&
+                                        event.startDate &&
+                                        event.endDate &&
+                                        event.leaveType === leadRequest.leaveType &&
+                                        rangesOverlap(
+                                          leadRequest.startDate,
+                                          leadRequest.endDate,
+                                          event.startDate,
+                                          event.endDate,
+                                        ),
+                                    );
+
+                                  return {
+                                    requestId: leadRequest.requestId,
+                                    leaveType: leadRequest.leaveType,
+                                    startDate: leadRequest.startDate,
+                                    endDate: leadRequest.endDate,
+                                    nurseName: leadRequest.nurseName,
+                                    status: leadRequest.status,
+                                    requests: overlapping.length > 0 ? overlapping : requests,
+                                  };
+                                })
+                              }
                             />
                           </Box>
                         );
@@ -183,13 +252,13 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         <NMReviewLeaveRequest
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
-          requestId={selectedRequest[0].requestId}
-          leaveType={selectedRequest[0].leaveType}
-          startDate={selectedRequest[0].startDate}
-          endDate={selectedRequest[0].endDate}
-          nurseName={selectedRequest[0].nurseName}
-          currentStatus={selectedRequest[0].status}
-          requests={selectedRequest}
+          requestId={selectedRequest.requestId}
+          leaveType={selectedRequest.leaveType}
+          startDate={selectedRequest.startDate}
+          endDate={selectedRequest.endDate}
+          nurseName={selectedRequest.nurseName}
+          currentStatus={selectedRequest.status}
+          requests={selectedRequest.requests}
         />
       )}
 
@@ -198,7 +267,6 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         onClose={() => setNewLeaveDate(null)}
         selectedDate={newLeaveDate}
         wardId={wardId}
-        allowNurseOverride
       />
     </>
   );

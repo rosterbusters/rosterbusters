@@ -102,13 +102,14 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
               const eventsForDay = getEventsForDay(day, events);
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
+              const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
 
               return (
                 <GridItem
                   key={di}
-                  bg={isToday ? "menuactive" : "white"}
+                  bg={isToday ? "menuactive" : isPastDate ? "gray.100" : "white"}
                   textAlign="start"
-                  color={isCurrentMonth ? "foreground" : "gray.400"}
+                  color={isPastDate ? "gray.500" : isCurrentMonth ? "foreground" : "gray.400"}
                   p={2}
                   minH="120px"
                   borderColor="border"

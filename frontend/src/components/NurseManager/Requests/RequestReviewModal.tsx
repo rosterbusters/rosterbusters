@@ -9,6 +9,9 @@ export interface UnifiedRequest {
   requestTypeName: string;
   shiftCode?: string | null;
   requestedDates: string;
+  rawPreferredDate?: string | null;
+  rawStartDate?: string | null;
+  rawEndDate?: string | null;
   status: RequestStatus;
   applicationDate: string;
   comments: string | null;

@@ -1,12 +1,15 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import gaWard4 from "@/mockData/ga_ward4.json";
-import gaWard5 from "@/mockData/ga_ward5.json";
-import gaWard6 from "@/mockData/ga_ward6.json";
-import milpWard4 from "@/mockData/milp_ward4.json";
-import milpWard5 from "@/mockData/milp_ward5.json";
-import milpWard6 from "@/mockData/milp_ward6.json";
-import ward06Run1 from "@/mockData/ward_06_run_1.json";
-import ward06Run2 from "@/mockData/ward_06_run_2.json";
+import milpWard4Run1 from "@/mockData/milp_ward4_run1.json";
+import milpWard4Run2 from "@/mockData/milp_ward4_run2.json";
+import milpWard5Run1 from "@/mockData/milp_ward5_run1.json";
+import milpWard5Run2 from "@/mockData/milp_ward5_run2.json";
+import milpWard6Run1 from "@/mockData/milp_ward6_run1.json";
+import milpWard6Run2 from "@/mockData/milp_ward6_run2.json";
+import milpWard7Run1 from "@/mockData/milp_ward7_run1.json";
+import milpWard7Run2 from "@/mockData/milp_ward7_run2.json";
+import milpWard8Run1 from "@/mockData/milp_ward8_run1.json";
+import milpWard8Run2 from "@/mockData/milp_ward8_run2.json";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Flex,
@@ -25,30 +28,50 @@ import moment from "moment";
 import {
   RosterGrid,
   ShiftSummaryTable,
+  EditHistoryDialog,
   useWards,
   useRosterPeriods,
+  useRosterPeriodWindow,
   useWardStatistics,
+  useWardRoster,
+  transformRosterData,
+  useBulkUpsertRoster,
   usePublishRoster,
+  useClearRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
+  useResumeAlgorithmTask,
+  useGenerationInputs,
   useShiftCodes,
+  useRosterChangelog,
+  useCreateChangelog,
+  useAutoReviewShiftRequests,
   getShiftDurationHours,
+  loadAlgorithmTask,
+  clearAlgorithmTask,
   type Ward,
   type RosterPeriod,
   type ViewMode,
   type ShiftCode,
+  type ShiftAssignment,
   type RosterRow,
+  type EditHistoryEntry,
   type DailyStaffingGuideline,
-  type ShiftRequestOverlay,
 } from "@/components/NurseManager/RosterTable";
 import {
   RosterPlanningHeader,
   getWardGuidelines,
 } from "@/components/NurseManager/RosterPlanning";
+import AlgorithmInputsDialog from "@/components/NurseManager/RosterPlanning/AlgorithmInputsDialog";
+import {
+  buildRequestReview,
+  buildShiftRequestOverlays,
+} from "@/components/NurseManager/RosterPlanning/requestReview";
 
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { LockdownBanner } from "@/components/Common/LockdownBanner";
 import { useRosterPlanningLockStatus } from "@/hooks/useRosterPlanningLockStatus";
+import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
@@ -106,6 +129,7 @@ function generateEmptyRosterData(): RosterRow[] {
     nurseId: nurse.id,
     name: nurse.name,
     designation: nurse.designation,
+    staffingRole: nurse.designation.includes("Staff Nurse") ? "RN" : "NA",
     hours: nurse.hours,
     shifts: {}, // Empty shifts - will show "Select" placeholder
     hasOvertime: false,
@@ -113,31 +137,10 @@ function generateEmptyRosterData(): RosterRow[] {
   }));
 }
 
-// Generate mock shift request overlays for demonstration (Algorithm and Nurse Manager only)
-function generateMockPlanningOverlays(
-  startDate: Date,
-): Record<string, Record<string, ShiftRequestOverlay>> {
-  const d = (n: number) =>
-    moment(startDate).add(n, "days").format("YYYY-MM-DD");
-  return {
-    "1": {
-      [d(0)]: {
-        status: "Pending",
-        category: "Algorithm",
-        reason: "Under review by scheduling algorithm",
-      },
-    },
-    "4": {
-      [d(3)]: {
-        status: "Rejected",
-        category: "Nurse Manager",
-        reason: "Insufficient overnight coverage",
-      },
-    },
-  };
-}
-
 function RosterPlanningPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
     moment().startOf("isoWeek").toDate(),
@@ -149,9 +152,17 @@ function RosterPlanningPage() {
   );
   const [isPublishSuccessDialogOpen, setIsPublishSuccessDialogOpen] =
     useState(false);
+  const [isGenerationSuccessDialogOpen, setIsGenerationSuccessDialogOpen] =
+    useState(false);
   const [isDownloadSuccessDialogOpen, setIsDownloadSuccessDialogOpen] =
     useState(false);
-  const navigate = useNavigate();
+  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+  const [isAutoRegenerateDialogOpen, setIsAutoRegenerateDialogOpen] = useState(false);
+  const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
+  const [isInputsDialogOpen, setIsInputsDialogOpen] = useState(false);
+  const [lastAlgorithmRunAt, setLastAlgorithmRunAt] = useState<Date | null>(null);
+  const [lastAlgorithmRunMs, setLastAlgorithmRunMs] = useState<number | null>(null);
+  const [isResumingAlgorithm, setIsResumingAlgorithm] = useState(false);
   const [rosterData, setRosterData] = useState<RosterRow[]>(() =>
     generateEmptyRosterData(),
   );
@@ -159,12 +170,11 @@ function RosterPlanningPage() {
   // Algorithm generation state
   const [isAlgorithmGenerated, setIsAlgorithmGenerated] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
-
-  // Mock shift request overlays (Algorithm and Nurse Manager categories only)
-  const mockPlanningOverlays = useMemo(
-    () => generateMockPlanningOverlays(currentStartDate),
-    [currentStartDate],
-  );
+  const [generatedAlgorithmMethod, setGeneratedAlgorithmMethod] = useState<
+    string | null
+  >(null);
+  const [algorithmType, setAlgorithmType] = useState<"MILP" | "GA" | null>(null);
+  const [isSeedingRequests, setIsSeedingRequests] = useState(false);
 
   // Staffing guidelines — initialised from ward data, editable via the summary table
   const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(() =>
@@ -176,26 +186,94 @@ function RosterPlanningPage() {
   >({});
 
   // Roster planning lock
-  const { isLocked, nextWindowStart, nextWindowEnd } = useRosterPlanningLockStatus();
+  const { isLocked, nextWindowStart, nextWindowEnd } = useRosterPlanningLockStatus(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
 
   // Data hooks
   const { data: wards = [] } = useWards();
   const { data: periods = [] } = useRosterPeriods();
+  const { data: periodWindow } = useRosterPeriodWindow();
   const { data: wardStatistics } = useWardStatistics(selectedWard?.wardId ?? null);
+  const { data: savedRoster } = useWardRoster(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
+  const { data: changelogEntries = [] } = useRosterChangelog(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
+  const { mutate: createChangelog } = useCreateChangelog(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
+  const { data: generationInputs } = useGenerationInputs(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+    !!selectedWard && !!selectedPeriod,
+  );
   const { exportToXLSX } = useRosterExport();
+  const bulkUpsertRoster = useBulkUpsertRoster();
   const publishRoster = usePublishRoster();
+  const clearRoster = useClearRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
+  const resumeAlgorithmTask = useResumeAlgorithmTask();
+  const autoReviewShiftRequests = useAutoReviewShiftRequests();
+  const hasResumedTaskRef = useRef(false);
+  const resumeCancelledRef = useRef(false);
+  const isAlgorithmRunning = generateAlgorithmRoster.isPending || isResumingAlgorithm;
+  const algorithmOverlayLabel = useMemo(() => {
+    if (!isAlgorithmRunning) return "Loading roster data...";
+    const percent = generationProgress ? ` ${generationProgress}%` : "";
+    return `Generating algorithm roster...${percent}`;
+  }, [generationProgress, isAlgorithmRunning]);
+  const requestReview = useMemo(() => {
+    if (!generationInputs) return null;
+    return buildRequestReview({
+      periodStartDate: selectedPeriod?.startDate ?? null,
+      rosterData,
+      hardRequests: generationInputs.hard_requests ?? {},
+      softRequests: generationInputs.soft_requests ?? {},
+    });
+  }, [generationInputs, rosterData, selectedPeriod?.startDate]);
+  const shiftRequestOverlays = useMemo(
+    () => buildShiftRequestOverlays(requestReview),
+    [requestReview],
+  );
+
+  const rosterEntries = savedRoster?.roster_entries ?? [];
+  const hasAutoGeneratedRoster = useMemo(() => {
+    return rosterEntries.some((entry) =>
+      (entry.assignment_method ?? "manual").toLowerCase() !== "manual"
+    );
+  }, [rosterEntries]);
+  const isRosterPending = useMemo(() => {
+    return rosterEntries.length > 0 && rosterEntries.every((entry) => entry.status === "Pending");
+  }, [rosterEntries]);
+  const isRosterPublished = useMemo(() => {
+    return rosterEntries.length > 0 && rosterEntries.every((entry) => entry.status === "Confirmed");
+  }, [rosterEntries]);
+  const canAutoRegenerate = hasAutoGeneratedRoster && isRosterPending && !isRosterPublished;
 
   // Generate mock wards if API wards are empty
-  const displayWards = useMemo(() => {
-    if (wards.length > 0) return wards;
-    return [
-      { wardId: 4, wardName: "Ward 4", wardType: "General", campus: "Main" },
-      { wardId: 5, wardName: "Ward 5", wardType: "General", campus: "Main" },
-      { wardId: 6, wardName: "Ward 6", wardType: "ICU", campus: "Main" },
-    ];
-  }, [wards]);
+  const displayWards = useMemo(
+    () =>
+      wards.length > 0
+        ? wards
+        : [
+            { wardId: 4, wardName: "Ward 4", wardType: "General", campus: "Main" },
+            { wardId: 5, wardName: "Ward 5", wardType: "General", campus: "Main" },
+            { wardId: 6, wardName: "Ward 6", wardType: "ICU", campus: "Main" },
+          ],
+    [wards],
+  );
+
+  const getDefaultWard = useCallback((availableWards: Ward[]) => {
+    if (availableWards.length === 0) return null;
+    return [...availableWards].sort((a, b) => a.wardId - b.wardId)[0] ?? null;
+  }, []);
 
   // Generate mock periods if API periods are empty
   const displayPeriods = useMemo(() => {
@@ -204,56 +282,81 @@ function RosterPlanningPage() {
     return [
       {
         periodId: 1,
-        name: `${today.clone().subtract(14, "days").startOf("isoWeek").format("MMM DD")} - ${today.clone().subtract(14, "days").startOf("isoWeek").add(13, "days").format("MMM DD")}`,
-        startDate: today
-          .clone()
-          .subtract(14, "days")
-          .startOf("isoWeek")
-          .format("YYYY-MM-DD"),
-        endDate: today
-          .clone()
-          .subtract(14, "days")
-          .startOf("isoWeek")
-          .add(13, "days")
-          .format("YYYY-MM-DD"),
-        status: "Finalized" as const,
+        name: `${today.clone().add(14, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().add(14, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().add(14, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
+        status: 'Pending' as const,
       },
       {
         periodId: 2,
-        name: `${today.clone().startOf("isoWeek").format("MMM DD")} - ${today.clone().startOf("isoWeek").add(13, "days").format("MMM DD")}`,
-        startDate: today.clone().startOf("isoWeek").format("YYYY-MM-DD"),
-        endDate: today
-          .clone()
-          .startOf("isoWeek")
-          .add(13, "days")
-          .format("YYYY-MM-DD"),
-        status: "RequestOpen" as const,
+        name: `${today.clone().add(28, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(28, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().add(28, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().add(28, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
+        status: 'Pending' as const,
       },
       {
         periodId: 3,
-        name: `${today.clone().add(14, "days").startOf("isoWeek").format("MMM DD")} - ${today.clone().add(14, "days").startOf("isoWeek").add(13, "days").format("MMM DD")}`,
-        startDate: today
-          .clone()
-          .add(14, "days")
-          .startOf("isoWeek")
-          .format("YYYY-MM-DD"),
-        endDate: today
-          .clone()
-          .add(14, "days")
-          .startOf("isoWeek")
-          .add(13, "days")
-          .format("YYYY-MM-DD"),
-        status: "RequestOpen" as const,
+        name: `${today.clone().add(42, 'days').startOf('isoWeek').format('MMM DD')} - ${today.clone().add(42, 'days').startOf('isoWeek').add(13, 'days').format('MMM DD')}`,
+        startDate: today.clone().add(42, 'days').startOf('isoWeek').format('YYYY-MM-DD'),
+        endDate: today.clone().add(42, 'days').startOf('isoWeek').add(13, 'days').format('YYYY-MM-DD'),
+        status: 'Pending' as const,
       },
     ];
   }, [periods]);
 
+  const initialPlanningPeriod = useMemo(
+    () => periodWindow?.upcomingPeriod ?? periodWindow?.currentPeriod ?? null,
+    [periodWindow],
+  );
+  const visiblePlanningPeriods = useMemo(() => {
+    if (displayPeriods.length === 0) {
+      return [];
+    }
+
+    const ascendingPeriods = [...displayPeriods].sort((left, right) =>
+      moment(left.startDate).diff(moment(right.startDate)),
+    );
+
+    if (initialPlanningPeriod) {
+      const firstVisibleIndex = ascendingPeriods.findIndex(
+        (period) => period.periodId === initialPlanningPeriod.periodId,
+      );
+
+      if (firstVisibleIndex >= 0) {
+        return ascendingPeriods.slice(firstVisibleIndex, firstVisibleIndex + 3);
+      }
+    }
+
+    const futurePeriods = ascendingPeriods.filter((period) =>
+      moment(period.startDate).isAfter(moment().startOf("day")),
+    );
+
+    return (futurePeriods.length > 0 ? futurePeriods : ascendingPeriods).slice(0, 3);
+  }, [displayPeriods, initialPlanningPeriod]);
+
   // Set default ward if not set
   useEffect(() => {
-    if (displayWards.length > 0 && !selectedWard) {
-      setSelectedWard(displayWards[0]);
+    if (displayWards.length === 0) return;
+
+    const designatedWard = user?.wardid
+      ? displayWards.find((ward) => ward.wardId === user.wardid) ?? null
+      : null;
+    const selectedWardStillAvailable = selectedWard
+      ? displayWards.some((ward) => ward.wardId === selectedWard.wardId)
+      : false;
+
+    if (designatedWard && selectedWard?.wardId !== designatedWard.wardId) {
+      setSelectedWard(designatedWard);
+      return;
     }
-  }, [displayWards, selectedWard]);
+
+    if (!selectedWardStillAvailable) {
+      const fallbackWard = getDefaultWard(displayWards);
+      if (fallbackWard) {
+        setSelectedWard(fallbackWard);
+      }
+    }
+  }, [displayWards, getDefaultWard, selectedWard, user?.wardid]);
 
   // Reset guidelines and per-date overrides when the selected ward changes
   useEffect(() => {
@@ -269,21 +372,47 @@ function RosterPlanningPage() {
 
   // Set default period if not set
   useEffect(() => {
-    if (displayPeriods.length > 0 && !selectedPeriod) {
-      setSelectedPeriod(displayPeriods[1]); // Current period
+    if (visiblePlanningPeriods.length > 0 && !selectedPeriod) {
+      const defaultPeriod =
+        (initialPlanningPeriod
+          ? visiblePlanningPeriods.find(
+              (period) => period.periodId === initialPlanningPeriod.periodId,
+            )
+          : null) ??
+        visiblePlanningPeriods[0];
+      setSelectedPeriod(defaultPeriod);
+      setCurrentStartDate(moment(defaultPeriod.startDate).toDate());
     }
-  }, [displayPeriods, selectedPeriod]);
+  }, [initialPlanningPeriod, selectedPeriod, visiblePlanningPeriods]);
+
+  useEffect(() => {
+    if (
+      !selectedPeriod ||
+      visiblePlanningPeriods.some((period) => period.periodId === selectedPeriod.periodId)
+    ) {
+      return;
+    }
+
+    const fallbackPeriod = visiblePlanningPeriods[0] ?? null;
+    setSelectedPeriod(fallbackPeriod);
+    if (fallbackPeriod) {
+      setCurrentStartDate(moment(fallbackPeriod.startDate).toDate());
+    }
+  }, [selectedPeriod, visiblePlanningPeriods]);
 
   // Populate roster rows with real nurses from the selected ward whenever the ward changes
   useEffect(() => {
     if (isAlgorithmGenerated) return;
     const nurses = wardStatistics?.nurses;
+    // If we have a saved roster from the DB, it will be loaded by the effect below
+    if (savedRoster?.roster_entries?.length) return;
     if (nurses && nurses.length > 0) {
       setRosterData(
         nurses.map((nurse) => ({
           nurseId: nurse.nurseId,
           name: nurse.name,
           designation: nurse.designation,
+          staffingRole: nurse.staffing_role ?? null,
           hours: { worked: 0, contracted: 44 },
           shifts: {},
           hasOvertime: false,
@@ -293,7 +422,18 @@ function RosterPlanningPage() {
     } else {
       setRosterData([]);
     }
-  }, [wardStatistics, isAlgorithmGenerated]);
+  }, [wardStatistics, isAlgorithmGenerated, savedRoster?.roster_entries?.length]);
+
+  // Load saved DB roster when available (e.g. after page refresh or ward/period switch)
+  useEffect(() => {
+    if (isAlgorithmGenerated) return;
+    const nurses = wardStatistics?.nurses;
+    const entries = savedRoster?.roster_entries;
+    if (!nurses?.length || !entries?.length) return;
+    const rows = transformRosterData(nurses, entries, shiftDurationMap);
+    setRosterData(rows);
+    setIsAlgorithmGenerated(true);
+  }, [savedRoster?.roster_entries, wardStatistics?.nurses, isAlgorithmGenerated, shiftDurationMap]);
 
   // Derive roster data with hours calculated from the visible date window only
   const displayRosterData = useMemo(() => {
@@ -326,7 +466,46 @@ function RosterPlanningPage() {
     });
   }, [rosterData, currentStartDate, viewMode, shiftDurationMap]);
 
+  const editHistory = useMemo<EditHistoryEntry[]>(() => {
+    return changelogEntries.map((entry) => ({
+      id: entry.changeid,
+      modifiedDate: entry.changedat,
+      changeType: entry.changetype === "comment" ? "comment" : "shift_change",
+      previousShiftCode: entry.oldshiftcode as ShiftCode | undefined,
+      newShiftCode: entry.newshiftcode as ShiftCode | undefined,
+      comment: entry.reason ?? undefined,
+      shiftDate: entry.shiftdate ?? entry.changedat,
+      nurseName: entry.nursename,
+      modifiedBy: entry.modifiedby,
+    }));
+  }, [changelogEntries]);
+
   // Handlers
+
+  // Seed test shift requests handler
+  const handleSeedRequests = useCallback(async () => {
+    if (!selectedWard) {
+      showErrorToast("Please select a ward first");
+      return;
+    }
+    setIsSeedingRequests(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`/api/v1/roster/ward/${selectedWard.wardId}/seed-requests`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Seeding failed");
+      }
+      showSuccessToast("Test requests seeded successfully");
+    } catch (e: any) {
+      showErrorToast(e.message ?? "Failed to seed requests");
+    } finally {
+      setIsSeedingRequests(false);
+    }
+  }, [selectedWard]);
 
   // Generate algorithm roster handler
   const handleGenerateAlgorithm = useCallback(async () => {
@@ -334,652 +513,31 @@ function RosterPlanningPage() {
       showErrorToast("Please select a ward and period first");
       return;
     }
-    const mockData = {
-      method: "GA",
-      roster: {
-        nurses: [
-          {
-            id: 1,
-            name: "Nurse 1",
-            rank: "A",
-            schedule: [
-              "DO",
-              "A",
-              "A",
-              "P",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 2,
-            name: "Nurse 2",
-            rank: "A",
-            schedule: [
-              "DO",
-              "A",
-              "P",
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 3,
-            name: "Nurse 3",
-            rank: "A",
-            schedule: [
-              "P",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 4,
-            name: "Nurse 4",
-            rank: "A",
-            schedule: [
-              "P",
-              "P",
-              "DO",
-              "A",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 5,
-            name: "Nurse 5",
-            rank: "A",
-            schedule: [
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 6,
-            name: "Nurse 6",
-            rank: "A",
-            schedule: [
-              "N",
-              "DO",
-              "A",
-              "DO",
-              "A",
-              "A",
-              "P",
-              "P",
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 7,
-            name: "Nurse 7",
-            rank: "A",
-            schedule: [
-              "P",
-              "N",
-              "N",
-              "DO",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "A",
-              "DO",
-              "P",
-              "A",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 8,
-            name: "Nurse 8",
-            rank: "A",
-            schedule: [
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 9,
-            name: "Nurse 9",
-            rank: "A",
-            schedule: [
-              "DO",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "A",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 10,
-            name: "Nurse 10",
-            rank: "A",
-            schedule: [
-              "A",
-              "P",
-              "N",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "DO",
-              "A",
-              "P",
-              "A",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 11,
-            name: "Nurse 11",
-            rank: "A",
-            schedule: [
-              "P",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 12,
-            name: "Nurse 12",
-            rank: "B",
-            schedule: [
-              "N",
-              "DO",
-              "P",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 13,
-            name: "Nurse 13",
-            rank: "B",
-            schedule: [
-              "N",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 14,
-            name: "Nurse 14",
-            rank: "B",
-            schedule: [
-              "P",
-              "A",
-              "N",
-              "DO",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 15,
-            name: "Nurse 15",
-            rank: "B",
-            schedule: [
-              "A",
-              "A",
-              "A",
-              "P",
-              "DO",
-              "DO",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 16,
-            name: "Nurse 16",
-            rank: "B",
-            schedule: [
-              "DO",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 17,
-            name: "Nurse 17",
-            rank: "B",
-            schedule: [
-              "A",
-              "A",
-              "DO",
-              "P",
-              "P",
-              "DO",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 18,
-            name: "Nurse 18",
-            rank: "B",
-            schedule: [
-              "A",
-              "N",
-              "DO",
-              "P",
-              "DO",
-              "P",
-              "A",
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 19,
-            name: "Nurse 19",
-            rank: "B",
-            schedule: [
-              "N",
-              "N",
-              "DO",
-              "A",
-              "DO",
-              "A",
-              "P",
-              "A",
-              "DO",
-              "P",
-              "N",
-              "DO",
-              "P",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 20,
-            name: "Nurse 20",
-            rank: "B",
-            schedule: [
-              "P",
-              "P",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 21,
-            name: "Nurse 21",
-            rank: "B",
-            schedule: [
-              "DO",
-              "P",
-              "A",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 22,
-            name: "Nurse 22",
-            rank: "B",
-            schedule: [
-              "P",
-              "P",
-              "DO",
-              "P",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "P",
-              "DO",
-              "A",
-              "A",
-              "P",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 23,
-            name: "Nurse 23",
-            rank: "B",
-            schedule: [
-              "A",
-              "P",
-              "A",
-              "DO",
-              "N",
-              "N",
-              "DO",
-              "DO",
-              "P",
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 24,
-            name: "Nurse 24",
-            rank: "C",
-            schedule: [
-              "N",
-              "DO",
-              "P",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "N",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 25,
-            name: "Nurse 25",
-            rank: "C",
-            schedule: [
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "N",
-              "DO",
-              "A",
-              "A",
-              "DO",
-              "A",
-              "N",
-              "DO",
-              "A",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-          {
-            id: 26,
-            name: "Nurse 26",
-            rank: "C",
-            schedule: [
-              "P",
-              "A",
-              "P",
-              "N",
-              "DO",
-              "A",
-              "DO",
-              "P",
-              "N",
-              "N",
-              "DO",
-              "A",
-              "P",
-              "DO",
-            ],
-            stats: {
-              total_shifts: 10,
-            },
-          },
-        ],
-      },
-    }; //Put mock data in here
-
+    const startedAt = Date.now();
     try {
+      setGenerationProgress(0);
       const result = await generateAlgorithmRoster.mutateAsync({
         wardId: selectedWard.wardId, // CamelCase to match hook params
         periodId: selectedPeriod.periodId,
         startDate: currentStartDate, // Pass the actual Date object
-
+        algorithm: algorithmType ?? undefined,
+        onProgress: (percent) => {
+          setGenerationProgress(percent);
+        },
       });
 
       // The hook now returns exactly what we need
       setRosterData(result.rosterData);
       setIsAlgorithmGenerated(true);
+      setGenerationProgress(100);
+      setGeneratedAlgorithmMethod(result.algorithm);
+      setIsGenerationSuccessDialogOpen(true);
+      setLastAlgorithmRunAt(new Date());
+      setLastAlgorithmRunMs(Date.now() - startedAt);
       showSuccessToast("Algorithm roster generated successfully!");
     } catch (error) {
       console.error("Failed:", error);
+      setGenerationProgress(0);
       showErrorToast("Failed to generate roster.");
     }
   }, [
@@ -987,27 +545,62 @@ function RosterPlanningPage() {
     selectedPeriod,
     currentStartDate,
     generateAlgorithmRoster,
+    setGenerationProgress,
     showSuccessToast,
     showErrorToast,
   ]);
 
   // Clear roster and return to manual mode — ward nurses repopulate via the wardStatistics effect
-  const handleClearRoster = useCallback(() => {
-    setIsAlgorithmGenerated(false);
-  }, []);
+  const handleClearRoster = useCallback(async () => {
+    if (!selectedWard || !selectedPeriod) {
+      showErrorToast("Please select a ward and period first");
+      return;
+    }
+    if (rosterEntries.length === 0) {
+      setIsAlgorithmGenerated(false);
+      showSuccessToast("Roster cleared successfully");
+      return;
+    }
+    try {
+      await clearRoster.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+      });
+      setIsAlgorithmGenerated(false);
+      showSuccessToast("Roster cleared successfully");
+    } catch (error) {
+      console.error("Failed to clear roster:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to clear roster. Please try again.";
+      showErrorToast(message);
+    }
+  }, [
+    selectedWard,
+    selectedPeriod,
+    rosterEntries.length,
+    clearRoster,
+    showErrorToast,
+    showSuccessToast,
+  ]);
 
   // Load a mock JSON dataset into the roster grid
   const handleLoadMockData = useCallback(
     (mockKey: string) => {
       const mockMap: Record<string, typeof gaWard4> = {
         ga_ward4: gaWard4,
-        ga_ward5: gaWard5,
-        ga_ward6: gaWard6,
-        milp_ward4: milpWard4,
-        milp_ward5: milpWard5,
-        milp_ward6: milpWard6,
-        ward_06_run_1: ward06Run1,
-        ward_06_run_2: ward06Run2,
+      
+        milp_ward4_run1: milpWard4Run1,
+        milp_ward4_run2: milpWard4Run2,
+        milp_ward5_run1: milpWard5Run1,
+        milp_ward5_run2: milpWard5Run2,
+        milp_ward6_run1: milpWard6Run1,
+        milp_ward6_run2: milpWard6Run2,
+        milp_ward7_run1: milpWard7Run1,
+        milp_ward7_run2: milpWard7Run2,
+        milp_ward8_run1: milpWard8Run1,
+        milp_ward8_run2: milpWard8Run2,
       };
       const mock = mockMap[mockKey];
       if (!mock) return;
@@ -1037,6 +630,8 @@ function RosterPlanningPage() {
           name: nurse.name,
           designation:
             nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
+          staffingRole:
+            nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
           hours: { worked: workedHours, contracted: contractedHours },
           shifts: shiftsObject,
           hasOvertime: workedHours > contractedHours,
@@ -1050,11 +645,18 @@ function RosterPlanningPage() {
         `Loaded mock data: ${mockKey.replace(/_/g, " ").toUpperCase()}`,
       );
     },
-    [currentStartDate, showSuccessToast],
+    [currentStartDate, shiftDurationMap, showSuccessToast],
   );
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
-  }, []);
+
+    const matchingPeriod =
+      visiblePlanningPeriods.find((period) =>
+        moment(date).isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+      ) ?? null;
+
+    setSelectedPeriod(matchingPeriod);
+  }, [visiblePlanningPeriods]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -1075,13 +677,26 @@ function RosterPlanningPage() {
       setRosterData((prevData) =>
         prevData.map((row) => {
           if (row.nurseId !== nurseId) return row;
+          const existingShift = row.shifts[date];
+          const rosterId = existingShift?.rosterId || null;
+          // Only log to changelog when editing a previously saved shift
+          if (rosterId) {
+            createChangelog({
+              rosterid: rosterId,
+              oldnurseid: nurseId,
+              oldshiftcode: existingShift?.shiftCode ?? null,
+              newshiftcode: newShiftCode,
+              changetype: "shift_change",
+              changesource: "Manual",
+            });
+          }
           return {
             ...row,
             shifts: {
               ...row.shifts,
               [date]: {
-                ...(row.shifts[date] || {}),
-                rosterId: row.shifts[date]?.rosterId || 0,
+                ...(existingShift || {}),
+                rosterId: existingShift?.rosterId || 0,
                 nurseId,
                 shiftDate: date,
                 shiftCode: newShiftCode,
@@ -1092,7 +707,7 @@ function RosterPlanningPage() {
         }),
       );
     },
-    [],
+    [createChangelog],
   );
 
   const handleCommentChange = useCallback(
@@ -1120,25 +735,203 @@ function RosterPlanningPage() {
 
   const handleDownloadRoster = useCallback(() => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
-    setIsDownloadSuccessDialogOpen(true);
+    // Defer to allow any open menu/dialog to fully close before opening the download dialog
+    setTimeout(() => setIsDownloadSuccessDialogOpen(true), 0);
   }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
 
-  const handlePublishClick = useCallback(async () => {
+  const handleViewEditHistory = useCallback(() => {
+    setIsEditHistoryOpen(true);
+  }, []);
+
+  const handlePublishClick = useCallback(() => {
+    setIsPublishDialogOpen(true);
+  }, []);
+
+  const handleAutoRegenerateClick = useCallback(() => {
+    setIsAutoRegenerateDialogOpen(true);
+  }, []);
+
+  const handleViewGenerationInputs = useCallback(() => {
+    if (!selectedWard || !selectedPeriod) {
+      showErrorToast("Please select a ward and period first");
+      return;
+    }
+    setIsInputsDialogOpen(true);
+  }, [selectedWard, selectedPeriod]);
+
+  const handleConfirmPublish = useCallback(async () => {
     if (!selectedWard || !selectedPeriod) {
       showErrorToast("Please select a ward and period first");
       return;
     }
 
+    const entriesToSave = rosterData.flatMap((row) =>
+      Object.values(row.shifts)
+        .filter((shift): shift is ShiftAssignment => shift != null)
+        .map((shift) => ({
+          nurseId: row.nurseId,
+          shiftDate: shift.shiftDate,
+          shiftCode: shift.shiftCode,
+          comment: shift.comment,
+        })),
+    );
+
+    if (entriesToSave.length === 0) {
+      showErrorToast("Add at least one shift before publishing the roster");
+      return;
+    }
+
     try {
+      await bulkUpsertRoster.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+        entries: entriesToSave,
+      });
+
       await publishRoster.mutateAsync({
         wardId: selectedWard.wardId,
         periodId: selectedPeriod.periodId,
       });
+
+      // Auto-approve/reject pending shift requests based on the published roster
+      await autoReviewShiftRequests.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+        rosterData,
+      });
+
+      setIsPublishDialogOpen(false);
+      setIsPublishSuccessDialogOpen(true);
     } catch (error) {
       console.error("Failed to publish roster:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to publish roster. Please try again.";
+      showErrorToast(message);
     }
-    setIsPublishSuccessDialogOpen(true);
-  }, [selectedWard, selectedPeriod, publishRoster, showErrorToast]);
+  }, [
+    selectedWard,
+    selectedPeriod,
+    rosterData,
+    bulkUpsertRoster,
+    publishRoster,
+    autoReviewShiftRequests,
+    showErrorToast,
+  ]);
+
+  const handleConfirmAutoRegenerate = useCallback(async () => {
+    if (!selectedWard || !selectedPeriod) {
+      showErrorToast("Please select a ward and period first");
+      return;
+    }
+    if (!canAutoRegenerate) {
+      showErrorToast("Auto regeneration is only available for pending auto-generated rosters.");
+      return;
+    }
+    if (isAlgorithmRunning) {
+      return;
+    }
+    setIsAutoRegenerateDialogOpen(false);
+    const startedAt = Date.now();
+    try {
+      setGenerationProgress(0);
+      setAlgorithmType(null);
+      const result = await generateAlgorithmRoster.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+        startDate: currentStartDate,
+        algorithm: undefined,
+        onProgress: (percent) => {
+          setGenerationProgress(percent);
+        },
+      });
+
+      setRosterData(result.rosterData);
+      setIsAlgorithmGenerated(true);
+      setGenerationProgress(100);
+      setGeneratedAlgorithmMethod(result.algorithm);
+      setIsGenerationSuccessDialogOpen(true);
+      setLastAlgorithmRunAt(new Date());
+      setLastAlgorithmRunMs(Date.now() - startedAt);
+      showSuccessToast("Roster regenerated successfully!");
+    } catch (error) {
+      console.error("Failed:", error);
+      setGenerationProgress(0);
+      showErrorToast("Failed to regenerate roster.");
+    }
+  }, [
+    selectedWard,
+    selectedPeriod,
+    currentStartDate,
+    canAutoRegenerate,
+    isAlgorithmRunning,
+    generateAlgorithmRoster,
+    showSuccessToast,
+    showErrorToast,
+  ]);
+
+  useEffect(() => {
+    hasResumedTaskRef.current = false;
+    resumeCancelledRef.current = false;
+    setIsResumingAlgorithm(false);
+  }, [selectedWard?.wardId, selectedPeriod?.periodId]);
+
+  useEffect(() => {
+    if (!selectedWard || !selectedPeriod) return;
+    if (hasResumedTaskRef.current) return;
+    if (generateAlgorithmRoster.isPending || resumeAlgorithmTask.isPending) return;
+
+    const stored = loadAlgorithmTask(selectedWard.wardId, selectedPeriod.periodId);
+    if (!stored) return;
+
+    hasResumedTaskRef.current = true;
+    resumeCancelledRef.current = false;
+    const startedAt = new Date(stored.startedAt);
+    setLastAlgorithmRunAt(startedAt);
+    setIsResumingAlgorithm(true);
+
+    resumeAlgorithmTask.mutateAsync({
+      taskId: stored.taskId,
+      wardId: selectedWard.wardId,
+      periodId: selectedPeriod.periodId,
+      startDate: currentStartDate,
+      onProgress: (percent) => {
+        if (resumeCancelledRef.current) return;
+        setGenerationProgress(percent);
+      },
+    }).then((result) => {
+      if (resumeCancelledRef.current) return;
+      setRosterData(result.rosterData);
+      setIsAlgorithmGenerated(true);
+      setGenerationProgress(100);
+      setGeneratedAlgorithmMethod(result.algorithm);
+      setLastAlgorithmRunMs(Date.now() - startedAt.getTime());
+      setIsResumingAlgorithm(false);
+      showSuccessToast("Algorithm roster generated successfully!");
+    }).catch((error) => {
+      if (resumeCancelledRef.current) return;
+      console.error("Failed:", error);
+      setIsResumingAlgorithm(false);
+      showErrorToast("Failed to generate roster.");
+    });
+  }, [
+    selectedWard,
+    selectedPeriod,
+    currentStartDate,
+    generateAlgorithmRoster.isPending,
+    resumeAlgorithmTask,
+    showErrorToast,
+    showSuccessToast,
+  ]);
+
+  const handleCancelResume = useCallback(() => {
+    if (!selectedWard || !selectedPeriod) return;
+    resumeCancelledRef.current = true;
+    setIsResumingAlgorithm(false);
+    setGenerationProgress(0);
+    clearAlgorithmTask(selectedWard.wardId, selectedPeriod.periodId);
+  }, [selectedWard, selectedPeriod]);
 
   return (
     <Flex
@@ -1187,9 +980,12 @@ function RosterPlanningPage() {
           selectedWard={selectedWard}
           selectedPeriod={selectedPeriod}
           wards={displayWards}
-          periods={displayPeriods}
+          periods={visiblePlanningPeriods}
           isAlgorithmGenerated={isAlgorithmGenerated}
-          isGenerating={generateAlgorithmRoster.isPending}
+          isGenerating={isAlgorithmRunning}
+          isPublishing={
+            bulkUpsertRoster.isPending || publishRoster.isPending
+          }
           generationProgress={generationProgress}
           onDateChange={handleDateChange}
           onViewModeChange={handleViewModeChange}
@@ -1197,11 +993,59 @@ function RosterPlanningPage() {
           onPeriodChange={handlePeriodChange}
           onPublishRoster={handlePublishClick}
           onDownloadRoster={handleDownloadRoster}
+          onViewEditHistory={handleViewEditHistory}
+          algorithmType={algorithmType}
+          onAlgorithmTypeChange={(t) => setAlgorithmType(t)}
           onGenerateAlgorithm={handleGenerateAlgorithm}
+          showAutoRegenerate={canAutoRegenerate}
+          onAutoRegenerate={handleAutoRegenerateClick}
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
+          onSeedRequests={handleSeedRequests}
+          isSeedingRequests={isSeedingRequests}
         />
+        <Box mt={3} display="flex" justifyContent="flex-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleViewGenerationInputs}
+            borderColor="#E6E6E6"
+            color="#4A4A4A"
+            _hover={{ bg: "gray.50" }}
+          >
+            View Algorithm Inputs
+          </Button>
+        </Box>
       </Box>
+
+      {isResumingAlgorithm && (
+        <Box
+          mt={3}
+          bg="yellow.50"
+          border="1px solid"
+          borderColor="yellow.200"
+          rounded="md"
+          px={4}
+          py={3}
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <Text fontSize="sm" color="yellow.800">
+            Resuming algorithm… {generationProgress ? `${generationProgress}%` : ""}
+          </Text>
+          <Button
+            size="sm"
+            variant="outline"
+            borderColor="yellow.300"
+            color="yellow.800"
+            _hover={{ bg: "yellow.100" }}
+            onClick={handleCancelResume}
+          >
+            Cancel
+          </Button>
+        </Box>
+      )}
 
       {/* Roster Grid Section with Sticky Summary */}
       <Box
@@ -1223,10 +1067,11 @@ function RosterPlanningPage() {
             onShiftChange={handleShiftChange}
             onCommentChange={handleCommentChange}
             showSummary={false}
-            isLoading={generateAlgorithmRoster.isPending}
+            isLoading={isAlgorithmRunning}
+            loadingLabel={algorithmOverlayLabel}
             guidelines={guidelines}
             isRosterGenerated={isAlgorithmGenerated}
-            shiftRequestOverlays={mockPlanningOverlays}
+            shiftRequestOverlays={shiftRequestOverlays}
           />
         </Box>
 
@@ -1245,6 +1090,66 @@ function RosterPlanningPage() {
           }
         />
       </Box>
+
+      {/* Generation Success Dialog */}
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isGenerationSuccessDialogOpen}
+        onOpenChange={(e) => setIsGenerationSuccessDialogOpen(e.open)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content maxW="380px">
+              <Dialog.Body py={8} px={6}>
+                <VStack gap={6} align="center">
+                  <Box position="relative" w="full">
+                    <Text
+                      fontSize="xl"
+                      fontWeight="bold"
+                      color="primary"
+                      textAlign="center"
+                      w="full"
+                    >
+                      Roster Generated!
+                    </Text>
+                    <Dialog.CloseTrigger asChild>
+                      <CloseButton
+                        size="sm"
+                        position="absolute"
+                        top="-2.5"
+                        right="-2"
+                      />
+                    </Dialog.CloseTrigger>
+                  </Box>
+                  <ClipboardCheck size={80} color="#16a34a" strokeWidth={1.5} />
+                  <VStack gap={2}>
+                    {generatedAlgorithmMethod && (
+                      <Text fontSize="sm" color="gray.500" textAlign="center">
+                        Generated with {generatedAlgorithmMethod}
+                      </Text>
+                    )}
+                    <Text fontSize="sm" color="gray.500" textAlign="center">
+                      The roster is ready for review and publishing.
+                    </Text>
+                  </VStack>
+                  <Button
+                    w="full"
+                    variant="outline"
+                    borderColor="#E6E6E6"
+                    color="#4A4A4A"
+                    _hover={{ bg: "gray.50" }}
+                    onClick={() => setIsGenerationSuccessDialogOpen(false)}
+                  >
+                    Review Generated Roster
+                  </Button>
+                </VStack>
+              </Dialog.Body>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
 
       {/* Publish Success Dialog */}
       <Dialog.Root
@@ -1329,6 +1234,133 @@ function RosterPlanningPage() {
         </Portal>
       </Dialog.Root>
 
+      {/* Auto Regenerate Dialog */}
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isAutoRegenerateDialogOpen}
+        onOpenChange={(e) => setIsAutoRegenerateDialogOpen(e.open)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content>
+              <Dialog.Header>
+                <Dialog.Title>Regenerate Auto Roster</Dialog.Title>
+              </Dialog.Header>
+              <Dialog.CloseTrigger />
+              <Dialog.Body>
+                <Text color="gray.600" mb={4}>
+                  This will overwrite the current pending roster with a newly generated auto roster.
+                </Text>
+                <Text color="gray.600" mb={2}>
+                  Before continuing:
+                </Text>
+                <Box pl={4} color="gray.600">
+                  <Text>• Any manual edits will be replaced</Text>
+                  <Text>• The roster will remain in pending status</Text>
+                </Box>
+                {selectedWard && selectedPeriod && (
+                  <Box mt={4} p={3} bg="gray.50" borderRadius="md">
+                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                      Regenerating for:
+                    </Text>
+                    <Text fontSize="sm" color="gray.600">
+                      {selectedWard.wardName} • {selectedPeriod.name}
+                    </Text>
+                  </Box>
+                )}
+              </Dialog.Body>
+              <Dialog.Footer>
+                <HStack gap={3}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsAutoRegenerateDialogOpen(false)}
+                    borderColor="#E6E6E6"
+                    color="#4A4A4A"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    bg="#4B8798"
+                    color="white"
+                    _hover={{ bg: "#3d6f7d" }}
+                    onClick={handleConfirmAutoRegenerate}
+                    loading={isAlgorithmRunning}
+                  >
+                    Regenerate Roster
+                  </Button>
+                </HStack>
+              </Dialog.Footer>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
+
+      {/* Publish Dialog */}
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isPublishDialogOpen}
+        onOpenChange={(e) => setIsPublishDialogOpen(e.open)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content>
+              <Dialog.Header>
+                <Dialog.Title>Publish Roster</Dialog.Title>
+              </Dialog.Header>
+              <Dialog.CloseTrigger />
+              <Dialog.Body>
+                <Text color="gray.600" mb={4}>
+                  Are you sure you want to publish this roster?
+                </Text>
+                <Text color="gray.600" mb={2}>
+                  Once published:
+                </Text>
+                <Box pl={4} color="gray.600">
+                  <Text>• All draft shifts will be confirmed</Text>
+                  <Text>• Staff will be able to see their schedules</Text>
+                  <Text>• The roster will appear on the homepage</Text>
+                </Box>
+                {selectedWard && selectedPeriod && (
+                  <Box mt={4} p={3} bg="gray.50" borderRadius="md">
+                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                      Publishing for:
+                    </Text>
+                    <Text fontSize="sm" color="gray.600">
+                      {selectedWard.wardName} • {selectedPeriod.name}
+                    </Text>
+                  </Box>
+                )}
+              </Dialog.Body>
+              <Dialog.Footer>
+                <HStack gap={3}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsPublishDialogOpen(false)}
+                    borderColor="#E6E6E6"
+                    color="#4A4A4A"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    bg="#4B8798"
+                    color="white"
+                    _hover={{ bg: "#3d6f7d" }}
+                    onClick={handleConfirmPublish}
+                    loading={publishRoster.isPending}
+                  >
+                    Publish Roster
+                  </Button>
+                </HStack>
+              </Dialog.Footer>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
+
       {/* Download Success Dialog */}
       <Dialog.Root
         placement="center"
@@ -1390,6 +1422,25 @@ function RosterPlanningPage() {
       </Dialog.Root>
 
       </Flex>{/* end padded content area */}
+      <AlgorithmInputsDialog
+        isOpen={isInputsDialogOpen}
+        onClose={() => setIsInputsDialogOpen(false)}
+        wardId={selectedWard?.wardId ?? null}
+        wardName={selectedWard?.wardName ?? null}
+        periodId={selectedPeriod?.periodId ?? null}
+        periodName={selectedPeriod?.name ?? null}
+        periodStartDate={selectedPeriod?.startDate ?? null}
+        algorithmType={algorithmType}
+        lastRunAt={lastAlgorithmRunAt}
+        lastRunMs={lastAlgorithmRunMs}
+        rosterData={rosterData}
+      />
+
+      <EditHistoryDialog
+        isOpen={isEditHistoryOpen}
+        onClose={() => setIsEditHistoryOpen(false)}
+        entries={editHistory}
+      />
     </Flex>
   );
 }

@@ -12,19 +12,27 @@ export { ManpowerEditDialog } from "./ManpowerEditDialog";
 export {
   useWards,
   useRosterPeriods,
+  useRosterPeriodWindow,
   useWardStatistics,
   useWardRoster,
+  useBulkUpsertRoster,
   useUpdateRoster,
   usePublishRoster,
+  useClearRoster,
   useRosterPageData,
   useRosterExport,
   useGenerateAlgorithmRoster,
+  useResumeAlgorithmTask,
+  useGenerationInputs,
   useShiftCodes,
   useRosterChangelog,
   useCreateChangelog,
   useUpdateRosterComment,
+  useAutoReviewShiftRequests,
   getShiftDurationHours,
   transformRosterData,
+  loadAlgorithmTask,
+  clearAlgorithmTask,
 } from "./useRosterData";
 
 // Export API response types

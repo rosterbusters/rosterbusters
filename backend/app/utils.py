@@ -37,6 +37,33 @@ def send_email(
     html_content: str = "",
 ) -> None:
     assert settings.emails_enabled, "no provided configuration for email variables"
+    if settings.aws_ses_enabled and not settings.smtp_enabled:
+        import boto3
+
+        client_kwargs: dict[str, str] = {"region_name": settings.AWS_REGION or ""}
+        if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+            client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
+            client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+
+        ses_client = boto3.client("ses", **client_kwargs)
+        sender_email = settings.AWS_SES_SENDER_EMAIL
+        assert sender_email, "AWS_SES_SENDER_EMAIL must be set when using SES"
+        if settings.EMAILS_FROM_NAME:
+            source = f"{settings.EMAILS_FROM_NAME} <{sender_email}>"
+        else:
+            source = str(sender_email)
+
+        response = ses_client.send_email(
+            Source=source,
+            Destination={"ToAddresses": [email_to]},
+            Message={
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {"Html": {"Data": html_content, "Charset": "UTF-8"}},
+            },
+        )
+        logger.info("send email result: %s", response.get("MessageId"))
+        return
+
     message = emails.Message(
         subject=subject,
         html=html_content,
@@ -121,3 +148,17 @@ def verify_password_reset_token(token: str) -> str | None:
         return str(decoded_token["sub"])
     except InvalidTokenError:
         return None
+    
+def generate_password_changed_email(email_to: str, username: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Password changed successfully"
+    html_content = render_email_template(
+        template_name="password_changed.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "username": username,
+            "email": email_to,
+            "link": settings.FRONTEND_HOST,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)

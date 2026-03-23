@@ -1,35 +1,12 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
-import { ShiftRequestsService } from "@/client";
-import type { RosterPeriodPublic } from "@/client/types.gen";
+import { clearAlgorithmTask, loadAlgorithmTask } from "@/components/NurseManager/RosterTable";
 
-// ─── Mock toggle ──────────────────────────────────────────────────────────────
-// Set MOCK_LOCKED = true to simulate a locked planning period (no backend needed).
-// Set MOCK_LOCKED = false to use real backend data.
-const MOCK_LOCKED = false;
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
-const MOCK_PERIODS: RosterPeriodPublic[] = [
-  {
-    periodid: 99,
-    name: "Mock Closed Period",
-    startdate: "2026-03-20",
-    enddate: "2026-04-30",
-    status: "RequestClosed",
-    requestopendate: "2026-03-20",
-    requestclosedate: "2026-04-30",
-  },
-  {
-    periodid: 100,
-    name: "Mock Next Period",
-    startdate: "2026-05-12",
-    enddate: "2026-05-22",
-    status: "RequestOpen",
-    requestopendate: "2026-05-12",
-    requestclosedate: "2026-05-22",
-  },
-];
-// ─────────────────────────────────────────────────────────────────────────────
+type AlgorithmTaskStatus =
+  | { task_id: string; status: "pending" | "started" | "in_progress" }
+  | { task_id: string; status: "complete" | "failed"; error?: string };
 
 export interface RosterPlanningLockStatus {
   isLocked: boolean;
@@ -38,55 +15,74 @@ export interface RosterPlanningLockStatus {
   isLoading: boolean;
 }
 
-function formatWindowDate(dateStr: string): string {
-  return format(parseISO(dateStr), "d MMM");
+async function fetchWithAuth(url: string): Promise<AlgorithmTaskStatus> {
+  const token = localStorage.getItem("access_token") || "";
+  const response = await fetch(`${API_BASE}${url}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
 }
 
-export function useRosterPlanningLockStatus(): RosterPlanningLockStatus {
-  const { data: fetchedPeriods, isLoading } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-    staleTime: 5 * 60 * 1000,
-    enabled: !MOCK_LOCKED,
+export function useRosterPlanningLockStatus(
+  wardId: number | null,
+  periodId: number | null,
+): RosterPlanningLockStatus {
+  const storedTask = useMemo(() => {
+    if (!wardId || !periodId) return null;
+    return loadAlgorithmTask(wardId, periodId);
+  }, [wardId, periodId]);
+
+  const taskId = storedTask?.taskId ?? null;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["roster", "algorithm-task-status", wardId, periodId, taskId],
+    queryFn: async () => {
+      if (!taskId) throw new Error("Task ID required");
+      return fetchWithAuth(`/api/v1/roster/task/${taskId}/status`);
+    },
+    enabled: !!taskId,
+    refetchInterval: taskId ? 3000 : false,
+    staleTime: 0,
   });
 
-  const periods = MOCK_LOCKED ? MOCK_PERIODS : (fetchedPeriods ?? []);
-
   return useMemo(() => {
-    if (!MOCK_LOCKED && isLoading) {
-      return { isLocked: false, nextWindowStart: undefined, nextWindowEnd: undefined, isLoading: true };
+    if (!taskId) {
+      return {
+        isLocked: false,
+        nextWindowStart: undefined,
+        nextWindowEnd: undefined,
+        isLoading: false,
+      };
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    if (isLoading) {
+      return {
+        isLocked: false,
+        nextWindowStart: undefined,
+        nextWindowEnd: undefined,
+        isLoading: true,
+      };
+    }
 
-    // Locked when no RequestOpen period contains today
-    const activePeriod =
-      periods.find(
-        (p) =>
-          p.status === "RequestOpen" &&
-          p.startdate <= today &&
-          p.enddate >= today,
-      ) ?? periods.find((p) => p.status === "RequestOpen" && p.startdate > today);
+    const status = data?.status;
+    const isLocked =
+      status === "pending" || status === "started" || status === "in_progress";
 
-    const isLocked = !periods.find(
-      (p) =>
-        p.status === "RequestOpen" &&
-        p.startdate <= today &&
-        p.enddate >= today,
-    );
+    if ((status === "complete" || status === "failed") && wardId && periodId) {
+      clearAlgorithmTask(wardId, periodId);
+    }
 
-    // Next planning period: next RequestOpen period with a future startdate
-    const nextPeriod = periods
-      .filter((p) => p.status === "RequestOpen" && p.startdate > today)
-      .sort((a, b) => a.startdate.localeCompare(b.startdate))[0] ?? activePeriod;
-
-    const nextWindowStart = nextPeriod?.startdate
-      ? formatWindowDate(nextPeriod.startdate)
-      : undefined;
-    const nextWindowEnd = nextPeriod?.enddate
-      ? formatWindowDate(nextPeriod.enddate)
-      : undefined;
-
-    return { isLocked, nextWindowStart, nextWindowEnd, isLoading: false };
-  }, [periods, isLoading]);
+    return {
+      isLocked,
+      nextWindowStart: undefined,
+      nextWindowEnd: undefined,
+      isLoading: false,
+    };
+  }, [data?.status, isLoading, periodId, taskId, wardId]);
 }

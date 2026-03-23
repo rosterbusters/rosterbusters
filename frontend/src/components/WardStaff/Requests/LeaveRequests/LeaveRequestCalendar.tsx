@@ -147,11 +147,18 @@ export default function LeaveRequestCalendar({ wardId, isLocked = false }: Leave
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {
+    const MonthView = ((props) => (
+      <CustomMonthView {...props} isLocked={isLocked} />
+    )) as typeof CustomMonthView;
+    MonthView.range = CustomMonthView.range;
+    MonthView.navigate = CustomMonthView.navigate;
+    MonthView.title = CustomMonthView.title;
+
     return {
-      views: { month: CustomMonthView, week: false, day: false } as any,
+      views: { month: MonthView, week: false, day: false } as any,
       defaultView: 'month' as View,
     };
-  }, []);
+  }, [isLocked]);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>
@@ -166,7 +173,6 @@ export default function LeaveRequestCalendar({ wardId, isLocked = false }: Leave
         date={date}
         showAllEvents
         onNavigate={onNavigate}
-        isLocked={isLocked}
       />
     </Box>
   );

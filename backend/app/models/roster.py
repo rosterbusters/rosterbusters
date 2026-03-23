@@ -117,6 +117,12 @@ class RosterPeriodPublic(SQLModel):
     status: str
 
 
+class RosterPeriodWindowPublic(SQLModel):
+    current_period: Optional[RosterPeriodPublic] = None
+    upcoming_period: Optional[RosterPeriodPublic] = None
+    request_open_period: Optional[RosterPeriodPublic] = None
+
+
 class RosterChangeLog(SQLModel, table=True):
     __tablename__ = "rosterchangelog"
 

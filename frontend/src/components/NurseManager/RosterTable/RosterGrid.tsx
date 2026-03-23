@@ -24,7 +24,7 @@ import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
 import { ShiftCommentPopover } from "./ShiftCommentPopover";
 import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
-import { MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
+import { MOCK_STAFFING_GUIDELINES, mapDesignationToRole } from "./staffingGuidelines";
 import type {
   RosterRow,
   ShiftAssignment,
@@ -47,6 +47,8 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   HCA12: "HCA1&2",
   HCA3: "HCA3",
 };
+const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3/PSA", "Other"] as const;
+type RoleGroupKey = (typeof ROLE_GROUP_ORDER)[number];
 
 interface RosterGridProps {
   data: RosterRow[];
@@ -63,6 +65,7 @@ interface RosterGridProps {
     comment: string,
   ) => void;
   isLoading?: boolean;
+  loadingLabel?: string;
   guidelines?: DailyStaffingGuideline;
   isRosterGenerated?: boolean;
   showSummary?: boolean;
@@ -88,17 +91,92 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
 }
 
 // Group data by designation (role)
-function groupByDesignation(data: RosterRow[]): Map<string, RosterRow[]> {
-  const groups = new Map<string, RosterRow[]>();
+function getRoleGroupKey(row: RosterRow): RoleGroupKey {
+  const designation = (row.designation ?? "").toString();
+  const d = designation.toLowerCase().trim();
+  const role = row.staffingRole ?? mapDesignationToRole(designation);
+
+  if (role === "RN") return "SSN/SN";
+  if (role === "EN" || role === "NA" || role === "HCA12") return "EN/NA/HCA1/HCA2";
+  if (role === "HCA3") return "HCA3/PSA";
+
+  if (d === "ssn" || d === "sn" || d.includes("staff nurse") || d.includes("registered nurse")) {
+    return "SSN/SN";
+  }
+  if (d === "en" || d.includes("enrolled nurse") || d === "na" || d.includes("nursing aide")) {
+    return "EN/NA/HCA1/HCA2";
+  }
+  if (
+    d === "hca1" ||
+    d === "hca 1" ||
+    d === "hca-1" ||
+    d.includes("hca grade 1") ||
+    d === "hca2" ||
+    d === "hca 2" ||
+    d === "hca-2" ||
+    d.includes("hca grade 2") ||
+    d === "hca"
+  ) {
+    return "EN/NA/HCA1/HCA2";
+  }
+  if (
+    d === "hca3" ||
+    d === "hca 3" ||
+    d === "hca-3" ||
+    d.includes("hca grade 3") ||
+    d === "psa" ||
+    d.includes("patient service assistant")
+  ) {
+    return "HCA3/PSA";
+  }
+
+  return "Other";
+}
+
+function groupByRoleGroup(data: RosterRow[]): Map<RoleGroupKey, RosterRow[]> {
+  const groups = new Map<RoleGroupKey, RosterRow[]>();
+  ROLE_GROUP_ORDER.forEach((key) => groups.set(key, []));
 
   data.forEach((row) => {
-    const key = row.designation;
+    const key = getRoleGroupKey(row);
     const existing = groups.get(key) || [];
     existing.push(row);
     groups.set(key, existing);
   });
 
   return groups;
+}
+
+function getDisplayTitle(row: RosterRow): string {
+  const designation = (row.designation ?? "").toString();
+  const d = designation.toLowerCase().trim();
+
+  if (d === "ssn" || d.includes("senior staff nurse")) return "SSN";
+  if (d === "sn" || (d.includes("staff nurse") && !d.includes("senior"))) return "SN";
+  if (d === "rn" || d.includes("registered nurse")) return "RN";
+  if (d === "en" || d.includes("enrolled nurse")) return "EN";
+  if (d === "na" || d.includes("nursing aide")) return "NA";
+  if (d === "hca1" || d === "hca 1" || d === "hca-1" || d.includes("hca grade 1")) return "HCA1";
+  if (d === "hca2" || d === "hca 2" || d === "hca-2" || d.includes("hca grade 2")) return "HCA2";
+  if (d === "hca3" || d === "hca 3" || d === "hca-3" || d.includes("hca grade 3")) return "HCA3";
+  if (d === "psa" || d.includes("patient service assistant")) return "PSA";
+  if (d === "hca" || d.includes("healthcare assistant")) return "HCA";
+
+  if (row.staffingRole) {
+    return row.staffingRole === "HCA12" ? "HCA1/2" : row.staffingRole;
+  }
+
+  return designation;
+}
+
+function getDisplayName(row: RosterRow): string {
+  const title = getDisplayTitle(row).trim();
+  const name = (row.name ?? "").toString().trim();
+
+  if (!title) return name;
+  if (!name) return title;
+
+  return `${title} ${name}`;
 }
 
 export function RosterGrid({
@@ -108,6 +186,7 @@ export function RosterGrid({
   onShiftChange,
   onCommentChange,
   isLoading = false,
+  loadingLabel = "Loading roster data...",
   guidelines = MOCK_STAFFING_GUIDELINES,
   isRosterGenerated = false,
   showSummary = true,
@@ -210,7 +289,7 @@ export function RosterGrid({
 
   // Group data by designation (role) - always grouped
   const groupedData = useMemo(() => {
-    return groupByDesignation(filteredData);
+    return groupByRoleGroup(filteredData);
   }, [filteredData]);
 
   // Handle shift badge click
@@ -339,7 +418,7 @@ export function RosterGrid({
 
     // Summary Header Row (A, P, N labels)
     summaryRows.push(
-      <Table.Row
+        <Table.Row
         key="summary-header"
         bg="white"
         borderTop="2px solid"
@@ -513,6 +592,7 @@ export function RosterGrid({
     const allRows: React.ReactNode[] = [];
 
     Array.from(groupedData.entries()).forEach(([groupKey, rows]) => {
+      if (!rows.length) return;
       const isCollapsed = collapsedGroups.has(groupKey);
 
       // Group Header Row
@@ -556,7 +636,10 @@ export function RosterGrid({
   };
 
   // Render a single data row
-  const renderDataRow = (row: RosterRow) => (
+  const renderDataRow = (row: RosterRow) => {
+    const displayName = getDisplayName(row);
+
+    return (
     <Table.Row
       key={row.nurseId}
       color="foreground"
@@ -576,7 +659,7 @@ export function RosterGrid({
       >
         <HStack gap={2}>
           <Text fontSize="sm" fontWeight="medium">
-            {row.name}
+            {displayName}
           </Text>
           {/* {row.hasWarning && (
             <Icon as={AlertCircle} boxSize={4} color="danger" />
@@ -588,7 +671,8 @@ export function RosterGrid({
       {/* Shift Cells */}
       {dayColumns.map((col) => {
         const dateKey = moment(col.date).format("YYYY-MM-DD");
-        const shift = row.shifts[dateKey] || null;
+        const rawShift = row.shifts[dateKey] || null;
+        const shift = rawShift;
 
         return (
           <Table.Cell
@@ -601,7 +685,7 @@ export function RosterGrid({
             <Flex justify="center">
               <Box
                 onClick={(e) =>
-                  handleShiftClick(row.nurseId, row.name, dateKey, shift, e)
+                  handleShiftClick(row.nurseId, displayName, dateKey, shift, e)
                 }
               >
                 <ShiftBadge
@@ -610,7 +694,7 @@ export function RosterGrid({
                   viewMode={viewMode}
                   comment={shift?.comment}
                   onCommentIconClick={(e) =>
-                    handleCommentIconClick(row.nurseId, row.name, dateKey, shift, e)
+                    handleCommentIconClick(row.nurseId, displayName, dateKey, shift, e)
                   }
                   shiftRequestOverlay={shiftRequestOverlays[String(row.nurseId)]?.[dateKey]}
                 />
@@ -621,6 +705,7 @@ export function RosterGrid({
       })}
     </Table.Row>
   );
+  };
 
   return (
     <Box position="relative" w="100%">
@@ -906,7 +991,7 @@ export function RosterGrid({
           flexDir={"column"}
         >
           <Spinner color="primary" />
-          <Text color="gray.500">Loading roster data...</Text>
+          <Text color="gray.500">{loadingLabel}</Text>
         </Box>
       )}
     </Box>
