@@ -20,7 +20,14 @@ from app.core.config import settings
 from app.designation_mapping import classify_designation
 from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager
-from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
+from app.models.roster import (
+    NotificationQueue,
+    Roster,
+    RosterChangeLog,
+    RosterChangeLogPublic,
+    RosterPeriod,
+    Ward,
+)
 from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
@@ -62,6 +69,12 @@ class SkippedItem(BaseModel):
 class ScheduledGenerationResponse(BaseModel):
     triggered: list[TriggeredItem]
     skipped: list[SkippedItem]
+
+
+class AlgorithmNotificationRequest(BaseModel):
+    ward_id: int
+    period_id: int
+    notification_type: str
 
 
 class RosterUpsertRequest(BaseModel):
@@ -783,6 +796,65 @@ def get_task_status(task_id: str):
     return {"task_id": task_id, "status": result.state.lower()}
 
 
+@router.post("/task/{task_id}/cancel")
+def cancel_task(
+    task_id: str,
+    db: SessionDep,
+    current_user: CurrentUser,
+):
+    """Cancel a queued roster generation task."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+    _get_celery_app().control.revoke(task_id, terminate=True)
+    return {"task_id": task_id, "status": "cancelled"}
+
+
+@router.post("/algorithm-notification")
+def queue_algorithm_notification(
+    body: AlgorithmNotificationRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Queue an algorithm notification without running the algorithm (test helper)."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+    if body.notification_type not in {
+        "ALGORITHM_IN_PROGRESS",
+        "ALGORITHM_GENERATION",
+    }:
+        raise HTTPException(status_code=400, detail="Unsupported notification type.")
+
+    ward = session.get(Ward, body.ward_id)
+    if not ward or not ward.managerid:
+        raise HTTPException(status_code=404, detail="Ward not found or missing manager.")
+    period = session.get(RosterPeriod, body.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found.")
+
+    if body.notification_type == "ALGORITHM_IN_PROGRESS":
+        notification = NotificationType.ALGORITHM_IN_PROGRESS
+    else:
+        notification = NotificationType.ALGORITHM_GENERATION
+
+    message = notification.template.format(roster_period=period.name)
+
+    session.add(
+        NotificationQueue(
+            recipienttype="NurseManager",
+            recipientid=ward.managerid,
+            notificationtype=notification.value,
+            channel="Email",
+            priority="Normal",
+            subject=notification.value,
+            messagebody=message,
+            relatedentitytype="RosterPeriod",
+            relatedentityid=period.periodid,
+        )
+    )
+    session.commit()
+    return {"status": "ok", "notification_type": body.notification_type}
+
+
 @router.post("/generate-algorithm-stream")
 def generate_roster_stream(
     request_data: RosterGenerationRequest,
@@ -885,6 +957,55 @@ def seed_ward_requests(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "ok", "ward_id": ward_id}
+
+
+@router.post("/seed-requests-anonymized")
+def seed_anonymized_requests(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Seed an anonymized test ward with requests via test_algo helpers."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    from app.test_algo import (
+        seed_test_ward_with_anonymized_requests,
+        TEST_MANAGER_EMAIL,
+        TEST_MANAGER_PASSWORD,
+        TEST_MANAGER_USERNAME,
+    )
+    from app.services.roster_period_service import ensure_roster_period_window, get_period_window
+
+    created = seed_test_ward_with_anonymized_requests(session)
+
+    ward = session.exec(
+        select(Ward).where(Ward.wardname == "Test Ward Requests").order_by(Ward.wardid.desc())
+    ).first()
+    if not ward:
+        raise HTTPException(status_code=500, detail="Seeded ward not found.")
+
+    periods = ensure_roster_period_window(session)
+    current_period, upcoming_period, request_open_period = get_period_window(periods)
+    period = request_open_period or upcoming_period or current_period
+    if not period:
+        raise HTTPException(status_code=500, detail="No roster period available.")
+
+    return {
+        "status": "ok",
+        "ward_id": ward.wardid,
+        "created": created,
+        "manager": {
+            "username": TEST_MANAGER_USERNAME,
+            "email": TEST_MANAGER_EMAIL,
+            "password": TEST_MANAGER_PASSWORD,
+        },
+        "period": {
+            "periodid": period.periodid,
+            "name": period.name,
+            "startdate": str(period.startdate),
+            "enddate": str(period.enddate),
+        },
+    }
 
 
 def _shift_target_from_min(normal_min: dict) -> dict:

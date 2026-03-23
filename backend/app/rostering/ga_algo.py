@@ -43,6 +43,10 @@ class GAContext:
     soft_w_morning_pref: float
     soft_w_daily_balance: float
     soft_w_overtime: float
+    soft_w_rank_mismatch: float = 40_000
+    soft_w_off_to_am: float = 500
+    soft_w_shift_variance: float = 185
+    soft_w_am_pm_balance: float = 200
     # Annual Leave support
     al_nurses: frozenset = frozenset()
     working_nurses: tuple = ()
@@ -138,7 +142,7 @@ def evaluate_individual(individual, ctx: GAContext):
                 if schedule[n][d] != AL:
                     penalty += ctx.hard_pen_al
 
-    # 1) Shift coverage minima (hard) — AL nurses have AL code, not AM/PM/NIGHT, so no change needed
+    # 1) Shift coverage minima (hard) + rank mismatch (soft) — AL nurses excluded
     for d in range(num_days):
         for shift in [am, pm, night]:
             available = {"A": 0, "B": 0, "C": 0}
@@ -149,6 +153,7 @@ def evaluate_individual(individual, ctx: GAContext):
 
             req = demand[d][shift]
             remaining = available.copy()
+            subs_count = 0
 
             used_A_for_A = min(remaining["A"], req["A"])
             remaining["A"] -= used_A_for_A
@@ -162,6 +167,7 @@ def evaluate_individual(individual, ctx: GAContext):
             used_A_for_B = min(remaining["A"], needed_B)
             remaining["A"] -= used_A_for_B
             needed_B -= used_A_for_B
+            subs_count += used_A_for_B
             missing_B = needed_B
 
             needed_C = req["C"]
@@ -172,13 +178,16 @@ def evaluate_individual(individual, ctx: GAContext):
             used_B_for_C = min(remaining["B"], needed_C)
             remaining["B"] -= used_B_for_C
             needed_C -= used_B_for_C
+            subs_count += used_B_for_C
 
             used_A_for_C = min(remaining["A"], needed_C)
             remaining["A"] -= used_A_for_C
             needed_C -= used_A_for_C
+            subs_count += used_A_for_C
 
             missing_C = needed_C
             penalty += (missing_A + missing_B + missing_C) * ctx.hard_pen_shift
+            penalty += subs_count * ctx.soft_w_rank_mismatch
 
     # 2) Hours per nurse (hard) — skip AL nurses; use per-nurse adjusted limits
     hours_per_nurse = []
@@ -250,6 +259,27 @@ def evaluate_individual(individual, ctx: GAContext):
         n_max = nurse_max_h[n] if nurse_max_h else ctx.max_hours
         if h > n_max:
             penalty += (h - n_max) * ctx.soft_w_overtime
+
+    # 11) OFF→AM transitions — penalise scheduling AM directly after a day off
+    for n in working:
+        for d in range(num_days - 1):
+            if schedule[n][d] == off and schedule[n][d + 1] == am:
+                penalty += ctx.soft_w_off_to_am
+
+    # 12a) Day-to-day shift variance — penalise uneven distribution of each shift
+    # across the roster period (squared deviation from mean daily count)
+    for shift in [am, pm, night]:
+        counts = [sum(1 for n in working if schedule[n][d] == shift) for d in range(num_days)]
+        mean_count = sum(counts) / num_days
+        penalty += sum((cnt - mean_count) ** 2 for cnt in counts) * ctx.soft_w_shift_variance
+
+    # 12b) Within-day AM/PM balance — penalise when AM and PM counts differ by > 2
+    for d in range(num_days):
+        am_d = sum(1 for n in working if schedule[n][d] == am)
+        pm_d = sum(1 for n in working if schedule[n][d] == pm)
+        diff = abs(am_d - pm_d)
+        if diff > 2:
+            penalty += (diff - 2) ** 2 * ctx.soft_w_am_pm_balance
 
     penalty += _night_weekly_penalty(schedule, ctx)
     return penalty
@@ -595,10 +625,14 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     SOFT_W_MORNING_PREF     = 4
     SOFT_W_DAILY_BALANCE    = 50
     SOFT_W_OVERTIME         = 200
+    SOFT_W_RANK_MISMATCH    = 40_000
+    SOFT_W_OFF_TO_AM        = 500
+    SOFT_W_SHIFT_VARIANCE   = 185
+    SOFT_W_AM_PM_BALANCE    = 200
 
     # GA hyperparams
-    POP_SIZE           = 200
-    GENERATIONS        = 700
+    POP_SIZE           = 360
+    GENERATIONS        = 900
     TOURNAMENT_K       = 2
     CROSSOVER_RATE     = 0.7
     REBALANCE_PROB     = 0.4
@@ -831,7 +865,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
             else:  # shift_move
                 d = random.randrange(NUM_DAYS)
-                # FIX 2: use per-day targets
+                # FIX 2: use precomputed per-day targets
                 targets = shift_targets[d]
                 counts = {
                     s: sum(1 for n in WORKING_NURSES if sched[n][d] == s)
@@ -839,29 +873,24 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 }
                 surplus = [s for s in [AM, PM, NIGHT] if counts[s] > targets.get(s, 0)]
                 deficit = [s for s in [AM, PM, NIGHT] if counts[s] < targets.get(s, 0)]
-                if not surplus or not deficit:
-                    continue
-                s_from = random.choice(surplus)
-                s_to   = random.choice(deficit)
-                # Skip nurses on AL that day
-                candidates = [n for n in WORKING_NURSES
-                              if sched[n][d] == s_from and d not in AL_DAY_REQUESTS[n]]
-                if not candidates:
-                    continue
-                n = random.choice(candidates)
-                old_shift = sched[n][d]
-                sched[n][d] = s_to
-                trial = schedule_to_patterns(sched)
-                trial = repair_individual(trial)
-                score = evaluate(trial)
-                if score < best_score:
-                    best = trial
-                    best_score = score
-                    sched = expand_individual(best)
-                else:
-                    # FIX 4: revert in-place
-                    sched[n][d] = old_shift
-
+                if surplus and deficit:
+                    s_from = random.choice(surplus)
+                    s_to   = random.choice(deficit)
+                    # Exclude nurses whose AL day falls on d — they hold AL code (4),
+                    # so they would never match s_from (AM/PM/NIGHT), but the guard
+                    # is explicit for clarity and defence against stale sched state.
+                    candidates = [n for n in WORKING_NURSES
+                                  if sched[n][d] == s_from and d not in AL_DAY_REQUESTS[n]]
+                    if candidates:
+                        sched[random.choice(candidates)][d] = s_to
+ 
+        # Final evaluate: accept accumulated shift_move changes if they improved score
+        trial = schedule_to_patterns(sched)
+        trial = repair_individual(trial)
+        score = evaluate(trial)
+        if score < best_score:
+            best = trial
+ 
         return best
 
     def optimize_shift_variance(ind, steps=120):
@@ -1088,6 +1117,10 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         soft_w_morning_pref=SOFT_W_MORNING_PREF,
         soft_w_daily_balance=SOFT_W_DAILY_BALANCE,
         soft_w_overtime=SOFT_W_OVERTIME,
+        soft_w_rank_mismatch=SOFT_W_RANK_MISMATCH,
+        soft_w_off_to_am=SOFT_W_OFF_TO_AM,
+        soft_w_shift_variance=SOFT_W_SHIFT_VARIANCE,
+        soft_w_am_pm_balance=SOFT_W_AM_PM_BALANCE,
         al_nurses=AL_NURSES,
         working_nurses=tuple(WORKING_NURSES),
         hard_pen_al=HARD_PEN_AL,
@@ -1759,17 +1792,14 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
             for e in range(ELITISM):
                 # FIX 6: shallow copy instead of deepcopy
                 elite = [list(nurse) for nurse in pop[rank_idx[e]]]
-                # FIX 7: single expand/convert for the elite repair chain
-                elite = apply_schedule_repairs(
-                    elite,
-                    shift_balance=random.random() < 0.3,
-                    rank_coverage=True,
-                    night_coverage=True,
-                    coverage=False,
-                    shift_variance=random.random() < 0.4,
-                )
+                if random.random() < 0.3:
+                    elite = repair_shift_balance(elite)
+                elite = repair_rank_coverage(elite)
+                elite = repair_night_coverage(elite)
+                if random.random() < 0.4:
+                    elite = repair_shift_variance(elite)
                 elite = repair_individual(elite)
-                if gen > 70 and gen % 15 == 0:
+                if gen > 70 and gen % 5 == 0:
                     elite = local_search(elite)
                 new_pop.append(elite)
 
@@ -1781,51 +1811,47 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 child = mutate(child, mutation_rate)
 
                 swap_prob = PATTERN_SWAP_PROB + (
-                    (PATTERN_SWAP_MAX - PATTERN_SWAP_PROB) / (1 + np.exp(-0.2 * (gen - 149)))
+                    (PATTERN_SWAP_MAX - PATTERN_SWAP_PROB) / (1 + np.exp(-0.2 * (gen - 100)))
                 )
                 if random.random() < swap_prob:
                     child = pattern_swap_mutation(child)
-                    child = repair_individual(child)
-
-                if random.random() < REBALANCE_PROB:
-                    child = rebalance_night_blocks(child)
+                child = repair_individual(child)
 
                 if random.random() < 0.2:
                     child = off_to_am_targeted_mutation(child)
                 child = repair_individual(child)
 
-                # FIX 7: single expand/convert for all terminal schedule repairs
-                child = apply_schedule_repairs(
-                    child,
-                    shift_balance=random.random() < 0.2,
-                    rank_coverage=random.random() < 0.6,
-                    night_coverage=True,
-                    coverage=True,
-                    shift_variance=random.random() < 0.5,
-                )
+                if random.random() < REBALANCE_PROB:
+                    child = rebalance_night_blocks(child)
+
+                if random.random() < 0.3:
+                    child = repair_shift_balance(child)
+                child = repair_rank_coverage(child)
+                child = repair_night_coverage(child)
+                child = repair_coverage(child)
+                if random.random() < 0.5:
+                    child = repair_shift_variance(child)
                 child = repair_individual(child)
                 new_pop.append(child)
 
             pop = new_pop
             scores = _score_population(pop, ctx, executor, worker_count)
-            gen_best_idx = min(range(len(scores)), key=lambda i: scores[i])
-            gen_best_score = scores[gen_best_idx]
 
             # Immigration: inject fresh individuals when stagnant
             if gens_since_improve > 50 and gen % 50 == 0:
                 n_immigrants = max(1, pop_size // 10)
                 for i in range(n_immigrants):
                     immigrant = create_individual()
-                    # FIX 7: single expand/convert for immigrant repairs
-                    immigrant = apply_schedule_repairs(
-                        immigrant,
-                        rank_coverage=True,
-                        night_coverage=True,
-                        coverage=True,
-                    )
+                    immigrant = repair_rank_coverage(immigrant)
+                    immigrant = repair_night_coverage(immigrant)
+                    immigrant = repair_coverage(immigrant)
                     immigrant = repair_individual(immigrant)
                     pop[rank_idx[-(i + 1)]] = immigrant
                     scores[rank_idx[-(i + 1)]] = evaluate(immigrant)
+
+            # Compute generation best AFTER immigration so it reflects the updated pool
+            gen_best_idx = min(range(len(scores)), key=lambda i: scores[i])
+            gen_best_score = scores[gen_best_idx]
 
             if gen_best_score < best_score:
                 if (best_score - gen_best_score) > 1:
@@ -1848,9 +1874,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 break
 
         # Aggressive post-processing
-        best = optimize_shift_variance(best, steps=150)
-        best = local_search(best, steps=100)
-        best = optimize_shift_variance(best, steps=100)
+        best = optimize_shift_variance(best, steps=500)
+        best = local_search(best, steps=300)
+        best = optimize_shift_variance(best, steps=400)
         best_score = evaluate(best)
 
         return best, best_score
