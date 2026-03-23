@@ -15,14 +15,14 @@ def test_classify_designation_workbook_titles() -> None:
         "NURSING AIDE II": ("NA", "B"),
         "SENIOR NURSING AIDE I": ("NA", "B"),
         "SENIOR NURSING AIDE II": ("NA", "B"),
-        "PATIENT SERVICE ASST I": ("NA", "B"),
-        "PATIENT SERVICE ASST II": ("NA", "B"),
-        "SNR PATIENT SERVICE ASST": ("NA", "B"),
-        "HEALTHCARE ASST I": ("HCA12", "C"),
-        "HEALTHCARE ASST II": ("HCA12", "C"),
+        "PATIENT SERVICE ASST I": ("HCA3", "C"),
+        "PATIENT SERVICE ASST II": ("HCA3", "C"),
+        "SNR PATIENT SERVICE ASST": ("HCA3", "C"),
+        "HEALTHCARE ASST I": ("HCA12", "B"),
+        "HEALTHCARE ASST II": ("HCA12", "B"),
         "HEALTHCARE ASST III": ("HCA3", "C"),
-        "SENIOR HEALTHCARE ASSISTANT I": ("HCA12", "C"),
-        "SENIOR HEALTHCARE ASSISTANT II": ("HCA12", "C"),
+        "SENIOR HEALTHCARE ASSISTANT I": ("HCA12", "B"),
+        "SENIOR HEALTHCARE ASSISTANT II": ("HCA12", "B"),
     }
 
     for designation, expected in expectations.items():

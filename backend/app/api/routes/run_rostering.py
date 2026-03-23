@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import queue
 import threading
 
@@ -17,6 +18,7 @@ from app.api.deps import CurrentUser, SessionDep, get_db
 from app.designation_mapping import classify_designation
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
+from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
 from app.rostering.algo_scheduler import generate_roster
@@ -96,6 +98,14 @@ def _can_manage_ward(session: Session, current_user: CurrentUser, ward: Ward) ->
     if current_user.email:
         return user_has_role(session, current_user.email, "Admin")
     return False
+
+
+def _can_generate_roster(session: Session, current_user: CurrentUser) -> bool:
+    if not current_user.email:
+        return False
+    return user_has_role(session, current_user.email, "NurseManager") or user_has_role(
+        session, current_user.email, "Admin"
+    )
 
 
 def _get_existing_roster_entry(
@@ -530,9 +540,12 @@ def get_ward_requests(ward_id: int, period_id: int, db: Session = Depends(get_db
 @router.post("/generate-algorithm")
 def generate_roster_endpoint(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
     """Run the MILP/GA rostering algorithm for a ward and roster period."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     try:
         generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
         result = generate_roster(
@@ -557,9 +570,12 @@ def generate_roster_endpoint(
 @router.post("/generate-algorithm-async")
 def generate_roster_async(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
     """Queue roster generation as a Celery background task. Returns a task_id to poll."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     ward = db.get(Ward, request_data.ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
@@ -634,9 +650,12 @@ def get_task_status(task_id: str):
 @router.post("/generate-algorithm-stream")
 def generate_roster_stream(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
     """Run the MILP/GA rostering algorithm and stream SSE progress events."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
     generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
 
@@ -708,13 +727,36 @@ def seed_ward_requests(
     return {"status": "ok", "ward_id": ward_id}
 
 
+def _shift_target_from_min(normal_min: dict) -> dict:
+    """Derive per-nurse shift-type target by normalising normal_min to 10 working shifts."""
+    total = normal_min.get("A", 0) + normal_min.get("P", 0) + normal_min.get("N", 0)
+    if total == 0:
+        return {"A": 5, "P": 3, "N": 2}
+    return {s: max(0, round(10 * normal_min.get(s, 0) / total)) for s in ("A", "P", "N")}
+
+
+def _build_milp_config(rn_min: dict, en_min: dict, hca_min: dict) -> dict:
+    return {
+        "LOW_DAYS": {6, 7, 13, 14},
+        "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": _shift_target_from_min(rn_min)},
+        "EN":  {"normal_min": en_min,  "low_exact": None, "day_target": en_min,  "shift_target": _shift_target_from_min(en_min)},
+        "HCA": {"normal_min": hca_min, "low_exact": None, "day_target": hca_min, "shift_target": _shift_target_from_min(hca_min)},
+        "TOTAL_MIN": {
+            "A": rn_min["A"] + en_min["A"] + hca_min["A"],
+            "P": rn_min["P"] + en_min["P"] + hca_min["P"],
+            "N": rn_min["N"] + en_min["N"] + hca_min["N"],
+        },
+    }
+
+
 def _staffing_to_algo_inputs(ward: Ward):
     """
     Build (shifts_data, milp_config) from ward.staffing_json when available,
     otherwise fall back to the legacy Ward scalar fields.
 
     shifts_data : 14-element list of {"AM": {"A":int,"B":int,"C":int}, "PM":..., "NIGHT":...}
-    milp_config : WARD_CONFIG-compatible dict, or None (MILP will use its built-in lookup)
+    milp_config : WARD_CONFIG-compatible dict derived from the ward's staffing data.
+                  LOW_DAYS is always {6,7,13,14}; shift_target is derived from normal_min.
     """
     if ward.staffing_json:
         try:
@@ -725,38 +767,28 @@ def _staffing_to_algo_inputs(ward: Ward):
 
             # Rank A = RN, B = EN+NA, C = HCA12+HCA3
             # DailyStaffingGuideline shift keys: A=AM, P=PM, N=NIGHT
+            rn_min  = {"A": _min("RN","A"),                       "P": _min("RN","P"),                       "N": _min("RN","N")}
+            en_min  = {"A": _min("EN","A") + _min("NA","A"),      "P": _min("EN","P") + _min("NA","P"),      "N": _min("EN","N") + _min("NA","N")}
+            hca_min = {"A": _min("HCA12","A") + _min("HCA3","A"), "P": _min("HCA12","P") + _min("HCA3","P"), "N": _min("HCA12","N") + _min("HCA3","N")}
+
             daily_req = {
-                "AM":    {"A": _min("RN","A"), "B": _min("EN","A") + _min("NA","A"), "C": _min("HCA12","A") + _min("HCA3","A")},
-                "PM":    {"A": _min("RN","P"), "B": _min("EN","P") + _min("NA","P"), "C": _min("HCA12","P") + _min("HCA3","P")},
-                "NIGHT": {"A": _min("RN","N"), "B": _min("EN","N") + _min("NA","N"), "C": _min("HCA12","N") + _min("HCA3","N")},
+                "AM":    {"A": rn_min["A"], "B": en_min["A"], "C": hca_min["A"]},
+                "PM":    {"A": rn_min["P"], "B": en_min["P"], "C": hca_min["P"]},
+                "NIGHT": {"A": rn_min["N"], "B": en_min["N"], "C": hca_min["N"]},
             }
-            shifts_data = [daily_req for _ in range(14)]
-
-            rn_min  = {"A": _min("RN","A"),                              "P": _min("RN","P"),  "N": _min("RN","N")}
-            en_min  = {"A": _min("EN","A") + _min("NA","A"),             "P": _min("EN","P") + _min("NA","P"),  "N": _min("EN","N") + _min("NA","N")}
-            hca_min = {"A": _min("HCA12","A") + _min("HCA3","A"),        "P": _min("HCA12","P") + _min("HCA3","P"), "N": _min("HCA12","N") + _min("HCA3","N")}
-
-            milp_config = {
-                "LOW_DAYS": set(),
-                "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": {"A": 5, "P": 3, "N": 2}},
-                "EN":  {"normal_min": en_min,  "low_exact": None, "day_target": en_min,  "shift_target": {"A": 5, "P": 3, "N": 2}},
-                "HCA": {"normal_min": hca_min, "low_exact": None, "day_target": hca_min, "shift_target": {"A": 5, "P": 3, "N": 2}},
-                "TOTAL_MIN": {
-                    "A": rn_min["A"] + en_min["A"] + hca_min["A"],
-                    "P": rn_min["P"] + en_min["P"] + hca_min["P"],
-                    "N": rn_min["N"] + en_min["N"] + hca_min["N"],
-                },
-            }
-            return shifts_data, milp_config
+            return [daily_req for _ in range(14)], _build_milp_config(rn_min, en_min, hca_min)
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             pass  # fall through to legacy fields
 
+    rn_min  = {"A": ward.am_rn or 0,       "P": ward.pm_rn or 0,        "N": ward.nd_rn or 0}
+    en_min  = {"A": ward.am_en_na_min or 0, "P": ward.pm_en_na_min or 0, "N": ward.nd_en_na_min or 0}
+    hca_min = {"A": ward.am_hca_min or 0,  "P": ward.pm_hca_min or 0,   "N": ward.nd_hca_min or 0}
     daily_req = {
-        "AM":    {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
-        "PM":    {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
-        "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
+        "AM":    {"A": rn_min["A"], "B": en_min["A"], "C": hca_min["A"]},
+        "PM":    {"A": rn_min["P"], "B": en_min["P"], "C": hca_min["P"]},
+        "NIGHT": {"A": rn_min["N"], "B": en_min["N"], "C": hca_min["N"]},
     }
-    return [daily_req for _ in range(14)], None
+    return [daily_req for _ in range(14)], _build_milp_config(rn_min, en_min, hca_min)
 
 
 def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[str, Any]:
@@ -781,6 +813,14 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     nurse_ids = [n["id"] for n in nurses_data]
     shift_label_map = _load_shift_label_map(db)
     hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
+    leave_hard = _load_leave_requests(db, ward_id, period, set(nurse_ids), len(shifts_data))
+    for nurse_id, days in leave_hard.items():
+        existing = hard_requests.setdefault(nurse_id, [])
+        leave_days = {day_idx for day_idx, _ in days}
+        existing[:] = [(d, s) for d, s in existing if d not in leave_days]
+        existing.extend(days)
+        if nurse_id in soft_requests:
+            soft_requests[nurse_id] = [(d, s) for d, s in soft_requests[nurse_id] if d not in leave_days]
     prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
 
     logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
@@ -811,6 +851,35 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         "shift_hours": _load_shift_hours(db),
         "non_working_shift_codes": _load_non_working_shift_codes(db),
     }
+
+
+def _jsonify_algo_inputs(payload: Any) -> Any:
+    """Convert algorithm inputs to JSON-serializable types (e.g., sets -> lists)."""
+    if isinstance(payload, dict):
+        return {k: _jsonify_algo_inputs(v) for k, v in payload.items()}
+    if isinstance(payload, (list, tuple)):
+        return [_jsonify_algo_inputs(v) for v in payload]
+    if isinstance(payload, set):
+        return [_jsonify_algo_inputs(v) for v in sorted(payload)]
+    return payload
+
+
+@router.get("/generation-inputs")
+def get_generation_inputs(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Return the exact inputs that will be fed into the rostering algorithm."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    inputs = _load_generation_inputs(session, ward_id, period_id)
+    cpu_count = os.cpu_count() or 1
+    inputs["cpu_count"] = cpu_count
+    inputs["ga_worker_count"] = max(1, cpu_count - 1)
+    return _jsonify_algo_inputs(inputs)
 
 
 def _load_shift_requests(
@@ -868,6 +937,41 @@ def _load_shift_requests(
             soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
 
     return hard_requests, soft_requests
+
+
+def _load_leave_requests(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: set[int],
+    num_days: int,
+) -> dict[int, list[tuple[int, str]]]:
+    """Return approved leave days as hard entries keyed by leave type.
+    Format: nurse_id -> [(day_idx, leavetype), ...]
+    """
+    statement = (
+        select(LeaveRequest)
+        .join(Nurse, Nurse.nurseid == LeaveRequest.nurseid)
+        .where(Nurse.wardid == ward_id)
+        .where(LeaveRequest.status == "Approved")
+        .where(LeaveRequest.enddate >= period.startdate)
+        .where(LeaveRequest.startdate <= period.enddate)
+    )
+    leaves = db.exec(statement).all()
+
+    result: dict[int, list[tuple[int, str]]] = {}
+    for leave in leaves:
+        if leave.nurseid not in nurse_ids:
+            continue
+        leave_code = str(leave.leavetype).upper()
+        current = max(leave.startdate, period.startdate)
+        end = min(leave.enddate, period.enddate)
+        while current <= end:
+            day_idx = (current - period.startdate).days
+            if 0 <= day_idx < num_days:
+                result.setdefault(leave.nurseid, []).append((day_idx, leave_code))
+            current += timedelta(days=1)
+    return result
 
 
 def _load_previous_last_shift(
@@ -957,20 +1061,5 @@ def _load_shift_hours(db: Session) -> dict[str, float]:
 
 def _map_rank(designation: str) -> str:
     """Map nurse designation to scheduling rank A/B/C."""
-    RANK_A = {
-        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
-        "STAFF NURSE I", "STAFF NURSE II",
-        "RN", "SSN",
-    }
-    RANK_B = {
-        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
-        "NURSING AIDE I", "NURSING AIDE II",
-        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
-        "SNR PATIENT SERVICE ASST",
-        "EN", "NA",
-    }
-    if designation in RANK_A:
-        return "A"
-    if designation in RANK_B:
-        return "B"
-    return "C"
+    rank = classify_designation(designation).roster_rank
+    return rank or "C"

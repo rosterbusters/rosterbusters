@@ -77,11 +77,13 @@ export const EditLeaveRequest = ({
   const leaveCollection = useMemo(
     () =>
       createListCollection({
-        items: (leaveCodes ?? []).map((lc) => ({
-          value: lc.shiftcode,
-          label: lc.shiftcode,
-          description: lc.description,
-        })),
+        items: (leaveCodes ?? [])
+          .filter((lc) => lc.shiftcode !== "MC")
+          .map((lc) => ({
+            value: lc.shiftcode,
+            label: lc.shiftcode,
+            description: lc.description,
+          })),
       }),
     [leaveCodes],
   );

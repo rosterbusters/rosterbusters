@@ -26,6 +26,9 @@ from app.models.rbac import (
     UserRole,
 )
 
+# Designation reference data
+from app.models.designation import Designation
+
 # Enums
 from app.models.enums import NotificationType
 
@@ -81,6 +84,8 @@ __all__ = [
     # RBAC
     "Nurse", "NurseManager", "NursePublic",
     "RBACUser", "RBACUserPublic", "Role", "UserRole",
+    # Designations
+    "Designation",
     # Enums
     "NotificationType",
     # Roster

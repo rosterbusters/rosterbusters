@@ -162,6 +162,19 @@ DESIGNATIONS = ["RN", "EN", "NA", "HCA", "SSN"]
 # ============================================================================
 # Static ward data (real wards)
 # ============================================================================
+CH_GUIDELINES = {
+    "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
+    "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
+    "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+}
+
+TCF_GUIDELINES = {
+    # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
+    "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+    "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
+    "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+}
+
 WARDS_DATA = [
     # SACH Simei wards
     {
@@ -215,16 +228,36 @@ WARDS_DATA = [
     # SACH Bedok wards
     {
         "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
-        "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
-        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
-        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+        **CH_GUIDELINES,
     },
     {
-        # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
         "wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok",
-        "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
-        "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
-        "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+        **TCF_GUIDELINES,
+    },
+]
+
+# Bedok branch staff-list wards (names only; guidelines assigned in seed_core)
+STAFF_LIST_WARDS = [
+    {
+        "wardname": "Acacia Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Angsana Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Banyan Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Casuarina Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Cedar Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Dahlia Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Daisy Ward", "location": "Bedok",
     },
 ]
 
@@ -1058,10 +1091,15 @@ def seed_leave_requests(
         "MC":  ("MedicalCertificate",   4),
         "CL":  ("Urgent",               2),
         "CCL": ("PreApproved",          2),
+        "ML":  ("PreApproved",          1),
+        "EML": ("PreApproved",          1),
+        "Mar": ("PreApproved",          1),
         "FCL": ("PreApproved",          1),
+        "SPL": ("PreApproved",          1),
         "BDL": ("PreApproved",          1),
-        "URG": ("Urgent",               1),
-        "UPL": ("PreApproved",          1),
+        "HOL": ("PreApproved",          1),
+        "SD":  ("PreApproved",          1),
+        "FD":  ("PreApproved",          1),
     }
     leave_types_weighted = [lt for lt, (_, w) in leave_type_meta.items() for _ in range(w)]
 
@@ -1070,10 +1108,15 @@ def seed_leave_requests(
         "MC":  ["Fever and flu", "Medical appointment", "Doctor's visit", None],
         "CL":  ["Bereavement", "Family emergency", None],
         "CCL": ["Child's school event", "Childcare arrangement", None],
+        "ML":  ["Maternity leave", None],
+        "EML": ["Extended maternity leave", None],
+        "Mar": ["Marriage leave", None],
         "FCL": ["Caring for elderly parent", "Family care needed", None],
+        "SPL": ["Shared parental leave", None],
         "BDL": ["Birthday leave", None],
-        "URG": ["Family emergency", "Urgent personal matter", None],
-        "UPL": ["Personal matter", None],
+        "HOL": ["Public holiday", None],
+        "SD":  ["Sleeping day", None],
+        "FD":  ["Family day", None],
     }
 
     rejection_reasons = [
