@@ -11,6 +11,7 @@ from jwt.exceptions import InvalidTokenError
 
 from app.core import security
 from app.core.config import settings
+from app.models.enums import NotificationType
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -159,6 +160,29 @@ def generate_password_changed_email(email_to: str, username: str) -> EmailData:
             "username": username,
             "email": email_to,
             "link": settings.FRONTEND_HOST,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_roster_release_email(
+    email_to: str,
+    roster_period: str,
+    ward_name: str | None = None,
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    message = NotificationType.ROSTER_RELEASE.template.format(
+        roster_period=roster_period
+    )
+    subject = f"{project_name} - {message}"
+    html_content = render_email_template(
+        template_name="roster_release.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "roster_period": roster_period,
+            "ward_name": ward_name or "",
+            "message": message,
         },
     )
     return EmailData(html_content=html_content, subject=subject)
