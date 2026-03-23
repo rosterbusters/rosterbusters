@@ -11,6 +11,14 @@ class DesignationClassification(NamedTuple):
     roster_rank: RosterRank | None
 
 
+_STAFFING_ROLE_TO_RANK: dict[StaffingRole, RosterRank] = {
+    "RN": "A",
+    "EN": "B",
+    "NA": "B",
+    "HCA12": "B",
+    "HCA3": "C",
+}
+
 _CANONICAL_MAP: dict[str, tuple[StaffingRole, RosterRank]] = {
     "SN": ("RN", "A"),
     "SSN": ("RN", "A"),
@@ -100,3 +108,9 @@ def classify_designation(value: str) -> DesignationClassification:
         return DesignationClassification(None, None)
 
     return DesignationClassification(mapped[0], mapped[1])
+
+
+def staffing_role_to_roster_rank(role: str | None) -> RosterRank | None:
+    if role is None:
+        return None
+    return _STAFFING_ROLE_TO_RANK.get(role.upper())  # type: ignore[arg-type]

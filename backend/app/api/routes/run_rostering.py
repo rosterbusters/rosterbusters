@@ -18,7 +18,7 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.core.config import settings
 from app.models.enums import NotificationType
-from app.designation_mapping import classify_designation
+from app.designation_mapping import classify_designation, staffing_role_to_roster_rank
 from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import (
@@ -1092,18 +1092,28 @@ def _staffing_to_algo_inputs(ward: Ward):
             def _min(role: str, shift: str) -> int:
                 return int(g.get(role, {}).get(shift, {}).get("minimum", 0))
 
-            # Rank A = RN, B = EN+NA, C = HCA12+HCA3
-            # DailyStaffingGuideline shift keys: A=AM, P=PM, N=NIGHT
-            rn_min  = {"A": _min("RN","A"),                       "P": _min("RN","P"),                       "N": _min("RN","N")}
-            en_min  = {"A": _min("EN","A") + _min("NA","A"),      "P": _min("EN","P") + _min("NA","P"),      "N": _min("EN","N") + _min("NA","N")}
-            hca_min = {"A": _min("HCA12","A") + _min("HCA3","A"), "P": _min("HCA12","P") + _min("HCA3","P"), "N": _min("HCA12","N") + _min("HCA3","N")}
+            rank_min = {
+                "A": {"A": 0, "P": 0, "N": 0},
+                "B": {"A": 0, "P": 0, "N": 0},
+                "C": {"A": 0, "P": 0, "N": 0},
+            }
+            for role in ("RN", "EN", "NA", "HCA12", "HCA3"):
+                rank = staffing_role_to_roster_rank(role)
+                if rank is None:
+                    continue
+                for shift in ("A", "P", "N"):
+                    rank_min[rank][shift] += _min(role, shift)
 
             daily_req = {
-                "AM":    {"A": rn_min["A"], "B": en_min["A"], "C": hca_min["A"]},
-                "PM":    {"A": rn_min["P"], "B": en_min["P"], "C": hca_min["P"]},
-                "NIGHT": {"A": rn_min["N"], "B": en_min["N"], "C": hca_min["N"]},
+                "AM":    {"A": rank_min["A"]["A"], "B": rank_min["B"]["A"], "C": rank_min["C"]["A"]},
+                "PM":    {"A": rank_min["A"]["P"], "B": rank_min["B"]["P"], "C": rank_min["C"]["P"]},
+                "NIGHT": {"A": rank_min["A"]["N"], "B": rank_min["B"]["N"], "C": rank_min["C"]["N"]},
             }
-            return [daily_req for _ in range(14)], _build_milp_config(rn_min, en_min, hca_min)
+            return [daily_req for _ in range(14)], _build_milp_config(
+                rank_min["A"],
+                rank_min["B"],
+                rank_min["C"],
+            )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             pass  # fall through to legacy fields
 

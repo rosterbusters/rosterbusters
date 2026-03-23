@@ -11,6 +11,7 @@ _AL_CODE = 4
 # Leave types beyond "AL" that should be treated as leave internally by the GA.
 # The original code is preserved in the output via the leave_overlay mechanism.
 _LEAVE_CODES = {"HOL", "MC", "URG", "CL", "UPL", "PH", "BCL", "CCL", "ML", "EML"}
+_OFF_REQUEST_CODES = {"OFF", "DO", "RD"}
 
 
 @dataclass(frozen=True)
@@ -466,12 +467,12 @@ def parse_inputs(
                 continue
             for day_idx, shift_name in req_list:
                 shift_key = str(shift_name).upper()
-                # Non-AL leave types (HOL, MC, etc.) are treated as AL internally
-                if shift_key in _LEAVE_CODES:
-                    shift_key = "AL"
-                if shift_key not in SHIFT_CODE or shift_key in non_working_shift_codes:
+                # Treat DO/RD as days off; all other non-working codes are leave.
+                if shift_key in _OFF_REQUEST_CODES:
                     shift_key = "OFF"
-                if not preserve_al and shift_key == "AL":
+                elif shift_key == "AL" or shift_key in _LEAVE_CODES or shift_key in non_working_shift_codes:
+                    shift_key = "AL"
+                elif shift_key not in SHIFT_CODE:
                     shift_key = "OFF"
                 if 0 <= day_idx < num_days:
                     output[nurse_idx].append((day_idx, SHIFT_CODE[shift_key]))
