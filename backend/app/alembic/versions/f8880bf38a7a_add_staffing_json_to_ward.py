@@ -7,6 +7,7 @@ Create Date: 2026-03-05 16:30:38.324497
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision = 'f8880bf38a7a'
@@ -16,8 +17,16 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('ward', sa.Column('staffing_json', sa.Text(), nullable=True))
+    bind = op.get_bind()
+    insp = inspect(bind)
+    ward_columns = {column["name"] for column in insp.get_columns("ward")}
+    if 'staffing_json' not in ward_columns:
+        op.add_column('ward', sa.Column('staffing_json', sa.Text(), nullable=True))
 
 
 def downgrade():
-    op.drop_column('ward', 'staffing_json')
+    bind = op.get_bind()
+    insp = inspect(bind)
+    ward_columns = {column["name"] for column in insp.get_columns("ward")}
+    if 'staffing_json' in ward_columns:
+        op.drop_column('ward', 'staffing_json')

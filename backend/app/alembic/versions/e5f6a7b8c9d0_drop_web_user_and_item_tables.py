@@ -8,6 +8,7 @@ Create Date: 2025-01-15 00:00:00.000000
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel.sql.sqltypes
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision = 'e5f6a7b8c9d0'
@@ -17,10 +18,19 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    insp = inspect(bind)
+    existing_tables = set(insp.get_table_names())
+
     # Drop item first (has FK to web_user)
-    op.drop_table('item')
-    op.drop_index(op.f('ix_web_user_email'), table_name='web_user')
-    op.drop_table('web_user')
+    if 'item' in existing_tables:
+        op.drop_table('item')
+
+    if 'web_user' in existing_tables:
+        web_user_indexes = {index["name"] for index in insp.get_indexes('web_user')}
+        if op.f('ix_web_user_email') in web_user_indexes:
+            op.drop_index(op.f('ix_web_user_email'), table_name='web_user')
+        op.drop_table('web_user')
 
 
 def downgrade():
