@@ -262,6 +262,16 @@ export function useBulkUpsertRoster() {
 }
 
 // Transform API data to grid format
+const normalizeShiftCode = (shiftCode: string): ShiftCode => {
+  const normalized = shiftCode.toUpperCase().trim();
+  if (normalized === "AM") return "A";
+  if (normalized === "PM") return "P";
+  if (normalized === "NIGHT") return "N";
+  if (normalized === "OFF") return "DO";
+  if (normalized === "LEAVE") return "AL";
+  return normalized as ShiftCode;
+};
+
 export function transformRosterData(
   nurses: WardStatisticsResponse["nurses"],
   rosterEntries: WardRosterResponse["roster_entries"],
@@ -280,7 +290,7 @@ export function transformRosterData(
       rosterId: entry.roster_id,
       nurseId: entry.nurse_id,
       shiftDate: entry.shift_date,
-      shiftCode: entry.shift_code as ShiftCode,
+      shiftCode: normalizeShiftCode(entry.shift_code),
       status: entry.status as ShiftAssignment["status"],
       comment: entry.comment ?? undefined,
     });
@@ -508,14 +518,7 @@ async function pollAlgorithmTask(
     // Fall back to static SHIFT_CODE_MAP via getShiftDurationHours
   }
 
-  const toUiShiftCode = (shiftCode: string): ShiftCode => {
-    const normalized = shiftCode.toUpperCase();
-    if (normalized === "AM") return "A";
-    if (normalized === "PM") return "P";
-    if (normalized === "NIGHT") return "N";
-    if (normalized === "OFF") return "DO";
-    return normalized as ShiftCode;
-  };
+  const toUiShiftCode = (shiftCode: string): ShiftCode => normalizeShiftCode(shiftCode);
 
   const rosterData: RosterRow[] = algorithmResult.roster.nurses.map((nurse) => {
     const shiftsObject: Record<string, any> = {};

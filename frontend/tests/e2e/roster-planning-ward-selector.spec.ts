@@ -131,6 +131,7 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
   const nmUsername = `e2e.nm.${suffix}`
   const nmPassword = `TestNm${suffix}!`
   const nmEmail = `e2e.nm.${suffix}@example.com`
+  const nurseName = `E2E Nurse ${suffix}`
   const nurseUsername = `e2e.nurse.${suffix}`
 
   let nmUser: { userid: number } | null = null
@@ -150,13 +151,30 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
 
     nurseUser = await createUser(request, adminToken, {
       username: nurseUsername,
-      name: `E2E Nurse ${suffix}`,
+      name: nurseName,
       email: `e2e.nurse.${suffix}@example.com`,
       password: `TestNurse${suffix}!`,
       role: "Nurse",
       designation: "Staff Nurse",
       ward_ids: [ward.wardid],
     })
+
+    await expect
+      .poll(
+        async () => {
+          const statsRes = await request.get(
+            `${API_BASE_URL}/api/v1/roster/manager/statistics?ward_id=${ward.wardid}`,
+            { headers: { Authorization: `Bearer ${nmToken}` } },
+          )
+          if (!statsRes.ok()) return false
+          const stats = (await statsRes.json()) as {
+            nurses?: Array<{ name?: string | null }>
+          }
+          return stats.nurses?.some((n) => n.name === nurseName) ?? false
+        },
+        { timeout: 30_000 },
+      )
+      .toBeTruthy()
 
     await page.goto("/login")
     await page.getByTestId("login-username").fill(nmUsername)
@@ -173,13 +191,24 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
     await expect(page).toHaveURL(/\/nurse-manager\/home/)
 
     await page.goto("/nurse-manager/roster-planning")
+    await page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/v1/roster/manager/statistics?ward_id=${ward.wardid}`) &&
+        res.status() === 200,
+    )
 
     const wardTrigger = page.getByTestId("roster-ward-trigger")
     await expect(wardTrigger).toBeVisible()
     await expect(wardTrigger).toContainText(ward.wardname)
 
-    const nurseName = `E2E Nurse ${suffix}`
-    await expect(page.getByText(nurseName, { exact: false })).toBeVisible()
+    await expect
+      .poll(
+        async () => page.getByText(nurseName, { exact: false }).count(),
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0)
+    const nurseRow = page.getByRole("row").filter({ hasText: nurseName }).first()
+    await expect(nurseRow).toBeVisible({ timeout: 10_000 })
 
     await wardTrigger.click()
     const wardOptions = page.locator('[data-testid^="roster-ward-option-"]')

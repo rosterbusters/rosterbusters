@@ -493,11 +493,11 @@ test("generation inputs include only approved leave requests", async ({ request 
     const hardRequests = inputs.hard_requests?.[nurseKey] ?? []
     const softRequests = inputs.soft_requests?.[nurseKey] ?? []
 
-    // Approved leave => hard OFF, rejected leave excluded.
-    expect(hardRequests).toContainEqual([3, "OFF"])
-    expect(softRequests).not.toContainEqual([3, "OFF"])
-    expect(hardRequests).not.toContainEqual([4, "OFF"])
-    expect(softRequests).not.toContainEqual([4, "OFF"])
+    // Approved leave => hard leave code, rejected leave excluded.
+    expect(hardRequests).toContainEqual([3, leaveCode])
+    expect(softRequests).not.toContainEqual([3, leaveCode])
+    expect(hardRequests).not.toContainEqual([4, leaveCode])
+    expect(softRequests).not.toContainEqual([4, leaveCode])
   } finally {
     if (managerToken && createdLeaveIds.length > 0) {
       for (const leaveId of createdLeaveIds) {
