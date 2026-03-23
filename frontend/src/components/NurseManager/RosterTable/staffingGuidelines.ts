@@ -1,12 +1,12 @@
-import type { DailyStaffingGuideline } from "./types";
+import type { DailyStaffingGuideline, RosterRow, StaffRole } from "./types";
 
 /**
  * Mock staffing guidelines for roster planning.
- * 
+ *
  * When the real guidelines file is ready, you can:
  * 1. Add it to: frontend/src/data/staffingGuidelines.json
  * 2. Or update this file to fetch from an API endpoint
- * 
+ *
  * These values represent minimum staffing requirements per shift type per role.
  */
 export const MOCK_STAFFING_GUIDELINES: DailyStaffingGuideline = {
@@ -37,56 +37,133 @@ export const MOCK_STAFFING_GUIDELINES: DailyStaffingGuideline = {
   },
 };
 
+export type RosterRank = "A" | "B" | "C";
+export type RoleGroupKey = "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3/PSA" | "Other";
+
+const DESIGNATION_ALIASES: Record<string, string> = {
+  RN: "SN",
+  REGISTEREDNURSE: "SN",
+  STAFFNURSE: "SN",
+  STAFFNURSEI: "SN",
+  STAFFNURSEII: "SN",
+  SNRSTAFFNURSEI: "SSN",
+  SNRSTAFFNURSEII: "SSN",
+  SENIORSTAFFNURSE: "SSN",
+  SENIORSTAFFNURSEI: "SSN",
+  SENIORSTAFFNURSEII: "SSN",
+  ENROLLEDNURSE: "EN",
+  ENROLLEDNURSEI: "EN",
+  ENROLLEDNURSEII: "EN",
+  SENIORENROLLEDNURSE: "SEN",
+  SENIORENROLLEDNURSEI: "SEN",
+  SENIORENROLLEDNURSEII: "SEN",
+  SNRENROLLEDNURSE: "SEN",
+  SNRENROLLEDNURSEI: "SEN",
+  SNRENROLLEDNURSEII: "SEN",
+  NURSINGAIDE: "NA",
+  NURSINGAIDEI: "NA",
+  NURSINGAIDEII: "NA",
+  SENIORNURSINGAIDEI: "NA",
+  SENIORNURSINGAIDEII: "NA",
+  PATIENTSERVICEASST: "PSA",
+  PATIENTSERVICEASSTI: "PSA",
+  PATIENTSERVICEASSTII: "PSA",
+  PATIENTSERVICEASSISTANT: "PSA",
+  SNRPATIENTSERVICEASST: "PSA",
+  HCA: "HCA1",
+  HCA1: "HCA1",
+  HCA2: "HCA2",
+  HCA3: "HCA3",
+  HEALTHCAREASSISTANT: "HCA1",
+  HEALTHCAREASSISTANTI: "HCA1",
+  HEALTHCAREASSISTANTII: "HCA2",
+  HEALTHCAREASSISTANTIII: "HCA3",
+  HEALTHCAREASST: "HCA1",
+  HEALTHCAREASSTI: "HCA1",
+  HEALTHCAREASSTII: "HCA2",
+  HEALTHCAREASSTIII: "HCA3",
+  SENIORHEALTHCAREASSISTANTI: "HCA1",
+  SENIORHEALTHCAREASSISTANTII: "HCA2",
+};
+
+const CANONICAL_DESIGNATIONS: Record<string, StaffRole> = {
+  SN: "RN",
+  SSN: "RN",
+  HCA1: "HCA12",
+  HCA2: "HCA12",
+  SEN: "EN",
+  EN: "EN",
+  NA: "NA",
+  HCA3: "HCA3",
+  PSA: "HCA3",
+};
+
+const STAFF_ROLE_TO_RANK: Record<StaffRole, RosterRank> = {
+  RN: "A",
+  EN: "B",
+  NA: "B",
+  HCA12: "B",
+  HCA3: "C",
+};
+
+function normalizeDesignation(designation: string): string {
+  return designation.replace(/[^A-Za-z0-9]+/g, "").trim().toUpperCase();
+}
+
 /**
  * Maps nurse designation strings to summary role categories.
- * Add more designation mappings as needed.
+ * Mirrors the backend designation mapping used for roster grouping.
  */
-export function mapDesignationToRole(designation: string): 'RN' | 'EN' | 'NA' | 'HCA12' | 'HCA3' | null {
-  const d = designation.toLowerCase().trim();
+export function mapDesignationToRole(
+  designation: string,
+): "RN" | "EN" | "NA" | "HCA12" | "HCA3" | null {
+  const normalized = normalizeDesignation(designation);
+  if (!normalized) return null;
 
-  // Short codes
-  if (d === 'rn') return 'RN';
-  if (d === 'en') return 'EN';
-  if (d === 'na') return 'NA';
-  if (d === 'ssn') return 'RN'; // Senior Staff Nurse → RN equivalent
+  const canonical = DESIGNATION_ALIASES[normalized] ?? normalized;
+  return CANONICAL_DESIGNATIONS[canonical] ?? null;
+}
 
-  // HCA grade splits
-  if (d === 'hca1' || d === 'hca 1' || d === 'hca-1' || d.includes('hca grade 1')) return 'HCA12';
-  if (d === 'hca2' || d === 'hca 2' || d === 'hca-2' || d.includes('hca grade 2')) return 'HCA12';
-  if (d === 'hca3' || d === 'hca 3' || d === 'hca-3' || d.includes('hca grade 3')) return 'HCA3';
-  if (d === 'hca') return 'HCA12'; // generic HCA defaults to HCA1&2
+export function mapStaffRoleToRosterRank(
+  role: StaffRole | null | undefined,
+): RosterRank | null {
+  if (!role) return null;
+  return STAFF_ROLE_TO_RANK[role] ?? null;
+}
 
-  // Full designation strings
-  if (d.includes('registered nurse') || d.includes('staff nurse')) return 'RN';
-  if (d.includes('enrolled nurse')) return 'EN';
-  if (d.includes('nursing aide')) return 'NA';
-  if (d.includes('healthcare assistant')) return 'HCA12';
+export function mapDesignationToRosterRank(designation: string): RosterRank | null {
+  return mapStaffRoleToRosterRank(mapDesignationToRole(designation));
+}
 
-  return null;
+export function mapRosterRankToGroup(rank: RosterRank | null): RoleGroupKey {
+  if (rank === "A") return "SSN/SN";
+  if (rank === "B") return "EN/NA/HCA1/HCA2";
+  if (rank === "C") return "HCA3/PSA";
+  return "Other";
+}
+
+export function getRosterGroupKey(row: Pick<RosterRow, "designation" | "staffingRole">): RoleGroupKey {
+  const rank =
+    mapStaffRoleToRosterRank(row.staffingRole ?? null) ??
+    mapDesignationToRosterRank(row.designation ?? "");
+  return mapRosterRankToGroup(rank);
 }
 
 /**
  * Maps shift codes to summary shift types (A, P, N).
  * Returns null for non-working shifts.
  */
-export function mapShiftCodeToSummaryType(shiftCode: string): 'A' | 'P' | 'N' | null {
+export function mapShiftCodeToSummaryType(shiftCode: string): "A" | "P" | "N" | null {
   switch (shiftCode) {
-    case 'A':
-    case 'D': // Day shift counts as AM for summary purposes
-      return 'A';
-    case 'P':
-      return 'P';
-    case 'N':
-    case 'N-12':
-      return 'N';
+    case "A":
+    case "D":
+      return "A";
+    case "P":
+      return "P";
+    case "N":
+    case "N-12":
+      return "N";
     default:
-      // Non-working shifts (DO, AL, MC, URG) return null
       return null;
   }
 }
-
-
-
-
-
-

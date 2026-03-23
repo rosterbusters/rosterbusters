@@ -153,9 +153,12 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
         for day_idx, shift_name in req_list:
             if 0 <= day_idx < num_days:
                 normalized_shift = str(shift_name).upper()
-                # Unknown codes (HOL, MC, URG, CL, …) are preserved as-is so
-                # the original leave type flows through to the roster output.
-                milp_code = _sched_to_milp.get(normalized_shift, normalized_shift)
+                if normalized_shift in _OFF_CODES:
+                    milp_code = "DO"
+                elif normalized_shift == "AL" or normalized_shift in _EQUIV_LEAVE or normalized_shift in non_working_shift_codes:
+                    milp_code = "AL"
+                else:
+                    milp_code = _sched_to_milp.get(normalized_shift, normalized_shift)
                 target[name][f"Day {day_idx + 1}"] = milp_code
 
     return hard_rn, hard_en, hard_hca

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Box, Flex, Text, Table } from "@chakra-ui/react";
+import { useMemo, useState } from "react";
+import { Box, Flex, Text, Table, VStack } from "@chakra-ui/react";
 import moment from "moment";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ManpowerEditDialog } from "./ManpowerEditDialog";
@@ -14,7 +14,9 @@ import type {
 } from "./types";
 import {
   MOCK_STAFFING_GUIDELINES,
+  getRosterGroupKey,
   mapShiftCodeToSummaryType,
+  mapDesignationToRole,
 } from "./staffingGuidelines";
 
 interface ShiftSummaryTableProps {
@@ -63,6 +65,26 @@ export interface DayShiftCounts {
   HCA3: { A: number; P: number; N: number };
 }
 
+const SUMMARY_GROUPS: Array<{
+  key: string;
+  label: string;
+  groupKey: "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3/PSA";
+  requirementRole: StaffRole;
+}> = [
+  { key: "group-a", label: "SSN/SN", groupKey: "SSN/SN", requirementRole: "RN" },
+  {
+    key: "group-b",
+    label: "EN/NA/HCA1/HCA2",
+    groupKey: "EN/NA/HCA1/HCA2",
+    requirementRole: "EN",
+  },
+  { key: "group-c", label: "HCA3/PSA", groupKey: "HCA3/PSA", requirementRole: "HCA12" },
+];
+
+function resolveStaffRole(row: RosterRow): StaffRole | null {
+  return row.staffingRole ?? mapDesignationToRole(row.designation ?? "");
+}
+
 // Calculate shift counts per day from roster data
 export function calculateShiftCounts(
   data: RosterRow[],
@@ -84,7 +106,7 @@ export function calculateShiftCounts(
 
   // Count shifts for each nurse
   data.forEach((row) => {
-    const role = row.staffingRole;
+    const role = resolveStaffRole(row);
     if (!role) return;
 
     Object.entries(row.shifts).forEach(([dateKey, shift]) => {
@@ -99,6 +121,22 @@ export function calculateShiftCounts(
   });
 
   return counts;
+}
+
+function getGroupedShiftCount(
+  data: RosterRow[],
+  groupKey: "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3/PSA",
+  dateKey: string,
+  shiftType: SummaryShiftType,
+): number {
+  return data.reduce((sum, row) => {
+    if (getRosterGroupKey(row) !== groupKey) return sum;
+
+    const shift = row.shifts[dateKey];
+    if (!shift) return sum;
+
+    return mapShiftCodeToSummaryType(shift.shiftCode) === shiftType ? sum + 1 : sum;
+  }, 0);
 }
 
 // Get cell styling based on count vs minimum requirement
@@ -123,15 +161,6 @@ export function getCellStyle(
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
 /** All roles — used for total row calculation only. */
 const ALL_STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
-/** Roles rendered as individual rows (HCA12 + HCA3 are merged into one combined row). */
-const DISPLAY_ROLES: StaffRole[] = ["RN", "EN"];
-const ROLE_LABEL: Record<StaffRole, string> = {
-  RN: "RN",
-  EN: "EN",
-  NA: "NA",
-  HCA12: "HCA1&2",
-  HCA3: "HCA3",
-};
 
 export function ShiftSummaryTable({
   data,
@@ -220,6 +249,12 @@ export function ShiftSummaryTable({
     );
   };
 
+  const getGroupedRequirement = (
+    effectiveGuidelines: DailyStaffingGuideline,
+    role: StaffRole,
+    shiftType: SummaryShiftType,
+  ) => effectiveGuidelines[role][shiftType];
+
   return (
     <>
     <Box
@@ -282,9 +317,9 @@ export function ShiftSummaryTable({
         </Table.Header>
 
         <Table.Body>
-          {/* Role Rows: RN, EN (individual) */}
-          {DISPLAY_ROLES.map((role) => (
-            <Table.Row key={role}>
+          {/* Grouped rows aligned with RosterGrid */}
+          {SUMMARY_GROUPS.map((group) => (
+            <Table.Row key={group.key}>
               {/* Role Label */}
               <Table.Cell
                 fontWeight="semibold"
@@ -297,14 +332,12 @@ export function ShiftSummaryTable({
                 textAlign="right"
                 bg="white"
               >
-                {ROLE_LABEL[role]}
+                {group.label}
               </Table.Cell>
 
               {/* Shift counts for each day */}
               {dayColumns.map((col) => {
                 const dateKey = moment(col.date).format("YYYY-MM-DD");
-                const dayCounts = shiftCounts.get(dateKey);
-                // Per-date override takes precedence over base guidelines
                 const effectiveGuidelines = dateOverrides[dateKey] ?? guidelines;
 
                 return (
@@ -317,29 +350,43 @@ export function ShiftSummaryTable({
                   >
                     <Flex>
                       {SHIFT_TYPES.map((shiftType) => {
-                        const count = dayCounts?.[role]?.[shiftType] ?? 0;
+                        const count = getGroupedShiftCount(
+                          data,
+                          group.groupKey,
+                          dateKey,
+                          shiftType,
+                        );
+                        const requirement = getGroupedRequirement(
+                          effectiveGuidelines,
+                          group.requirementRole,
+                          shiftType,
+                        );
                         const style = getCellStyle(
                           count,
-                          effectiveGuidelines[role][shiftType].minimum,
+                          requirement.minimum,
                           isRosterGenerated,
-                          effectiveGuidelines[role][shiftType].maximum,
+                          requirement.maximum,
                         );
 
-                        const isEditable = !!onGuidelinesChange || !!onDateOverrideChange;
+                        const editableRole = group.requirementRole;
+                        const isEditable =
+                          editableRole !== null &&
+                          (!!onGuidelinesChange || !!onDateOverrideChange);
                         const isModified =
-                          modifiedCells.has(`${role}-${shiftType}`) ||
-                          modifiedCells.has(`${dateKey}-${role}-${shiftType}`);
+                          editableRole !== null &&
+                          (modifiedCells.has(`${editableRole}-${shiftType}`) ||
+                            modifiedCells.has(`${dateKey}-${editableRole}-${shiftType}`));
 
                         return (
                           <Tooltip
                             key={shiftType}
                             content={
-                              <Text fontSize="xs">
-                                Min: {effectiveGuidelines[role][shiftType].minimum}
-                                {effectiveGuidelines[role][shiftType].maximum !== undefined
-                                  ? `  Max: ${effectiveGuidelines[role][shiftType].maximum}`
-                                  : ""}
-                              </Text>
+                              <VStack align="start" gap={0}>
+                                <Text fontSize="xs">Min: {requirement.minimum}</Text>
+                                <Text fontSize="xs">
+                                  Max: {requirement.maximum ?? "-"}
+                                </Text>
+                              </VStack>
                             }
                             lazyMount={true}
                             contentProps={{
@@ -371,7 +418,7 @@ export function ShiftSummaryTable({
                                 isEditable
                                   ? () =>
                                       setSelectedCell({
-                                        role,
+                                        role: editableRole,
                                         shiftType,
                                         dateKey,
                                         dateLabel: moment(col.date).format("ddd, MMM D"),
@@ -390,95 +437,6 @@ export function ShiftSummaryTable({
               })}
             </Table.Row>
           ))}
-
-          {/* Combined HCA Row (HCA1&2 + HCA3) */}
-          <Table.Row key="HCA">
-            <Table.Cell
-              fontWeight="semibold"
-              fontSize="xs"
-              color="#4B8798"
-              borderRight="1px solid"
-              borderColor="gray.200"
-              py={1}
-              px={2}
-              textAlign="right"
-              bg="white"
-            >
-              HCA
-            </Table.Cell>
-
-            {dayColumns.map((col) => {
-              const dateKey = moment(col.date).format("YYYY-MM-DD");
-              const dayCounts = shiftCounts.get(dateKey);
-              const effectiveGuidelines = dateOverrides[dateKey] ?? guidelines;
-
-              return (
-                <Table.Cell
-                  key={col.field}
-                  textAlign="center"
-                  borderRight="1px solid"
-                  borderColor="gray.100"
-                  p={0}
-                >
-                  <Flex>
-                    {SHIFT_TYPES.map((shiftType) => {
-                      const count =
-                        (dayCounts?.["HCA12"]?.[shiftType] ?? 0) +
-                        (dayCounts?.["HCA3"]?.[shiftType] ?? 0);
-                      const combinedMin =
-                        effectiveGuidelines["HCA12"][shiftType].minimum +
-                        effectiveGuidelines["HCA3"][shiftType].minimum;
-                      const hca12Max = effectiveGuidelines["HCA12"][shiftType].maximum;
-                      const hca3Max = effectiveGuidelines["HCA3"][shiftType].maximum;
-                      const combinedMax =
-                        hca12Max !== undefined && hca3Max !== undefined
-                          ? hca12Max + hca3Max
-                          : undefined;
-                      const style = getCellStyle(
-                        count,
-                        combinedMin,
-                        isRosterGenerated,
-                        combinedMax,
-                      );
-
-                      return (
-                        <Tooltip
-                          key={shiftType}
-                          content={
-                            <Text fontSize="xs">
-                              Min: {combinedMin}
-                              {combinedMax !== undefined ? `  Max: ${combinedMax}` : ""}
-                            </Text>
-                          }
-                          lazyMount={true}
-                          contentProps={{
-                            css: {
-                              "--tooltip-bg": "white",
-                              "box-shadow": "0px 0px 4px rgba(0,0,0,0.1)",
-                              color: "black",
-                            },
-                          }}
-                        >
-                          <Flex
-                            justify="center"
-                            align="center"
-                            bg={style.bg}
-                            color={style.color}
-                            flex={1}
-                            py={1}
-                            fontSize="xs"
-                            fontWeight="semibold"
-                          >
-                            {count}
-                          </Flex>
-                        </Tooltip>
-                      );
-                    })}
-                  </Flex>
-                </Table.Cell>
-              );
-            })}
-          </Table.Row>
 
           {/* Total Row */}
           <Table.Row bg="menuactive">
