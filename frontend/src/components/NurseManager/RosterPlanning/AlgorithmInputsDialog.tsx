@@ -8,10 +8,9 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import moment from "moment";
-
 import { useGenerationInputs } from "@/components/NurseManager/RosterTable";
 import type { RosterRow } from "@/components/NurseManager/RosterTable";
+import { buildRequestReview } from "./requestReview";
 
 interface AlgorithmInputsDialogProps {
   isOpen: boolean;
@@ -92,72 +91,13 @@ export function AlgorithmInputsDialog({
   }, [generationInputsQuery.data]);
 
   const requestReview = useMemo(() => {
-    if (!generationInputsQuery.data || !periodStartDate || rosterData.length === 0) {
-      return null;
-    }
-
-    const toAlgoLabel = (shiftCode: string) => {
-      const normalized = shiftCode.toUpperCase();
-      if (normalized === "A") return "AM";
-      if (normalized === "P") return "PM";
-      if (normalized === "N") return "NIGHT";
-      if (normalized === "AM" || normalized === "PM" || normalized === "NIGHT") return normalized;
-      if (normalized === "AL" || normalized === "LEAVE") return "AL";
-      return "OFF";
-    };
-
-    const rosterLookup = new Map<number, Map<string, string>>();
-    for (const row of rosterData) {
-      const dateMap = new Map<string, string>();
-      for (const [dateKey, shift] of Object.entries(row.shifts)) {
-        if (!shift) continue;
-        dateMap.set(dateKey, toAlgoLabel(shift.shiftCode));
-      }
-      rosterLookup.set(row.nurseId, dateMap);
-    }
-
-    type RequestEntry = {
-      nurseId: number;
-      date: string;
-      requested: string;
-      assigned: string | null;
-      requestType: "hard" | "soft";
-      matched: boolean;
-    };
-
-    const allRequests: RequestEntry[] = [];
-    const start = moment(periodStartDate);
-
-    const addRequests = (requestType: "hard" | "soft", data: Record<string, Array<[number, string]>>) => {
-      for (const [nurseIdStr, reqs] of Object.entries(data)) {
-        const nurseId = Number(nurseIdStr);
-        for (const [dayIdx, requested] of reqs) {
-          const dateKey = start.clone().add(dayIdx, "days").format("YYYY-MM-DD");
-          const assigned = rosterLookup.get(nurseId)?.get(dateKey) ?? null;
-          const matched = assigned != null && assigned === requested;
-          allRequests.push({
-            nurseId,
-            date: dateKey,
-            requested,
-            assigned,
-            requestType,
-            matched,
-          });
-        }
-      }
-    };
-
-    addRequests("hard", generationInputsQuery.data.hard_requests ?? {});
-    addRequests("soft", generationInputsQuery.data.soft_requests ?? {});
-
-    const matched = allRequests.filter((r) => r.matched);
-    const unmatched = allRequests.filter((r) => !r.matched);
-
-    return {
-      matchedCount: matched.length,
-      unmatchedCount: unmatched.length,
-      rows: allRequests,
-    };
+    if (!generationInputsQuery.data) return null;
+    return buildRequestReview({
+      periodStartDate: periodStartDate ?? null,
+      rosterData,
+      hardRequests: generationInputsQuery.data.hard_requests ?? {},
+      softRequests: generationInputsQuery.data.soft_requests ?? {},
+    });
   }, [generationInputsQuery.data, periodStartDate, rosterData]);
 
   const requestReviewText = useMemo(() => {

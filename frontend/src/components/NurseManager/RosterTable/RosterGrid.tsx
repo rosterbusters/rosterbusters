@@ -65,6 +65,7 @@ interface RosterGridProps {
     comment: string,
   ) => void;
   isLoading?: boolean;
+  loadingLabel?: string;
   guidelines?: DailyStaffingGuideline;
   isRosterGenerated?: boolean;
   showSummary?: boolean;
@@ -168,6 +169,16 @@ function getDisplayTitle(row: RosterRow): string {
   return designation;
 }
 
+function getDisplayName(row: RosterRow): string {
+  const title = getDisplayTitle(row).trim();
+  const name = (row.name ?? "").toString().trim();
+
+  if (!title) return name;
+  if (!name) return title;
+
+  return `${title} ${name}`;
+}
+
 export function RosterGrid({
   data,
   viewMode,
@@ -175,6 +186,7 @@ export function RosterGrid({
   onShiftChange,
   onCommentChange,
   isLoading = false,
+  loadingLabel = "Loading roster data...",
   guidelines = MOCK_STAFFING_GUIDELINES,
   isRosterGenerated = false,
   showSummary = true,
@@ -378,8 +390,8 @@ export function RosterGrid({
   // Column width calculation
   const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
 
-  // Total columns: Name + Title + Day columns
-  const totalCols = 2 + dayColumns.length;
+  // Total columns: Name + Day columns
+  const totalCols = 1 + dayColumns.length;
 
   // Calculate shift counts for summary
   const shiftCounts = useMemo(
@@ -406,14 +418,14 @@ export function RosterGrid({
 
     // Summary Header Row (A, P, N labels)
     summaryRows.push(
-      <Table.Row
+        <Table.Row
         key="summary-header"
         bg="white"
         borderTop="2px solid"
         borderColor="#7EC8D9"
       >
         <Table.Cell
-          colSpan={2}
+          colSpan={1}
           borderRight="1px solid"
           borderColor="gray.200"
           p={1}
@@ -456,7 +468,7 @@ export function RosterGrid({
           bg="white"
         >
           <Table.Cell
-            colSpan={2}
+            colSpan={1}
             fontWeight="semibold"
             fontSize="xs"
             color="#4B8798"
@@ -522,7 +534,7 @@ export function RosterGrid({
         bg="#ADD8E6"
       >
         <Table.Cell
-          colSpan={2}
+          colSpan={1}
           fontWeight="bold"
           fontSize="xs"
           color="#4B8798"
@@ -624,7 +636,10 @@ export function RosterGrid({
   };
 
   // Render a single data row
-  const renderDataRow = (row: RosterRow) => (
+  const renderDataRow = (row: RosterRow) => {
+    const displayName = getDisplayName(row);
+
+    return (
     <Table.Row
       key={row.nurseId}
       color="foreground"
@@ -644,28 +659,13 @@ export function RosterGrid({
       >
         <HStack gap={2}>
           <Text fontSize="sm" fontWeight="medium">
-            {row.name}
+            {displayName}
           </Text>
           {/* {row.hasWarning && (
             <Icon as={AlertCircle} boxSize={4} color="danger" />
           )} */}
           
         </HStack>
-      </Table.Cell>
-
-      {/* Title Cell */}
-      <Table.Cell
-        bg="white"
-        borderRight="1px solid"
-        borderColor="gray.200"
-        py={2}
-        px={2}
-        w="90px"
-        minW="90px"
-      >
-        <Text fontSize="xs" color="gray.600" fontWeight="semibold">
-          {getDisplayTitle(row)}
-        </Text>
       </Table.Cell>
 
       {/* Shift Cells */}
@@ -685,7 +685,7 @@ export function RosterGrid({
             <Flex justify="center">
               <Box
                 onClick={(e) =>
-                  handleShiftClick(row.nurseId, row.name, dateKey, shift, e)
+                  handleShiftClick(row.nurseId, displayName, dateKey, shift, e)
                 }
               >
                 <ShiftBadge
@@ -694,7 +694,7 @@ export function RosterGrid({
                   viewMode={viewMode}
                   comment={shift?.comment}
                   onCommentIconClick={(e) =>
-                    handleCommentIconClick(row.nurseId, row.name, dateKey, shift, e)
+                    handleCommentIconClick(row.nurseId, displayName, dateKey, shift, e)
                   }
                   shiftRequestOverlay={shiftRequestOverlays[String(row.nurseId)]?.[dateKey]}
                 />
@@ -705,6 +705,7 @@ export function RosterGrid({
       })}
     </Table.Row>
   );
+  };
 
   return (
     <Box position="relative" w="100%">
@@ -916,18 +917,6 @@ export function RosterGrid({
                 </Popover.Root>
               </Table.ColumnHeader>
 
-              {/* Title Column Header */}
-              <Table.ColumnHeader
-                w="90px"
-                minW="90px"
-                color="faintforeground"
-                bg="white"
-              >
-                <Text fontSize="sm" fontWeight="medium">
-                  Title
-                </Text>
-              </Table.ColumnHeader>
-
               {/* Day Column Headers */}
               {dayColumns.map((col) => (
                 <Table.ColumnHeader
@@ -1002,7 +991,7 @@ export function RosterGrid({
           flexDir={"column"}
         >
           <Spinner color="primary" />
-          <Text color="gray.500">Loading roster data...</Text>
+          <Text color="gray.500">{loadingLabel}</Text>
         </Box>
       )}
     </Box>
