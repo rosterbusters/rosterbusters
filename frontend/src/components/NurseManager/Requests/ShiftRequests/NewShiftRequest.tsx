@@ -89,22 +89,22 @@ export const NewShiftRequest = ({
   });
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", wardId ?? "default"],
+    queryKey: ["shift-codes", "all"],
     queryFn: () =>
-      wardId != null
-        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
-        : ShiftRequestsService.getWorkingShiftCodes(),
+      ShiftRequestsService.getAllShiftCodes(),
     // enabled: wardId !== undefined,
   });
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: (shiftCodes ?? []).map((sc) => ({
-          value: sc.shiftcode,
-          label: sc.shiftcode,
-          description: sc.description,
-        })),
+        items: (shiftCodes ?? [])
+          .filter((sc) => sc.shiftcode !== "MC")
+          .map((sc) => ({
+            value: sc.shiftcode,
+            label: sc.shiftcode,
+            description: sc.description,
+          })),
       }),
     [shiftCodes],
   );

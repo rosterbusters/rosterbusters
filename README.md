@@ -149,6 +149,14 @@ docker compose exec backend python app/test_algo.py --ward-id 1
 
 Options:
 - `--ward-id` — Ward ID to generate requests for (required)
+- `--mode` — `deterministic` (default), `hardcoded`, or `anonymized`
+
+Other modes:
+
+```bash
+docker compose exec backend python app/test_algo.py --ward-id 1 --mode hardcoded
+docker compose exec backend python app/test_algo.py --mode anonymized
+```
 
 **What it seeds:**
 - The script targets the upcoming (or current) roster period for the ward.

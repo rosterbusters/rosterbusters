@@ -193,7 +193,7 @@ services:
     build:
       context: ./backend
     restart: always
-    command: uv run celery -A app.worker worker --loglevel=info --concurrency=1
+    command: uv run celery -A app.worker worker --loglevel=info --pool=solo
     depends_on:
       - redis
       - db

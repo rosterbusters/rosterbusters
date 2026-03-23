@@ -11,58 +11,92 @@ class DesignationClassification(NamedTuple):
     roster_rank: RosterRank | None
 
 
+_CANONICAL_MAP: dict[str, tuple[StaffingRole, RosterRank]] = {
+    "SN": ("RN", "A"),
+    "SSN": ("RN", "A"),
+    "HCA1": ("HCA12", "B"),
+    "HCA2": ("HCA12", "B"),
+    "SEN": ("EN", "B"),
+    "EN": ("EN", "B"),
+    "NA": ("NA", "B"),
+    "HCA3": ("HCA3", "C"),
+    "PSA": ("HCA3", "C"),
+}
+
+_ALIASES: dict[str, str] = {
+    # Staff/registered nurses
+    "RN": "SN",
+    "REGISTEREDNURSE": "SN",
+    "STAFFNURSE": "SN",
+    "STAFFNURSEI": "SN",
+    "STAFFNURSEII": "SN",
+    "SNRSTAFFNURSEI": "SSN",
+    "SNRSTAFFNURSEII": "SSN",
+    "SENIORSTAFFNURSE": "SSN",
+    "SENIORSTAFFNURSEI": "SSN",
+    "SENIORSTAFFNURSEII": "SSN",
+    # Enrolled nurses
+    "ENROLLEDNURSE": "EN",
+    "ENROLLEDNURSEI": "EN",
+    "ENROLLEDNURSEII": "EN",
+    "SENIORENROLLEDNURSE": "SEN",
+    "SENIORENROLLEDNURSEI": "SEN",
+    "SENIORENROLLEDNURSEII": "SEN",
+    "SNRENROLLEDNURSE": "SEN",
+    "SNRENROLLEDNURSEI": "SEN",
+    "SNRENROLLEDNURSEII": "SEN",
+    # Nursing aides
+    "NURSINGAIDE": "NA",
+    "NURSINGAIDEI": "NA",
+    "NURSINGAIDEII": "NA",
+    "SENIORNURSINGAIDEI": "NA",
+    "SENIORNURSINGAIDEII": "NA",
+    # Patient service assistants
+    "PATIENTSERVICEASST": "PSA",
+    "PATIENTSERVICEASSTI": "PSA",
+    "PATIENTSERVICEASSTII": "PSA",
+    "PATIENTSERVICEASSISTANT": "PSA",
+    "SNRPATIENTSERVICEASST": "PSA",
+    # Healthcare assistants
+    "HCA": "HCA1",
+    "HCA1": "HCA1",
+    "HCA2": "HCA2",
+    "HCA3": "HCA3",
+    "HEALTHCAREASSISTANT": "HCA1",
+    "HEALTHCAREASSISTANTI": "HCA1",
+    "HEALTHCAREASSISTANTII": "HCA2",
+    "HEALTHCAREASSISTANTIII": "HCA3",
+    "HEALTHCAREASST": "HCA1",
+    "HEALTHCAREASSTI": "HCA1",
+    "HEALTHCAREASSTII": "HCA2",
+    "HEALTHCAREASSTIII": "HCA3",
+    "SENIORHEALTHCAREASSISTANTI": "HCA1",
+    "SENIORHEALTHCAREASSISTANTII": "HCA2",
+}
+
+
+def _tokenize(value: str) -> list[str]:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", " ", value or "").strip().upper()
+    return cleaned.split()
+
+
 def normalize_designation(value: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", value.lower())).strip()
+    tokens = _tokenize(value)
+    return "".join(tokens)
 
 
 def classify_designation(value: str) -> DesignationClassification:
-    normalized = normalize_designation(value)
-    if not normalized:
+    tokens = _tokenize(value)
+    if not tokens:
         return DesignationClassification(None, None)
 
-    manager_or_clinician_patterns = (
-        "nurse manager",
-        "nursing manager",
-        "nurse clinician",
-        "assistant nurse clinician",
-        "senior nurse manager",
-    )
-    if any(pattern in normalized for pattern in manager_or_clinician_patterns):
+    if "MANAGER" in tokens or "CLINICIAN" in tokens:
         return DesignationClassification(None, None)
 
-    if (
-        normalized in {"rn", "ssn"}
-        or "registered nurse" in normalized
-        or "staff nurse" in normalized
-    ):
-        return DesignationClassification("RN", "A")
+    compact = "".join(tokens)
+    canonical = _ALIASES.get(compact, compact)
+    mapped = _CANONICAL_MAP.get(canonical)
+    if not mapped:
+        return DesignationClassification(None, None)
 
-    if normalized == "en" or "enrolled nurse" in normalized:
-        return DesignationClassification("EN", "B")
-
-    if (
-        normalized == "na"
-        or "nursing aide" in normalized
-        or "patient service asst" in normalized
-        or "patient service assistant" in normalized
-    ):
-        return DesignationClassification("NA", "B")
-
-    if (
-        normalized in {"hca3", "hca 3"}
-        or "healthcare assistant iii" in normalized
-        or "healthcare asst iii" in normalized
-        or "hca grade 3" in normalized
-    ):
-        return DesignationClassification("HCA3", "C")
-
-    if (
-        normalized in {"hca", "hca1", "hca 1", "hca2", "hca 2"}
-        or "healthcare assistant" in normalized
-        or "healthcare asst" in normalized
-        or "hca grade 1" in normalized
-        or "hca grade 2" in normalized
-    ):
-        return DesignationClassification("HCA12", "C")
-
-    return DesignationClassification(None, None)
+    return DesignationClassification(mapped[0], mapped[1])

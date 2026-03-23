@@ -24,7 +24,7 @@ import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
 import { ShiftCommentPopover } from "./ShiftCommentPopover";
 import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
-import { MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
+import { MOCK_STAFFING_GUIDELINES, mapDesignationToRole } from "./staffingGuidelines";
 import type {
   RosterRow,
   ShiftAssignment,
@@ -47,6 +47,8 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   HCA12: "HCA1&2",
   HCA3: "HCA3",
 };
+const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3/PSA", "Other"] as const;
+type RoleGroupKey = (typeof ROLE_GROUP_ORDER)[number];
 
 interface RosterGridProps {
   data: RosterRow[];
@@ -88,17 +90,82 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
 }
 
 // Group data by designation (role)
-function groupByDesignation(data: RosterRow[]): Map<string, RosterRow[]> {
-  const groups = new Map<string, RosterRow[]>();
+function getRoleGroupKey(row: RosterRow): RoleGroupKey {
+  const designation = (row.designation ?? "").toString();
+  const d = designation.toLowerCase().trim();
+  const role = row.staffingRole ?? mapDesignationToRole(designation);
+
+  if (role === "RN") return "SSN/SN";
+  if (role === "EN" || role === "NA" || role === "HCA12") return "EN/NA/HCA1/HCA2";
+  if (role === "HCA3") return "HCA3/PSA";
+
+  if (d === "ssn" || d === "sn" || d.includes("staff nurse") || d.includes("registered nurse")) {
+    return "SSN/SN";
+  }
+  if (d === "en" || d.includes("enrolled nurse") || d === "na" || d.includes("nursing aide")) {
+    return "EN/NA/HCA1/HCA2";
+  }
+  if (
+    d === "hca1" ||
+    d === "hca 1" ||
+    d === "hca-1" ||
+    d.includes("hca grade 1") ||
+    d === "hca2" ||
+    d === "hca 2" ||
+    d === "hca-2" ||
+    d.includes("hca grade 2") ||
+    d === "hca"
+  ) {
+    return "EN/NA/HCA1/HCA2";
+  }
+  if (
+    d === "hca3" ||
+    d === "hca 3" ||
+    d === "hca-3" ||
+    d.includes("hca grade 3") ||
+    d === "psa" ||
+    d.includes("patient service assistant")
+  ) {
+    return "HCA3/PSA";
+  }
+
+  return "Other";
+}
+
+function groupByRoleGroup(data: RosterRow[]): Map<RoleGroupKey, RosterRow[]> {
+  const groups = new Map<RoleGroupKey, RosterRow[]>();
+  ROLE_GROUP_ORDER.forEach((key) => groups.set(key, []));
 
   data.forEach((row) => {
-    const key = row.designation;
+    const key = getRoleGroupKey(row);
     const existing = groups.get(key) || [];
     existing.push(row);
     groups.set(key, existing);
   });
 
   return groups;
+}
+
+function getDisplayTitle(row: RosterRow): string {
+  const designation = (row.designation ?? "").toString();
+  const d = designation.toLowerCase().trim();
+
+  if (d === "ssn" || d.includes("senior staff nurse")) return "SSN";
+  if (d === "sn" || (d.includes("staff nurse") && !d.includes("senior"))) return "SN";
+  if (d === "rn" || d.includes("registered nurse")) return "RN";
+  if (d === "en" || d.includes("enrolled nurse")) return "EN";
+  if (d === "na" || d.includes("nursing aide")) return "NA";
+  if (d === "hca1" || d === "hca 1" || d === "hca-1" || d.includes("hca grade 1")) return "HCA1";
+  if (d === "hca2" || d === "hca 2" || d === "hca-2" || d.includes("hca grade 2")) return "HCA2";
+  if (d === "hca3" || d === "hca 3" || d === "hca-3" || d.includes("hca grade 3")) return "HCA3";
+  if (d === "psa" || d.includes("patient service assistant")) return "PSA";
+  if (d === "hca" || d.includes("healthcare assistant")) return "HCA";
+
+  if (row.staffingRole) {
+    return row.staffingRole === "HCA12" ? "HCA1/2" : row.staffingRole;
+  }
+
+  return designation;
 }
 
 export function RosterGrid({
@@ -210,7 +277,7 @@ export function RosterGrid({
 
   // Group data by designation (role) - always grouped
   const groupedData = useMemo(() => {
-    return groupByDesignation(filteredData);
+    return groupByRoleGroup(filteredData);
   }, [filteredData]);
 
   // Handle shift badge click
@@ -311,8 +378,8 @@ export function RosterGrid({
   // Column width calculation
   const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
 
-  // Total columns: Name + Day columns
-  const totalCols = 1 + dayColumns.length;
+  // Total columns: Name + Title + Day columns
+  const totalCols = 2 + dayColumns.length;
 
   // Calculate shift counts for summary
   const shiftCounts = useMemo(
@@ -346,7 +413,7 @@ export function RosterGrid({
         borderColor="#7EC8D9"
       >
         <Table.Cell
-          colSpan={1}
+          colSpan={2}
           borderRight="1px solid"
           borderColor="gray.200"
           p={1}
@@ -389,7 +456,7 @@ export function RosterGrid({
           bg="white"
         >
           <Table.Cell
-            colSpan={1}
+            colSpan={2}
             fontWeight="semibold"
             fontSize="xs"
             color="#4B8798"
@@ -455,7 +522,7 @@ export function RosterGrid({
         bg="#ADD8E6"
       >
         <Table.Cell
-          colSpan={1}
+          colSpan={2}
           fontWeight="bold"
           fontSize="xs"
           color="#4B8798"
@@ -513,6 +580,7 @@ export function RosterGrid({
     const allRows: React.ReactNode[] = [];
 
     Array.from(groupedData.entries()).forEach(([groupKey, rows]) => {
+      if (!rows.length) return;
       const isCollapsed = collapsedGroups.has(groupKey);
 
       // Group Header Row
@@ -585,10 +653,26 @@ export function RosterGrid({
         </HStack>
       </Table.Cell>
 
+      {/* Title Cell */}
+      <Table.Cell
+        bg="white"
+        borderRight="1px solid"
+        borderColor="gray.200"
+        py={2}
+        px={2}
+        w="90px"
+        minW="90px"
+      >
+        <Text fontSize="xs" color="gray.600" fontWeight="semibold">
+          {getDisplayTitle(row)}
+        </Text>
+      </Table.Cell>
+
       {/* Shift Cells */}
       {dayColumns.map((col) => {
         const dateKey = moment(col.date).format("YYYY-MM-DD");
-        const shift = row.shifts[dateKey] || null;
+        const rawShift = row.shifts[dateKey] || null;
+        const shift = rawShift;
 
         return (
           <Table.Cell
@@ -830,6 +914,18 @@ export function RosterGrid({
                     </Popover.Content>
                   </Popover.Positioner>
                 </Popover.Root>
+              </Table.ColumnHeader>
+
+              {/* Title Column Header */}
+              <Table.ColumnHeader
+                w="90px"
+                minW="90px"
+                color="faintforeground"
+                bg="white"
+              >
+                <Text fontSize="sm" fontWeight="medium">
+                  Title
+                </Text>
               </Table.ColumnHeader>
 
               {/* Day Column Headers */}
