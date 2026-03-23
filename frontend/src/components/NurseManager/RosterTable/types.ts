@@ -164,6 +164,7 @@ export interface WardRosterResponse {
     shift_date: string;
     shift_code: string;
     status: string;
+    assignment_method?: string;
     comment?: string | null;
   }>;
 }

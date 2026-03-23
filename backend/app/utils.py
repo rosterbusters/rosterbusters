@@ -177,6 +177,25 @@ def generate_roster_release_email(
     subject = f"{project_name} - {message}"
     html_content = render_email_template(
         template_name="roster_release.html",
+def generate_shift_request_period_open_email(email_to: str, roster_period: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Shift request period is open"
+    html_content = render_email_template(
+        template_name="shift_request_open.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "roster_period": roster_period,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_shift_request_period_closed_email(email_to: str, roster_period: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Shift request period is closed"
+    html_content = render_email_template(
+        template_name="shift_request_closed.html",
         context={
             "project_name": settings.PROJECT_NAME,
             "email": email_to,
