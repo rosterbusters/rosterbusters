@@ -84,9 +84,10 @@ interface Event {
 
 interface LeaveRequestCalendarProps {
   wardId: number | null | undefined;
+  isLocked?: boolean;
 }
 
-export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarProps) {
+export default function LeaveRequestCalendar({ wardId, isLocked = false }: LeaveRequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
@@ -146,11 +147,18 @@ export default function LeaveRequestCalendar({ wardId }: LeaveRequestCalendarPro
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {
+    const MonthView = ((props) => (
+      <CustomMonthView {...props} isLocked={isLocked} />
+    )) as typeof CustomMonthView;
+    MonthView.range = CustomMonthView.range;
+    MonthView.navigate = CustomMonthView.navigate;
+    MonthView.title = CustomMonthView.title;
+
     return {
-      views: { month: CustomMonthView, week: false, day: false } as any,
+      views: { month: MonthView, week: false, day: false } as any,
       defaultView: 'month' as View,
     };
-  }, []);
+  }, [isLocked]);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>

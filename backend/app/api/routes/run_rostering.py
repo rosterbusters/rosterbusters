@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.designation_mapping import classify_designation
@@ -344,6 +344,57 @@ def publish_ward_roster(
         "period_id": period_id,
         "published_count": len(entries),
         "status": period.status,
+    }
+
+
+@router.delete("/ward/{ward_id}/clear")
+def clear_ward_roster(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Clear all roster assignments for a ward + period when not yet published."""
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = session.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to clear this ward roster")
+
+    if period.status in {"Finalized", "Published"}:
+        raise HTTPException(status_code=400, detail="Roster period is already published")
+
+    entries = session.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).all()
+
+    if not entries:
+        raise HTTPException(status_code=400, detail="No roster assignments found to clear")
+
+    if any(entry.status == "Confirmed" for entry in entries):
+        raise HTTPException(status_code=400, detail="Roster entries are already published")
+
+    deleted = session.exec(
+        delete(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).rowcount or 0
+    session.commit()
+
+    return {
+        "ward_id": ward_id,
+        "period_id": period_id,
+        "cleared_count": deleted,
+        "status": "cleared",
     }
 
 

@@ -37,9 +37,11 @@ import {
   transformRosterData,
   useBulkUpsertRoster,
   usePublishRoster,
+  useClearRoster,
   useRosterExport,
   useGenerateAlgorithmRoster,
   useResumeAlgorithmTask,
+  useGenerationInputs,
   useShiftCodes,
   useRosterChangelog,
   useCreateChangelog,
@@ -55,15 +57,20 @@ import {
   type RosterRow,
   type EditHistoryEntry,
   type DailyStaffingGuideline,
-  type ShiftRequestOverlay,
 } from "@/components/NurseManager/RosterTable";
 import {
   RosterPlanningHeader,
   getWardGuidelines,
 } from "@/components/NurseManager/RosterPlanning";
 import AlgorithmInputsDialog from "@/components/NurseManager/RosterPlanning/AlgorithmInputsDialog";
+import {
+  buildRequestReview,
+  buildShiftRequestOverlays,
+} from "@/components/NurseManager/RosterPlanning/requestReview";
 
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+import { LockdownBanner } from "@/components/Common/LockdownBanner";
+import { useRosterPlanningLockStatus } from "@/hooks/useRosterPlanningLockStatus";
 import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
@@ -130,30 +137,6 @@ function generateEmptyRosterData(): RosterRow[] {
   }));
 }
 
-// Generate mock shift request overlays for demonstration (Algorithm and Nurse Manager only)
-function generateMockPlanningOverlays(
-  startDate: Date,
-): Record<string, Record<string, ShiftRequestOverlay>> {
-  const d = (n: number) =>
-    moment(startDate).add(n, "days").format("YYYY-MM-DD");
-  return {
-    "1": {
-      [d(0)]: {
-        status: "Pending",
-        category: "Algorithm",
-        reason: "Under review by scheduling algorithm",
-      },
-    },
-    "4": {
-      [d(3)]: {
-        status: "Rejected",
-        category: "Nurse Manager",
-        reason: "Insufficient overnight coverage",
-      },
-    },
-  };
-}
-
 function RosterPlanningPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -174,6 +157,7 @@ function RosterPlanningPage() {
   const [isDownloadSuccessDialogOpen, setIsDownloadSuccessDialogOpen] =
     useState(false);
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+  const [isAutoRegenerateDialogOpen, setIsAutoRegenerateDialogOpen] = useState(false);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
   const [isInputsDialogOpen, setIsInputsDialogOpen] = useState(false);
   const [lastAlgorithmRunAt, setLastAlgorithmRunAt] = useState<Date | null>(null);
@@ -192,12 +176,6 @@ function RosterPlanningPage() {
   const [algorithmType, setAlgorithmType] = useState<"MILP" | "GA" | null>(null);
   const [isSeedingRequests, setIsSeedingRequests] = useState(false);
 
-  // Mock shift request overlays (Algorithm and Nurse Manager categories only)
-  const mockPlanningOverlays = useMemo(
-    () => generateMockPlanningOverlays(currentStartDate),
-    [currentStartDate],
-  );
-
   // Staffing guidelines — initialised from ward data, editable via the summary table
   const [guidelines, setGuidelines] = useState<DailyStaffingGuideline>(() =>
     getWardGuidelines(undefined),
@@ -206,6 +184,12 @@ function RosterPlanningPage() {
   const [dateOverrides, setDateOverrides] = useState<
     Record<string, DailyStaffingGuideline>
   >({});
+
+  // Roster planning lock
+  const { isLocked, nextWindowStart, nextWindowEnd } = useRosterPlanningLockStatus(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
 
   // Data hooks
   const { data: wards = [] } = useWards();
@@ -225,14 +209,53 @@ function RosterPlanningPage() {
     selectedPeriod?.periodId ?? null,
   );
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
+  const { data: generationInputs } = useGenerationInputs(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+    !!selectedWard && !!selectedPeriod,
+  );
   const { exportToXLSX } = useRosterExport();
   const bulkUpsertRoster = useBulkUpsertRoster();
   const publishRoster = usePublishRoster();
+  const clearRoster = useClearRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
   const resumeAlgorithmTask = useResumeAlgorithmTask();
   const autoReviewShiftRequests = useAutoReviewShiftRequests();
   const hasResumedTaskRef = useRef(false);
   const resumeCancelledRef = useRef(false);
+  const isAlgorithmRunning = generateAlgorithmRoster.isPending || isResumingAlgorithm;
+  const algorithmOverlayLabel = useMemo(() => {
+    if (!isAlgorithmRunning) return "Loading roster data...";
+    const percent = generationProgress ? ` ${generationProgress}%` : "";
+    return `Generating algorithm roster...${percent}`;
+  }, [generationProgress, isAlgorithmRunning]);
+  const requestReview = useMemo(() => {
+    if (!generationInputs) return null;
+    return buildRequestReview({
+      periodStartDate: selectedPeriod?.startDate ?? null,
+      rosterData,
+      hardRequests: generationInputs.hard_requests ?? {},
+      softRequests: generationInputs.soft_requests ?? {},
+    });
+  }, [generationInputs, rosterData, selectedPeriod?.startDate]);
+  const shiftRequestOverlays = useMemo(
+    () => buildShiftRequestOverlays(requestReview),
+    [requestReview],
+  );
+
+  const rosterEntries = savedRoster?.roster_entries ?? [];
+  const hasAutoGeneratedRoster = useMemo(() => {
+    return rosterEntries.some((entry) =>
+      (entry.assignment_method ?? "manual").toLowerCase() !== "manual"
+    );
+  }, [rosterEntries]);
+  const isRosterPending = useMemo(() => {
+    return rosterEntries.length > 0 && rosterEntries.every((entry) => entry.status === "Pending");
+  }, [rosterEntries]);
+  const isRosterPublished = useMemo(() => {
+    return rosterEntries.length > 0 && rosterEntries.every((entry) => entry.status === "Confirmed");
+  }, [rosterEntries]);
+  const canAutoRegenerate = hasAutoGeneratedRoster && isRosterPending && !isRosterPublished;
 
   // Generate mock wards if API wards are empty
   const displayWards = useMemo(
@@ -528,9 +551,39 @@ function RosterPlanningPage() {
   ]);
 
   // Clear roster and return to manual mode — ward nurses repopulate via the wardStatistics effect
-  const handleClearRoster = useCallback(() => {
-    setIsAlgorithmGenerated(false);
-  }, []);
+  const handleClearRoster = useCallback(async () => {
+    if (!selectedWard || !selectedPeriod) {
+      showErrorToast("Please select a ward and period first");
+      return;
+    }
+    if (rosterEntries.length === 0) {
+      setIsAlgorithmGenerated(false);
+      showSuccessToast("Roster cleared successfully");
+      return;
+    }
+    try {
+      await clearRoster.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+      });
+      setIsAlgorithmGenerated(false);
+      showSuccessToast("Roster cleared successfully");
+    } catch (error) {
+      console.error("Failed to clear roster:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to clear roster. Please try again.";
+      showErrorToast(message);
+    }
+  }, [
+    selectedWard,
+    selectedPeriod,
+    rosterEntries.length,
+    clearRoster,
+    showErrorToast,
+    showSuccessToast,
+  ]);
 
   // Load a mock JSON dataset into the roster grid
   const handleLoadMockData = useCallback(
@@ -694,6 +747,10 @@ function RosterPlanningPage() {
     setIsPublishDialogOpen(true);
   }, []);
 
+  const handleAutoRegenerateClick = useCallback(() => {
+    setIsAutoRegenerateDialogOpen(true);
+  }, []);
+
   const handleViewGenerationInputs = useCallback(() => {
     if (!selectedWard || !selectedPeriod) {
       showErrorToast("Please select a ward and period first");
@@ -760,6 +817,57 @@ function RosterPlanningPage() {
     bulkUpsertRoster,
     publishRoster,
     autoReviewShiftRequests,
+    showErrorToast,
+  ]);
+
+  const handleConfirmAutoRegenerate = useCallback(async () => {
+    if (!selectedWard || !selectedPeriod) {
+      showErrorToast("Please select a ward and period first");
+      return;
+    }
+    if (!canAutoRegenerate) {
+      showErrorToast("Auto regeneration is only available for pending auto-generated rosters.");
+      return;
+    }
+    if (isAlgorithmRunning) {
+      return;
+    }
+    setIsAutoRegenerateDialogOpen(false);
+    const startedAt = Date.now();
+    try {
+      setGenerationProgress(0);
+      setAlgorithmType(null);
+      const result = await generateAlgorithmRoster.mutateAsync({
+        wardId: selectedWard.wardId,
+        periodId: selectedPeriod.periodId,
+        startDate: currentStartDate,
+        algorithm: undefined,
+        onProgress: (percent) => {
+          setGenerationProgress(percent);
+        },
+      });
+
+      setRosterData(result.rosterData);
+      setIsAlgorithmGenerated(true);
+      setGenerationProgress(100);
+      setGeneratedAlgorithmMethod(result.algorithm);
+      setIsGenerationSuccessDialogOpen(true);
+      setLastAlgorithmRunAt(new Date());
+      setLastAlgorithmRunMs(Date.now() - startedAt);
+      showSuccessToast("Roster regenerated successfully!");
+    } catch (error) {
+      console.error("Failed:", error);
+      setGenerationProgress(0);
+      showErrorToast("Failed to regenerate roster.");
+    }
+  }, [
+    selectedWard,
+    selectedPeriod,
+    currentStartDate,
+    canAutoRegenerate,
+    isAlgorithmRunning,
+    generateAlgorithmRoster,
+    showSuccessToast,
     showErrorToast,
   ]);
 
@@ -830,10 +938,33 @@ function RosterPlanningPage() {
       h="100vh"
       w="100vw"
       direction="column"
-      overflowY="auto"
       bgColor="background2"
-      p={5}
     >
+      {/* Roster planning lock — banner is full-width, outside padded area */}
+      {isLocked && (
+        <>
+          <LockdownBanner
+            title="Roster Planning Period Closed."
+            nextLabel="Next Roster Planning Period:"
+            nextWindowStart={nextWindowStart}
+            nextWindowEnd={nextWindowEnd}
+          />
+          <Box
+            position="fixed"
+            top="64px"
+            left={0}
+            right={0}
+            bottom={0}
+            bg="rgba(0, 0, 0, 0.08)"
+            zIndex={40}
+            pointerEvents="all"
+          />
+        </>
+      )}
+
+      {/* Padded content area */}
+      <Flex direction="column" flex={1} overflowY="auto" p={5}>
+
       {/* Header Section */}
       <Box
         bgColor="white"
@@ -851,7 +982,7 @@ function RosterPlanningPage() {
           wards={displayWards}
           periods={visiblePlanningPeriods}
           isAlgorithmGenerated={isAlgorithmGenerated}
-          isGenerating={generateAlgorithmRoster.isPending}
+          isGenerating={isAlgorithmRunning}
           isPublishing={
             bulkUpsertRoster.isPending || publishRoster.isPending
           }
@@ -866,6 +997,8 @@ function RosterPlanningPage() {
           algorithmType={algorithmType}
           onAlgorithmTypeChange={(t) => setAlgorithmType(t)}
           onGenerateAlgorithm={handleGenerateAlgorithm}
+          showAutoRegenerate={canAutoRegenerate}
+          onAutoRegenerate={handleAutoRegenerateClick}
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
           onSeedRequests={handleSeedRequests}
@@ -932,11 +1065,13 @@ function RosterPlanningPage() {
             viewMode={viewMode}
             currentStartDate={currentStartDate}
             onShiftChange={handleShiftChange}
+            onCommentChange={handleCommentChange}
             showSummary={false}
-            isLoading={generateAlgorithmRoster.isPending}
+            isLoading={isAlgorithmRunning}
+            loadingLabel={algorithmOverlayLabel}
             guidelines={guidelines}
             isRosterGenerated={isAlgorithmGenerated}
-            shiftRequestOverlays={mockPlanningOverlays}
+            shiftRequestOverlays={shiftRequestOverlays}
           />
         </Box>
 
@@ -1099,6 +1234,69 @@ function RosterPlanningPage() {
         </Portal>
       </Dialog.Root>
 
+      {/* Auto Regenerate Dialog */}
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isAutoRegenerateDialogOpen}
+        onOpenChange={(e) => setIsAutoRegenerateDialogOpen(e.open)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content>
+              <Dialog.Header>
+                <Dialog.Title>Regenerate Auto Roster</Dialog.Title>
+              </Dialog.Header>
+              <Dialog.CloseTrigger />
+              <Dialog.Body>
+                <Text color="gray.600" mb={4}>
+                  This will overwrite the current pending roster with a newly generated auto roster.
+                </Text>
+                <Text color="gray.600" mb={2}>
+                  Before continuing:
+                </Text>
+                <Box pl={4} color="gray.600">
+                  <Text>• Any manual edits will be replaced</Text>
+                  <Text>• The roster will remain in pending status</Text>
+                </Box>
+                {selectedWard && selectedPeriod && (
+                  <Box mt={4} p={3} bg="gray.50" borderRadius="md">
+                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                      Regenerating for:
+                    </Text>
+                    <Text fontSize="sm" color="gray.600">
+                      {selectedWard.wardName} • {selectedPeriod.name}
+                    </Text>
+                  </Box>
+                )}
+              </Dialog.Body>
+              <Dialog.Footer>
+                <HStack gap={3}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsAutoRegenerateDialogOpen(false)}
+                    borderColor="#E6E6E6"
+                    color="#4A4A4A"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    bg="#4B8798"
+                    color="white"
+                    _hover={{ bg: "#3d6f7d" }}
+                    onClick={handleConfirmAutoRegenerate}
+                    loading={isAlgorithmRunning}
+                  >
+                    Regenerate Roster
+                  </Button>
+                </HStack>
+              </Dialog.Footer>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
+
       {/* Publish Dialog */}
       <Dialog.Root
         placement="center"
@@ -1223,6 +1421,7 @@ function RosterPlanningPage() {
         </Portal>
       </Dialog.Root>
 
+      </Flex>{/* end padded content area */}
       <AlgorithmInputsDialog
         isOpen={isInputsDialogOpen}
         onClose={() => setIsInputsDialogOpen(false)}
