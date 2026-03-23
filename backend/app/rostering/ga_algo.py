@@ -47,6 +47,11 @@ class GAContext:
     al_nurses: frozenset = frozenset()
     working_nurses: tuple = ()
     hard_pen_al: float = 1_000_000
+    # Single-day AL day requests per nurse (frozenset of day indices)
+    al_day_requests: tuple = ()   # tuple[frozenset[int]] — one entry per nurse
+    # Per-nurse adjusted hour limits (AL days reduce required working hours)
+    nurse_min_hours: tuple = ()   # tuple[float] — indexed by nurse index
+    nurse_max_hours: tuple = ()   # tuple[float] — indexed by nurse index
     # Precomputed helpers for faster evaluation
     weekend_days: tuple = (5, 6, 12, 13)
     weekday_days: tuple = ()
@@ -116,11 +121,22 @@ def evaluate_individual(individual, ctx: GAContext):
     # Determine working nurses (non-AL)
     working = ctx.working_nurses if ctx.working_nurses else tuple(range(num_nurses))
 
+    # Precompute per-nurse hour limits (adjusted for single-day AL)
+    nurse_min_h = ctx.nurse_min_hours
+    nurse_max_h = ctx.nurse_max_hours
+
     # 0) AL violation penalty
     if ctx.al_nurses:
         for n in ctx.al_nurses:
             violations = sum(1 for d in range(num_days) if schedule[n][d] != AL)
             penalty += violations * ctx.hard_pen_al
+
+    # 0.5) Single-day AL violation penalty — heavily penalise unmet partial AL requests
+    if ctx.al_day_requests:
+        for n in range(num_nurses):
+            for d in ctx.al_day_requests[n]:
+                if schedule[n][d] != AL:
+                    penalty += ctx.hard_pen_al
 
     # 1) Shift coverage minima (hard) — AL nurses have AL code, not AM/PM/NIGHT, so no change needed
     for d in range(num_days):
@@ -164,15 +180,17 @@ def evaluate_individual(individual, ctx: GAContext):
             missing_C = needed_C
             penalty += (missing_A + missing_B + missing_C) * ctx.hard_pen_shift
 
-    # 2) Hours per nurse (hard) — skip AL nurses
+    # 2) Hours per nurse (hard) — skip AL nurses; use per-nurse adjusted limits
     hours_per_nurse = []
     for n in working:
         h = sum(shift_hours_by_code[s] for s in schedule[n][:num_days])
         hours_per_nurse.append(h)
-        if h < ctx.min_hours:
-            penalty += (ctx.min_hours - h) * ctx.hard_pen_hour * 1.2
-        if h > ctx.max_hours:
-            penalty += (h - ctx.max_hours) * ctx.hard_pen_hour * 0.8
+        n_min = nurse_min_h[n] if nurse_min_h else ctx.min_hours
+        n_max = nurse_max_h[n] if nurse_max_h else ctx.max_hours
+        if h < n_min:
+            penalty += (n_min - h) * ctx.hard_pen_hour * 1.2
+        if h > n_max:
+            penalty += (h - n_max) * ctx.hard_pen_hour * 0.8
 
     # 3) 2 days off per week (hard) — skip AL nurses
     for n in working:
@@ -226,10 +244,12 @@ def evaluate_individual(individual, ctx: GAContext):
     am_count = sum(1 for n in working for d in range(num_days) if schedule[n][d] == am)
     penalty -= am_count * ctx.soft_w_morning_pref * 0.05
 
-    # 10) Overtime soft — working nurses only
-    for h in hours_per_nurse:
-        if h > ctx.max_hours:
-            penalty += (h - ctx.max_hours) * ctx.soft_w_overtime
+    # 10) Overtime soft — working nurses only; use per-nurse adjusted max
+    for i, h in enumerate(hours_per_nurse):
+        n = working[i]
+        n_max = nurse_max_h[n] if nurse_max_h else ctx.max_hours
+        if h > n_max:
+            penalty += (h - n_max) * ctx.soft_w_overtime
 
     penalty += _night_weekly_penalty(schedule, ctx)
     return penalty
@@ -309,6 +329,7 @@ def run_ga_pipeline(
         parsed_data['shift_hours'],
         parsed_data['num_days'],
         al_nurses=parsed_data.get('al_nurses', frozenset()),
+        al_day_requests=parsed_data.get('al_day_requests', None),
         progress_callback=progress_callback,
     )
 
@@ -430,7 +451,15 @@ def parse_inputs(
     approved_requests_raw = _parse_request_bucket(hard_requests, preserve_al=True)
     al_nurses = _detect_al_nurses(approved_requests_raw, num_days)
 
-    # Strip AL entries from approved/pending (non-AL nurses only get real shift requests)
+    # Single-day AL requests: days where a working nurse has an approved AL request
+    # (full-AL nurses are handled separately via AL_NURSES / AL-FULL pattern)
+    al_day_requests = [
+        frozenset(d for d, s in approved_requests_raw[n] if s == AL)
+        if n not in al_nurses else frozenset()
+        for n in range(num_nurses)
+    ]
+
+    # Strip AL entries from approved requests (partial AL is tracked in al_day_requests)
     approved_requests = [
         [(d, s) for (d, s) in reqs if s != AL]
         for reqs in approved_requests_raw
@@ -460,11 +489,12 @@ def parse_inputs(
         'shift_hours': shift_hours,
         'num_days': num_days,
         'al_nurses': al_nurses,
+        'al_day_requests': al_day_requests,
         'working_nurses': working_nurses,
     }
 
 
-def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests, hard_requests, shift_hours, num_days=14, al_nurses=None, progress_callback=None):
+def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests, hard_requests, shift_hours, num_days=14, al_nurses=None, al_day_requests=None, progress_callback=None):
     """
     Run the genetic algorithm to generate a roster.
 
@@ -494,6 +524,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         "AM":      [AM],
         "PM":      [PM],
         "OFF":     [OFF],
+        "AL":      [AL],          # single-day annual leave
         "N-OFF":   [NIGHT, OFF],
         "N-N-OFF": [NIGHT, NIGHT, OFF],
         "N-END":   [NIGHT],
@@ -501,7 +532,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         "AL-FULL": [AL] * NUM_DAYS,
     }
     PATTERN_NAMES    = list(PATTERNS.keys())
-    WORKING_PATTERNS = [p for p in PATTERN_NAMES if p != "AL-FULL"]
+    WORKING_PATTERNS = [p for p in PATTERN_NAMES if p not in ("AL-FULL", "AL")]
 
     NURSE_RANKS = nurse_ranks
 
@@ -511,13 +542,31 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     PENDING_REQUESTS  = pending_requests
     HARD_REQUESTS     = hard_requests
 
-    # AL nurses
+    # AL nurses (whole-roster)
     AL_NURSES      = al_nurses if al_nurses is not None else frozenset()
     WORKING_NURSES = [n for n in range(NUM_NURSES) if n not in AL_NURSES]
+
+    # Single-day AL requests per nurse (frozenset of day indices, empty for full-AL nurses)
+    _raw_al_day_requests = al_day_requests if al_day_requests is not None else [frozenset()] * NUM_NURSES
+    AL_DAY_REQUESTS = [
+        frozenset() if n in AL_NURSES else _raw_al_day_requests[n]
+        for n in range(NUM_NURSES)
+    ]
 
     # Hours constraints (over 14 days)
     MIN_HOURS = 84
     MAX_HOURS = 88
+
+    # Per-nurse adjusted hour limits: each approved AL day removes 8 h of required work
+    _al_shift_h = float(SHIFT_HOURS.get(AM, 8.0)) if SHIFT_HOURS.get(AM, 8.0) else 8.0
+    NURSE_MIN_HOURS = tuple(
+        max(0.0, MIN_HOURS - len(AL_DAY_REQUESTS[n]) * _al_shift_h)
+        for n in range(NUM_NURSES)
+    )
+    NURSE_MAX_HOURS = tuple(
+        max(0.0, MAX_HOURS - len(AL_DAY_REQUESTS[n]) * _al_shift_h)
+        for n in range(NUM_NURSES)
+    )
 
     # Penalty weights
     HARD_PEN_NDO    = 999_999  # DO missing after last roster trailing night
@@ -604,7 +653,10 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                         continue
 
                     for dst in light:
-                        if all(schedule[dst][d] == OFF for d in range(start, end)):
+                        # Don't overwrite an AL day on the destination nurse
+                        al_dst = AL_DAY_REQUESTS[dst]
+                        if all(schedule[dst][d] == OFF and d not in al_dst
+                               for d in range(start, end)):
                             # move block
                             for d in range(start, end):
                                 schedule[src][d] = OFF
@@ -615,8 +667,13 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
     def pattern_swap_mutation(ind):
         n1, n2 = random.sample(range(NUM_NURSES), 2)
-        p1 = random.randrange(len(ind[n1]))
-        p2 = random.randrange(len(ind[n2]))
+        # Only swap non-AL patterns
+        valid1 = [i for i, p in enumerate(ind[n1]) if p != "AL"]
+        valid2 = [i for i, p in enumerate(ind[n2]) if p != "AL"]
+        if not valid1 or not valid2:
+            return ind
+        p1 = random.choice(valid1)
+        p2 = random.choice(valid2)
         ind[n1][p1], ind[n2][p2] = ind[n2][p2], ind[n1][p1]
         return ind
 
@@ -637,6 +694,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                     d for d in range(*week)
                     if schedule[src][d] == NIGHT
                     and schedule[dst][d] == OFF
+                    and d not in AL_DAY_REQUESTS[dst]
                 ]
                 if not candidates:
                     continue
@@ -649,8 +707,17 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     def schedule_to_patterns(schedule, fallback_ind=None):
         """
         Convert a full schedule[nurse][day] back into pattern-based representation.
-        AL nurses always get ["AL-FULL"]. Falls back to original patterns on failure.
+        AL nurses always get ["AL-FULL"].
+        Single-day AL requests are enforced before conversion so AL days survive
+        any intermediate mutations that may have overwritten them.
+        Falls back to original patterns on failure.
         """
+        # Enforce single-day AL requests — must happen before pattern conversion so
+        # any mutation that overwrote an AL day is silently corrected here.
+        for n in range(NUM_NURSES):
+            for d in AL_DAY_REQUESTS[n]:
+                schedule[n][d] = AL
+
         new_ind = []
 
         for n in range(NUM_NURSES):
@@ -690,6 +757,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 elif days[i] == OFF:
                     patterns.append("OFF")
                     i += 1
+                elif days[i] == AL:
+                    patterns.append("AL")
+                    i += 1
                 else:
                     ok = False
                     break
@@ -699,14 +769,15 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 if fallback_ind is not None:
                     patterns = fallback_ind[n]
                 else:
-                    patterns = gen_pattern_sequence_for_nurse()
+                    patterns = _gen_seeded_patterns(n)
 
             new_ind.append(patterns)
 
         return new_ind
 
     def local_search(ind, steps=40):
-        """Hill-climbing with three neighbourhood moves over working nurses only."""
+        """Hill-climbing with three neighbourhood moves over working nurses only.
+        AL days are never swapped or moved."""
         # FIX 3: shallow copy instead of deepcopy
         best = [list(nurse) for nurse in ind]
         best_score = evaluate(best)
@@ -717,7 +788,11 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
             if move == "intra_swap":
                 n = random.choice(WORKING_NURSES)
-                d1, d2 = random.sample(range(NUM_DAYS), 2)
+                # Only consider non-AL days for swapping
+                movable = [d for d in range(NUM_DAYS) if d not in AL_DAY_REQUESTS[n]]
+                if len(movable) < 2:
+                    continue
+                d1, d2 = random.sample(movable, 2)
                 if sched[n][d1] == sched[n][d2]:
                     continue
                 sched[n][d1], sched[n][d2] = sched[n][d2], sched[n][d1]
@@ -734,7 +809,12 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
             elif move == "inter_swap":
                 n1, n2 = random.sample(WORKING_NURSES, 2)
-                d = random.randrange(NUM_DAYS)
+                # Only pick a day that is non-AL for both nurses
+                movable = [d for d in range(NUM_DAYS)
+                           if d not in AL_DAY_REQUESTS[n1] and d not in AL_DAY_REQUESTS[n2]]
+                if not movable:
+                    continue
+                d = random.choice(movable)
                 if sched[n1][d] == sched[n2][d]:
                     continue
                 sched[n1][d], sched[n2][d] = sched[n2][d], sched[n1][d]
@@ -763,7 +843,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                     continue
                 s_from = random.choice(surplus)
                 s_to   = random.choice(deficit)
-                candidates = [n for n in WORKING_NURSES if sched[n][d] == s_from]
+                # Skip nurses on AL that day
+                candidates = [n for n in WORKING_NURSES
+                              if sched[n][d] == s_from and d not in AL_DAY_REQUESTS[n]]
                 if not candidates:
                     continue
                 n = random.choice(candidates)
@@ -786,6 +868,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         """
         Targeted post-processing: pick the worst-variance day and try all
         pairwise working-nurse swaps on that day, keeping any improvement.
+        AL days are never swapped.
         """
         # FIX 3: shallow copy instead of deepcopy
         best = [list(nurse) for nurse in ind]
@@ -803,8 +886,12 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
             )
             improved = False
             for n1 in WORKING_NURSES:
+                if d in AL_DAY_REQUESTS[n1]:
+                    continue
                 for n2 in WORKING_NURSES:
-                    if n1 == n2 or sched[n1][d] == sched[n2][d]:
+                    if n2 == n1 or d in AL_DAY_REQUESTS[n2]:
+                        continue
+                    if sched[n1][d] == sched[n2][d]:
                         continue
                     sched[n1][d], sched[n2][d] = sched[n2][d], sched[n1][d]
                     trial = schedule_to_patterns(sched, fallback_ind=best)
@@ -887,10 +974,59 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         random.shuffle(patterns)
         return patterns
 
+    def _gen_seeded_patterns(n):
+        """
+        Generate a valid NUM_DAYS pattern sequence for nurse n, with their
+        single-day AL requests pre-seeded.  If the nurse has no AL day requests
+        this is identical to gen_pattern_sequence_for_nurse().
+        """
+        al_days = AL_DAY_REQUESTS[n]
+        if not al_days:
+            return gen_pattern_sequence_for_nurse()
+
+        # Try up to 15 times: generate a base schedule, inject AL days, convert.
+        for _ in range(15):
+            base = gen_pattern_sequence_for_nurse()
+            sched = expand_pattern_list(base)[:]
+            for d in al_days:
+                sched[d] = AL
+            # Inline single-nurse pattern conversion (avoids recursive call)
+            pats = []
+            i = 0
+            ok = True
+            while i < NUM_DAYS:
+                if i + 3 <= NUM_DAYS and sched[i:i+3] == [NIGHT, NIGHT, OFF]:
+                    pats.append("N-N-OFF"); i += 3
+                elif i + 2 <= NUM_DAYS and sched[i:i+2] == [NIGHT, OFF]:
+                    pats.append("N-OFF"); i += 2
+                elif sched[i] == NIGHT:
+                    if i == NUM_DAYS - 2 and sched[i+1] == NIGHT:
+                        pats.append("N-N-END"); i += 2
+                    elif i == NUM_DAYS - 1:
+                        pats.append("N-END"); i += 1
+                    else:
+                        ok = False; break
+                elif sched[i] == AM:
+                    pats.append("AM"); i += 1
+                elif sched[i] == PM:
+                    pats.append("PM"); i += 1
+                elif sched[i] == OFF:
+                    pats.append("OFF"); i += 1
+                elif sched[i] == AL:
+                    pats.append("AL"); i += 1
+                else:
+                    ok = False; break
+            if ok and sum(len(PATTERNS[p]) for p in pats) == NUM_DAYS:
+                return pats
+
+        # Fallback: return base without AL injection — penalty will drive correction
+        return gen_pattern_sequence_for_nurse()
+
     def create_individual():
-        """Create an individual: list (for nurses) of pattern lists. AL nurses get AL-FULL."""
+        """Create an individual: list (for nurses) of pattern lists.
+        AL-FULL nurses get ["AL-FULL"]; partial-AL nurses have AL days seeded."""
         return [
-            ["AL-FULL"] if n in AL_NURSES else gen_pattern_sequence_for_nurse()
+            ["AL-FULL"] if n in AL_NURSES else _gen_seeded_patterns(n)
             for n in range(NUM_NURSES)
         ]
 
@@ -955,6 +1091,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         al_nurses=AL_NURSES,
         working_nurses=tuple(WORKING_NURSES),
         hard_pen_al=HARD_PEN_AL,
+        al_day_requests=tuple(AL_DAY_REQUESTS),
+        nurse_min_hours=NURSE_MIN_HOURS,
+        nurse_max_hours=NURSE_MAX_HOURS,
         weekend_days=weekend_days,
         weekday_days=weekday_days,
         avg_min=avg_min,
@@ -972,21 +1111,26 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     def repair_individual(ind):
         """
         Ensure each nurse's pattern-list expands exactly to NUM_DAYS.
-        AL nurses are always locked to ["AL-FULL"].
+        AL-FULL nurses are always locked to ["AL-FULL"].
+        Partial-AL nurses have their AL days restored if a mutation wiped them.
         """
         # FIX 6: shallow copy (list of lists of immutable strings) instead of deepcopy
         ind2 = [list(nurse) for nurse in ind]
         for n in range(NUM_NURSES):
             if n in AL_NURSES:
                 ind2[n] = ["AL-FULL"]
+            elif AL_DAY_REQUESTS[n] and "AL" not in ind2[n]:
+                # AL days were wiped — regenerate with them seeded
+                ind2[n] = _gen_seeded_patterns(n)
             elif len(expand_pattern_list(ind2[n])) != NUM_DAYS:
-                ind2[n] = gen_pattern_sequence_for_nurse()
+                ind2[n] = _gen_seeded_patterns(n)
         return ind2
 
     def repair_coverage(ind):
         """
         Repair coverage deficits by reassigning OFF nurses
         (or low-impact shifts) to required shifts.
+        Never touches a nurse on a single-day AL.
         """
         schedule = expand_individual(ind)
 
@@ -1019,6 +1163,8 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                         for n in range(NUM_NURSES):
                             if NURSE_RANKS[n] not in candidate_ranks:
                                 continue
+                            if d in AL_DAY_REQUESTS[n]:   # never displace an AL day
+                                continue
                             if schedule[n][d] == OFF:
                                 if shift != NIGHT:
                                     if d > 0 and schedule[n][d-1] == NIGHT:
@@ -1033,6 +1179,8 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                         if not assigned:
                             for n in range(NUM_NURSES):
                                 if NURSE_RANKS[n] not in candidate_ranks:
+                                    continue
+                                if d in AL_DAY_REQUESTS[n]:
                                     continue
                                 if schedule[n][d] in [AM, PM] and shift == NIGHT:
                                     schedule[n][d] = NIGHT
@@ -1060,6 +1208,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                         candidates = [
                             n for n in WORKING_NURSES
                             if schedule[n][d] == s_sur
+                            and d not in AL_DAY_REQUESTS[n]
                             and (s_def != NIGHT or (d == 0 or schedule[n][d - 1] != NIGHT))
                         ]
                         if not candidates:
@@ -1081,7 +1230,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
             pm_count = sum(1 for n in WORKING_NURSES if schedule[n][d] == PM)
             while am_count > am_target + 1 and pm_count < pm_target:
                 cands = [n for n in WORKING_NURSES
-                         if schedule[n][d] == AM and (d == 0 or schedule[n][d - 1] != OFF)]
+                         if schedule[n][d] == AM
+                         and d not in AL_DAY_REQUESTS[n]
+                         and (d == 0 or schedule[n][d - 1] != OFF)]
                 if not cands:
                     break
                 n = random.choice(cands)
@@ -1089,7 +1240,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 am_count -= 1; pm_count += 1
             while pm_count > pm_target + 1 and am_count < am_target:
                 cands = [n for n in WORKING_NURSES
-                         if schedule[n][d] == PM and (d == 0 or schedule[n][d - 1] != OFF)]
+                         if schedule[n][d] == PM
+                         and d not in AL_DAY_REQUESTS[n]
+                         and (d == 0 or schedule[n][d - 1] != OFF)]
                 if not cands:
                     break
                 n = random.choice(cands)
@@ -1098,7 +1251,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         return schedule_to_patterns(schedule, fallback_ind=ind)
 
     def repair_night_coverage(ind):
-        """Ensure each working nurse has 1–2 nights per week."""
+        """Ensure each working nurse has 1–2 nights per week. Skips AL days."""
         schedule = expand_individual(ind)
         for week_start, week_end in [(0, 7), (7, 14)]:
             week = range(week_start, min(week_end, NUM_DAYS))
@@ -1108,6 +1261,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                     candidates = [
                         d for d in week
                         if schedule[n][d] in [AM, PM]
+                        and d not in AL_DAY_REQUESTS[n]
                         and d + 1 < NUM_DAYS
                         and schedule[n][d + 1] == OFF
                     ]
@@ -1122,7 +1276,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         return schedule_to_patterns(schedule, fallback_ind=ind)
 
     def repair_rank_coverage(ind):
-        """Ensure B-rank nurses fill B-required slots where possible."""
+        """Ensure B-rank nurses fill B-required slots where possible. Skips AL days."""
         schedule = expand_individual(ind)
 
         def working_hours(n):
@@ -1136,9 +1290,13 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 b_present = sum(1 for n in WORKING_NURSES if schedule[n][d] == shift and NURSE_RANKS[n] == 'B')
                 if b_present >= b_needed:
                     continue
-                a_on_shift   = [n for n in WORKING_NURSES if schedule[n][d] == shift and NURSE_RANKS[n] == 'A']
+                a_on_shift   = [n for n in WORKING_NURSES
+                                if schedule[n][d] == shift and NURSE_RANKS[n] == 'A'
+                                and d not in AL_DAY_REQUESTS[n]]
                 other_shifts = [s for s in [AM, PM, NIGHT] if s != shift]
-                b_elsewhere  = [n for n in WORKING_NURSES if schedule[n][d] in other_shifts and NURSE_RANKS[n] == 'B']
+                b_elsewhere  = [n for n in WORKING_NURSES
+                                if schedule[n][d] in other_shifts and NURSE_RANKS[n] == 'B'
+                                and d not in AL_DAY_REQUESTS[n]]
                 while b_present < b_needed and a_on_shift and b_elsewhere:
                     a = a_on_shift.pop(); b = b_elsewhere.pop()
                     b_shift = schedule[b][d]
@@ -1152,7 +1310,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                     schedule[b][d] = shift
                     b_present += 1
                 if b_present < b_needed:
-                    b_off = [n for n in WORKING_NURSES if schedule[n][d] == OFF and NURSE_RANKS[n] == 'B']
+                    b_off = [n for n in WORKING_NURSES
+                             if schedule[n][d] == OFF and NURSE_RANKS[n] == 'B'
+                             and d not in AL_DAY_REQUESTS[n]]
                     for b in b_off:
                         if b_present >= b_needed: break
                         if working_hours(b) + SHIFT_HOURS.get(shift, 0) > MAX_HOURS: continue
@@ -1183,7 +1343,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 pm_count = sum(1 for n in WORKING_NURSES if schedule[n][d] == PM)
                 while am_count > am_target + 1 and pm_count < pm_target:
                     cands = [n for n in WORKING_NURSES
-                             if schedule[n][d] == AM and (d == 0 or schedule[n][d - 1] != OFF)]
+                             if schedule[n][d] == AM
+                             and d not in AL_DAY_REQUESTS[n]
+                             and (d == 0 or schedule[n][d - 1] != OFF)]
                     if not cands:
                         break
                     n = random.choice(cands)
@@ -1191,7 +1353,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                     am_count -= 1; pm_count += 1
                 while pm_count > pm_target + 1 and am_count < am_target:
                     cands = [n for n in WORKING_NURSES
-                             if schedule[n][d] == PM and (d == 0 or schedule[n][d - 1] != OFF)]
+                             if schedule[n][d] == PM
+                             and d not in AL_DAY_REQUESTS[n]
+                             and (d == 0 or schedule[n][d - 1] != OFF)]
                     if not cands:
                         break
                     n = random.choice(cands)
@@ -1210,9 +1374,13 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                     b_present = sum(1 for n in WORKING_NURSES if schedule[n][d] == shift and NURSE_RANKS[n] == 'B')
                     if b_present >= b_needed:
                         continue
-                    a_on_shift   = [n for n in WORKING_NURSES if schedule[n][d] == shift and NURSE_RANKS[n] == 'A']
+                    a_on_shift   = [n for n in WORKING_NURSES
+                                    if schedule[n][d] == shift and NURSE_RANKS[n] == 'A'
+                                    and d not in AL_DAY_REQUESTS[n]]
                     other_shifts = [s for s in [AM, PM, NIGHT] if s != shift]
-                    b_elsewhere  = [n for n in WORKING_NURSES if schedule[n][d] in other_shifts and NURSE_RANKS[n] == 'B']
+                    b_elsewhere  = [n for n in WORKING_NURSES
+                                    if schedule[n][d] in other_shifts and NURSE_RANKS[n] == 'B'
+                                    and d not in AL_DAY_REQUESTS[n]]
                     while b_present < b_needed and a_on_shift and b_elsewhere:
                         a = a_on_shift.pop(); b = b_elsewhere.pop()
                         b_shift = schedule[b][d]
@@ -1226,7 +1394,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                         schedule[b][d] = shift
                         b_present += 1
                     if b_present < b_needed:
-                        b_off = [n for n in WORKING_NURSES if schedule[n][d] == OFF and NURSE_RANKS[n] == 'B']
+                        b_off = [n for n in WORKING_NURSES
+                                 if schedule[n][d] == OFF and NURSE_RANKS[n] == 'B'
+                                 and d not in AL_DAY_REQUESTS[n]]
                         for b in b_off:
                             if b_present >= b_needed: break
                             if _working_hours(b) + SHIFT_HOURS.get(shift, 0) > MAX_HOURS: continue
@@ -1250,6 +1420,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                         candidates = [
                             d for d in week
                             if schedule[n][d] in [AM, PM]
+                            and d not in AL_DAY_REQUESTS[n]
                             and d + 1 < NUM_DAYS
                             and schedule[n][d + 1] == OFF
                         ]
@@ -1280,6 +1451,8 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                             for n in range(NUM_NURSES):
                                 if NURSE_RANKS[n] not in candidate_ranks:
                                     continue
+                                if d in AL_DAY_REQUESTS[n]:   # never displace AL day
+                                    continue
                                 if schedule[n][d] == OFF:
                                     if shift != NIGHT:
                                         if d > 0 and schedule[n][d-1] == NIGHT:
@@ -1293,6 +1466,8 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                             if not assigned:
                                 for n in range(NUM_NURSES):
                                     if NURSE_RANKS[n] not in candidate_ranks:
+                                        continue
+                                    if d in AL_DAY_REQUESTS[n]:
                                         continue
                                     if schedule[n][d] in [AM, PM] and shift == NIGHT:
                                         schedule[n][d] = NIGHT
@@ -1314,6 +1489,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                             candidates = [
                                 n for n in WORKING_NURSES
                                 if schedule[n][d] == s_sur
+                                and d not in AL_DAY_REQUESTS[n]
                                 and (s_def != NIGHT or (d == 0 or schedule[n][d - 1] != NIGHT))
                             ]
                             if not candidates:
@@ -1391,6 +1567,8 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         schedule = expand_individual(ind)
         n = random.choice(WORKING_NURSES)
         for d in range(NUM_DAYS - 1):
+            if d + 1 in AL_DAY_REQUESTS[n]:
+                continue
             if schedule[n][d] == OFF and schedule[n][d + 1] == AM:
                 schedule[n][d + 1] = PM
                 break
@@ -1399,7 +1577,8 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     def crossover(parent1, parent2):
         """
         Coverage-aware per-nurse crossover.
-        AL nurses always carry ["AL-FULL"] unchanged.
+        AL-FULL nurses always carry ["AL-FULL"] unchanged.
+        Partial-AL nurses have their AL-day patterns preserved after splicing.
         Length correction uses WORKING_PATTERNS only.
         """
         child = []
@@ -1434,7 +1613,12 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
             exp_len = sum(len(PATTERNS[q]) for q in newp)
             while newp and exp_len > NUM_DAYS:
-                newp.pop()
+                # Prefer removing non-AL patterns during trim
+                removable = [i for i, p in enumerate(newp) if p != "AL"]
+                if removable:
+                    newp.pop(removable[-1])
+                else:
+                    newp.pop()
                 exp_len = sum(len(PATTERNS[q]) for q in newp)
             choices = [p for p in WORKING_PATTERNS if len(PATTERNS[p]) <= (NUM_DAYS - exp_len)]
             while exp_len < NUM_DAYS and choices:
@@ -1448,7 +1632,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         return repair_individual(child)
 
     def mutate(ind, mutation_rate):
-        """Per-nurse mutation. AL nurses are preserved unchanged."""
+        """Per-nurse mutation. AL-FULL nurses and AL-day positions are preserved."""
         # FIX 6: shallow copy instead of deepcopy
         ind2 = [list(nurse) for nurse in ind]
         for n in range(NUM_NURSES):
@@ -1465,17 +1649,26 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
             pats = ind2[n]
 
             if t == 'regenerate' or not pats:
-                ind2[n] = gen_pattern_sequence_for_nurse()
+                ind2[n] = _gen_seeded_patterns(n)
                 continue
 
             if t == 'replace_pattern':
                 idx = random.randrange(len(pats))
+                # Don't replace an "AL" single-day pattern — it is a seeded request
+                if pats[idx] == "AL":
+                    idx = next((i for i, p in enumerate(pats) if p != "AL"), None)
+                    if idx is None:
+                        continue
                 old_len = len(PATTERNS[pats[idx]])
                 same_len = [p for p in WORKING_PATTERNS if len(PATTERNS[p]) == old_len]
                 pats[idx] = random.choice(same_len) if same_len else random.choice(WORKING_PATTERNS)
                 exp_len = sum(len(PATTERNS[q]) for q in pats)
                 while exp_len > NUM_DAYS and pats:
-                    pats.pop(random.randrange(len(pats)))
+                    # Don't pop AL patterns
+                    removable = [i for i, p in enumerate(pats) if p != "AL"]
+                    if not removable:
+                        break
+                    pats.pop(random.choice(removable))
                     exp_len = sum(len(PATTERNS[q]) for q in pats)
                 _fix_end_patterns(pats)
                 while exp_len < NUM_DAYS:
@@ -1487,20 +1680,25 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 _fix_end_patterns(pats)
 
             elif t == 'swap_pattern' and len(pats) >= 2:
-                i, j = random.sample(range(len(pats)), 2)
-                pats[i], pats[j] = pats[j], pats[i]
-                _fix_end_patterns(pats)
+                # Only swap non-AL patterns to preserve AL positions
+                swappable = [i for i, p in enumerate(pats) if p != "AL"]
+                if len(swappable) >= 2:
+                    i, j = random.sample(swappable, 2)
+                    pats[i], pats[j] = pats[j], pats[i]
+                    _fix_end_patterns(pats)
 
             elif t == 'delete_pattern' and len(pats) > 1:
-                pats.pop(random.randrange(len(pats)))
-                exp_len = sum(len(PATTERNS[q]) for q in pats)
-                while exp_len < NUM_DAYS:
-                    choices = [p for p in WORKING_PATTERNS if len(PATTERNS[p]) <= NUM_DAYS - exp_len]
-                    if not choices:
-                        break
-                    pats.append(random.choice(choices))
+                removable = [i for i, p in enumerate(pats) if p != "AL"]
+                if removable:
+                    pats.pop(random.choice(removable))
                     exp_len = sum(len(PATTERNS[q]) for q in pats)
-                _fix_end_patterns(pats)
+                    while exp_len < NUM_DAYS:
+                        choices = [p for p in WORKING_PATTERNS if len(PATTERNS[p]) <= NUM_DAYS - exp_len]
+                        if not choices:
+                            break
+                        pats.append(random.choice(choices))
+                        exp_len = sum(len(PATTERNS[q]) for q in pats)
+                    _fix_end_patterns(pats)
 
             elif t == 'demand_fix':
                 ind2 = demand_guided_mutation(ind2)
@@ -1537,7 +1735,15 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
         if AL_NURSES:
             al_labels = ", ".join(f"N{n+1}({NURSE_RANKS[n]})" for n in sorted(AL_NURSES))
-            print(f"AL nurses (locked): {al_labels}")
+            print(f"AL nurses (locked full-roster): {al_labels}")
+
+        partial_al = [n for n in range(NUM_NURSES) if AL_DAY_REQUESTS[n]]
+        if partial_al:
+            pa_labels = ", ".join(
+                f"N{n+1}({NURSE_RANKS[n]}):days{sorted(AL_DAY_REQUESTS[n])}"
+                for n in partial_al
+            )
+            print(f"Partial-AL nurses (single-day requests seeded): {pa_labels}")
 
         for gen in range(generations):
             gens_since_improve = gen - last_improve_gen
@@ -1664,6 +1870,7 @@ PATTERNS_MAP = {
     "AM":      [AM],
     "PM":      [PM],
     "OFF":     [OFF],
+    "AL":      [_AL],        # single-day annual leave
     "N-OFF":   [NIGHT, OFF],
     "N-N-OFF": [NIGHT, NIGHT, OFF],
     "N-END":   [NIGHT],

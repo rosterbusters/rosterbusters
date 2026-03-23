@@ -18,6 +18,7 @@ export {
   useBulkUpsertRoster,
   useUpdateRoster,
   usePublishRoster,
+  useClearRoster,
   useRosterPageData,
   useRosterExport,
   useGenerateAlgorithmRoster,
