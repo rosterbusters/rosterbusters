@@ -28,7 +28,6 @@ _CANONICAL_MAP: dict[str, tuple[StaffingRole, RosterRank]] = {
     "EN": ("EN", "B"),
     "NA": ("NA", "B"),
     "HCA3": ("HCA3", "C"),
-    "PSA": ("HCA3", "C"),
 }
 
 _ALIASES: dict[str, str] = {
@@ -59,12 +58,7 @@ _ALIASES: dict[str, str] = {
     "NURSINGAIDEII": "NA",
     "SENIORNURSINGAIDEI": "NA",
     "SENIORNURSINGAIDEII": "NA",
-    # Patient service assistants
-    "PATIENTSERVICEASST": "PSA",
-    "PATIENTSERVICEASSTI": "PSA",
-    "PATIENTSERVICEASSTII": "PSA",
-    "PATIENTSERVICEASSISTANT": "PSA",
-    "SNRPATIENTSERVICEASST": "PSA",
+
     # Healthcare assistants
     "HCA": "HCA1",
     "HCA1": "HCA1",
@@ -96,23 +90,6 @@ def normalize_designation(value: str) -> str:
 def classify_designation(value: str) -> DesignationClassification:
     tokens = _tokenize(value)
     if not tokens:
-        return DesignationClassification(None, None)
-
-    if (
-        "psa" in normalized
-        or "patient service asst" in normalized
-        or "patient service assistant" in normalized
-    ):
-        return DesignationClassification(None, None)
-
-    manager_or_clinician_patterns = (
-        "nurse manager",
-        "nursing manager",
-        "nurse clinician",
-        "assistant nurse clinician",
-        "senior nurse manager",
-    )
-    if any(pattern in normalized for pattern in manager_or_clinician_patterns):
         return DesignationClassification(None, None)
 
     compact = "".join(tokens)
