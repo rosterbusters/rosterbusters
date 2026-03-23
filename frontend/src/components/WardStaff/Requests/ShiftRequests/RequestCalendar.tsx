@@ -1,6 +1,6 @@
 import { Calendar, momentLocalizer, View } from 'react-big-calendar'
 import moment from 'moment'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import CustomWeekView from './CustomRequestView'
 import { Box } from '@chakra-ui/react'
@@ -20,6 +20,7 @@ interface Event {
 
 interface RequestCalendarProps {
   wardId: number | null | undefined;
+  isLocked?: boolean;
 }
 
 /**
@@ -33,7 +34,7 @@ interface RequestCalendarProps {
  * - The `enabled` guard now cleanly waits for both wardId AND periodId.
  * - Period selection logic is anchored to the upcoming roster period.
  */
-export default function RequestCalendar({ wardId }: RequestCalendarProps) {
+export default function RequestCalendar({ wardId, isLocked = false }: RequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
@@ -100,8 +101,15 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {
+    const FortnightView = ((props) => (
+      <CustomWeekView {...props} isLocked={isLocked} />
+    )) as typeof CustomWeekView;
+    FortnightView.range = CustomWeekView.range;
+    FortnightView.navigate = CustomWeekView.navigate;
+    FortnightView.title = CustomWeekView.title;
+
     const customViews = {
-      fortnight: CustomWeekView,
+      fortnight: FortnightView,
       week: false,
       day: false,
     };
@@ -109,7 +117,9 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
       views: customViews,
       defaultView: "fortnight" as View,
     };
-  }, []);
+  }, [isLocked]);
+
+  const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>
@@ -123,6 +133,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         views={views}
         date={date}
         showAllEvents
+        onNavigate={onNavigate}
       />
     </Box>
   );

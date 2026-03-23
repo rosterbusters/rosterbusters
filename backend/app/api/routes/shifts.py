@@ -82,6 +82,9 @@ def _can_manage_nurse_shift_request(
     if current_user.nurseid and shift_request.nurseid == current_user.nurseid:
         return True
 
+    if user_has_role(session, current_user.email, "NurseManager"):
+        return True
+
     managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
     if not managed_ward_ids:
         return False
@@ -344,16 +347,9 @@ def create_shift_request(
             )
         if not rbac_user.managerid:
             raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
-
-        managed_ward = session.exec(
-            select(Ward).where(Ward.managerid == rbac_user.managerid)
-        ).first()
-        if not managed_ward:
-            raise HTTPException(status_code=400, detail="Nurse manager is not assigned to a ward")
-
         target_nurse = session.get(Nurse, request_in.nurseid)
-        if not target_nurse or target_nurse.wardid != managed_ward.wardid:
-            raise HTTPException(status_code=403, detail="Selected nurse is not in your ward")
+        if not target_nurse:
+            raise HTTPException(status_code=404, detail="Nurse not found")
         target_nurse_id = request_in.nurseid
 
     if not target_nurse_id:
@@ -425,16 +421,7 @@ def update_shift_request(
     if not can_update and user_has_role(session, current_user.email, "NurseManager"):
         if not rbac_user.managerid:
             raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
-
-        managed_ward = session.exec(
-            select(Ward).where(Ward.managerid == rbac_user.managerid)
-        ).first()
-        target_nurse = session.get(Nurse, shift_request.nurseid)
-        can_update = bool(
-            managed_ward
-            and target_nurse
-            and target_nurse.wardid == managed_ward.wardid
-        )
+        can_update = True
 
     if not can_update:
         raise HTTPException(status_code=403, detail="Not authorized to update this request")
@@ -508,16 +495,7 @@ def delete_shift_request(
     if not can_delete and user_has_role(session, current_user.email, "NurseManager"):
         if not rbac_user.managerid:
             raise HTTPException(status_code=400, detail="User is not linked to a nurse manager record")
-
-        managed_ward = session.exec(
-            select(Ward).where(Ward.managerid == rbac_user.managerid)
-        ).first()
-        target_nurse = session.get(Nurse, shift_request.nurseid)
-        can_delete = bool(
-            managed_ward
-            and target_nurse
-            and target_nurse.wardid == managed_ward.wardid
-        )
+        can_delete = True
 
     if not can_delete:
         raise HTTPException(status_code=403, detail="Not authorized to delete this request")
@@ -559,4 +537,19 @@ def get_ward_nurses(
 ) -> Any:
     """Get all active nurses for a specific ward."""
     statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    return list(session.exec(statement).all())
+
+
+@router.get("/nurses", response_model=list[NursePublic])
+def get_all_nurses(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Get all active nurses (NurseManager/Admin only)."""
+    if not (
+        user_has_role(session, current_user.email, "NurseManager")
+        or user_has_role(session, current_user.email, "Admin")
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized to view all nurses")
+    statement = select(Nurse).where(Nurse.isactive == True)  # noqa: E712
     return list(session.exec(statement).all())

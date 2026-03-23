@@ -52,6 +52,19 @@ function groupByLeaveType(events: Event[]): Map<string, Event[]> {
   return grouped;
 }
 
+function rangesOverlap(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string,
+): boolean {
+  const aStart = new Date(startA);
+  const aEnd = new Date(endA);
+  const bStart = new Date(startB);
+  const bEnd = new Date(endB);
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
@@ -188,14 +201,39 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               nurseName={nurseNames}
                               owned={isOwn}
                               onClick={() =>
-                                setSelectedRequest({
-                                  requestId: leadRequest.requestId,
-                                  leaveType: leadRequest.leaveType,
-                                  startDate: leadRequest.startDate,
-                                  endDate: leadRequest.endDate,
-                                  nurseName: leadRequest.nurseName,
-                                  status: leadRequest.status,
-                                  requests,
+                                setSelectedRequest(() => {
+                                  const overlapping = events
+                                    .map((event) => ({
+                                      requestId: event.resource?.requestId,
+                                      nurseName: event.resource?.nurseName ?? "",
+                                      leaveType: event.resource?.shiftType ?? event.title ?? "",
+                                      startDate: event.resource?.startDate ?? "",
+                                      endDate: event.resource?.endDate ?? "",
+                                      status: event.resource?.status ?? "Pending",
+                                    }))
+                                    .filter(
+                                      (event) =>
+                                        event.requestId != null &&
+                                        event.startDate &&
+                                        event.endDate &&
+                                        event.leaveType === leadRequest.leaveType &&
+                                        rangesOverlap(
+                                          leadRequest.startDate,
+                                          leadRequest.endDate,
+                                          event.startDate,
+                                          event.endDate,
+                                        ),
+                                    );
+
+                                  return {
+                                    requestId: leadRequest.requestId,
+                                    leaveType: leadRequest.leaveType,
+                                    startDate: leadRequest.startDate,
+                                    endDate: leadRequest.endDate,
+                                    nurseName: leadRequest.nurseName,
+                                    status: leadRequest.status,
+                                    requests: overlapping.length > 0 ? overlapping : requests,
+                                  };
                                 })
                               }
                             />

@@ -1396,6 +1396,7 @@ function AdminUsers() {
                             <span
                               key={w.ward_id}
                               className="text-xs px-2 py-0.5 rounded-full font-medium bg-teal-100 text-teal-700"
+                              data-testid={`admin-user-ward-${w.ward_id}`}
                             >
                               {w.ward_name}
                             </span>
@@ -1637,11 +1638,21 @@ function AdminUsers() {
             <div className="grid grid-cols-3 gap-3 text-sm mb-4">
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="text-gray-500">Imported</p>
-                <p className="font-semibold text-gray-900">{importProgress.imported}</p>
+                <p
+                  className="font-semibold text-gray-900"
+                  data-testid="import-progress-imported"
+                >
+                  {importProgress.imported}
+                </p>
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="text-gray-500">Failed</p>
-                <p className="font-semibold text-gray-900">{importProgress.failed}</p>
+                <p
+                  className="font-semibold text-gray-900"
+                  data-testid="import-progress-failed"
+                >
+                  {importProgress.failed}
+                </p>
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="text-gray-500">Progress</p>
