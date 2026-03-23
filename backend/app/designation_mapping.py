@@ -98,7 +98,21 @@ def classify_designation(value: str) -> DesignationClassification:
     if not tokens:
         return DesignationClassification(None, None)
 
-    if "MANAGER" in tokens or "CLINICIAN" in tokens:
+    if (
+        "psa" in normalized
+        or "patient service asst" in normalized
+        or "patient service assistant" in normalized
+    ):
+        return DesignationClassification(None, None)
+
+    manager_or_clinician_patterns = (
+        "nurse manager",
+        "nursing manager",
+        "nurse clinician",
+        "assistant nurse clinician",
+        "senior nurse manager",
+    )
+    if any(pattern in normalized for pattern in manager_or_clinician_patterns):
         return DesignationClassification(None, None)
 
     compact = "".join(tokens)

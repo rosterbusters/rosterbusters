@@ -1142,10 +1142,12 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     nurses_db = db.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
-    nurses_data = [
-        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-        for n in nurses_db
-    ]
+    nurses_data = []
+    for n in nurses_db:
+        rank = _map_rank(n.designation)
+        if rank is None:
+            continue
+        nurses_data.append({"id": n.nurseid, "name": n.name, "rank": rank})
 
     nurse_ids = [n["id"] for n in nurses_data]
     shift_label_map = _load_shift_label_map(db)
@@ -1396,7 +1398,31 @@ def _load_shift_hours(db: Session) -> dict[str, float]:
     return shift_hours
 
 
-def _map_rank(designation: str) -> str:
+def _map_rank(designation: str) -> str | None:
     """Map nurse designation to scheduling rank A/B/C."""
-    rank = classify_designation(designation).roster_rank
-    return rank or "C"
+    if not designation:
+        return None
+    normalized = str(designation).strip().upper()
+    if "PSA" in normalized or "PATIENT SERVICE ASST" in normalized or "PATIENT SERVICE ASSISTANT" in normalized:
+        return None
+
+    RANK_A = {
+        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
+        "STAFF NURSE I", "STAFF NURSE II",
+        "RN", "SSN",
+    }
+    RANK_B = {
+        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
+        "NURSING AIDE I", "NURSING AIDE II",
+        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
+        "SNR PATIENT SERVICE ASST",
+        "PATIENT SERVICE ASST",
+        "PATIENT SERVICE ASSISTANT",
+        "PSA",
+        "EN", "NA",
+    }
+    if normalized in RANK_A:
+        return "A"
+    if normalized in RANK_B:
+        return "B"
+    return "C"

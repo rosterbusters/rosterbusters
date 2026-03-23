@@ -174,6 +174,10 @@ export function ShiftSummaryTable({
   onGuidelinesChange,
   onDateOverrideChange,
 }: ShiftSummaryTableProps) {
+  const dataWithoutPSA = useMemo(
+    () => data.filter((row) => !/^PSA\b/i.test((row.designation ?? "").trim())),
+    [data],
+  );
   const [selectedCell, setSelectedCell] = useState<{
     role: StaffRole;
     shiftType: SummaryShiftType;
@@ -190,8 +194,8 @@ export function ShiftSummaryTable({
 
   // Calculate shift counts
   const shiftCounts = useMemo(
-    () => calculateShiftCounts(data, dayColumns),
-    [data, dayColumns],
+    () => calculateShiftCounts(dataWithoutPSA, dayColumns),
+    [dataWithoutPSA, dayColumns],
   );
 
   const handleSave = (min: number, max: number | undefined, applyToAllDays: boolean) => {

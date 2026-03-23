@@ -48,6 +48,8 @@ const ROLE_LABEL: Record<StaffRole, string> = {
 const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3/PSA", "Other"] as const;
 type RoleGroupKey = (typeof ROLE_GROUP_ORDER)[number];
 
+const isPSA = (designation?: string) => /^PSA\b/i.test((designation ?? "").trim());
+
 interface RosterGridProps {
   data: RosterRow[];
   viewMode: ViewMode;
@@ -195,10 +197,15 @@ export function RosterGrid({
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const filterAnchorRef = useRef<HTMLDivElement>(null);
 
+  const dataWithoutPSA = useMemo(
+    () => data.filter((row) => !isPSA(row.designation)),
+    [data],
+  );
+
   // All unique nurse names sorted
   const allNames = useMemo(
-    () => Array.from(new Set(data.map((r) => r.name))).sort(),
-    [data],
+    () => Array.from(new Set(dataWithoutPSA.map((r) => r.name))).sort(),
+    [dataWithoutPSA],
   );
 
   // Names matching the search query
@@ -240,9 +247,9 @@ export function RosterGrid({
   const filteredData = useMemo(
     () =>
       isFilterActive
-        ? data.filter((r) => selectedNames.has(r.name))
-        : data,
-    [data, isFilterActive, selectedNames],
+        ? dataWithoutPSA.filter((r) => selectedNames.has(r.name))
+        : dataWithoutPSA,
+    [dataWithoutPSA, isFilterActive, selectedNames],
   );
 
   // Group data by designation (role) - always grouped
