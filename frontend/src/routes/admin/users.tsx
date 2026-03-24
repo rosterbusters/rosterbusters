@@ -1707,10 +1707,11 @@ function AdminUsers() {
         editUser={editUser}
         onCreated={(info) => {
           setCreatedUserInfo(info)
-          if (info.generated_password && info.userid) {
+          const userId = info.userid
+          if (info.generated_password && typeof userId === "number") {
             setKnownDefaultPasswords((prev) => ({
               ...prev,
-              [info.userid]: info.generated_password!,
+              [userId]: info.generated_password!,
             }))
           }
         }}
