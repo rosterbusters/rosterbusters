@@ -23,7 +23,7 @@ import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
 import { ShiftCommentPopover } from "./ShiftCommentPopover";
 import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
-import { getRosterGroupKey, MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
+import { getRosterGroupKey, isPsaDesignation, MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
 import type {
   RosterRow,
   ShiftAssignment,
@@ -45,10 +45,10 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   HCA12: "HCA1&2",
   HCA3: "HCA3",
 };
-const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3/PSA", "Other"] as const;
+const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3", "Other"] as const;
 type RoleGroupKey = (typeof ROLE_GROUP_ORDER)[number];
 
-const isPSA = (designation?: string) => /^PSA\b/i.test((designation ?? "").trim());
+const isPSA = (designation?: string) => isPsaDesignation(designation ?? "");
 
 interface RosterGridProps {
   data: RosterRow[];
@@ -105,28 +105,18 @@ function groupByRoleGroup(data: RosterRow[]): Map<RoleGroupKey, RosterRow[]> {
 }
 
 function getDisplayTitle(row: RosterRow): string {
-  const designation = (row.designation ?? "").toString();
-  const d = designation.toLowerCase().trim();
+  return (row.designation ?? "").toString();
+}
 
-  if (d === "ssn" || d.includes("senior staff nurse")) return "SSN";
-  if (d === "sn" || (d.includes("staff nurse") && !d.includes("senior"))) return "SN";
-  if (d === "rn" || d.includes("registered nurse")) return "RN";
-  if (d === "en" || d.includes("enrolled nurse")) return "EN";
-  if (d === "na" || d.includes("nursing aide")) return "NA";
-  if (d.includes("healthcare assistant iii") || d.includes("senior healthcare assistant iii")) return "HCA3";
-  if (d.includes("healthcare assistant ii") || d.includes("senior healthcare assistant ii")) return "HCA2";
-  if (d.includes("healthcare assistant i") || d.includes("senior healthcare assistant i")) return "HCA1";
-  if (d === "hca1" || d === "hca 1" || d === "hca-1" || d.includes("hca grade 1")) return "HCA1";
-  if (d === "hca2" || d === "hca 2" || d === "hca-2" || d.includes("hca grade 2")) return "HCA2";
-  if (d === "hca3" || d === "hca 3" || d === "hca-3" || d.includes("hca grade 3")) return "HCA3";
-  if (d === "psa" || d.includes("patient service assistant")) return "PSA";
-  if (d === "hca" || d.includes("healthcare assistant")) return "HCA";
-
-  if (row.staffingRole) {
-    return row.staffingRole === "HCA12" ? "HCA1/2" : row.staffingRole;
-  }
-
-  return designation;
+function getEnNaHcaSortRank(row: RosterRow): number {
+  const title = getDisplayTitle(row).toUpperCase();
+  if (title === "EN") return 1;
+  if (title === "NA") return 2;
+  if (title === "HCA1") return 3;
+  if (title === "HCA2") return 4;
+  if (title === "HCA3") return 5;
+  if (title === "HCA") return 6;
+  return 99;
 }
 
 function getDisplayName(row: RosterRow): string {
@@ -559,6 +549,14 @@ export function RosterGrid({
     Array.from(groupedData.entries()).forEach(([groupKey, rows]) => {
       if (!rows.length) return;
       const isCollapsed = collapsedGroups.has(groupKey);
+      const sortedRows =
+        groupKey === "EN/NA/HCA1/HCA2"
+          ? [...rows].sort((a, b) => {
+              const rankDelta = getEnNaHcaSortRank(a) - getEnNaHcaSortRank(b);
+              if (rankDelta !== 0) return rankDelta;
+              return (a.name ?? "").localeCompare(b.name ?? "");
+            })
+          : rows;
 
       // Group Header Row
       allRows.push(
@@ -586,7 +584,7 @@ export function RosterGrid({
 
       // Data Rows
       if (!isCollapsed) {
-        rows.forEach((row) => {
+        sortedRows.forEach((row) => {
           allRows.push(renderDataRow(row));
         });
       }

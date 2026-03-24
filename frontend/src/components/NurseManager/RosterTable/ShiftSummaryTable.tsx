@@ -15,6 +15,7 @@ import type {
 import {
   MOCK_STAFFING_GUIDELINES,
   getRosterGroupKey,
+  isPsaDesignation,
   mapShiftCodeToSummaryType,
   mapDesignationToRole,
 } from "./staffingGuidelines";
@@ -68,7 +69,7 @@ export interface DayShiftCounts {
 const SUMMARY_GROUPS: Array<{
   key: string;
   label: string;
-  groupKey: "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3/PSA";
+  groupKey: "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3";
   requirementRole: StaffRole;
 }> = [
   { key: "group-a", label: "SSN/SN", groupKey: "SSN/SN", requirementRole: "RN" },
@@ -78,7 +79,7 @@ const SUMMARY_GROUPS: Array<{
     groupKey: "EN/NA/HCA1/HCA2",
     requirementRole: "EN",
   },
-  { key: "group-c", label: "HCA3/PSA", groupKey: "HCA3/PSA", requirementRole: "HCA12" },
+  { key: "group-c", label: "HCA3", groupKey: "HCA3", requirementRole: "HCA3" },
 ];
 
 function resolveStaffRole(row: RosterRow): StaffRole | null {
@@ -125,7 +126,7 @@ export function calculateShiftCounts(
 
 function getGroupedShiftCount(
   data: RosterRow[],
-  groupKey: "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3/PSA",
+  groupKey: "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3",
   dateKey: string,
   shiftType: SummaryShiftType,
 ): number {
@@ -175,7 +176,7 @@ export function ShiftSummaryTable({
   onDateOverrideChange,
 }: ShiftSummaryTableProps) {
   const dataWithoutPSA = useMemo(
-    () => data.filter((row) => !/^PSA\b/i.test((row.designation ?? "").trim())),
+    () => data.filter((row) => !isPsaDesignation(row.designation ?? "")),
     [data],
   );
   const [selectedCell, setSelectedCell] = useState<{
@@ -355,7 +356,7 @@ export function ShiftSummaryTable({
                     <Flex>
                       {SHIFT_TYPES.map((shiftType) => {
                         const count = getGroupedShiftCount(
-                          data,
+                          dataWithoutPSA,
                           group.groupKey,
                           dateKey,
                           shiftType,

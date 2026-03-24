@@ -32,6 +32,24 @@ npx playwright install
 npm run test:e2e
 ```
 
+Run only the login flow spec:
+```bash
+cd frontend
+npx playwright test tests/e2e/login.spec.ts
+```
+
+# Backend Testing (Pytest)
+
+Run the full backend test suite:
+```bash
+uv run pytest backend/tests
+```
+
+Run the designation mapping tests only:
+```bash
+uv run pytest backend/tests/services/test_designation_mapping.py
+```
+
 # Email Integration (SMTP locally, SES in production)
 
 This project supports two email transports and auto-selects based on env vars:
@@ -51,6 +69,15 @@ View emails at:
 
 ```
 http://localhost:1080
+```
+
+To force local SMTP when using `.env.template`, leave SES vars blank and set:
+
+```
+SMTP_HOST=mailcatcher
+SMTP_PORT=1025
+SMTP_TLS=False
+SMTP_SSL=False
 ```
 
 ## SES in staging/production
@@ -115,6 +142,33 @@ Regenerating Data:
 docker compose down -v
 docker compose up --build -d
 docker compose exec backend python app/seed_data.py
+```
+
+# Adjusting Roster Period Dates (Local Dev)
+
+Shift request open/close dates are computed in
+`backend/app/services/roster_period_service.py`. If the request window is
+already closed when you want to test editing, adjust the constants and
+rebuild the period window.
+
+What to tweak:
+1. `ROSTER_CYCLE_ANCHOR` to move the roster year anchor.
+2. `requestopendate` and `requestclosedate` offsets inside
+   `build_roster_period_definitions()` to widen or shift the request window.
+
+How to apply changes locally:
+1. Update the constants in `backend/app/services/roster_period_service.py`.
+2. Re-run the period window generation by re-seeding:
+   ```bash
+   docker compose exec backend python app/seed_data.py
+   ```
+   This refreshes roster periods based on the new definitions.
+
+Verify in the DB:
+```sql
+SELECT periodid, name, startdate, enddate, requestopendate, requestclosedate, status
+FROM rosterperiod
+ORDER BY startdate DESC;
 ```
 ## Test Credentials
 

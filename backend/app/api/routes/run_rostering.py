@@ -18,7 +18,12 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.core.config import settings
 from app.models.enums import NotificationType
-from app.designation_mapping import classify_designation, staffing_role_to_roster_rank
+from app.designation_mapping import (
+    classify_designation_with_rank_map,
+    load_designation_rank_map,
+    roster_rank_for_designation_with_rank_map,
+    staffing_role_to_roster_rank,
+)
 from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import (
@@ -268,6 +273,7 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
     nurses = db.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
+    rank_map = load_designation_rank_map(db)
 
     return {
         "ward": {"wardId": ward.wardid, "wardName": ward.wardname},
@@ -277,8 +283,8 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 "name": n.name,
                 "designation": n.designation,
                 "employmentType": n.employmenttype,
-                "staffing_role": classify_designation(n.designation).staffing_role,
-                "roster_rank": classify_designation(n.designation).roster_rank,
+                "staffing_role": classify_designation_with_rank_map(rank_map, n.designation).staffing_role,
+                "roster_rank": classify_designation_with_rank_map(rank_map, n.designation).roster_rank,
             }
             for n in nurses
         ],
@@ -1098,7 +1104,7 @@ def _staffing_to_algo_inputs(ward: Ward):
                 "C": {"A": 0, "P": 0, "N": 0},
             }
             for role in ("RN", "EN", "NA", "HCA12", "HCA3"):
-                rank = staffing_role_to_roster_rank(role)
+                rank = staffing_role_to_roster_rank(session, role)
                 if rank is None:
                     continue
                 for shift in ("A", "P", "N"):
@@ -1142,9 +1148,10 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     nurses_db = db.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
+    rank_map = load_designation_rank_map(db)
     nurses_data = []
     for n in nurses_db:
-        rank = _map_rank(n.designation)
+        rank = roster_rank_for_designation_with_rank_map(rank_map, n.designation)
         if rank is None:
             continue
         nurses_data.append({"id": n.nurseid, "name": n.name, "rank": rank})
@@ -1398,31 +1405,3 @@ def _load_shift_hours(db: Session) -> dict[str, float]:
     return shift_hours
 
 
-def _map_rank(designation: str) -> str | None:
-    """Map nurse designation to scheduling rank A/B/C."""
-    if not designation:
-        return None
-    normalized = str(designation).strip().upper()
-    if "PSA" in normalized or "PATIENT SERVICE ASST" in normalized or "PATIENT SERVICE ASSISTANT" in normalized:
-        return None
-
-    RANK_A = {
-        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
-        "STAFF NURSE I", "STAFF NURSE II",
-        "RN", "SSN",
-    }
-    RANK_B = {
-        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
-        "NURSING AIDE I", "NURSING AIDE II",
-        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
-        "SNR PATIENT SERVICE ASST",
-        "PATIENT SERVICE ASST",
-        "PATIENT SERVICE ASSISTANT",
-        "PSA",
-        "EN", "NA",
-    }
-    if normalized in RANK_A:
-        return "A"
-    if normalized in RANK_B:
-        return "B"
-    return "C"

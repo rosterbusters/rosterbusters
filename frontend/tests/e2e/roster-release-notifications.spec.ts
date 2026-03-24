@@ -283,6 +283,7 @@ test.describe("roster release notifications", () => {
     const employeeId = `RR${shortRunId}`
 
     let createdUserId: number | null = null
+    let createdRosterId: number | null = null
 
     try {
       const nurseUser = await createUser(request, adminToken, {
@@ -301,7 +302,7 @@ test.describe("roster release notifications", () => {
         throw new Error("Created nurse user missing nurseid")
       }
 
-      await createRosterEntry(request, adminToken, {
+      const rosterEntry = await createRosterEntry(request, adminToken, {
         ward_id: ward.wardid,
         nurse_id: nurseUser.nurseid,
         period_id: period.periodid,
@@ -310,6 +311,7 @@ test.describe("roster release notifications", () => {
         status: "Pending",
         assignment_method: "Manual",
       })
+      createdRosterId = rosterEntry.roster_id
 
       const publishResponse = await publishWardRoster(
         request,
@@ -356,6 +358,17 @@ test.describe("roster release notifications", () => {
       expect(emailBody).toContain(`Ward: ${ward.wardname}`)
       expect(emailBody).toContain(`Roster period: ${period.name}`)
     } finally {
+      if (createdRosterId) {
+        await request
+          .delete(
+            `${API_BASE_URL}/api/v1/roster/ward/${ward.wardid}/clear`,
+            {
+              headers: { Authorization: `Bearer ${adminToken}` },
+              params: { period_id: period.periodid },
+            },
+          )
+          .catch(() => null)
+      }
       if (createdUserId) {
         await deleteUser(request, adminToken, createdUserId)
       }

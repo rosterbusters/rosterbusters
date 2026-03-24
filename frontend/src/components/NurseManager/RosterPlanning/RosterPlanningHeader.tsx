@@ -212,6 +212,9 @@ export function RosterPlanningHeader({
     },
     itemToValue: (period: RosterPeriod) => String(period.periodId),
   });
+
+  const showSeedRequests = !import.meta.env.PROD;
+  const showMockData = !import.meta.env.PROD;
   
   return (
     <Box w="full" position="relative">
@@ -327,7 +330,7 @@ export function RosterPlanningHeader({
                   </HStack>
                 </MenuItem>
               )}
-              {onSeedRequests && (
+              {showSeedRequests && onSeedRequests && (
                 <MenuItem
                   value="seed-requests"
                   onClick={onSeedRequests}
@@ -597,7 +600,7 @@ export function RosterPlanningHeader({
                 </Button>
 
                 {/* Mock Data Selector */}
-                {onLoadMockData && (
+                {showMockData && onLoadMockData && (
                   <HStack gap={2}>
                     <Text
                       fontSize="sm"

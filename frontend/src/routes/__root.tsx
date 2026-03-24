@@ -19,7 +19,9 @@ const loadDevtools = () =>
   })
 
 const TanStackDevtools =
-  process.env.NODE_ENV === "production" ? () => null : React.lazy(loadDevtools)
+  import.meta.env.VITE_ENABLE_DEVTOOLS === "true"
+    ? React.lazy(loadDevtools)
+    : () => null
 
 export const Route = createRootRoute({
   component: () => (

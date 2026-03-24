@@ -138,7 +138,8 @@ const isExcludedImportRole = (value: string) => {
   if (!normalized) return false
   return (
     normalized.includes("psa") ||
-    normalized.includes("patientserviceassistant")
+    normalized.includes("patientserviceassistant") ||
+    normalized.includes("patientserviceasst")
   )
 }
 
@@ -1054,6 +1055,7 @@ function AdminUsers() {
   const [importPassword, setImportPassword] = useState("")
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null)
   const [importCancelRequested, setImportCancelRequested] = useState(false)
+  const [importFailures, setImportFailures] = useState<string[] | null>(null)
   const importCancelRequestedRef = useRef(false)
 
   const importRows = async (file: File, password?: string) => {
@@ -1179,6 +1181,7 @@ function AdminUsers() {
     }
 
     if (failures.length > 0) {
+      setImportFailures(failures)
       showErrorToast(failures.slice(0, 3).join(" "))
     }
 
@@ -1865,6 +1868,36 @@ function AdminUsers() {
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 {importCancelRequested ? "Cancelling..." : "Cancel Import"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importFailures && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
+              Import Failures
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              {importFailures.length} row{importFailures.length !== 1 ? "s" : ""} failed to import.
+            </p>
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50">
+              <ul className="divide-y divide-gray-200">
+                {importFailures.map((failure, index) => (
+                  <li key={`${failure}-${index}`} className="px-4 py-2 text-sm text-gray-700">
+                    {failure}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setImportFailures(null)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                Done
               </button>
             </div>
           </div>

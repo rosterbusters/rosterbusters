@@ -114,36 +114,44 @@ def _normalize_shift_request_code(code: str) -> str:
 
 
 ANON_DESIGNATIONS: dict[str, str] = {
-    # Matches Ward 06 distribution from ward6.xlsx (omit nurse manager/clinician):
-    # RN/Staff Nurse: 10, EN: 5, NA: 5, HCA3: 6, HCA12(HCA1/2): 2
-    "Nurse 1": "STAFF NURSE",
-    "Nurse 2": "STAFF NURSE",
-    "Nurse 3": "STAFF NURSE",
-    "Nurse 4": "STAFF NURSE",
-    "Nurse 5": "STAFF NURSE",
-    "Nurse 6": "STAFF NURSE",
-    "Nurse 7": "STAFF NURSE",
-    "Nurse 8": "STAFF NURSE",
-    "Nurse 9": "STAFF NURSE",
-    "Nurse 10": "STAFF NURSE",
-    "Nurse 11": "ENROLLED NURSE",
-    "Nurse 12": "ENROLLED NURSE",
-    "Nurse 13": "ENROLLED NURSE",
-    "Nurse 14": "ENROLLED NURSE",
-    "Nurse 15": "ENROLLED NURSE",
-    "Nurse 16": "NURSING AIDE",
-    "Nurse 17": "NURSING AIDE",
-    "Nurse 18": "NURSING AIDE",
-    "Nurse 19": "NURSING AIDE",
-    "Nurse 20": "NURSING AIDE",
-    "Nurse 21": "HCA 3",
-    "Nurse 22": "HCA 3",
-    "Nurse 23": "HCA 3",
-    "Nurse 24": "HCA 3",
-    "Nurse 25": "HCA 3",
-    "Nurse 26": "HCA 3",
-    "Nurse 27": "HCA 2",
-    "Nurse 28": "HCA 2",
+    # Matches Ward 06 distribution from ward6stafflist.xlsx (omit nurse manager/clinician).
+    # Occupation counts mapped to designation codes:
+    # SN: 10 (Staff Nurse I/II + CEN Listing Staff Nurse x4),
+    # SSN: 4 (Snr Staff Nurse I/II),
+    # EN: 4 (Enrolled Nurse I/II), SEN: 1 (Snr Enrolled Nurse I),
+    # NA: 4 (Nursing Aide I/II), HCA1: 2 (Healthcare Asst I),
+    # HCA3: 6 (Healthcare Asst III). PSA excluded per request.
+    "Nurse 1": "SN",
+    "Nurse 2": "SN",
+    "Nurse 3": "SN",
+    "Nurse 4": "SN",
+    "Nurse 5": "SN",
+    "Nurse 6": "SN",
+    "Nurse 7": "SN",
+    "Nurse 8": "SN",
+    "Nurse 9": "SN",
+    "Nurse 10": "SN",
+    "Nurse 11": "SSN",
+    "Nurse 12": "SSN",
+    "Nurse 13": "SSN",
+    "Nurse 14": "SSN",
+    "Nurse 15": "EN",
+    "Nurse 16": "EN",
+    "Nurse 17": "EN",
+    "Nurse 18": "EN",
+    "Nurse 19": "SEN",
+    "Nurse 20": "NA",
+    "Nurse 21": "NA",
+    "Nurse 22": "NA",
+    "Nurse 23": "NA",
+    "Nurse 24": "HCA1",
+    "Nurse 25": "HCA1",
+    "Nurse 26": "HCA3",
+    "Nurse 27": "HCA3",
+    "Nurse 28": "HCA3",
+    "Nurse 29": "HCA3",
+    "Nurse 30": "HCA3",
+    "Nurse 31": "HCA3",
 }
 
 
@@ -303,7 +311,7 @@ def seed_test_ward_with_anonymized_requests(
     for anonymized in unique_names:
         if anonymized in existing_by_name:
             continue
-        designation = ANON_DESIGNATIONS.get(anonymized, "STAFF NURSE")
+        designation = ANON_DESIGNATIONS.get(anonymized, "SN")
         db.add(
             Nurse(
                 name=anonymized,
