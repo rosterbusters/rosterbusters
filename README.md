@@ -67,7 +67,7 @@ On EC2, the IAM role must allow `ses:SendEmail` / `ses:SendRawEmail`.
 If you get a package/dependency error, try to delete local volumes and rebuild images:
 ```bash
 docker compose down -v
-docker compose up --build
+docker compose up -d --build
 ```
 
 # Database Seeding
@@ -113,7 +113,7 @@ Regenerating Data:
 
 ```bash
 docker compose down -v
-docker compose up --build -d
+docker compose up -d --build
 docker compose exec backend python app/seed_data.py
 ```
 ## Test Credentials

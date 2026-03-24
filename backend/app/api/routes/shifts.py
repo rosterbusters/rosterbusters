@@ -8,7 +8,7 @@ from sqlmodel import or_, select
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.models.enums import NotificationType
-from app.models.rbac import Nurse, NurseManager, NursePublic
+from app.models.rbac import Nurse, NurseManager, NursePublic, Role, UserRole
 from app.models.roster import (
     Roster,
     RosterPeriod,
@@ -25,8 +25,17 @@ from app.models.shifts import (
     ShiftRequestReview,
     ShiftRequestUpdate,
 )
+from app.utils import (
+    generate_shift_request_approved_email,
+    generate_shift_request_rejected_email,
+    send_email,
+)
+from app.core.config import settings
 from app.rbac import get_rbac_user_by_email, user_has_role
 from app.services.roster_period_service import ensure_roster_period_window, get_period_window
+
+import logging
+logger = logging.getLogger(__name__)
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -471,6 +480,34 @@ def review_shift_request(
                 related_entity_id=request_id,
                 roster_period=period.name,
             )
+
+            if settings.emails_enabled:
+                nurse = session.get(Nurse, shift_request.nurseid)
+                if nurse and nurse.email:
+                    try:
+                        if review_in.status == "Approved":
+                            email_data = generate_shift_request_approved_email(
+                                email_to=nurse.email,
+                                roster_period=period.name,
+                                nurse_name=nurse.name,
+                            )
+                        else:
+                            email_data = generate_shift_request_rejected_email(
+                                email_to=nurse.email,
+                                roster_period=period.name,
+                                nurse_name=nurse.name,
+                                rejection_reason=review_in.rejectionreason,
+                            )
+                        send_email(
+                            email_to=nurse.email,
+                            subject=email_data.subject,
+                            html_content=email_data.html_content,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to send shift request review email to nurse %s",
+                            shift_request.nurseid,
+                        )
 
     session.commit()
     session.refresh(shift_request)

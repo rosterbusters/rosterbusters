@@ -32,9 +32,12 @@ from app.models.roster import (
 from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
-from app.utils import generate_roster_release_email, send_email
+from app.utils import generate_roster_release_email, generate_shift_updated_email, send_email
 import app.crud as crud
 from app.rostering.algo_scheduler import generate_roster
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class ChangelogCreateRequest(BaseModel):
@@ -333,10 +336,56 @@ def create_or_update_roster_entry(
     current_user: CurrentUser,
 ) -> Any:
     """Create or update a single roster assignment."""
+    existing = _get_existing_roster_entry(
+        session=session,
+        ward_id=body.ward_id,
+        nurse_id=body.nurse_id,
+        period_id=body.period_id,
+        shift_date=body.shift_date,
+    )
+    old_shift_code = existing.shiftcode if existing else None
+    is_update = existing is not None
+
     entry = _upsert_roster_entry(session, body, current_user)
     session.add(entry)
     session.commit()
     session.refresh(entry)
+
+    if is_update and old_shift_code and old_shift_code != body.shift_code:
+        nurse = session.get(Nurse, body.nurse_id)
+        if nurse:
+            crud.create_notification(
+                session,
+                recipient_type="Nurse",
+                recipient_id=body.nurse_id,
+                notification_type=NotificationType.SHIFT_UPDATED,
+                related_entity_type="Roster",
+                related_entity_id=entry.rosterid,
+                start_date=str(body.shift_date),
+            )
+            session.commit()
+
+            if settings.emails_enabled and nurse.email:
+                try:
+                    email_data = generate_shift_updated_email(
+                        email_to=nurse.email,
+                        nurse_name=nurse.name,
+                        shift_date=str(body.shift_date),
+                        new_shift_code=body.shift_code,
+                        old_shift_code=old_shift_code,
+                    )
+                    send_email(
+                        email_to=nurse.email,
+                        subject=email_data.subject,
+                        html_content=email_data.html_content,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to send shift updated email to nurse %s for date %s",
+                        body.nurse_id,
+                        body.shift_date,
+                    )
+
     return {
         "roster_id": entry.rosterid,
         "nurse_id": entry.nurseid,
@@ -347,7 +396,6 @@ def create_or_update_roster_entry(
         "status": entry.status,
         "comment": entry.comment,
     }
-
 
 @router.post("/bulk-upsert")
 def bulk_upsert_roster_entries(
