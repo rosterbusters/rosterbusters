@@ -52,10 +52,17 @@ export const NewShiftRequest = ({
     queryFn: () => ShiftRequestsService.getLeaveCodes(),
   });
 
-  const shiftCodes = useMemo(
-    () => [...(workingShiftCodes ?? []), ...(leaveCodes ?? [])],
-    [workingShiftCodes, leaveCodes],
-  );
+  const shiftCodes = useMemo(() => {
+    const base = [...(workingShiftCodes ?? [])];
+    const hasDO = base.some((sc) => sc.shiftcode === "DO");
+    if (!hasDO) {
+      base.push({
+        shiftcode: "DO",
+        description: "Day Off",
+      } as (typeof base)[number]);
+    }
+    return base;
+  }, [workingShiftCodes]);
 
   const shiftCollection = useMemo(
     () =>
