@@ -172,6 +172,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     from app.rbac import get_user_roles_by_userid
     wardid = None
     name = None
+    employee_id = None
     roles = get_user_roles_by_userid(session, current_user.userid)
     is_superuser = "Admin" in roles
     if current_user.nurseid:
@@ -182,12 +183,14 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         if nurse:
             wardid = nurse.wardid
             name = nurse.name
+            employee_id = nurse.employeeid
     elif current_user.managerid:
         manager = session.exec(
             select(NurseManager).where(NurseManager.managerid == current_user.managerid)
         ).first()
         if manager:
             name = manager.name
+            employee_id = manager.employeeid
         ward = session.exec(
             select(Ward).where(Ward.managerid == current_user.managerid, Ward.isactive == True)  # noqa: E712
         ).first()
@@ -198,6 +201,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         userid=current_user.userid,
         username=current_user.username,
         email=current_user.email,
+        employee_id=employee_id,
         nurseid=current_user.nurseid,
         managerid=current_user.managerid,
         isactive=current_user.isactive,

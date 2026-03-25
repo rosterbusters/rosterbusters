@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useQuery } from "@tanstack/react-query"
@@ -23,7 +23,7 @@ import { isLoggedIn } from "@/hooks/useAuth"
 import { AdminService } from "@/client/adminService"
 import { UsersService } from "@/client"
 import type { CurrentUser } from "@/hooks/useAuth"
-import { passwordRules, confirmPasswordRules } from "@/utils"
+import { passwordRules } from "@/utils"
 
 export const Route = createFileRoute("/first-login-setup")({
   component: FirstLoginSetup,
@@ -57,6 +57,7 @@ function FirstLoginSetup() {
     register,
     handleSubmit,
     getValues,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<SetupFormData>({
     mode: "onBlur",
@@ -67,6 +68,25 @@ function FirstLoginSetup() {
       employee_id: "",
     },
   })
+
+  useEffect(() => {
+    const existingEmail = currentUser?.email?.trim()
+    if (!existingEmail) return
+
+    // Prefill with the account email only if the field is still blank.
+    if (!getValues("email")) {
+      setValue("email", existingEmail)
+    }
+  }, [currentUser?.email, getValues, setValue])
+
+  useEffect(() => {
+    const existingEmployeeId = currentUser?.employee_id?.trim()
+    if (!existingEmployeeId) return
+
+    if (!getValues("employee_id")) {
+      setValue("employee_id", existingEmployeeId)
+    }
+  }, [currentUser?.employee_id, getValues, setValue])
 
   const mutation = useMutation({
     mutationFn: (data: { new_password: string; email?: string; employee_id?: string }) =>

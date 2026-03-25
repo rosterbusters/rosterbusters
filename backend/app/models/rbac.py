@@ -51,6 +51,7 @@ class RBACUserPublic(SQLModel):
     userid: int
     username: str
     email: Optional[str] = None
+    employee_id: Optional[str] = None
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
     isactive: bool

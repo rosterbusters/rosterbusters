@@ -1032,6 +1032,7 @@ function AdminUsers() {
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null)
   const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
+  const [passwordCopied, setPasswordCopied] = useState(false)
   const [importGeneratedPasswords, setImportGeneratedPasswords] = useState<Record<number, string>>({})
   const [isImporting, setIsImporting] = useState(false)
   const [pendingImport, setPendingImport] = useState<PendingImportState | null>(null)
@@ -1268,6 +1269,22 @@ function AdminUsers() {
   const handleCancelImport = () => {
     importCancelRequestedRef.current = true
     setImportCancelRequested(true)
+  }
+
+  const handleCopyCreatedPassword = async () => {
+    const password = createdUserInfo?.generated_password
+    if (!password) {
+      showErrorToast("No password available to copy.")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(password)
+      setPasswordCopied(true)
+      setTimeout(() => setPasswordCopied(false), 1500)
+    } catch {
+      showErrorToast("Unable to copy password. Please copy it manually.")
+    }
   }
 
   const progressPercent = importProgress
@@ -1557,7 +1574,10 @@ function AdminUsers() {
           setEditUser(null)
         }}
         editUser={editUser}
-        onCreated={setCreatedUserInfo}
+        onCreated={(info) => {
+          setPasswordCopied(false)
+          setCreatedUserInfo(info)
+        }}
       />
       <DeleteDialog
         open={!!deleteUser}
@@ -1598,17 +1618,16 @@ function AdminUsers() {
             </div>
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    createdUserInfo.generated_password ?? "",
-                  )
-                }}
+                onClick={handleCopyCreatedPassword}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Copy Password
+                {passwordCopied ? "Copied!" : "Copy Password"}
               </button>
               <button
-                onClick={() => setCreatedUserInfo(null)}
+                onClick={() => {
+                  setPasswordCopied(false)
+                  setCreatedUserInfo(null)
+                }}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 Done
