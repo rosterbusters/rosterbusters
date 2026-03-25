@@ -14,7 +14,7 @@ from sqlmodel import Field, SQLModel, func, or_, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
 from app.core.security import generate_random_password, get_password_hash
-from app.models import Message, RBACUser, Role, UserRole
+from app.models import Designation, Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
 from app.rbac import get_user_roles, get_user_roles_by_userid
@@ -82,6 +82,11 @@ class AdminUserUpdate(SQLModel):
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
     ward_ids: Optional[list[int]] = None
+
+
+class DesignationOption(SQLModel):
+    designation: str
+    rank: str
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +203,18 @@ def list_users(
         data=[_enrich(session, u) for u in users],
         count=count,
     )
+
+
+@router.get("/designations", response_model=list[DesignationOption])
+def list_designations(session: SessionDep) -> Any:
+    """List designation options from reference table."""
+    rows = session.exec(
+        select(Designation).order_by(Designation.rank, Designation.designation)
+    ).all()
+    return [
+        DesignationOption(designation=row.designation, rank=row.rank)
+        for row in rows
+    ]
 
 
 @router.get("/users/{userid}", response_model=AdminUserPublic)
@@ -368,8 +385,9 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = body.name.strip() if body.name else None
     designation = body.designation.strip() if body.designation else None
+    email_provided = "email" in body.model_fields_set
 
-    if body.email is not None and body.email != user.email:
+    if email_provided and body.email is not None and body.email != user.email:
         dup = session.exec(
             select(RBACUser).where(RBACUser.email == body.email)
         ).first()
@@ -433,7 +451,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
 
     if body.username is not None:
         user.username = body.username
-    if body.email is not None:
+    if email_provided:
         user.email = body.email
     if body.password is not None:
         user.passwordhash = get_password_hash(body.password)
@@ -451,7 +469,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
                 nurse.designation = designation or "RN"
             if body.name is not None:
                 nurse.name = name or user.username
-            if body.email is not None:
+            if email_provided:
                 nurse.email = body.email or ""
             session.add(nurse)
             session.commit()
@@ -460,18 +478,18 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
             manager.employeeid = employee_id
             if body.name is not None:
                 manager.name = name or user.username
-            if body.email is not None:
+            if email_provided:
                 manager.email = body.email or ""
             session.add(manager)
             session.commit()
 
-    elif body.username is not None or body.name is not None or body.email is not None or body.designation is not None:
+    elif body.username is not None or body.name is not None or email_provided or body.designation is not None:
         if nurse:
             if body.designation is not None:
                 nurse.designation = designation or "RN"
             if body.name is not None:
                 nurse.name = name or user.username
-            if body.email is not None:
+            if email_provided:
                 nurse.email = body.email or ""
             session.add(nurse)
             session.commit()
@@ -479,7 +497,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
         if manager:
             if body.name is not None:
                 manager.name = name or user.username
-            if body.email is not None:
+            if email_provided:
                 manager.email = body.email or ""
             session.add(manager)
             session.commit()
@@ -546,6 +564,13 @@ def delete_user(session: SessionDep, userid: int) -> Message:
     user = session.get(RBACUser, userid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    user_roles = get_user_roles_by_userid(session, userid)
+    if "Admin" in user_roles:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin accounts cannot be deleted.",
+        )
 
     # Remove role assignments first
     roles = session.exec(

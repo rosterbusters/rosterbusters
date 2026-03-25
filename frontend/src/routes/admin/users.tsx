@@ -8,6 +8,7 @@ import {
   type AdminUser,
   type AdminUserCreate,
   type AdminUserUpdate,
+  type DesignationOption,
   type WardOption,
 } from "@/client/adminService"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
@@ -30,15 +31,6 @@ const usersSearchSchema = z.object({
 })
 
 const PER_PAGE = 10
-
-const NURSE_DESIGNATION_OPTIONS = ["RN", "EN", "HCA"] as const
-
-const isNurseDesignationOption = (
-  value: string,
-): value is (typeof NURSE_DESIGNATION_OPTIONS)[number] =>
-  NURSE_DESIGNATION_OPTIONS.includes(
-    value as (typeof NURSE_DESIGNATION_OPTIONS)[number],
-  )
 
 export const Route = createFileRoute("/admin/users")({
   component: AdminUsers,
@@ -463,6 +455,14 @@ function UserFormDialog({
     staleTime: 60_000,
   })
 
+  const { data: designations = [] } = useQuery<DesignationOption[]>({
+    queryKey: ["admin-designations"],
+    queryFn: () => AdminService.listDesignations(),
+    staleTime: 60_000,
+  })
+
+  const designationOptions = designations.map((d) => d.designation)
+
   const currentRole = isEdit ? (editUser.roles[0] ?? "") : ""
 
   // Multi-ward selection state
@@ -554,7 +554,7 @@ function UserFormDialog({
       const payload: AdminUserUpdate = {
         username: data.username,
         name: data.name || undefined,
-        email: data.email || undefined,
+        email: data.email.trim() ? data.email.trim() : null,
         is_active: data.is_active,
       }
       if (currentRole === "Nurse" || currentRole === "NurseManager") {
@@ -752,14 +752,14 @@ function UserFormDialog({
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select designation</option>
-                  {NURSE_DESIGNATION_OPTIONS.map((designation) => (
+                  {designationOptions.map((designation) => (
                     <option key={designation} value={designation}>
                       {designation}
                     </option>
                   ))}
                   {isEdit &&
                     editUser?.designation &&
-                    !isNurseDesignationOption(editUser.designation) && (
+                    !designationOptions.includes(editUser.designation) && (
                       <option value={editUser.designation}>{editUser.designation}</option>
                     )}
                 </select>
@@ -927,6 +927,8 @@ function DeleteDialog({
 
   if (!open || !user) return null
 
+  const isAdminUser = user.roles.includes("Admin")
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
@@ -944,13 +946,17 @@ function DeleteDialog({
           </button>
           <button
             onClick={() => {
+              if (isAdminUser) {
+                showErrorToast("Admin accounts cannot be deleted.")
+                return
+              }
               setDeleting(true)
               mutation.mutate(user.userid)
             }}
-            disabled={deleting}
+            disabled={deleting || isAdminUser}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting ? "Deleting..." : "Delete"}
+            {deleting ? "Deleting..." : isAdminUser ? "Cannot Delete Admin" : "Delete"}
           </button>
         </div>
       </div>
@@ -1518,13 +1524,15 @@ function AdminUsers() {
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => setDeleteUser(user)}
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete user"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!user.roles.includes("Admin") && (
+                          <button
+                            onClick={() => setDeleteUser(user)}
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
