@@ -602,7 +602,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
     # Penalty weights
     HARD_PEN_NDO    = 999_999  # DO missing after last roster trailing night
     HARD_PEN_SHIFT  = 150_000  # missing required staff
-    HARD_PEN_HOUR   = 100_000  # hours outside min/max
+    HARD_PEN_HOUR   = 20_000  # hours outside min/max
     HARD_PEN_DAYOFF = 160_000  # missing required days-off (2 per week)
     HARD_PEN_NIGHTS =  80_000  # too few or too many nights
     HARD_PEN_AL     = 1_000_000  # per AL day not honoured
@@ -618,31 +618,31 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
         for d in range(NUM_DAYS)
     ] if DEMAND else [{} for _ in range(NUM_DAYS)]
 
-    SOFT_W_APPROVED_REQUEST = 50
-    SOFT_W_PENDING_REQUEST  = 50
+    SOFT_W_APPROVED_REQUEST = 35_000
+    SOFT_W_PENDING_REQUEST  = 550
     SOFT_W_NIGHT_FAIR       = 5
     SOFT_W_WEEKEND_FAIR     = 5
     SOFT_W_WEEKDAY_PREF     = 8
     SOFT_W_MORNING_PREF     = 4
     SOFT_W_DAILY_BALANCE    = 50
-    SOFT_W_OVERTIME         = 200
-    SOFT_W_RANK_MISMATCH    = 40_000
+    SOFT_W_OVERTIME         = 140
+    SOFT_W_RANK_MISMATCH    = 20_000
     SOFT_W_OFF_TO_AM        = 500
     SOFT_W_SHIFT_VARIANCE   = 185
     SOFT_W_AM_PM_BALANCE    = 200
 
     # GA hyperparams
-    POP_SIZE           = 360
+    POP_SIZE           = 400
     GENERATIONS        = 900
     TOURNAMENT_K       = 2
-    CROSSOVER_RATE     = 0.7
+    CROSSOVER_RATE     = 0.6
     REBALANCE_PROB     = 0.4
     PATTERN_SWAP_PROB  = 0.3
     PATTERN_SWAP_MAX   = 0.6
-    BASE_MUTATION_RATE = 0.2
-    MAX_MUTATION_RATE  = 0.7
+    BASE_MUTATION_RATE = 0.15
+    MAX_MUTATION_RATE  = 0.6
     PLATEAU_GENS       = 10
-    ELITISM            = 3
+    ELITISM            = 5
 
     # ===================== CPU CONFIG =====================
     cpu_count = os.cpu_count() or 1
@@ -810,7 +810,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
 
         return new_ind
 
-    def local_search(ind, steps=40):
+    def local_search(ind, steps=50):
         """Hill-climbing with three neighbourhood moves over working nurses only.
         AL days are never swapped or moved."""
         # FIX 3: shallow copy instead of deepcopy
@@ -894,7 +894,7 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
  
         return best
 
-    def optimize_shift_variance(ind, steps=120):
+    def optimize_shift_variance(ind, steps=40):
         """
         Targeted post-processing: pick the worst-variance day and try all
         pairwise working-nurse swaps on that day, keeping any improvement.
@@ -1797,11 +1797,13 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                     elite = repair_shift_balance(elite)
                 elite = repair_rank_coverage(elite)
                 elite = repair_night_coverage(elite)
-                if random.random() < 0.4:
-                    elite = repair_shift_variance(elite)
+                # if random.random() < 0.4:
+                #     elite = repair_shift_variance(elite)
                 elite = repair_individual(elite)
                 if gen > 70 and gen % 5 == 0:
                     elite = local_search(elite)
+                if gen > 100 and gen % 31 == 0:
+                    elite = optimize_shift_variance(elite)
                 new_pop.append(elite)
 
             # Build rest of population
@@ -1875,9 +1877,9 @@ def run_ga(nurse_names, nurse_ranks, demand, approved_requests, pending_requests
                 break
 
         # Aggressive post-processing
-        best = optimize_shift_variance(best, steps=500)
+        # best = optimize_shift_variance(best, steps=500)
         best = local_search(best, steps=300)
-        best = optimize_shift_variance(best, steps=400)
+        # best = optimize_shift_variance(best, steps=400)
         best_score = evaluate(best)
 
         return best, best_score
