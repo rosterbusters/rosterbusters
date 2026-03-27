@@ -26,7 +26,11 @@ from app.models.shifts import (
     ShiftRequestUpdate,
 )
 from app.rbac import get_rbac_user_by_email, user_has_role
-from app.services.roster_period_service import ensure_roster_period_window, get_period_window
+from app.services.roster_period_service import (
+    ensure_roster_period_window,
+    get_period_window,
+    get_planning_lock_date,
+)
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -274,10 +278,24 @@ def get_shift_codes_by_ward(
 # ROSTER PERIOD ENDPOINTS
 # ─────────────────────────────────────────────
 
+def _to_roster_period_public(period: RosterPeriod) -> RosterPeriodPublic:
+    return RosterPeriodPublic(
+        periodid=period.periodid,
+        name=period.name,
+        startdate=period.startdate,
+        enddate=period.enddate,
+        requestopendate=period.requestopendate,
+        requestclosedate=period.requestclosedate,
+        planninglockdate=get_planning_lock_date(period.startdate),
+        status=period.status,
+    )
+
+
 @router.get("/periods", response_model=list[RosterPeriodPublic])
 def get_roster_periods(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all roster periods."""
-    return ensure_roster_period_window(session)
+    periods = ensure_roster_period_window(session)
+    return [_to_roster_period_public(period) for period in periods]
 
 
 @router.get("/period", response_model=RosterPeriodPublic)
@@ -295,7 +313,7 @@ def get_roster_period(
     period = session.exec(statement).first()
     if not period:
         raise HTTPException(status_code=404, detail="No roster period found for the given date")
-    return period
+    return _to_roster_period_public(period)
 
 
 @router.get("/periods/current-upcoming", response_model=RosterPeriodWindowPublic)
@@ -305,10 +323,15 @@ def get_current_and_upcoming_roster_periods(
     """Get the current, upcoming, and request-open roster periods."""
     periods = ensure_roster_period_window(session)
     current_period, upcoming_period, request_open_period = get_period_window(periods)
+    def _map(period: RosterPeriod | None):
+        if not period:
+            return None
+        return _to_roster_period_public(period)
+
     return RosterPeriodWindowPublic(
-        current_period=current_period,
-        upcoming_period=upcoming_period,
-        request_open_period=request_open_period,
+        current_period=_map(current_period),
+        upcoming_period=_map(upcoming_period),
+        request_open_period=_map(request_open_period),
     )
 
 
