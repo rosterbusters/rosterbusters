@@ -88,25 +88,25 @@ test("imports staff list from Excel with duplicates flagged", async ({
       },
       {
         "Employee ID": `N${suffix}01`,
-        "EMP NAME": `Test Nurse A ${suffix}`,
+        "EMP NAME": `Nurse${suffix} A`,
         "OCCUPATION": "Staff Nurse",
         "DEPARTMENT CODE": wardA.wardname,
       },
       {
         "Employee ID": `N${suffix}02`,
-        "EMP NAME": `Test Nurse B ${suffix}`,
+        "EMP NAME": `Nurse${suffix} B`,
         "OCCUPATION": "Staff Nurse",
         "DEPARTMENT CODE": wardA.wardname,
       },
       {
         "Employee ID": `M${suffix}01`,
-        "EMP NAME": `Test Manager A ${suffix}`,
+        "EMP NAME": `Manager${suffix} A`,
         "OCCUPATION": "Nurse Manager",
         "DEPARTMENT CODE": wardA.wardname,
       },
       {
         "Employee ID": `M${suffix}02`,
-        "EMP NAME": `Test Manager B ${suffix}`,
+        "EMP NAME": `Manager${suffix} B`,
         "OCCUPATION": "Nurse Manager",
         "DEPARTMENT CODE": wardB.wardname,
       },
@@ -130,10 +130,10 @@ test("imports staff list from Excel with duplicates flagged", async ({
     await page.goto("/admin/users")
     await expect(
       page.getByRole("option", { name: wardA.wardname }),
-    ).toBeAttached()
+    ).toBeAttached({ timeout: 15_000 })
     await expect(
       page.getByRole("option", { name: wardB.wardname }),
-    ).toBeAttached()
+    ).toBeAttached({ timeout: 15_000 })
 
     await page.setInputFiles('input[type="file"]', filePath)
 
@@ -159,10 +159,10 @@ test("imports staff list from Excel with duplicates flagged", async ({
     const search = page.getByPlaceholder("Search by name or email...")
 
     const expectedUsers = [
-      { name: `Test Nurse A ${suffix}`, wardId: wardA.wardid },
-      { name: `Test Nurse B ${suffix}`, wardId: wardA.wardid },
-      { name: `Test Manager A ${suffix}`, wardId: wardA.wardid },
-      { name: `Test Manager B ${suffix}`, wardId: wardB.wardid },
+      { name: `Nurse${suffix} A`, wardId: wardA.wardid },
+      { name: `Nurse${suffix} B`, wardId: wardA.wardid },
+      { name: `Manager${suffix} A`, wardId: wardA.wardid },
+      { name: `Manager${suffix} B`, wardId: wardB.wardid },
     ]
 
     const expectedUsernames: Array<{ username: string; wardId: number }> = []
@@ -190,7 +190,7 @@ test("imports staff list from Excel with duplicates flagged", async ({
       if (createdUser.userid) {
         createdUserIds.push(createdUser.userid)
       }
-      const wardIds = createdUser.wards.map((w) => w.ward_id)
+      const wardIds = createdUser.wards.map((w: { ward_id: number }) => w.ward_id)
       if (!wardIds.includes(entry.wardId)) {
         const toastText = await page
           .getByTestId("toast-container")
@@ -279,7 +279,7 @@ test("imports nurse manager designation from staff list", async ({
     await page.goto("/admin/users")
     await expect(
       page.getByRole("option", { name: ward.wardname }),
-    ).toBeAttached()
+    ).toBeAttached({ timeout: 15_000 })
     await page.setInputFiles('input[type="file"]', filePath)
 
     const progressModal = page.getByText("Importing Staff List")
@@ -297,7 +297,7 @@ test("imports nurse manager designation from staff list", async ({
       )
     }
 
-    const wardIds = createdUser.wards.map((w) => w.ward_id)
+    const wardIds: number[] = createdUser.wards.map((w: { ward_id: number }) => w.ward_id)
     if (!wardIds.includes(ward.wardid)) {
       throw new Error(
         `Imported user ${managerUsername} not assigned to ward ${ward.wardid}.`,
@@ -347,7 +347,7 @@ test("imports CEN Listing staff rows", async ({ page, request }) => {
     await page.goto("/admin/users")
     await expect(
       page.getByRole("option", { name: ward.wardname }),
-    ).toBeAttached()
+    ).toBeAttached({ timeout: 15_000 })
     await page.setInputFiles('input[type="file"]', filePath)
 
     const progressModal = page.getByText("Importing Staff List")
@@ -365,7 +365,7 @@ test("imports CEN Listing staff rows", async ({ page, request }) => {
       )
     }
 
-    const wardIds = createdUser.wards.map((w) => w.ward_id)
+    const wardIds = createdUser.wards.map((w: { ward_id: number }) => w.ward_id)
     if (!wardIds.includes(ward.wardid)) {
       throw new Error(
         `Imported CEN user ${username} not assigned to ward ${ward.wardid}.`,

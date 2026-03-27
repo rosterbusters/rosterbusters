@@ -153,6 +153,38 @@ def _normalize_shift_request_code(code: str) -> str:
     return upper
 
 
+def _prepare_shift_request_seed_state(
+    db: Session, period_id: int, nurse_ids: list[int]
+) -> tuple[set[tuple[int, date]], dict[int, set[int]]]:
+    if not nurse_ids:
+        return set(), {}
+
+    existing_requests = list(
+        db.exec(
+            select(ShiftRequest).where(
+                ShiftRequest.periodid == period_id,
+                ShiftRequest.nurseid.in_(nurse_ids),
+            )
+        ).all()
+    )
+    existing_dates = {(req.nurseid, req.preferreddate) for req in existing_requests}
+    used_numbers_by_nurse: dict[int, set[int]] = {}
+    for req in existing_requests:
+        used_numbers_by_nurse.setdefault(req.nurseid, set()).add(req.requestnumber)
+    return existing_dates, used_numbers_by_nurse
+
+
+def _claim_shift_request_number(
+    used_numbers_by_nurse: dict[int, set[int]], nurse_id: int
+) -> int:
+    used_numbers = used_numbers_by_nurse.setdefault(nurse_id, set())
+    next_number = next(
+        number for number in range(1, len(used_numbers) + 2) if number not in used_numbers
+    )
+    used_numbers.add(next_number)
+    return next_number
+
+
 ANON_DESIGNATIONS: dict[str, str] = {
     # Matches Ward 06 distribution from ward6stafflist.xlsx (omit nurse manager/clinician).
     # Occupation counts mapped to designation codes:
@@ -202,33 +234,35 @@ APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
     "Nurse 4": "SN",
     "Nurse 5": "SN",
     "Nurse 6": "SN",
-    "Nurse 7": "SN",
-    "Nurse 8": "SN",
-    "Nurse 9": "SN",
-    "Nurse 10": "SN",
+    # Mirrors the canonical designation for the corresponding nurse ids in nurse.csv
+    # so Apr 2026 request seeds stay attached to the correct staffing role buckets.
+    "Nurse 7": "SEN",
+    "Nurse 8": "SSN",
+    "Nurse 9": "SSN",
+    "Nurse 10": "HCA3",
     "Nurse 11": "SSN",
     "Nurse 12": "SSN",
-    "Nurse 13": "SSN",
-    "Nurse 14": "SSN",
-    "Nurse 15": "EN",
-    "Nurse 16": "EN",
-    "Nurse 17": "EN",
+    "Nurse 13": "SN",
+    "Nurse 14": "HCA1",
+    "Nurse 15": "HCA3",
+    "Nurse 16": "SN",
+    "Nurse 17": "SN",
     "Nurse 18": "EN",
-    "Nurse 19": "SEN",
+    "Nurse 19": "HCA1",
     "Nurse 20": "NA",
-    "Nurse 21": "NA",
+    "Nurse 21": "EN",
     "Nurse 22": "NA",
     "Nurse 23": "NA",
-    "Nurse 24": "HCA1",
-    "Nurse 25": "HCA1",
-    "Nurse 26": "HCA3",
-    "Nurse 27": "HCA3",
-    "Nurse 28": "HCA3",
-    "Nurse 29": "HCA3",
+    "Nurse 24": "HCA3",
+    "Nurse 25": "HCA3",
+    "Nurse 26": "SN",
+    "Nurse 27": "SN",
+    "Nurse 28": "SN",
+    "Nurse 29": "EN",
     "Nurse 30": "HCA3",
     "Nurse 31": "HCA3",
-    "Nurse 36": "HCA3",
-    "Nurse 37": "HCA3",
+    "Nurse 36": "SN",
+    "Nurse 37": "SN",
 }
 
 
@@ -463,6 +497,9 @@ def seed_test_ward_with_anonymized_requests(
     base_start = min(req.date for req in HARDCODED_REQUESTS)
     nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
     nurse_by_name = {n.name: n for n in nurses}
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, [n.nurseid for n in nurses]
+    )
 
     created = 0
     for req in HARDCODED_REQUESTS:
@@ -515,14 +552,8 @@ def seed_test_ward_with_anonymized_requests(
         else:
             # Treat PH/other non-leave codes as shift requests (non-working codes map to OFF).
             normalized_code = _normalize_shift_request_code(shifted.code)
-            existing = db.exec(
-                select(ShiftRequest).where(
-                    ShiftRequest.nurseid == nurse.nurseid,
-                    ShiftRequest.periodid == period.periodid,
-                    ShiftRequest.preferreddate == shifted.date,
-                )
-            ).first()
-            if existing:
+            key = (nurse.nurseid, shifted.date)
+            if key in existing_dates:
                 continue
             db.add(
                 ShiftRequest(
@@ -530,11 +561,14 @@ def seed_test_ward_with_anonymized_requests(
                     periodid=period.periodid,
                     preferreddate=shifted.date,
                     preferredshifttype=normalized_code,
-                    requestnumber=1,
+                    requestnumber=_claim_shift_request_number(
+                        used_numbers_by_nurse, nurse.nurseid
+                    ),
                     status="Pending",
                     timestamp=datetime.now(timezone.utc),
                 )
             )
+            existing_dates.add(key)
             created += 1
 
     db.commit()
@@ -580,6 +614,10 @@ def seed_requests_from_list(
         "FD",
     }
 
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, [n.nurseid for n in nurses]
+    )
+
     created = 0
     for req in request_seeds:
         nurse = nurse_by_name.get(_normalize_name(req.name))
@@ -618,14 +656,8 @@ def seed_requests_from_list(
             if normalized_code not in ward_shift_code_strs:
                 print(f"  ! Skip: shift code not in ward {ward_id}: {req.code} ({req.name})")
                 continue
-            existing = db.exec(
-                select(ShiftRequest).where(
-                    ShiftRequest.nurseid == nurse.nurseid,
-                    ShiftRequest.periodid == period.periodid,
-                    ShiftRequest.preferreddate == req.date,
-                )
-            ).first()
-            if existing:
+            key = (nurse.nurseid, req.date)
+            if key in existing_dates:
                 continue
             db.add(
                 ShiftRequest(
@@ -633,11 +665,14 @@ def seed_requests_from_list(
                     periodid=period.periodid,
                     preferreddate=req.date,
                     preferredshifttype=normalized_code,
-                    requestnumber=1,
+                    requestnumber=_claim_shift_request_number(
+                        used_numbers_by_nurse, nurse.nurseid
+                    ),
                     status="Pending",
                     timestamp=datetime.now(timezone.utc),
                 )
             )
+            existing_dates.add(key)
         created += 1
     return created
 
@@ -705,6 +740,9 @@ def seed_apr_2026_ward_6_preview(
 
     nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
     nurse_by_name = {n.name: n for n in nurses}
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, [n.nurseid for n in nurses]
+    )
 
     created = 0
     for req in APR_2026_WARD_6_REQUESTS:
@@ -712,14 +750,8 @@ def seed_apr_2026_ward_6_preview(
         if not nurse:
             continue
 
-        existing = db.exec(
-            select(ShiftRequest).where(
-                ShiftRequest.nurseid == nurse.nurseid,
-                ShiftRequest.periodid == period.periodid,
-                ShiftRequest.preferreddate == req.date,
-            )
-        ).first()
-        if existing:
+        key = (nurse.nurseid, req.date)
+        if key in existing_dates:
             continue
 
         db.add(
@@ -728,11 +760,14 @@ def seed_apr_2026_ward_6_preview(
                 periodid=period.periodid,
                 preferreddate=req.date,
                 preferredshifttype=_normalize_shift_request_code(req.code),
-                requestnumber=1,
+                requestnumber=_claim_shift_request_number(
+                    used_numbers_by_nurse, nurse.nurseid
+                ),
                 status=req.status,
                 timestamp=datetime.now(timezone.utc),
             )
         )
+        existing_dates.add(key)
         created += 1
 
     db.commit()
@@ -796,26 +831,25 @@ def seed_requests(db: Session, ward_id: int) -> None:
     print(f"Nurses:  {len(nurses)}  ({n_off} off, {len(nurses) - n_off} working)")
     print()
 
-    def add_request(nurse_id: int, req_num: int, day_idx: int, shift: str) -> bool:
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, [n.nurseid for n in nurses]
+    )
+
+    def add_request(nurse_id: int, day_idx: int, shift: str) -> bool:
         preferred_date = period.startdate + timedelta(days=day_idx)
-        existing = db.exec(
-            select(ShiftRequest).where(
-                ShiftRequest.nurseid == nurse_id,
-                ShiftRequest.periodid == period.periodid,
-                ShiftRequest.preferreddate == preferred_date,
-            )
-        ).first()
-        if existing:
+        key = (nurse_id, preferred_date)
+        if key in existing_dates:
             return False
         db.add(ShiftRequest(
             nurseid=nurse_id,
             periodid=period.periodid,
             preferreddate=preferred_date,
             preferredshifttype=shift,
-            requestnumber=req_num,
+            requestnumber=_claim_shift_request_number(used_numbers_by_nurse, nurse_id),
             status="Pending",
             timestamp=datetime.now(timezone.utc),
         ))
+        existing_dates.add(key)
         return True
 
     created = 0
@@ -827,7 +861,7 @@ def seed_requests(db: Session, ward_id: int) -> None:
             # Day and shift derived from nurse ID — fully deterministic
             day_idx = nid % num_days
             shift = off_shifts[nid % len(off_shifts)]
-            if add_request(nid, 1, day_idx, shift):
+            if add_request(nid, day_idx, shift):
                 nurse_created += 1
         else:
             # Two distinct days spaced apart, shift derived from nurse ID
@@ -837,7 +871,7 @@ def seed_requests(db: Session, ward_id: int) -> None:
                 day2 = (day1 + 1) % num_days
             for req_num, day_idx in enumerate(sorted([day1, day2]), start=1):
                 shift = working_shifts[(nid + req_num) % len(working_shifts)]
-                if add_request(nid, req_num, day_idx, shift):
+                if add_request(nid, day_idx, shift):
                     nurse_created += 1
 
         created += nurse_created

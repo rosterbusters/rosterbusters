@@ -548,6 +548,9 @@ def delete_user(session: SessionDep, userid: int) -> Message:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
+    manager = session.get(NurseManager, user.managerid) if user.managerid else None
+
     # Remove role assignments first
     roles = session.exec(
         select(UserRole).where(UserRole.userid == userid)
@@ -555,6 +558,18 @@ def delete_user(session: SessionDep, userid: int) -> Message:
     for r in roles:
         session.delete(r)
 
+    if manager:
+        managed_wards = session.exec(
+            select(Ward).where(Ward.managerid == manager.managerid)
+        ).all()
+        for ward in managed_wards:
+            ward.managerid = None
+            session.add(ward)
+
     session.delete(user)
+    if nurse:
+        session.delete(nurse)
+    if manager:
+        session.delete(manager)
     session.commit()
     return Message(message="User deleted successfully")

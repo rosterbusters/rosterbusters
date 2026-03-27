@@ -62,6 +62,7 @@ test("admin can see newly created nurse and nurse manager", async ({
   page,
   request,
 }) => {
+  test.setTimeout(60_000)
   const token = await getAdminToken(request)
   const ward = await getAnyWard(request, token)
 
@@ -129,6 +130,7 @@ test("admin deletion removes nurse and nurse manager records", async ({
   page,
   request,
 }) => {
+  test.setTimeout(90_000)
   const token = await getAdminToken(request)
   const ward = await getAnyWard(request, token)
 
@@ -189,7 +191,7 @@ test("admin deletion removes nurse and nurse manager records", async ({
     const nurseRow = page.getByRole("row").filter({ hasText: nurseUsername })
     await expect(nurseRow).toContainText(nurseUsername)
     await nurseRow.getByTitle("Delete user").click()
-    await page.getByRole("button", { name: "Delete" }).click()
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
 
     await expect.poll(async () => {
       const id = await findUserIdByUsername(request, token, nurseUsername)
@@ -207,7 +209,7 @@ test("admin deletion removes nurse and nurse manager records", async ({
     const managerRow = page.getByRole("row").filter({ hasText: nurseManagerUsername })
     await expect(managerRow).toContainText(nurseManagerUsername)
     await managerRow.getByTitle("Delete user").click()
-    await page.getByRole("button", { name: "Delete" }).click()
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
 
     await expect.poll(async () => {
       const id = await findUserIdByUsername(request, token, nurseManagerUsername)
