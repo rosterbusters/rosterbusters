@@ -1060,6 +1060,56 @@ def seed_anonymized_requests(
     }
 
 
+@router.post("/seed-requests-anonymized-apr-2026")
+def seed_anonymized_apr_2026_requests(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Seed the separate anonymized Apr 06 - Apr 19 2026 Ward 6 preview data."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    from app.test_algo import (
+        TEST_MANAGER_EMAIL,
+        TEST_MANAGER_PASSWORD,
+        TEST_MANAGER_USERNAME,
+        seed_apr_2026_ward_6_preview,
+    )
+
+    created = seed_apr_2026_ward_6_preview(session)
+
+    ward = session.exec(
+        select(Ward)
+        .where(Ward.wardname == "Test Ward Requests Apr 2026")
+        .order_by(Ward.wardid.desc())
+    ).first()
+    if not ward:
+        raise HTTPException(status_code=500, detail="Seeded ward not found.")
+
+    period = session.exec(
+        select(RosterPeriod).where(RosterPeriod.startdate == date(2026, 4, 6))
+    ).first()
+    if not period:
+        raise HTTPException(status_code=500, detail="No roster period available.")
+
+    return {
+        "status": "ok",
+        "ward_id": ward.wardid,
+        "created": created,
+        "manager": {
+            "username": TEST_MANAGER_USERNAME,
+            "email": TEST_MANAGER_EMAIL,
+            "password": TEST_MANAGER_PASSWORD,
+        },
+        "period": {
+            "periodid": period.periodid,
+            "name": period.name,
+            "startdate": str(period.startdate),
+            "enddate": str(period.enddate),
+        },
+    }
+
+
 def _shift_target_from_min(normal_min: dict) -> dict:
     """Derive per-nurse shift-type target by normalising normal_min to 10 working shifts."""
     total = normal_min.get("A", 0) + normal_min.get("P", 0) + normal_min.get("N", 0)

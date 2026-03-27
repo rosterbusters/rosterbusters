@@ -77,6 +77,8 @@ interface RosterPlanningHeaderProps {
   onClearRoster?: () => void;
   onLoadMockData?: (mockKey: string) => void;
   onSeedRequests?: () => void;
+  onSeedAnonymizedRequests?: () => void;
+  onSeedApr2026PreviewRequests?: () => void;
   isSeedingRequests?: boolean;
 }
 
@@ -106,6 +108,8 @@ export function RosterPlanningHeader({
   onClearRoster,
   onLoadMockData,
   onSeedRequests,
+  onSeedAnonymizedRequests,
+  onSeedApr2026PreviewRequests,
   isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
   // TODO: Hide algorithm controls for prod and staging once feature gating is ready.
@@ -341,6 +345,38 @@ export function RosterPlanningHeader({
                   <HStack gap={2}>
                     <FlaskConical className="h-4 w-4" />
                     <Text>{isSeedingRequests ? "Seeding..." : "Seed Test Requests"}</Text>
+                  </HStack>
+                </MenuItem>
+              )}
+              {showSeedRequests && onSeedAnonymizedRequests && (
+                <MenuItem
+                  value="seed-requests-anonymized"
+                  onClick={onSeedAnonymizedRequests}
+                  disabled={isSeedingRequests}
+                  cursor="pointer"
+                  _hover={{ bg: "#F0F9FA" }}
+                >
+                  <HStack gap={2}>
+                    <FlaskConical className="h-4 w-4" />
+                    <Text>
+                      {isSeedingRequests ? "Seeding..." : "Seed Anonymized Requests"}
+                    </Text>
+                  </HStack>
+                </MenuItem>
+              )}
+              {showSeedRequests && onSeedApr2026PreviewRequests && (
+                <MenuItem
+                  value="seed-requests-apr-2026"
+                  onClick={onSeedApr2026PreviewRequests}
+                  disabled={isSeedingRequests}
+                  cursor="pointer"
+                  _hover={{ bg: "#F0F9FA" }}
+                >
+                  <HStack gap={2}>
+                    <FlaskConical className="h-4 w-4" />
+                    <Text>
+                      {isSeedingRequests ? "Seeding..." : "Seed Apr 2026 Preview Requests"}
+                    </Text>
                   </HStack>
                 </MenuItem>
               )}

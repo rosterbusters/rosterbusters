@@ -520,6 +520,46 @@ function RosterPlanningPage() {
     }
   }, [selectedWard]);
 
+  const handleSeedAnonymizedRequests = useCallback(async () => {
+    setIsSeedingRequests(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch("/api/v1/roster/seed-requests-anonymized", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Seeding failed");
+      }
+      showSuccessToast("Anonymized test requests seeded successfully");
+    } catch (e: any) {
+      showErrorToast(e.message ?? "Failed to seed anonymized requests");
+    } finally {
+      setIsSeedingRequests(false);
+    }
+  }, []);
+
+  const handleSeedApr2026PreviewRequests = useCallback(async () => {
+    setIsSeedingRequests(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch("/api/v1/roster/seed-requests-anonymized-apr-2026", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Seeding failed");
+      }
+      showSuccessToast("Apr 2026 preview requests seeded successfully");
+    } catch (e: any) {
+      showErrorToast(e.message ?? "Failed to seed Apr 2026 preview requests");
+    } finally {
+      setIsSeedingRequests(false);
+    }
+  }, []);
+
   // Generate algorithm roster handler
   const handleGenerateAlgorithm = useCallback(async () => {
     if (!selectedWard || !selectedPeriod) {
@@ -1082,6 +1122,8 @@ function RosterPlanningPage() {
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
           onSeedRequests={handleSeedRequests}
+          onSeedAnonymizedRequests={handleSeedAnonymizedRequests}
+          onSeedApr2026PreviewRequests={handleSeedApr2026PreviewRequests}
           isSeedingRequests={isSeedingRequests}
         />
         <Box mt={3} display="flex" justifyContent="flex-end">
