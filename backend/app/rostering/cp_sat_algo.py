@@ -67,6 +67,158 @@ W_MORNING_PREF =         4   # reward (negative cost) per AM shift
 _TIME_LIMIT_S = 120.0
 
 
+# ─── Pre-solve helpers ────────────────────────────────────────────────────────
+
+def _check_demand_feasibility(
+    demand: list[dict],
+    nurse_ranks: list[str],
+    working_nurses: list[int],
+    num_days: int,
+) -> None:
+    """
+    Warn when shift demand structurally cannot be met given the available nurses.
+
+    This is purely diagnostic — the model will still solve, but any unavoidable
+    shortage contributes a fixed penalty floor that no amount of weight tuning or
+    extra solve time can eliminate.  Printing a warning makes that visible so the
+    caller knows not to chase phantom optimisation budget.
+    """
+    rank_counts = {r: sum(1 for n in working_nurses if nurse_ranks[n] == r)
+                   for r in "ABC"}
+    for d in range(num_days):
+        for s in WORK_SHIFTS:
+            req = demand[d][s]
+            req_A = req.get("A", 0)
+            req_AB = req_A + req.get("B", 0)
+            req_total = req_AB + req.get("C", 0)
+            avail_A  = rank_counts["A"]
+            avail_AB = rank_counts["A"] + rank_counts["B"]
+            avail_total = avail_AB + rank_counts["C"]
+            s_name = {AM: "AM", PM: "PM", NIGHT: "NIGHT"}.get(s, str(s))
+            if req_A > avail_A:
+                print(f"[CP-SAT WARN] Day {d} {s_name}: needs {req_A} rank-A nurses "
+                      f"but only {avail_A} available — unavoidable coverage penalty")
+            elif req_AB > avail_AB:
+                print(f"[CP-SAT WARN] Day {d} {s_name}: needs {req_AB} rank-A/B nurses "
+                      f"but only {avail_AB} available — unavoidable coverage penalty")
+            elif req_total > avail_total:
+                print(f"[CP-SAT WARN] Day {d} {s_name}: needs {req_total} nurses total "
+                      f"but only {avail_total} available — unavoidable coverage penalty")
+
+
+def _build_greedy_hint(
+    num_nurses: int,
+    num_days: int,
+    working_nurses: list[int],
+    al_nurses_set: set[int],
+    al_day_req: list[set],
+    post_night_off: set[int],
+    demand: list[dict],
+) -> list[list[int]]:
+    """
+    Greedy O(N×D) schedule construction used to warm-start the CP-SAT solver.
+
+    Producing a feasible incumbent immediately lets the solver spend its entire
+    time budget improving rather than finding a first solution.  The strategy:
+
+      1. Pin fixed slots (full AL, single-day AL requests, post-night day-0 OFF).
+      2. Assign night blocks (≤4 per fortnight) round-robin across nurses,
+         in N-N patterns where possible, then add mandatory post-block OFFs.
+      3. Reserve 2 voluntary OFF days per week per nurse (weekends preferred).
+      4. Fill remaining days with AM or PM to match demand.
+    """
+    # Start optimistic: everyone works AM (easier for the solver to improve from
+    # a working state than from all-OFF which violates coverage on every day).
+    sched = [[AM] * num_days for _ in range(num_nurses)]
+
+    # ── Step 1: pin fixed slots ───────────────────────────────────────────────
+    for n in al_nurses_set:
+        for d in range(num_days):
+            sched[n][d] = AL
+
+    for n in working_nurses:
+        for d in al_day_req[n]:
+            if d < num_days:
+                sched[n][d] = AL
+
+    for n in post_night_off:
+        if 0 not in al_day_req[n]:
+            sched[n][0] = OFF
+
+    # ── Step 2: night blocks, round-robin ────────────────────────────────────
+    night_counts = [0] * num_nurses
+    wn = list(working_nurses)
+    cursor = 0
+
+    for d in range(num_days):
+        nights_needed = sum(demand[d][NIGHT].get(r, 0) for r in "ABC")
+        assigned = 0
+
+        for _ in range(len(wn) * 2):
+            if assigned >= nights_needed:
+                break
+            n = wn[cursor % len(wn)]
+            cursor += 1
+
+            if sched[n][d] in (AL, OFF):
+                continue
+            if d > 0 and sched[n][d - 1] == NIGHT:
+                continue   # already in a block started yesterday
+            if night_counts[n] >= 4:
+                continue   # fortnightly cap
+
+            sched[n][d] = NIGHT
+            night_counts[n] += 1
+            assigned += 1
+
+            # Try to extend to a double-night block
+            if (d + 1 < num_days
+                    and sched[n][d + 1] not in (AL,)
+                    and (d + 1) not in al_day_req[n]
+                    and night_counts[n] < 4):
+                sched[n][d + 1] = NIGHT
+                night_counts[n] += 1
+
+    # Mandatory OFF after every night block end
+    for n in working_nurses:
+        for d in range(num_days - 1):
+            if sched[n][d] == NIGHT and sched[n][d + 1] != NIGHT:
+                if (d + 1) not in al_day_req[n]:
+                    sched[n][d + 1] = OFF
+
+    # ── Step 3: 2 voluntary OFFs per week (weekends preferred) ───────────────
+    for n in working_nurses:
+        for w_start in range(0, num_days, 7):
+            w_end = min(w_start + 7, num_days)
+            existing_off = sum(1 for d in range(w_start, w_end)
+                               if sched[n][d] == OFF)
+            to_add = max(0, 2 - existing_off)
+            candidates = sorted(
+                [d for d in range(w_start, w_end)
+                 if sched[n][d] not in (OFF, NIGHT, AL)],
+                key=lambda d: (0 if d % 7 in (5, 6) else 1),
+            )
+            for d in candidates[:to_add]:
+                sched[n][d] = OFF
+
+    # ── Step 4: balance AM vs PM to match daily demand ────────────────────────
+    for d in range(num_days):
+        am_count = sum(1 for n in range(num_nurses) if sched[n][d] == AM)
+        pm_count = sum(1 for n in range(num_nurses) if sched[n][d] == PM)
+        am_needed = sum(demand[d][AM].get(r, 0) for r in "ABC")
+        pm_needed = sum(demand[d][PM].get(r, 0) for r in "ABC")
+
+        for n in working_nurses:
+            if sched[n][d] != AM:
+                continue
+            if pm_count < pm_needed and am_count > am_needed:
+                sched[n][d] = PM
+                pm_count += 1
+                am_count -= 1
+
+    return sched
+
+
 # ─── Public entry point ───────────────────────────────────────────────────────
 
 def run_ga_pipeline(
@@ -223,6 +375,9 @@ def run_ga_pipeline(
         )
         shift_means[s] = total // max(num_days, 1)
 
+    # ── Pre-solve: warn on structurally unmet demand ──────────────────────────
+    _check_demand_feasibility(demand, nurse_ranks, working_nurses, num_days)
+
     # ─────────────────────────────────────────────────────────────────────────
     # Build the CP-SAT model
     # ─────────────────────────────────────────────────────────────────────────
@@ -345,33 +500,103 @@ def run_ga_pipeline(
         model.Add(over >= hours_expr - n_max)
         _add_penalty(over, W_HOUR_OVER)
 
-    # ── 3. Days-off per week (target = 2) ────────────────────────────────────
+    # ── 2b. Mandatory post-night OFF indicators ───────────────────────────────
+    # is_post_night[n, d] = 1  iff day d is a structurally forced OFF because
+    # the preceding night block ended on day d-1.
+    #
+    # Encoding: is_post_night[n,d] = x[n,d-1,NIGHT] AND x[n,d,OFF]
+    # (Since exactly one shift is assigned per day, x[n,d,OFF]=1 already
+    # implies x[n,d,NIGHT]=0, so we only need the two literals above.)
+    #
+    # These OFFs are excluded from the voluntary-days-off count in section 3
+    # so the solver is never penalised for rest days it was forced to place.
+    is_post_night: dict[tuple[int, int], cp_model.IntVar] = {}
+    for n in working_nurses:
+        for d in range(1, num_days):
+            v = model.NewBoolVar(f"pn_{n}_{d}")
+            model.Add(v <= x[n, d - 1, NIGHT])
+            model.Add(v <= x[n, d, OFF])
+            model.Add(v >= x[n, d - 1, NIGHT] + x[n, d, OFF] - 1)
+            is_post_night[n, d] = v
+
+    # ── 3. Voluntary days-off per week — target = 2 (soft) ───────────────────
+    # Counts only OFFs that were NOT forced by a night-block-end (is_post_night).
+    # This eliminates the structural trap where W_DAYOFF_OVER fired unavoidably
+    # on every post-block rest day, creating an irremovable penalty floor.
     for n in working_nurses:
         for w in range(0, num_days, 7):
             w_end = min(w + 7, num_days)
-            offs  = sum(x[n, d, OFF] for d in range(w, w_end))
+
+            total_offs = sum(x[n, d, OFF] for d in range(w, w_end))
+            # Post-night mandatory OFFs in this week window (d ≥ 1 only,
+            # since d=0 can have no preceding night within this roster).
+            mandatory_offs = sum(
+                is_post_night[n, d]
+                for d in range(max(w, 1), w_end)
+                if (n, d) in is_post_night
+            )
+            vol = model.NewIntVar(0, w_end - w, f"vo_{n}_{w}")
+            model.Add(vol == total_offs - mandatory_offs)
 
             under = model.NewIntVar(0, 7, f"dou_{n}_{w}")
-            model.Add(under >= 2 - offs)
+            model.Add(under >= 2 - vol)
             _add_penalty(under, W_DAYOFF_UNDER)
 
             over = model.NewIntVar(0, 7, f"doo_{n}_{w}")
-            model.Add(over >= offs - 2)
+            model.Add(over >= vol - 2)
             _add_penalty(over, W_DAYOFF_OVER)
 
-    # ── 4. Night shifts per week (target = 1–2) ───────────────────────────────
+    # ── 4. Night shifts over fortnight — target = 2–4 total (soft) ───────────
+    # Previously enforced 1–2 nights per 7-day window, which created a circular
+    # tension with the mandatory post-block OFF rule: the solver was pushed to
+    # schedule nights every week (to avoid W_NIGHT_LOW) yet was simultaneously
+    # penalised for the extra OFFs those blocks forced (W_DAYOFF_OVER).
+    # Switching to a fortnightly window (2–4 nights across all 14 days) gives
+    # the solver freedom to cluster nights in one week rather than being
+    # squeezed on both sides of every 7-day boundary.
     for n in working_nurses:
-        for w in range(0, num_days, 7):
-            w_end  = min(w + 7, num_days)
-            nights = sum(x[n, d, NIGHT] for d in range(w, w_end))
+        total_nights = sum(x[n, d, NIGHT] for d in range(num_days))
 
-            low = model.NewIntVar(0, 7, f"nl_{n}_{w}")
-            model.Add(low >= 1 - nights)
-            _add_penalty(low, W_NIGHT_LOW)
+        low = model.NewIntVar(0, num_days, f"nl_{n}")
+        model.Add(low >= 2 - total_nights)   # at least 2 nights per fortnight
+        _add_penalty(low, W_NIGHT_LOW)
 
-            high = model.NewIntVar(0, 7, f"nh_{n}_{w}")
-            model.Add(high >= nights - 2)
-            _add_penalty(high, W_NIGHT_HIGH)
+        high = model.NewIntVar(0, num_days, f"nh_{n}")
+        model.Add(high >= total_nights - 4)  # no more than 4 nights per fortnight
+        _add_penalty(high, W_NIGHT_HIGH)
+
+    # ── 4b. Night block rules (HARD) ─────────────────────────────────────────
+    # Rule A — maximum block length of 2 consecutive nights.
+    #   For every window of 3 consecutive days, at most 2 may be NIGHT.
+    #   Encoding: x[n,d,N] + x[n,d+1,N] + x[n,d+2,N] ≤ 2
+    #
+    # Rule B — mandatory OFF immediately after every night block ends.
+    #   A block "ends" on day d when day d is NIGHT and day d+1 is not.
+    #   Encoding: x[n,d,N] - x[n,d+1,N] ≤ x[n,d+1,OFF]
+    #   Proof of correctness:
+    #     • d=NIGHT, d+1=non-NIGHT → LHS=1 → OFF must be 1  ✓
+    #     • d=NIGHT, d+1=NIGHT     → LHS=0 → no constraint  ✓
+    #     • d=non-NIGHT             → LHS≤0 → always satisfied ✓
+    #
+    # AL days are skipped for Rule B: an approved leave day already provides
+    # rest, and forcing OFF on a fixed AL slot would make the model infeasible.
+    # The last day of the roster is skipped (no d+1 exists).
+
+    for n in working_nurses:
+        # Rule A: no 3+ consecutive nights
+        for d in range(num_days - 2):
+            model.Add(
+                x[n, d, NIGHT] + x[n, d + 1, NIGHT] + x[n, d + 2, NIGHT] <= 2
+            )
+
+        # Rule B: mandatory OFF after a night block ends
+        for d in range(num_days - 1):
+            if (d + 1) in al_day_req[n]:
+                # AL leave already provides rest — skip
+                continue
+            model.Add(
+                x[n, d, NIGHT] - x[n, d + 1, NIGHT] <= x[n, d + 1, OFF]
+            )
 
     # ── 5. Approved (hard) shift requests ─────────────────────────────────────
     for n in working_nurses:
@@ -485,6 +710,30 @@ def run_ga_pipeline(
             model.Add(excess_ap >= abs_ap - 2)
             _add_penalty(excess_ap, W_AM_PM_BAL)
 
+    # ── 13. Symmetry breaking ────────────────────────────────────────────────
+    # Nurses of identical rank with no special constraints (no AL days, no
+    # approved/pending requests, not in post_night_off) are fully interchangeable:
+    # any optimal solution can be permuted among such nurses to yield an equally
+    # optimal solution.  This creates huge redundancy in the search tree.
+    #
+    # Breaking the symmetry by ordering total AM-shift counts prevents the solver
+    # exploring permutations of equivalent schedules.  The ordering is arbitrary
+    # (any consistent ordering works) and does NOT cut off non-equivalent solutions.
+    for rank_group in [rank_A, rank_B, rank_C]:
+        clean = [
+            n for n in rank_group
+            if n in set(working_nurses)
+            and not al_day_req[n]
+            and n not in post_night_off
+            and not approved[n]
+            and not pending[n]
+        ]
+        for i in range(len(clean) - 1):
+            n1, n2 = clean[i], clean[i + 1]
+            am1 = sum(x[n1, d, AM] for d in range(num_days))
+            am2 = sum(x[n2, d, AM] for d in range(num_days))
+            model.Add(am1 >= am2)
+
     # ── Objective: minimise total weighted penalty − AM reward ────────────────
     am_reward_vars = [x[n, d, AM] for n in working_nurses for d in range(num_days)]
 
@@ -504,6 +753,20 @@ def run_ga_pipeline(
 
     print(f"[CP-SAT] Solving: {num_nurses} nurses × {num_days} days "
           f"| {len(working_nurses)} working | workers={solver.parameters.num_search_workers}")
+
+    # ── Warm-start: inject greedy solution as solver hints ────────────────────
+    # CP-SAT uses hints as the first incumbent, immediately establishing a
+    # feasible upper bound.  The solver then spends the full time budget
+    # improving rather than finding a first feasible solution from scratch.
+    hint_sched = _build_greedy_hint(
+        num_nurses, num_days, working_nurses, al_nurses_set,
+        al_day_req, post_night_off, demand,
+    )
+    for n in range(num_nurses):
+        for d in range(num_days):
+            for s in ALL_SHIFTS:
+                model.AddHint(x[n, d, s], 1 if hint_sched[n][d] == s else 0)
+    print("[CP-SAT] Greedy warm-start hint injected")
 
     if progress_callback:
         progress_callback(0, 1, float("inf"))
