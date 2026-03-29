@@ -26,6 +26,9 @@ class RBACUser(SQLModel, table=True):
         default=None, sa_column=Column("email", String)
     )
     passwordhash: str = Field(sa_column=Column("passwordhash", String))
+    default_password_encrypted: Optional[str] = Field(
+        default=None, sa_column=Column("defaultpassword", String)
+    )
     nurseid: Optional[int] = Field(
         default=None, sa_column=Column("nurseid", Integer)
     )
@@ -65,7 +68,7 @@ class Nurse(SQLModel, table=True):
     nurseid: int | None = Field(default=None, primary_key=True)
     name: str
     employeeid: str | None = Field(default=None, sa_column=Column("employeeid", String))
-    designation: str
+    designation: str = Field(foreign_key="designation.designation")
     email: str
     contactnumber: str
     wardid: int | None

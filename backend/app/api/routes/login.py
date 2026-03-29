@@ -3,7 +3,7 @@ import logging
 from datetime import timedelta, datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.requests import Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -189,7 +189,9 @@ def recover_password(email: str, session: SessionDep) -> Message:
 
 
 @router.post("/reset-password/")
-def reset_password(session: SessionDep, body: NewPassword) -> Message:
+def reset_password(
+    session: SessionDep, body: NewPassword, background_tasks: BackgroundTasks
+) -> Message:
     """
     Reset password using a valid recovery token.
     After a successful reset, send a security notification email to the user.
@@ -212,20 +214,18 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
     session.add(user)
     session.commit()
 
-    # Send security notification — wrapped in try/except so a mail failure
-    # never rolls back the already-committed password change.
     try:
         notification = generate_password_changed_email(
             email_to=user.email,
             username=user.username,
         )
-        send_email(
+        background_tasks.add_task(
+            send_email,
             email_to=user.email,
             subject=notification.subject,
             html_content=notification.html_content,
         )
     except Exception:
-        # Log but don't surface mail errors to the caller
         logger.warning(f"Failed to send password-changed notification to {user.email}")
 
     return Message(message="Password updated successfully")

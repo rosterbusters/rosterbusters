@@ -1,6 +1,10 @@
 import re
 from typing import Literal, NamedTuple
 
+from sqlmodel import Session, select
+
+from app.models.designation import Designation
+
 
 StaffingRole = Literal["RN", "EN", "NA", "HCA12", "HCA3"]
 RosterRank = Literal["A", "B", "C"]
@@ -11,24 +15,24 @@ class DesignationClassification(NamedTuple):
     roster_rank: RosterRank | None
 
 
-_STAFFING_ROLE_TO_RANK: dict[StaffingRole, RosterRank] = {
-    "RN": "A",
-    "EN": "B",
-    "NA": "B",
-    "HCA12": "B",
-    "HCA3": "C",
+
+_CANONICAL_ROLE_MAP: dict[str, StaffingRole] = {
+    "SN": "RN",
+    "SSN": "RN",
+    "HCA1": "HCA12",
+    "HCA2": "HCA12",
+    "SEN": "EN",
+    "EN": "EN",
+    "NA": "NA",
+    "HCA3": "HCA3",
 }
 
-_CANONICAL_MAP: dict[str, tuple[StaffingRole, RosterRank]] = {
-    "SN": ("RN", "A"),
-    "SSN": ("RN", "A"),
-    "HCA1": ("HCA12", "B"),
-    "HCA2": ("HCA12", "B"),
-    "SEN": ("EN", "B"),
-    "EN": ("EN", "B"),
-    "NA": ("NA", "B"),
-    "HCA3": ("HCA3", "C"),
-    "PSA": ("HCA3", "C"),
+_STAFFING_ROLE_TO_CANONICAL: dict[StaffingRole, str] = {
+    "RN": "SN",
+    "EN": "EN",
+    "NA": "NA",
+    "HCA12": "HCA1",
+    "HCA3": "HCA3",
 }
 
 _ALIASES: dict[str, str] = {
@@ -59,12 +63,7 @@ _ALIASES: dict[str, str] = {
     "NURSINGAIDEII": "NA",
     "SENIORNURSINGAIDEI": "NA",
     "SENIORNURSINGAIDEII": "NA",
-    # Patient service assistants
-    "PATIENTSERVICEASST": "PSA",
-    "PATIENTSERVICEASSTI": "PSA",
-    "PATIENTSERVICEASSTII": "PSA",
-    "PATIENTSERVICEASSISTANT": "PSA",
-    "SNRPATIENTSERVICEASST": "PSA",
+
     # Healthcare assistants
     "HCA": "HCA1",
     "HCA1": "HCA1",
@@ -93,24 +92,64 @@ def normalize_designation(value: str) -> str:
     return "".join(tokens)
 
 
-def classify_designation(value: str) -> DesignationClassification:
+def _resolve_canonical_designation(value: str) -> str | None:
     tokens = _tokenize(value)
     if not tokens:
-        return DesignationClassification(None, None)
-
-    if "MANAGER" in tokens or "CLINICIAN" in tokens:
-        return DesignationClassification(None, None)
-
+        return None
     compact = "".join(tokens)
-    canonical = _ALIASES.get(compact, compact)
-    mapped = _CANONICAL_MAP.get(canonical)
-    if not mapped:
+    return _ALIASES.get(compact, compact)
+
+
+def canonical_designation_from_value(value: str) -> str | None:
+    return _resolve_canonical_designation(value)
+
+
+def load_designation_rank_map(session: Session) -> dict[str, str]:
+    rows = session.exec(select(Designation)).all()
+    return {str(row.designation).upper(): str(row.rank).upper() for row in rows}
+
+
+def classify_designation_with_rank_map(
+    rank_map: dict[str, str], value: str
+) -> DesignationClassification:
+    canonical = _resolve_canonical_designation(value)
+    if not canonical:
         return DesignationClassification(None, None)
 
-    return DesignationClassification(mapped[0], mapped[1])
+    rank = rank_map.get(canonical.upper())
+    if not rank:
+        return DesignationClassification(None, None)
+
+    staffing_role = _CANONICAL_ROLE_MAP.get(canonical.upper())
+    return DesignationClassification(staffing_role, rank)  # type: ignore[arg-type]
 
 
-def staffing_role_to_roster_rank(role: str | None) -> RosterRank | None:
+def classify_designation(session: Session, value: str) -> DesignationClassification:
+    rank_map = load_designation_rank_map(session)
+    return classify_designation_with_rank_map(rank_map, value)
+
+
+def roster_rank_for_designation_with_rank_map(
+    rank_map: dict[str, str], value: str
+) -> RosterRank | None:
+    canonical = _resolve_canonical_designation(value)
+    if not canonical:
+        return None
+    rank = rank_map.get(canonical.upper())
+    return rank  # type: ignore[return-value]
+
+
+def roster_rank_for_designation(session: Session, value: str) -> RosterRank | None:
+    rank_map = load_designation_rank_map(session)
+    return roster_rank_for_designation_with_rank_map(rank_map, value)
+
+
+def staffing_role_to_roster_rank(session: Session, role: str | None) -> RosterRank | None:
     if role is None:
         return None
-    return _STAFFING_ROLE_TO_RANK.get(role.upper())  # type: ignore[arg-type]
+    canonical = _STAFFING_ROLE_TO_CANONICAL.get(role.upper())  # type: ignore[arg-type]
+    if not canonical:
+        return None
+    rank_map = load_designation_rank_map(session)
+    rank = rank_map.get(canonical.upper())
+    return rank  # type: ignore[return-value]

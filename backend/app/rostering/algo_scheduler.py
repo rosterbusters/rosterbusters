@@ -1,5 +1,5 @@
 #this is the algorithm scheduler
-from app.rostering.ga_algo import run_ga_pipeline
+from app.rostering.cp_sat_algo import run_ga_pipeline
 from app.rostering.milp_algo import MILPError, run_milp_pipeline
 
 

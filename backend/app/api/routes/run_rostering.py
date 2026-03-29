@@ -18,7 +18,12 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.core.config import settings
 from app.models.enums import NotificationType
-from app.designation_mapping import classify_designation, staffing_role_to_roster_rank
+from app.designation_mapping import (
+    classify_designation_with_rank_map,
+    load_designation_rank_map,
+    roster_rank_for_designation_with_rank_map,
+    staffing_role_to_roster_rank,
+)
 from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import (
@@ -271,6 +276,7 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
     nurses = db.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
+    rank_map = load_designation_rank_map(db)
 
     return {
         "ward": {"wardId": ward.wardid, "wardName": ward.wardname},
@@ -280,8 +286,8 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 "name": n.name,
                 "designation": n.designation,
                 "employmentType": n.employmenttype,
-                "staffing_role": classify_designation(n.designation).staffing_role,
-                "roster_rank": classify_designation(n.designation).roster_rank,
+                "staffing_role": classify_designation_with_rank_map(rank_map, n.designation).staffing_role,
+                "roster_rank": classify_designation_with_rank_map(rank_map, n.designation).roster_rank,
             }
             for n in nurses
         ],
@@ -1102,6 +1108,56 @@ def seed_anonymized_requests(
     }
 
 
+@router.post("/seed-requests-anonymized-apr-2026")
+def seed_anonymized_apr_2026_requests(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Seed the separate anonymized Apr 06 - Apr 19 2026 Ward 6 preview data."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    from app.test_algo import (
+        TEST_MANAGER_EMAIL,
+        TEST_MANAGER_PASSWORD,
+        TEST_MANAGER_USERNAME,
+        seed_apr_2026_ward_6_preview,
+    )
+
+    created = seed_apr_2026_ward_6_preview(session)
+
+    ward = session.exec(
+        select(Ward)
+        .where(Ward.wardname == "Test Ward Requests Apr 2026")
+        .order_by(Ward.wardid.desc())
+    ).first()
+    if not ward:
+        raise HTTPException(status_code=500, detail="Seeded ward not found.")
+
+    period = session.exec(
+        select(RosterPeriod).where(RosterPeriod.startdate == date(2026, 4, 6))
+    ).first()
+    if not period:
+        raise HTTPException(status_code=500, detail="No roster period available.")
+
+    return {
+        "status": "ok",
+        "ward_id": ward.wardid,
+        "created": created,
+        "manager": {
+            "username": TEST_MANAGER_USERNAME,
+            "email": TEST_MANAGER_EMAIL,
+            "password": TEST_MANAGER_PASSWORD,
+        },
+        "period": {
+            "periodid": period.periodid,
+            "name": period.name,
+            "startdate": str(period.startdate),
+            "enddate": str(period.enddate),
+        },
+    }
+
+
 def _shift_target_from_min(normal_min: dict) -> dict:
     """Derive per-nurse shift-type target by normalising normal_min to 10 working shifts."""
     total = normal_min.get("A", 0) + normal_min.get("P", 0) + normal_min.get("N", 0)
@@ -1146,7 +1202,7 @@ def _staffing_to_algo_inputs(ward: Ward):
                 "C": {"A": 0, "P": 0, "N": 0},
             }
             for role in ("RN", "EN", "NA", "HCA12", "HCA3"):
-                rank = staffing_role_to_roster_rank(role)
+                rank = staffing_role_to_roster_rank(session, role)
                 if rank is None:
                     continue
                 for shift in ("A", "P", "N"):
@@ -1190,10 +1246,13 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     nurses_db = db.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
-    nurses_data = [
-        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-        for n in nurses_db
-    ]
+    rank_map = load_designation_rank_map(db)
+    nurses_data = []
+    for n in nurses_db:
+        rank = roster_rank_for_designation_with_rank_map(rank_map, n.designation)
+        if rank is None:
+            continue
+        nurses_data.append({"id": n.nurseid, "name": n.name, "rank": rank})
 
     nurse_ids = [n["id"] for n in nurses_data]
     shift_label_map = _load_shift_label_map(db)
@@ -1444,7 +1503,3 @@ def _load_shift_hours(db: Session) -> dict[str, float]:
     return shift_hours
 
 
-def _map_rank(designation: str) -> str:
-    """Map nurse designation to scheduling rank A/B/C."""
-    rank = classify_designation(designation).roster_rank
-    return rank or "C"

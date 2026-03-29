@@ -224,6 +224,10 @@ function RosterPlanningPage() {
   const hasResumedTaskRef = useRef(false);
   const resumeCancelledRef = useRef(false);
   const isAlgorithmRunning = generateAlgorithmRoster.isPending || isResumingAlgorithm;
+  const nurseMetaById = useMemo(() => {
+    const entries = wardStatistics?.nurses ?? [];
+    return new Map(entries.map((nurse) => [nurse.nurseId, nurse]));
+  }, [wardStatistics?.nurses]);
   const algorithmOverlayLabel = useMemo(() => {
     if (!isAlgorithmRunning) return "Loading roster data...";
     const percent = generationProgress ? ` ${generationProgress}%` : "";
@@ -370,6 +374,15 @@ function RosterPlanningPage() {
     [selectedWard?.wardName],
   );
 
+  // Reset roster state when switching ward/period so saved rosters load correctly
+  useEffect(() => {
+    setIsAlgorithmGenerated(false);
+    setGeneratedAlgorithmMethod(null);
+    setLastAlgorithmRunAt(null);
+    setLastAlgorithmRunMs(null);
+    setRosterData(generateEmptyRosterData());
+  }, [selectedWard?.wardId, selectedPeriod?.periodId]);
+
   // Set default period if not set
   useEffect(() => {
     if (visiblePlanningPeriods.length > 0 && !selectedPeriod) {
@@ -507,6 +520,46 @@ function RosterPlanningPage() {
     }
   }, [selectedWard]);
 
+  const handleSeedAnonymizedRequests = useCallback(async () => {
+    setIsSeedingRequests(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch("/api/v1/roster/seed-requests-anonymized", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Seeding failed");
+      }
+      showSuccessToast("Anonymized test requests seeded successfully");
+    } catch (e: any) {
+      showErrorToast(e.message ?? "Failed to seed anonymized requests");
+    } finally {
+      setIsSeedingRequests(false);
+    }
+  }, []);
+
+  const handleSeedApr2026PreviewRequests = useCallback(async () => {
+    setIsSeedingRequests(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch("/api/v1/roster/seed-requests-anonymized-apr-2026", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Seeding failed");
+      }
+      showSuccessToast("Apr 2026 preview requests seeded successfully");
+    } catch (e: any) {
+      showErrorToast(e.message ?? "Failed to seed Apr 2026 preview requests");
+    } finally {
+      setIsSeedingRequests(false);
+    }
+  }, []);
+
   // Generate algorithm roster handler
   const handleGenerateAlgorithm = useCallback(async () => {
     if (!selectedWard || !selectedPeriod) {
@@ -515,6 +568,12 @@ function RosterPlanningPage() {
     }
     const startedAt = Date.now();
     try {
+      if (rosterEntries.length > 0 && isRosterPending) {
+        await clearRoster.mutateAsync({
+          wardId: selectedWard.wardId,
+          periodId: selectedPeriod.periodId,
+        });
+      }
       setGenerationProgress(0);
       const result = await generateAlgorithmRoster.mutateAsync({
         wardId: selectedWard.wardId, // CamelCase to match hook params
@@ -526,8 +585,20 @@ function RosterPlanningPage() {
         },
       });
 
+      // Merge in canonical designations from ward statistics so rank-only
+      // algorithm output doesn't lose role detail (e.g. HCA3).
+      const mergedRosterData = result.rosterData.map((row) => {
+        const meta = nurseMetaById.get(row.nurseId);
+        if (!meta) return row;
+        return {
+          ...row,
+          designation: meta.designation ?? row.designation,
+          staffingRole: meta.staffing_role ?? row.staffingRole ?? null,
+        };
+      });
+
       // The hook now returns exactly what we need
-      setRosterData(result.rosterData);
+      setRosterData(mergedRosterData);
       setIsAlgorithmGenerated(true);
       setGenerationProgress(100);
       setGeneratedAlgorithmMethod(result.algorithm);
@@ -544,7 +615,11 @@ function RosterPlanningPage() {
     selectedWard,
     selectedPeriod,
     currentStartDate,
+    rosterEntries.length,
+    isRosterPending,
+    clearRoster,
     generateAlgorithmRoster,
+    nurseMetaById,
     setGenerationProgress,
     showSuccessToast,
     showErrorToast,
@@ -558,6 +633,9 @@ function RosterPlanningPage() {
     }
     if (rosterEntries.length === 0) {
       setIsAlgorithmGenerated(false);
+      setGeneratedAlgorithmMethod(null);
+      setLastAlgorithmRunAt(null);
+      setLastAlgorithmRunMs(null);
       showSuccessToast("Roster cleared successfully");
       return;
     }
@@ -567,6 +645,22 @@ function RosterPlanningPage() {
         periodId: selectedPeriod.periodId,
       });
       setIsAlgorithmGenerated(false);
+      setGeneratedAlgorithmMethod(null);
+      setLastAlgorithmRunAt(null);
+      setLastAlgorithmRunMs(null);
+      const nurses = wardStatistics?.nurses ?? [];
+      setRosterData(
+        nurses.map((nurse) => ({
+          nurseId: nurse.nurseId,
+          name: nurse.name,
+          designation: nurse.designation,
+          staffingRole: nurse.staffing_role ?? null,
+          hours: { worked: 0, contracted: 44 },
+          shifts: {},
+          hasOvertime: false,
+          hasWarning: false,
+        })),
+      );
       showSuccessToast("Roster cleared successfully");
     } catch (error) {
       console.error("Failed to clear roster:", error);
@@ -835,6 +929,12 @@ function RosterPlanningPage() {
     setIsAutoRegenerateDialogOpen(false);
     const startedAt = Date.now();
     try {
+      if (rosterEntries.length > 0 && isRosterPending) {
+        await clearRoster.mutateAsync({
+          wardId: selectedWard.wardId,
+          periodId: selectedPeriod.periodId,
+        });
+      }
       setGenerationProgress(0);
       setAlgorithmType(null);
       const result = await generateAlgorithmRoster.mutateAsync({
@@ -864,6 +964,9 @@ function RosterPlanningPage() {
     selectedWard,
     selectedPeriod,
     currentStartDate,
+    rosterEntries.length,
+    isRosterPending,
+    clearRoster,
     canAutoRegenerate,
     isAlgorithmRunning,
     generateAlgorithmRoster,
@@ -930,8 +1033,25 @@ function RosterPlanningPage() {
     resumeCancelledRef.current = true;
     setIsResumingAlgorithm(false);
     setGenerationProgress(0);
+    setIsAlgorithmGenerated(false);
+    setGeneratedAlgorithmMethod(null);
+    setLastAlgorithmRunAt(null);
+    setLastAlgorithmRunMs(null);
+    const nurses = wardStatistics?.nurses ?? [];
+    setRosterData(
+      nurses.map((nurse) => ({
+        nurseId: nurse.nurseId,
+        name: nurse.name,
+        designation: nurse.designation,
+        staffingRole: nurse.staffing_role ?? null,
+        hours: { worked: 0, contracted: 44 },
+        shifts: {},
+        hasOvertime: false,
+        hasWarning: false,
+      })),
+    );
     clearAlgorithmTask(selectedWard.wardId, selectedPeriod.periodId);
-  }, [selectedWard, selectedPeriod]);
+  }, [selectedWard, selectedPeriod, wardStatistics?.nurses]);
 
   return (
     <Flex
@@ -1002,6 +1122,8 @@ function RosterPlanningPage() {
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
           onSeedRequests={handleSeedRequests}
+          onSeedAnonymizedRequests={handleSeedAnonymizedRequests}
+          onSeedApr2026PreviewRequests={handleSeedApr2026PreviewRequests}
           isSeedingRequests={isSeedingRequests}
         />
         <Box mt={3} display="flex" justifyContent="flex-end">
