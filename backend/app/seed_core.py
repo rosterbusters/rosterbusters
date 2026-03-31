@@ -139,7 +139,7 @@ def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
 
     for ward in wards:
         base_working = special_base_working if ward.wardtype in special_ward_types else default_base_working
-        ward_codes = base_working | leave_codes
+        ward_codes = base_working | leave_codes | {"DO"}
 
         for shiftcode in sorted(ward_codes):
             existing = session.exec(

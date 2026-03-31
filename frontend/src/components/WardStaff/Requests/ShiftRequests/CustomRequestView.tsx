@@ -93,12 +93,14 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         <Grid width={"full"} minW={"820px"} templateColumns="repeat(7, 1fr)" templateRows="repeat(2, 1fr)">
           {currRange.map((day, i) => {
             const eventsForDay = getEventsForDay(day, events);
+            const dateKey = moment(day).format("YYYY-MM-DD");
 
             return (
               
               <GridItem
               
                 key={i}
+                data-testid={`request-calendar-cell-${dateKey}`}
                 bg="white"
                 textAlign={"start"}
                 color="foreground"
@@ -116,7 +118,16 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                     [...eventsForDay]
                   .sort((a, b) => (b.resource?.isOwn ? 1 : 0) - (a.resource?.isOwn ? 1 : 0))
                   .map((ev, idx) => (
-                      <Box key={idx} pb={2} maxW="100%">
+                      <Box
+                        key={idx}
+                        pb={2}
+                        maxW="100%"
+                        data-testid={
+                          ev.resource?.requestId
+                            ? `shift-request-${ev.resource.requestId}`
+                            : undefined
+                        }
+                      >
                         <CalendarRequestBlock
                           shift={ev.title}
                           nurseName={ev.resource?.nurseName}
