@@ -357,7 +357,13 @@ def create_or_update_roster_entry(
     session.commit()
     session.refresh(entry)
 
-    if is_update and old_shift_code and old_shift_code != body.shift_code:
+    if (
+        is_update
+        and old_shift_code
+        and old_shift_code != body.shift_code
+        and existing
+        and existing.status != "Pending"
+    ):
         nurse = session.get(Nurse, body.nurse_id)
         if nurse:
             crud.create_notification(
