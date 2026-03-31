@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import { execFileSync } from "node:child_process"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const ADMIN_EMAIL =
@@ -7,6 +8,73 @@ const ADMIN_PASSWORD =
   process.env.E2E_SUPERUSER_PASSWORD ||
   process.env.FIRST_SUPERUSER_PASSWORD ||
   ""
+const DB_CONTAINER_ENV =
+  process.env.E2E_DB_CONTAINER ||
+  process.env.DB_CONTAINER ||
+  process.env.POSTGRES_CONTAINER
+const DB_NAME = process.env.POSTGRES_DB || "app"
+const DB_USER = process.env.POSTGRES_USER || "postgres"
+
+const getDbContainerName = () => {
+  if (DB_CONTAINER_ENV) return DB_CONTAINER_ENV
+
+  try {
+    const output = execFileSync(
+      "docker",
+      ["ps", "--format", "{{.Names}} {{.Image}}"],
+      { encoding: "utf8" },
+    )
+    const lines = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+    const match = lines.find((line) => {
+      const [, image] = line.split(/\s+/, 2)
+      if (!image) return false
+      return image.startsWith("postgres:")
+    })
+    if (match) return match.split(/\s+/, 1)[0]
+  } catch (error) {
+    throw new Error(
+      `Unable to locate the Postgres container. Set E2E_DB_CONTAINER to the DB container name. ${String(error)}`,
+    )
+  }
+
+  throw new Error(
+    "Unable to locate the Postgres container. Set E2E_DB_CONTAINER to the DB container name.",
+  )
+}
+
+const runScalarQuery = (sql: string) => {
+  const container = getDbContainerName()
+  return execFileSync(
+    "docker",
+    ["exec", container, "psql", "-U", DB_USER, "-d", DB_NAME, "-t", "-A", "-c", sql],
+    { encoding: "utf8" },
+  ).trim()
+}
+
+const parseCodes = (value: string) =>
+  value
+    .split(",")
+    .map((code) => code.trim().toUpperCase())
+    .filter(Boolean)
+
+const getWardShiftCodes = (wardId: number) => {
+  const wardCodes = runScalarQuery(
+    `select string_agg(s.shiftcode, ',' order by s.shiftcode) from ward_shiftcode w join shiftcode s on s.shiftcode = w.shiftcode where w.wardid = ${wardId} and s.isworking = true;`,
+  )
+  if (wardCodes) {
+    return parseCodes(wardCodes)
+  }
+  const fallbackCodes = runScalarQuery(
+    "select string_agg(shiftcode, ',' order by shiftcode) from shiftcode where isworking = true;",
+  )
+  return parseCodes(fallbackCodes)
+}
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 async function loginToken(
   request: APIRequestContext,
@@ -150,10 +218,9 @@ test("ward staff can create a shift request from the calendar", async ({
       )
     }
 
-    await page.goto("/login")
-    await page.getByTestId("login-username").fill(nurseUsername)
-    await page.getByTestId("login-password").fill(nursePassword)
-    await page.getByRole("button", { name: /log in/i }).click()
+    await page.addInitScript((value) => {
+      localStorage.setItem("access_token", value)
+    }, nurseToken)
 
     await page.goto("/ward-staff/request-application")
     await expect(
@@ -169,16 +236,28 @@ test("ward staff can create a shift request from the calendar", async ({
       .click()
 
     await expect(page.getByText("Create Shift Request")).toBeVisible()
-
     const dialog = page.getByRole("dialog")
-    await dialog.getByText("Select Shift Type").click()
+    await page
+      .getByRole("combobox", { name: "Requested Shift Type" })
+      .click()
 
-    const listbox = page.locator('[role="listbox"]')
-    await expect(listbox.getByText("A", { exact: true })).toBeVisible()
-    await expect(listbox.getByText("P", { exact: true })).toBeVisible()
-    await expect(listbox.getByText("N", { exact: true })).toBeVisible()
+    const expectedCodes = getWardShiftCodes(ward.wardid)
+    if (!expectedCodes.length) {
+      throw new Error("No shift codes configured for ward.")
+    }
 
-    await listbox.getByText("A", { exact: true }).click()
+    for (const code of expectedCodes) {
+      const option = page.locator("div").filter({
+        hasText: new RegExp(`^${escapeRegExp(code)}$`),
+      })
+      await expect(option.first()).toBeVisible()
+    }
+
+    await page
+      .locator("div")
+      .filter({ hasText: new RegExp(`^${escapeRegExp(expectedCodes[0])}$`) })
+      .first()
+      .click()
 
     const [createResponse] = await Promise.all([
       page.waitForResponse(
