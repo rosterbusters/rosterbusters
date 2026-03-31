@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import os
 from ortools.sat.python import cp_model
-import math
 
 # ─── Shift codes (must match ga_algo constants) ───────────────────────────────
 OFF, AM, PM, NIGHT, AL = 0, 1, 2, 3, 4
@@ -61,7 +60,7 @@ W_AM_PM_BAL    =       200   # |AM count − PM count| > 2 on a day
 W_DAILY_BAL    =        50   # range of total working nurses across days
 W_NIGHT_FAIR   =         5   # range of total night counts across nurses
 W_WEEKEND_FAIR =         5   # range of weekend working days across nurses
-W_MORNING_PREF =         0   # reward (negative cost) per AM shift
+W_MORNING_PREF =         4   # reward (negative cost) per AM shift
 
 # Solver time budget in seconds.  90 s is generous for a 14-day roster;
 # increase for very large wards.
@@ -130,7 +129,6 @@ def _build_greedy_hint(
     """
     # Start optimistic: everyone works AM (easier for the solver to improve from
     # a working state than from all-OFF which violates coverage on every day).
-    night_constant = math.ceil(((num_nurses * 2)/3)/4)
     sched = [[AM] * num_days for _ in range(num_nurses)]
 
     # ── Step 1: pin fixed slots ───────────────────────────────────────────────
@@ -166,7 +164,7 @@ def _build_greedy_hint(
                 continue
             if d > 0 and sched[n][d - 1] == NIGHT:
                 continue   # already in a block started yesterday
-            if night_counts[n] >= night_constant: #Change this to a ratio of nurses
+            if night_counts[n] >= 4:
                 continue   # fortnightly cap
 
             sched[n][d] = NIGHT
@@ -598,29 +596,6 @@ def run_ga_pipeline(
                 continue
             model.Add(
                 x[n, d, NIGHT] - x[n, d + 1, NIGHT] <= x[n, d + 1, OFF]
-            )
-
-    # ── 4c. Per-day NIGHT assignment cap (HARD) ───────────────────────────────
-    # Rule B above only fires for days 0–(num_days-2). On the last day there
-    # is no d+1, so a NIGHT there carries zero post-night-OFF cost. Combined
-    # with the fortnightly night minimum (section 4), nurses short of their
-    # 2-night target have a strong incentive to hoard nights on the last day:
-    # saving W_NIGHT_LOW (64,000) vastly outweighs the shift-variance penalty
-    # (W_SHIFT_VAR = 185 per unit), so the solver assigns nights to nearly
-    # every nurse on day 13.
-    #
-    # Capping each day's NIGHT count to the total staffing demand removes the
-    # exploit symmetrically across all days — the solver can never assign more
-    # night nurses than are actually needed on any given day.
-    for d in range(num_days):
-        night_demand = (
-            demand[d][NIGHT].get("A", 0)
-            + demand[d][NIGHT].get("B", 0)
-            + demand[d][NIGHT].get("C", 0)
-        )
-        if night_demand > 0:
-            model.Add(
-                sum(x[n, d, NIGHT] for n in working_nurses) <= night_demand
             )
 
     # ── 5. Approved (hard) shift requests ─────────────────────────────────────
