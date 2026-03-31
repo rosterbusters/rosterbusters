@@ -8,10 +8,19 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.models.enums import NotificationType
 from app.models.leave import LeaveRequest, LeaveRequestCreate, LeaveRequestPublic, LeaveRequestUpdate
-from app.models.rbac import Nurse, RBACUser, Role, UserRole
+from app.models.rbac import Nurse, NurseManager, RBACUser, Role, UserRole
 from app.models.roster import Ward
 from app.models.shifts import ShiftCode, ShiftCodePublic
+from app.utils import (
+    generate_leave_request_manager_email,
+    generate_leave_review_nurse_email,
+    send_email,
+)
+from app.core.config import settings
 from app.rbac import get_rbac_user_by_email, user_has_role
+
+import logging
+logger = logging.getLogger(__name__)
 
 # tag "leave-requests" generates LeaveRequestsService in the client
 router = APIRouter(prefix="/leave", tags=["leave-requests"])
@@ -136,6 +145,29 @@ def create_leave_request(
         )
         session.commit()
 
+        if settings.emails_enabled:
+            manager = session.get(NurseManager, manager_rbac.managerid)
+            if manager and manager.email:
+                try:
+                    email_data = generate_leave_request_manager_email(
+                        email_to=manager.email,
+                        nurse_name=nurse.name,
+                        leave_code=leave.leavetype,
+                        start_date=str(leave.startdate),
+                        end_date=str(leave.enddate),
+                        manager_name=manager.name,
+                    )
+                    send_email(
+                        email_to=manager.email,
+                        subject=email_data.subject,
+                        html_content=email_data.html_content,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to send leave request manager email for leave %s",
+                        leave.leaveid,
+                    )
+
     return leave
 
 
@@ -180,6 +212,51 @@ def review_leave_request(
 
     leave_request.status = status
     session.add(leave_request)
+
+    nurse = session.get(Nurse, leave_request.nurseid)
+    if nurse:
+        ntype = (
+            NotificationType.LEAVE_APPROVED
+            if status == "Approved"
+            else NotificationType.LEAVE_REJECTED
+        )
+        leave_dates = (
+            str(leave_request.startdate)
+            if leave_request.startdate == leave_request.enddate
+            else f"{leave_request.startdate} – {leave_request.enddate}"
+        )
+        crud.create_notification(
+            session,
+            recipient_type="Nurse",
+            recipient_id=leave_request.nurseid,
+            notification_type=ntype,
+            related_entity_type="LeaveRequest",
+            related_entity_id=leave_id,
+            leave_dates=leave_dates,
+        )
+
+        if settings.emails_enabled and nurse.email:
+            try:
+                email_data = generate_leave_review_nurse_email(
+                    email_to=nurse.email,
+                    nurse_name=nurse.name,
+                    leave_code=leave_request.leavetype,
+                    start_date=str(leave_request.startdate),
+                    end_date=str(leave_request.enddate),
+                    status=status,
+                    rejection_reason=leave_request.rejectionreason,
+                )
+                send_email(
+                    email_to=nurse.email,
+                    subject=email_data.subject,
+                    html_content=email_data.html_content,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send leave review email to nurse %s",
+                    leave_request.nurseid,
+                )
+
     session.commit()
     session.refresh(leave_request)
     return leave_request
