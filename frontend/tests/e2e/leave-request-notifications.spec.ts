@@ -209,6 +209,9 @@ test.describe("leave request notifications", () => {
         ward_ids: [ward.wardid],
       })
       createdUserIds = [managerUser.userid, nurseUser.userid]
+      runScalarQuery(
+        `update userrole set wardid = ${ward.wardid} where userid = ${managerUser.userid};`,
+      )
 
       const managerDetails = await getUserByUsername<{
         managerid?: number | null
