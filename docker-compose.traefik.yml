@@ -40,9 +40,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Mount the volume to store the certificates
       - traefik-public-certificates:/certificates
+      # Mount Cloudflare Origin CA certificate and dynamic TLS config
+      - ./traefik/certs:/certs:ro
+      - ./traefik/dynamic:/dynamic:ro
     command:
       # Enable Docker in Traefik, so that it reads labels from Docker services
       - --providers.docker
+      # Enable file provider for user-supplied TLS certificates
+      - --providers.file.directory=/dynamic
+      - --providers.file.watch=true
       # Do not expose all Docker services, only the ones explicitly exposed
       - --providers.docker.exposedbydefault=false
       # Create an entrypoint "http" listening on port 80

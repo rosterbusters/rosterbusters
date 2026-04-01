@@ -11,3 +11,4 @@ CLAUDE.md
 .idea/
 .cursor/
 gurobi.lic
+traefik/certs/
