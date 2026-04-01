@@ -289,6 +289,19 @@ def _average_daily_requirement(shift_requirements, class_name, shift_code):
     return round(total / max(len(shift_requirements), 1))
 
 
+def _average_daily_total_requirement(shift_requirements, shift_code):
+    if not shift_requirements:
+        return 0
+    total = sum(
+        sum(
+            int((shift_requirements.get(d, {}).get(shift_code, {}) or {}).get(class_name, 0) or 0)
+            for class_name in ("RN", "EN", "HCA")
+        )
+        for d in shift_requirements
+    )
+    return round(total / max(len(shift_requirements), 1))
+
+
 def _normalize_days(raw_days, num_days):
     if raw_days is None:
         return []
@@ -536,8 +549,6 @@ def _solve(
     soften_equivalent_target = bool(cfg.get("soften_equivalent_target", False))
     soften_coverage = bool(cfg.get("soften_coverage", False))
     total_min_cfg = cfg.get("TOTAL_MIN") or {}
-    rn_night_target = int(rn_cfg.get("nd_rn_target", 2) or 2)
-    rn_night_band = int(rn_cfg.get("nd_rn_band", 1) or 1)
     shift_priority_cfg = cfg.get("shift_priority", {}) or {}
     shift_priority_enabled = bool(shift_priority_cfg.get("enabled", False))
     shift_priority_order = [
@@ -605,6 +616,7 @@ def _solve(
         "pref": 100.0, "weekend": 3.0, "rest": 25.0,
         "eq": 500.0, "cov": 1000.0,
         "balance": 20.0, "day_smooth": 30.0,
+        "ward_day_balance": 8.0,
     }
     if weights is None:
         weights = cfg.get("weights")
@@ -659,6 +671,8 @@ def _solve(
     m.dev_hca_A_ge_P = Var(m.D, within=NonNegativeReals)
     m.dev_hca_A_ge_N = Var(m.D, within=NonNegativeReals)
     m.dev_hca_P_ge_N = Var(m.D, within=NonNegativeReals)
+    m.dev_total_A = Var(m.D, within=NonNegativeReals)
+    m.dev_total_P = Var(m.D, within=NonNegativeReals)
 
     m.cons = ConstraintList()
 
@@ -872,13 +886,7 @@ def _solve(
                 if total_required <= 0:
                     continue
                 total_coverage = _cov_rn[(d, s)] + _cov_en[(d, s)] + _cov_hca[(d, s)]
-                if s == "N":
-                    total_night_min = max(0, total_required - 1)
-                    total_night_max = total_required + 1
-                    m.cons.add(total_coverage >= total_night_min)
-                    m.cons.add(total_coverage <= total_night_max)
-                else:
-                    m.cons.add(total_coverage >= total_required)
+                m.cons.add(total_coverage >= total_required)
 
     # ---- Ward-wide total minimum + shift priority ordering (notebook v10) ----
     # AM >= PM >= NIGHT, with tight gaps of at most 1
@@ -917,13 +925,6 @@ def _solve(
         for d in DAYS:
             m.cons.add(cov_map[(d, "N")] <= int(max_night_per_day))
 
-    # Daily RN night staffing: enforce 2 +/- 1, but keep the objective centered on 2.
-    rn_night_min = max(0, rn_night_target - rn_night_band)
-    rn_night_max = rn_night_target + rn_night_band
-    for d in DAYS:
-        m.cons.add(_cov_rn[(d, "N")] >= rn_night_min)
-        m.cons.add(_cov_rn[(d, "N")] <= rn_night_max)
-
     # ---- Shift-balance deviations (soft) ----
     def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg, class_name):
         st = class_cfg.get("shift_target", {
@@ -948,8 +949,8 @@ def _solve(
     dt_rn  = rn_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "RN", s) for s in SHIFTS})
     dt_en  = en_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "EN", s) for s in SHIFTS})
     dt_hca = hca_cfg.get("day_target", {s: _average_daily_requirement(shift_requirements, "HCA", s) for s in SHIFTS})
-    dt_rn = dict(dt_rn)
-    dt_rn["N"] = rn_night_target
+    total_A_target = _average_daily_total_requirement(shift_requirements, "A")
+    total_P_target = _average_daily_total_requirement(shift_requirements, "P")
 
     for d in DAYS:
         for s in SHIFTS:
@@ -976,6 +977,13 @@ def _solve(
         A_en = _cov_en[(d, "A")]
         P_en = _cov_en[(d, "P")]
         m.cons.add(A_en - P_en <= m.dev_AP_en[d]); m.cons.add(-(A_en - P_en) <= m.dev_AP_en[d])
+
+        total_A = _cov_rn[(d, "A")] + _cov_en[(d, "A")] + _cov_hca[(d, "A")]
+        total_P = _cov_rn[(d, "P")] + _cov_en[(d, "P")] + _cov_hca[(d, "P")]
+        m.cons.add(total_A - total_A_target <= m.dev_total_A[d])
+        m.cons.add(-(total_A - total_A_target) <= m.dev_total_A[d])
+        m.cons.add(total_P - total_P_target <= m.dev_total_P[d])
+        m.cons.add(-(total_P - total_P_target) <= m.dev_total_P[d])
 
         A_h = _cov_hca[(d, "A")]
         P_h = _cov_hca[(d, "P")]
@@ -1083,6 +1091,10 @@ def _solve(
                 sum(m.dev_rn_day_total[d] for d in range(2, num_days + 1))
               + sum(m.dev_en_day_total[d] for d in range(2, num_days + 1))
               + sum(m.dev_hca_day_total[d] for d in range(2, num_days + 1))
+            )
+          + lw["ward_day_balance"] * (
+                sum(m.dev_total_A[d] for d in DAYS)
+              + sum(m.dev_total_P[d] for d in DAYS)
             )
           + lw["cov"]       * (
                 sum(m.cov_slack_rn[d, s] for d in DAYS for s in SHIFTS)

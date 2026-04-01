@@ -63,6 +63,7 @@ W_OFF_TO_AM    =       500   # OFF followed by AM on the next day
 W_SHIFT_VAR    =       185   # |actual − target| count per shift per day
 W_AM_PM_BAL    =       200   # |AM count − PM count| > 2 on a day
 W_DAILY_BAL    =        50   # range of total working nurses across days
+W_AP_DAY_SPREAD =      250   # range of AM/PM coverage across days
 W_NIGHT_FAIR   =         5   # range of total night counts across nurses
 W_WEEKEND_FAIR =         5   # range of weekend working days across nurses
 W_MORNING_PREF =         0   # reward (negative cost) per AM shift
@@ -75,6 +76,7 @@ W_WARD_C_ORDER   = 150_000   # rank-C nurse violating ordered-slot rule
 W_SINGLE_NIGHT   = 400_000   # isolated night block (no adjacent night)
 W_NIGHT_A_OVER_B = 500_000   # per-nurse excess of Rank A over Rank B on any night shift
 W_RN_NIGHT_TARGET = 350_000  # per-day excess of Rank A night nurses above the configured target
+W_NIGHT_TOTAL_TARGET = 300_000  # per-day deviation of total night staffing outside target +/- 1
 
 # Solver time budget in seconds.  90 s is generous for a 14-day roster;
 # increase for very large wards.
@@ -751,6 +753,22 @@ def run_ga_pipeline(
 
                     _add_penalty(viol_ce, W_WARD_C_ORDER)
 
+        # Keep AM and PM coverage steadier from day to day in ward mode.
+        for s in (AM, PM):
+            cnt_vars: list[cp_model.IntVar] = []
+            for d in range(num_days):
+                cnt_sd = model.NewIntVar(0, num_nurses, f"ward_cov_{s}_{d}")
+                model.Add(cnt_sd == sum(x[n, d, s] for n in working_nurses))
+                cnt_vars.append(cnt_sd)
+
+            max_cnt = model.NewIntVar(0, num_nurses, f"ward_cov_max_{s}")
+            min_cnt = model.NewIntVar(0, num_nurses, f"ward_cov_min_{s}")
+            spread_cnt = model.NewIntVar(0, num_nurses, f"ward_cov_spread_{s}")
+            model.AddMaxEquality(max_cnt, cnt_vars)
+            model.AddMinEquality(min_cnt, cnt_vars)
+            model.Add(spread_cnt == max_cnt - min_cnt)
+            _add_penalty(spread_cnt, W_AP_DAY_SPREAD)
+
     # ── 2. Working hours per nurse ────────────────────────────────────────────
     for n in working_nurses:
         hours_expr = sum(
@@ -883,7 +901,9 @@ def run_ga_pipeline(
             hca_max_night_per_day = int(raw_hca_max_night)
     for d in range(num_days):
         if use_ward_demand:
-            # Ward standard: max 5 A+B on NIGHT, plus backend RN/HCA3 daily settings.
+            # Ward standard: aim for the configured NIGHT headcount with a
+            # small +/- 1 tolerance so the cap is enforced without becoming
+            # overly brittle.
             rank_a_night_target = rn_max_night_per_day if rn_max_night_per_day is not None else 5
             rank_c_night_cap = hca_max_night_per_day if hca_max_night_per_day is not None else (1 if rank_C else 0)
             if rank_A:
@@ -893,8 +913,18 @@ def run_ga_pipeline(
                 _add_penalty(rn_target_excess, W_RN_NIGHT_TARGET)
             if rank_C:
                 model.Add(sum(x[n, d, NIGHT] for n in rank_C) <= rank_c_night_cap)
-            max_night = 5 + rank_c_night_cap
-            model.Add(sum(x[n, d, NIGHT] for n in working_nurses) <= max_night)
+            target_total_night = 5 + rank_c_night_cap
+            cnt_total_night = model.NewIntVar(0, len(working_nurses), f"cnt_total_night_{d}")
+            model.Add(cnt_total_night == sum(x[n, d, NIGHT] for n in working_nurses))
+
+            night_total_short = model.NewIntVar(0, len(working_nurses), f"night_total_short_{d}")
+            night_total_excess = model.NewIntVar(0, len(working_nurses), f"night_total_excess_{d}")
+            model.Add(night_total_short >= (target_total_night - 1) - cnt_total_night)
+            model.Add(night_total_excess >= cnt_total_night - (target_total_night + 1))
+            _add_penalty(night_total_short, W_NIGHT_TOTAL_TARGET)
+            _add_penalty(night_total_excess, W_NIGHT_TOTAL_TARGET)
+
+            model.Add(cnt_total_night <= target_total_night + 1)
         else:
             night_demand = (
                 demand[d][NIGHT].get("A", 0)
