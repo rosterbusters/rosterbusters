@@ -1098,6 +1098,7 @@ function AdminUsers() {
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null)
   const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
   const [passwordCopied, setPasswordCopied] = useState(false)
+  const [copiedDefaultPasswordUserId, setCopiedDefaultPasswordUserId] = useState<number | null>(null)
   const [knownDefaultPasswords, setKnownDefaultPasswords] = useState<Record<number, string>>({})
   const [isImporting, setIsImporting] = useState(false)
   const [pendingImport, setPendingImport] = useState<PendingImportState | null>(null)
@@ -1411,7 +1412,9 @@ function AdminUsers() {
 
     try {
       await navigator.clipboard.writeText(password)
+      setCopiedDefaultPasswordUserId(userId)
       showSuccessToast("Password copied to clipboard.")
+      setTimeout(() => setCopiedDefaultPasswordUserId((prev) => (prev === userId ? null : prev)), 1500)
     } catch {
       showErrorToast("Unable to copy password. Please copy it manually.")
     }
@@ -1695,7 +1698,7 @@ function AdminUsers() {
                             onClick={() => handleCopyDefaultPassword(user.userid)}
                             className="text-xs px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-white"
                           >
-                            Copy
+                            {copiedDefaultPasswordUserId === user.userid ? "Copied!" : "Copy"}
                           </button>
                         </div>
                       ) : (

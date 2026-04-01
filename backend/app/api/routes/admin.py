@@ -23,7 +23,7 @@ from app.designation_mapping import (
     canonical_designation_from_value,
     load_designation_rank_map,
 )
-from app.models import Message, RBACUser, Role, UserRole
+from app.models import Designation, Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
 from app.rbac import get_user_roles, get_user_roles_by_userid
