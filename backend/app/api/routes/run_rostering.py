@@ -1062,8 +1062,13 @@ def _shift_target_from_min(normal_min: dict) -> dict:
     return {s: max(0, round(10 * normal_min.get(s, 0) / total)) for s in ("A", "P", "N")}
 
 
-def _build_milp_config(rn_min: dict, en_min: dict, hca_min: dict) -> dict:
-    return {
+def _build_milp_config(
+    rn_min: dict,
+    en_min: dict,
+    hca_min: dict,
+    rn_max_night_per_day: int | None = None,
+) -> dict:
+    config = {
         "LOW_DAYS": {6, 7, 13, 14},
         "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": _shift_target_from_min(rn_min)},
         "EN":  {"normal_min": en_min,  "low_exact": None, "day_target": en_min,  "shift_target": _shift_target_from_min(en_min)},
@@ -1074,6 +1079,9 @@ def _build_milp_config(rn_min: dict, en_min: dict, hca_min: dict) -> dict:
             "N": rn_min["N"] + en_min["N"] + hca_min["N"],
         },
     }
+    if rn_max_night_per_day is not None:
+        config["RN"]["max_night_per_day"] = int(rn_max_night_per_day)
+    return config
 
 
 def _staffing_to_algo_inputs(ward: Ward):
@@ -1113,6 +1121,7 @@ def _staffing_to_algo_inputs(ward: Ward):
                 rank_min["A"],
                 rank_min["B"],
                 rank_min["C"],
+                rn_max_night_per_day=ward.nd_rn,
             )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             pass  # fall through to legacy fields
@@ -1125,7 +1134,12 @@ def _staffing_to_algo_inputs(ward: Ward):
         "PM":    {"A": rn_min["P"], "B": en_min["P"], "C": hca_min["P"]},
         "NIGHT": {"A": rn_min["N"], "B": en_min["N"], "C": hca_min["N"]},
     }
-    return [daily_req for _ in range(14)], _build_milp_config(rn_min, en_min, hca_min)
+    return [daily_req for _ in range(14)], _build_milp_config(
+        rn_min,
+        en_min,
+        hca_min,
+        rn_max_night_per_day=ward.nd_rn,
+    )
 
 
 def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[str, Any]:
