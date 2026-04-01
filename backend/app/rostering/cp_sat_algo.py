@@ -135,7 +135,7 @@ def _build_greedy_hint(
     time budget improving rather than finding a first solution.  The strategy:
 
       1. Pin fixed slots (full AL, single-day AL requests, post-night day-0 OFF).
-      2. Assign night blocks (exactly 2 per nurse where feasible) round-robin across nurses,
+      2. Seed night blocks (starting from 2 per nurse where feasible) round-robin across nurses,
          in N-N patterns where possible, then add mandatory post-block OFFs.
       3. Reserve 2 voluntary OFF days per week per nurse (weekends preferred).
       4. Fill remaining days with AM or PM to match demand.
@@ -179,7 +179,7 @@ def _build_greedy_hint(
             if d > 0 and sched[n][d - 1] == NIGHT:
                 continue   # already in a block started yesterday
             if night_counts[n] >= night_constant:
-                continue   # exact roster-wide night target
+                continue   # warm-start seed target; solver may later assign more
 
             sched[n][d] = NIGHT
             night_counts[n] += 1
@@ -694,13 +694,14 @@ def run_ga_pipeline(
             # All OFFs (including post-night mandatory ones) count toward target
             model.Add(total_offs == target)
 
-    # ── 4. Night shifts over roster — exactly 2 total (HARD) ──────────────────
-    # Each working nurse must be assigned exactly 2 NIGHT shifts across the
-    # generated roster. The separate backend HCA3 per-day cap is enforced in
-    # section 4c and applies in addition to this rule.
+    # ── 4. Night shifts over roster — min 2, max 4 total (HARD) ───────────────
+    # Each working nurse must be assigned between 2 and 4 NIGHT shifts across
+    # the generated roster. The separate backend HCA3 per-day cap is enforced
+    # in section 4c and applies in addition to this rule.
     for n in working_nurses:
         total_nights = sum(x[n, d, NIGHT] for d in range(num_days))
-        model.Add(total_nights == 2)
+        model.Add(total_nights >= 2)
+        model.Add(total_nights <= 4)
 
     # ── 4b. Night block rules (HARD) ─────────────────────────────────────────
     # Rule A — maximum block length of 2 consecutive nights.
