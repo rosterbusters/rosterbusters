@@ -25,7 +25,7 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
   workers: isCI ? 1 : undefined,
-  reporter: "html",
+  reporter: [["list"], ["html", { open: "never" }]],
   outputDir: "test-results",
   use: {
     baseURL: "http://localhost:5174",

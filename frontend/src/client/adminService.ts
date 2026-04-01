@@ -66,6 +66,7 @@ export interface AdminUsersResponse {
 }
 
 export interface AdminUserCreate {
+  username?: string
   name?: string
   email?: string
   employee_id?: string

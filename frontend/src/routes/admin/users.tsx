@@ -124,6 +124,9 @@ const slugifyUsername = (value: string) =>
 const takeFirstThreeWords = (value: string) =>
   value.trim().split(/\s+/).filter(Boolean).slice(0, 3).join(" ")
 
+const takeFirstTwoWords = (value: string) =>
+  value.trim().split(/\s+/).filter(Boolean).slice(0, 2).join(" ")
+
 const buildUsernameFromName = (value: string) =>
   slugifyUsername(takeFirstThreeWords(value))
 
@@ -239,7 +242,7 @@ const parseWorkbookWardIds = (value: string, wards: WardOption[]) => {
 }
 
 const buildImportedUsername = (name: string, rowNumber: number) => {
-  const base = buildUsernameFromName(name) || `staff.${rowNumber}`
+  const base = slugifyUsername(takeFirstTwoWords(name)) || `staff.${rowNumber}`
   return base
 }
 
@@ -1171,6 +1174,7 @@ function AdminUsers() {
       })
       try {
         const createdUser = await AdminService.createUser({
+          username: row.username,
           name: row.name,
           email: row.email,
           employee_id: row.employee_id,

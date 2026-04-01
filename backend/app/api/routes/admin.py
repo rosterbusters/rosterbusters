@@ -72,6 +72,7 @@ class AdminPasswordResetResponse(SQLModel):
 
 
 class AdminUserCreate(SQLModel):
+    username: Optional[str] = Field(default=None, min_length=1, max_length=255)
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
@@ -129,40 +130,11 @@ def _generate_unique_username(
     return candidate
 
 
-# ---------------------------------------------------------------------------
-#  Helpers
-# ---------------------------------------------------------------------------
-
-def _slugify_username(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", ".", value.lower()).strip(".")
-    slug = re.sub(r"\.+", ".", slug)
-    return slug
-
-
-def _truncate_username(value: str, max_tokens: int = 2) -> str:
-    normalized = _slugify_username(value)
-    if not normalized:
-        return ""
-    return ".".join(normalized.split(".")[:max_tokens])
-
-
 def _truncate_name(value: str, max_words: int = 3) -> str:
     words = value.split()
     if not words:
         return ""
     return " ".join(words[:max_words])
-
-
-def _generate_unique_username(session, seed: str) -> str:
-    base = _slugify_username(seed) or "user"
-    candidate = base
-    suffix = 2
-    while session.exec(
-        select(RBACUser).where(RBACUser.username == candidate)
-    ).first():
-        candidate = f"{base}{suffix}"
-        suffix += 1
-    return candidate
 
 def _enrich(session, user: RBACUser) -> AdminUserPublic:
     """Convert an RBACUser row to the public response model."""
@@ -261,18 +233,6 @@ def list_users(
     )
 
 
-@router.get("/designations", response_model=list[DesignationOption])
-def list_designations(session: SessionDep) -> Any:
-    """List designation options from reference table."""
-    rows = session.exec(
-        select(Designation).order_by(Designation.rank, Designation.designation)
-    ).all()
-    return [
-        DesignationOption(designation=row.designation, rank=row.rank)
-        for row in rows
-    ]
-
-
 @router.get("/users/{userid}", response_model=AdminUserPublic)
 def get_user(session: SessionDep, userid: int) -> Any:
     """Get a single RBACUser by userid."""
@@ -288,6 +248,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = _truncate_name(body.name.strip()) if body.name else None
     designation = body.designation.strip() if body.designation else None
+    requested_username = body.username.strip() if body.username else ""
     rank_map = load_designation_rank_map(session)
 
     def _normalize_designation(raw: str | None) -> str | None:
@@ -299,9 +260,6 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
         if canonical.upper() not in rank_map:
             raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
         return canonical
-    # Preserve explicit usernames exactly (after trimming) so clients can log in with the same value.
-    requested_username = body.username.strip() if body.username else ""
-
     # Check duplicate email (only if email provided)
     if body.email:
         existing = session.exec(
@@ -313,7 +271,17 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
                 detail="A user with this email already exists.",
             )
 
-    username = _generate_unique_username(
+    if requested_username:
+        existing_username = session.exec(
+            select(RBACUser).where(RBACUser.username == requested_username)
+        ).first()
+        if existing_username:
+            raise HTTPException(
+                status_code=400,
+                detail="A user with this username already exists.",
+            )
+
+    username = requested_username or _generate_unique_username(
         session,
         name=name,
         email=body.email,
