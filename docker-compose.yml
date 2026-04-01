@@ -206,9 +206,9 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - GRB_WLSACCESSID=${WLSACCESSID}
-      - GRB_WLSSECRET=${WLSSECRET}
-      - GRB_LICENSEID=${LICENSEID}
+      - GRB_WLSACCESSID=${GRB_WLSACCESSID}
+      - GRB_WLSSECRET=${GRB_WLSSECRET}
+      - GRB_LICENSEID=${GRB_LICENSEID}
     volumes:
       - ./gurobi.lic:/root/gurobi.lic:ro
     networks:
