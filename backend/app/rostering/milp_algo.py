@@ -313,6 +313,110 @@ def _resolve_requirement(class_cfg, shift_requirements, low_days, class_name, da
     return int(shift_requirements.get(day, {}).get(shift_code, {}).get(class_name, 0) or 0)
 
 
+def _summarize_hard_requests(hard_dict, non_working_shift_codes=None):
+    summary = {
+        "work_shift": 0,
+        "off": 0,
+        "equiv_leave": 0,
+        "equiv_work": 0,
+        "night": 0,
+        "isolated_night": 0,
+    }
+    for _, reqs in (hard_dict or {}).items():
+        night_days = set()
+        for day_label, raw in reqs.items():
+            kind, val = _classify(raw, non_working_shift_codes)
+            if kind == "WORK_SHIFT":
+                summary["work_shift"] += 1
+                if val == "N":
+                    summary["night"] += 1
+                    try:
+                        night_days.add(int(str(day_label).split()[-1]))
+                    except (TypeError, ValueError):
+                        pass
+            elif kind == "OFF":
+                summary["off"] += 1
+            elif kind == "EQUIV_LEAVE":
+                summary["equiv_leave"] += 1
+            elif kind == "EQUIV_WORK":
+                summary["equiv_work"] += 1
+
+        for day in night_days:
+            if (day - 1) not in night_days and (day + 1) not in night_days:
+                summary["isolated_night"] += 1
+    return summary
+
+
+def _debug_milp_feasibility(
+    rn_nurses, en_nurses, hca_nurses,
+    shift_requirements,
+    rn_cfg, en_cfg, hca_cfg,
+    low_days, num_days,
+    equivalent_shift_target,
+    weekly_work_cap, weekly_night_cap,
+    total_min_cfg,
+    hard_requests_rn, hard_requests_en, hard_requests_hca,
+    annual_leave_rn, annual_leave_en, annual_leave_hca,
+    prev_week_last2_rn, prev_week_last2_en, prev_week_last2_hca,
+    non_working_shift_codes=None,
+):
+    classes = (
+        ("RN", rn_nurses, rn_cfg, hard_requests_rn, annual_leave_rn, prev_week_last2_rn),
+        ("EN", en_nurses, en_cfg, hard_requests_en, annual_leave_en, prev_week_last2_en),
+        ("HCA", hca_nurses, hca_cfg, hard_requests_hca, annual_leave_hca, prev_week_last2_hca),
+    )
+    print(
+        "[MILP DEBUG] settings="
+        f"days={num_days} low_days={sorted(low_days)} eq_target={equivalent_shift_target} "
+        f"weekly_work_cap={weekly_work_cap} weekly_night_cap={weekly_night_cap} total_min={dict(total_min_cfg or {})}"
+    )
+
+    total_required = {s: 0 for s in ("A", "P", "N")}
+    for d in range(1, num_days + 1):
+        for s in ("A", "P", "N"):
+            total_required[s] += int((total_min_cfg or {}).get(s, 0) or 0)
+    print(f"[MILP DEBUG] total_min_required={total_required}")
+
+    for class_name, nurses, class_cfg, hard_dict, al_dict, prev_last2_dict in classes:
+        req_totals = {
+            s: sum(
+                _resolve_requirement(class_cfg, shift_requirements, low_days, class_name, d, s)
+                for d in range(1, num_days + 1)
+            )
+            for s in ("A", "P", "N")
+        }
+        req_total_all = sum(req_totals.values())
+        nurse_count = len(nurses)
+        max_equiv_capacity = nurse_count * equivalent_shift_target
+        hard_summary = _summarize_hard_requests(hard_dict, non_working_shift_codes)
+        leave_days = sum(len(v or []) for v in (al_dict or {}).values())
+        carry_need_do = 0
+        carry_need_n_do = 0
+        day1_forced_night = 0
+        day1_forced_off = 0
+        for nurse in nurses:
+            carry_state = _carry_state_from_last2((prev_last2_dict or {}).get(nurse))
+            if carry_state == "NEED_DO":
+                carry_need_do += 1
+                day1_forced_off += 1
+            elif carry_state == "NEED_N_DO":
+                carry_need_n_do += 1
+                day1_forced_night += 1
+            raw_day1 = (hard_dict or {}).get(nurse, {}).get("Day 1", "")
+            kind_day1, val_day1 = _classify(raw_day1, non_working_shift_codes)
+            if kind_day1 == "WORK_SHIFT" and val_day1 == "N":
+                day1_forced_night += 1
+            elif kind_day1 == "OFF":
+                day1_forced_off += 1
+
+        print(
+            f"[MILP DEBUG] {class_name}: nurses={nurse_count} req={req_totals} req_total={req_total_all} "
+            f"max_equiv_capacity={max_equiv_capacity} leave_days={leave_days} "
+            f"hard={hard_summary} carry_need_do={carry_need_do} carry_need_n_do={carry_need_n_do} "
+            f"day1_forced_night={day1_forced_night} day1_forced_off={day1_forced_off}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Output formatter
 # ---------------------------------------------------------------------------
@@ -468,6 +572,31 @@ def _solve(
     rn_nurses  = list(rn_list);  rng.shuffle(rn_nurses)
     en_nurses  = list(en_list);  rng.shuffle(en_nurses)
     hca_nurses = list(hca_list); rng.shuffle(hca_nurses)
+    _debug_milp_feasibility(
+        rn_nurses,
+        en_nurses,
+        hca_nurses,
+        shift_requirements,
+        rn_cfg,
+        en_cfg,
+        hca_cfg,
+        LOW_DAYS,
+        num_days,
+        equivalent_shift_target,
+        weekly_work_cap,
+        weekly_night_cap,
+        total_min_cfg,
+        hard_requests_rn,
+        hard_requests_en,
+        hard_requests_hca,
+        annual_leave_rn,
+        annual_leave_en,
+        annual_leave_hca,
+        prev_week_last2_rn,
+        prev_week_last2_en,
+        prev_week_last2_hca,
+        non_working_shift_codes,
+    )
 
     _default_w = {
         "dev_shift": 1.0, "dev_day": 0.5, "AP": 3.0,

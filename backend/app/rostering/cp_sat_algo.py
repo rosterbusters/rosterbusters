@@ -233,6 +233,91 @@ def _build_greedy_hint(
     return sched
 
 
+def _debug_hard_feasibility(
+    *,
+    num_days: int,
+    nurse_names: list[str],
+    nurse_ranks: list[str],
+    working_nurses: list[int],
+    al_day_req: list[set[int]],
+    approved: list[list[tuple[int, int]]],
+    prev_last_shift: dict,
+    id_to_idx: dict[int, int],
+    nurses_sorted: list[dict],
+    milp_config: dict | None,
+    use_ward_demand: bool,
+    demand: list[dict[int, dict[str, int]]],
+) -> None:
+    rank_counts = {r: sum(1 for idx in working_nurses if nurse_ranks[idx] == r) for r in "ABC"}
+    print(
+        "[CP-SAT DEBUG] working nurses="
+        f"{len(working_nurses)} rankA={rank_counts['A']} rankB={rank_counts['B']} rankC={rank_counts['C']}"
+    )
+    print(f"[CP-SAT DEBUG] partial AL days={sum(len(days) for days in al_day_req)}")
+
+    carry_over = []
+    for nurse_id, shift_name in prev_last_shift.items():
+        if str(shift_name).strip().upper() != "NIGHT":
+            continue
+        idx = id_to_idx.get(nurse_id)
+        if idx is not None:
+            carry_over.append(nurse_names[idx])
+    if carry_over:
+        print(f"[CP-SAT DEBUG] prev-period NIGHT carry-over count={len(carry_over)}")
+
+    approved_night_total = sum(1 for reqs in approved for _, shift_code in reqs if shift_code == NIGHT)
+    print(f"[CP-SAT DEBUG] approved NIGHT requests={approved_night_total}")
+
+    single_night_requests: list[str] = []
+    day0_conflicts: list[str] = []
+    for nurse in nurses_sorted:
+        nurse_id = nurse["id"]
+        idx = id_to_idx[nurse_id]
+        approved_days = {day_idx: shift_code for day_idx, shift_code in approved[idx]}
+        for day_idx, shift_code in approved[idx]:
+            if shift_code != NIGHT:
+                continue
+            left_night = approved_days.get(day_idx - 1) == NIGHT if day_idx > 0 else False
+            right_night = approved_days.get(day_idx + 1) == NIGHT if day_idx + 1 < num_days else False
+            if not left_night and not right_night:
+                single_night_requests.append(f"{nurse_names[idx]}@{day_idx}")
+        day0_shift = approved_days.get(0)
+        if str(prev_last_shift.get(nurse_id, "")).strip().upper() == "NIGHT" and day0_shift not in (None, OFF):
+            day0_conflicts.append(f"{nurse_names[idx]}->{day0_shift}")
+
+    if single_night_requests:
+        print(
+            "[CP-SAT DEBUG] approved NIGHT requests without adjacent approved NIGHT="
+            f"{single_night_requests[:10]}"
+        )
+    if day0_conflicts:
+        print(f"[CP-SAT DEBUG] day-0 conflicts after previous NIGHT={day0_conflicts[:10]}")
+
+    min_total_nights = 2 * len(working_nurses)
+    if use_ward_demand:
+        rn_cfg = (milp_config or {}).get("RN") if isinstance(milp_config, dict) else None
+        hca_cfg = (milp_config or {}).get("HCA") if isinstance(milp_config, dict) else None
+        rn_max_night = int(rn_cfg.get("max_night_per_day")) if isinstance(rn_cfg, dict) and rn_cfg.get("max_night_per_day") is not None else 5
+        hca_max_night = int(hca_cfg.get("max_night_per_day")) if isinstance(hca_cfg, dict) and hca_cfg.get("max_night_per_day") is not None else (1 if rank_counts["C"] > 0 else 0)
+        total_night_capacity = num_days * (5 + hca_max_night)
+        rank_a_capacity = num_days * min(rank_counts["A"], rn_max_night)
+        rank_c_capacity = num_days * min(rank_counts["C"], hca_max_night)
+        print(
+            "[CP-SAT DEBUG] night capacity total="
+            f"{total_night_capacity} rankA={rank_a_capacity} rankC={rank_c_capacity} "
+            f"vs per-nurse minimum total={min_total_nights}"
+        )
+    else:
+        total_night_capacity = sum(
+            day_req[NIGHT].get("A", 0) + day_req[NIGHT].get("B", 0) + day_req[NIGHT].get("C", 0)
+            for day_req in demand
+        )
+        print(
+            "[CP-SAT DEBUG] demand-driven night slots="
+            f"{total_night_capacity} vs per-nurse minimum total={min_total_nights}"
+        )
+
+
 # ─── Public entry point ───────────────────────────────────────────────────────
 
 def run_ga_pipeline(
@@ -413,6 +498,20 @@ def run_ga_pipeline(
 
     # ── Pre-solve: warn on structurally unmet demand ──────────────────────────
     _check_demand_feasibility(demand, nurse_ranks, working_nurses, num_days)
+    _debug_hard_feasibility(
+        num_days=num_days,
+        nurse_names=nurse_names,
+        nurse_ranks=nurse_ranks,
+        working_nurses=working_nurses,
+        al_day_req=al_day_req,
+        approved=approved,
+        prev_last_shift=prev_last_shift,
+        id_to_idx=id_to_idx,
+        nurses_sorted=nurses_sorted,
+        milp_config=milp_config,
+        use_ward_demand=use_ward_demand,
+        demand=demand,
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Build the CP-SAT model

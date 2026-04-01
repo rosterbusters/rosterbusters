@@ -1212,6 +1212,10 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
         for n in nurses_db
     ]
+    rank_counts = {
+        rank: sum(1 for nurse in nurses_data if nurse["rank"] == rank)
+        for rank in ("A", "B", "C")
+    }
 
     nurse_ids = [n["id"] for n in nurses_data]
     shift_label_map = _load_shift_label_map(db)
@@ -1228,6 +1232,26 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
 
     logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
     logger.warning(f"[DEBUG] nurses={len(nurses_data)} hard_requests={sum(len(v) for v in hard_requests.values())} soft_requests={sum(len(v) for v in soft_requests.values())}")
+    logger.warning(
+        "[DEBUG] rank_counts=%s staffing=%s",
+        rank_counts,
+        {
+            "AM": shifts_data[0]["AM"] if shifts_data else {},
+            "PM": shifts_data[0]["PM"] if shifts_data else {},
+            "NIGHT": shifts_data[0]["NIGHT"] if shifts_data else {},
+        },
+    )
+    logger.warning(
+        "[DEBUG] milp_config_summary=%s",
+        {
+            "coverage_mode": milp_config.get("coverage_mode"),
+            "soften_coverage": milp_config.get("soften_coverage"),
+            "TOTAL_MIN": milp_config.get("TOTAL_MIN"),
+            "RN": (milp_config.get("RN") or {}).get("normal_min"),
+            "EN": (milp_config.get("EN") or {}).get("normal_min"),
+            "HCA": (milp_config.get("HCA") or {}).get("normal_min"),
+        },
+    )
     if soft_requests:
         for nid, reqs in list(soft_requests.items())[:3]:
             logger.warning(f"[DEBUG]   nurse {nid}: {reqs}")
