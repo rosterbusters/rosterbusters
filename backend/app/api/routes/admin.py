@@ -257,8 +257,8 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
         if canonical.upper() not in rank_map:
             raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
         return canonical
-    # Preserve explicit usernames (normalized), so API clients can rely on exact values.
-    requested_username = _slugify_username(body.username.strip()) if body.username else ""
+    # Preserve explicit usernames exactly (after trimming) so clients can log in with the same value.
+    requested_username = body.username.strip() if body.username else ""
 
     # Check duplicate email (only if email provided)
     if body.email:
