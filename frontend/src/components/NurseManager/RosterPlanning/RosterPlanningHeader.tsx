@@ -36,9 +36,9 @@ import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge";
 
 const MOCK_DATA_OPTIONS = [
   { value: "", label: "Load mock data" },
-  { value: "ga_ward4", label: "GA Ward 4" },
-  { value: "ga_ward5", label: "GA Ward 5" },
-  { value: "ga_ward6", label: "GA Ward 6" },
+  { value: "ga_ward4", label: "CP-SAT Ward 4" },
+  { value: "ga_ward5", label: "CP-SAT Ward 5" },
+  { value: "ga_ward6", label: "CP-SAT Ward 6" },
   { value: "milp_ward4_run1", label: "MILP Ward 4 Run 1" },
   { value: "milp_ward4_run2", label: "MILP Ward 4 Run 2" },
   { value: "milp_ward5_run1", label: "MILP Ward 5 Run 1" },
@@ -565,7 +565,7 @@ export function RosterPlanningHeader({
                     px={4}
                     disabled={isGenerating}
                   >
-                    GA
+                    CP-SAT
                   </Button>
                 </HStack>
 

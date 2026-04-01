@@ -1062,11 +1062,42 @@ def _shift_target_from_min(normal_min: dict) -> dict:
     return {s: max(0, round(10 * normal_min.get(s, 0) / total)) for s in ("A", "P", "N")}
 
 
+def _apply_milp_policy_overrides(base_config: dict, policy: dict | None) -> dict:
+    if not isinstance(policy, dict):
+        return base_config
+
+    for key in (
+        "LOW_DAYS",
+        "weekend_days",
+        "equivalent_shift_target",
+        "weekly_night_cap",
+        "weekly_work_cap",
+        "weekly_do_cap",
+        "weekend_night_target",
+        "coverage_mode",
+        "shift_priority",
+        "weights",
+        "num_days",
+    ):
+        if key in policy:
+            base_config[key] = policy[key]
+
+    for class_name in ("RN", "EN", "HCA"):
+        class_policy = policy.get(class_name)
+        if not isinstance(class_policy, dict):
+            continue
+        base_config.setdefault(class_name, {}).update(class_policy)
+
+    return base_config
+
+
 def _build_milp_config(
     rn_min: dict,
     en_min: dict,
     hca_min: dict,
     rn_max_night_per_day: int | None = None,
+    hca_max_night_per_day: int | None = None,
+    policy: dict | None = None,
 ) -> dict:
     config = {
         "LOW_DAYS": {6, 7, 13, 14},
@@ -1081,7 +1112,9 @@ def _build_milp_config(
     }
     if rn_max_night_per_day is not None:
         config["RN"]["max_night_per_day"] = int(rn_max_night_per_day)
-    return config
+    if hca_max_night_per_day is not None:
+        config["HCA"]["max_night_per_day"] = int(hca_max_night_per_day)
+    return _apply_milp_policy_overrides(config, policy)
 
 
 def _staffing_to_algo_inputs(ward: Ward):
@@ -1096,6 +1129,14 @@ def _staffing_to_algo_inputs(ward: Ward):
     if ward.staffing_json:
         try:
             g = json.loads(ward.staffing_json)
+            policy_root = g.get("policy")
+            milp_policy_from_policy = policy_root.get("milp") if isinstance(policy_root, dict) else None
+            milp_policy = (
+                g.get("milp_config")
+                or g.get("milp_policy")
+                or milp_policy_from_policy
+                or g.get("rostering_policy")
+            )
 
             def _min(role: str, shift: str) -> int:
                 return int(g.get(role, {}).get(shift, {}).get("minimum", 0))
@@ -1122,6 +1163,8 @@ def _staffing_to_algo_inputs(ward: Ward):
                 rank_min["B"],
                 rank_min["C"],
                 rn_max_night_per_day=ward.nd_rn,
+                hca_max_night_per_day=ward.nd_hca_max,
+                policy=milp_policy,
             )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             pass  # fall through to legacy fields
@@ -1139,6 +1182,7 @@ def _staffing_to_algo_inputs(ward: Ward):
         en_min,
         hca_min,
         rn_max_night_per_day=ward.nd_rn,
+        hca_max_night_per_day=ward.nd_hca_max,
     )
 
 

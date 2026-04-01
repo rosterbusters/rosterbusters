@@ -47,15 +47,15 @@ _OFF_REQUEST_CODES = {"OFF", "DO", "RD"}
 # the solver virtually never accepts them; soft preferences carry small weights
 # so the solver trades them off sensibly.  All values are integers (CP-SAT
 # requires integer coefficients in the objective).
-W_AL_FULL      = 1_000_000   # AL nurse assigned a non-AL day
-W_SHIFT_SHORT  = 1_000_000   # 1 missing required staff member (total)
+W_AL_FULL      = 2_000_000   # AL nurse assigned a non-AL day
+W_SHIFT_SHORT  = 2_000_000   # 1 missing required staff member (total)
 W_RANK_A_SHORT =   200_000   # 1 missing rank-A nurse in a rank-A slot
 W_RANK_MISMATCH =   20_000   # higher-rank nurse filling a lower-rank slot
 W_DAYOFF_UNDER =   160_000   # 1 fewer than required days-off in a week
 W_DAYOFF_OVER  =   144_000   # 1 more than required days-off (×0.9 like GA)
 W_HOUR_UNDER   =    0   # 1 unit (0.1 h) below per-nurse minimum
 W_HOUR_OVER    =    0   # 1 unit (0.1 h) above per-nurse maximum
-W_NDO          =   999_999   # missing post-night day-off on day 0
+W_NDO          = 1_500_000   # missing post-night day-off on day 0
 W_NIGHT_LOW    =    64_000   # fewer than 1 night per week (×0.8 like GA)
 W_NIGHT_HIGH   =    80_000   # more than 2 nights per week
 W_APPROVED_REQ =    35_000   # unmet approved (hard) shift request
@@ -69,16 +69,16 @@ W_WEEKEND_FAIR =         5   # range of weekend working days across nurses
 W_MORNING_PREF =         0   # reward (negative cost) per AM shift
 
 # Ward-standard constraint weights (used when use_ward_demand=True)
-W_WARD_AB_MIN    = 1_000_000   # (A+B) count below shift minimum
-W_WARD_AB_MAX    = 1_000_000   # (A+B) count above shift maximum
-W_WARD_AB_BAL    = 100_000   # |rank_A_count - rank_B_count| > 1 in a shift
+W_WARD_AB_MIN    = 1_750_000   # (A+B) count below shift minimum
+W_WARD_AB_MAX    = 1_500_000   # (A+B) count above shift maximum
+W_WARD_AB_BAL    = 200_000   # |rank_A_count - rank_B_count| > 1 in a shift
 W_WARD_C_ORDER   = 150_000   # rank-C nurse violating ordered-slot rule
 W_SINGLE_NIGHT   = 400_000   # isolated night block (no adjacent night)
 W_NIGHT_A_OVER_B = 500_000   # per-nurse excess of Rank A over Rank B on any night shift
 
 # Solver time budget in seconds.  90 s is generous for a 14-day roster;
 # increase for very large wards.
-_TIME_LIMIT_S = 120.0
+_TIME_LIMIT_S = 100.0
 
 
 # ─── Pre-solve helpers ────────────────────────────────────────────────────────
@@ -952,6 +952,8 @@ def run_ga_pipeline(
     solver.parameters.num_search_workers  = max(1, (os.cpu_count() or 2) - 1)
     solver.parameters.log_search_progress = True
     solver.parameters.use_lns = True
+    solver.parameters.randomize_search = True
+    solver.parameters.random_seed = random.randint(1, 1_000_000)
 
     print(f"[CP-SAT] Solving: {num_nurses} nurses × {num_days} days "
           f"| {len(working_nurses)} working | workers={solver.parameters.num_search_workers}")
