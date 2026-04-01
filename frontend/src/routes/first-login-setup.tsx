@@ -46,6 +46,12 @@ function FirstLoginSetup() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["currentUser"],
+    queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
+  })
+  const requiresEmployeeId = !!(currentUser?.nurseid || currentUser?.managerid)
+
   const {
     register,
     handleSubmit,

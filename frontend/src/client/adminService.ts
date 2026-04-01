@@ -79,7 +79,7 @@ export interface AdminUserCreate {
 export interface AdminUserUpdate {
   username?: string
   name?: string
-  email?: string
+  email?: string | null
   employee_id?: string
   designation?: string
   password?: string

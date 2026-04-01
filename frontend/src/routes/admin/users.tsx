@@ -9,6 +9,7 @@ import {
   type AdminUserCreate,
   type DesignationOption,
   type AdminUserUpdate,
+  type DesignationOption,
   type WardOption,
 } from "@/client/adminService"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
@@ -607,7 +608,7 @@ function UserFormDialog({
     if (isEdit) {
       const payload: AdminUserUpdate = {
         name: data.name || undefined,
-        email: data.email || undefined,
+        email: data.email.trim() ? data.email.trim() : null,
         is_active: data.is_active,
       }
       if (currentRole === "Nurse" || currentRole === "NurseManager") {
@@ -663,13 +664,17 @@ function UserFormDialog({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Name
-                {(isEdit
-                  ? currentRole === "Nurse" || currentRole === "NurseManager"
-                  : selectedRole === "Nurse" || selectedRole === "NurseManager"
-                ) && <span className="text-red-500"> *</span>}
+                {!isEdit && <span className="text-red-500"> *</span>}
               </label>
               <input
-                {...register("name")}
+                {...register("name", {
+                  validate: (value) => {
+                    if (!isEdit && !value?.trim()) {
+                      return "Name is required"
+                    }
+                    return true
+                  },
+                })}
                 type="text"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="LEE Chuen Shu"
@@ -696,6 +701,47 @@ function UserFormDialog({
                 <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
               )}
             </div>
+
+            {/* Role (editable on create, read-only on edit) */}
+            {!isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register("role")}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Nurse">Nurse</option>
+                  <option value="NurseManager">Nurse Manager</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+            )}
+
+            {isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <div className="flex flex-wrap gap-1 py-2">
+                  {editUser!.roles.map((role) => (
+                    <span
+                      key={role}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        role === "Admin"
+                          ? "bg-orange-100 text-orange-700"
+                          : role === "NurseManager"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {role === "NurseManager" ? "Nurse Manager" : role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {(isEdit
               ? currentRole === "Nurse" || currentRole === "NurseManager"
@@ -762,7 +808,7 @@ function UserFormDialog({
             {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Designation
+                  Designation <span className="text-red-500">*</span>
                 </label>
                 <select
                   {...register("designation")}
@@ -936,6 +982,8 @@ function DeleteDialog({
 
   if (!open || !user) return null
 
+  const isAdminUser = user.roles.includes("Admin")
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
@@ -953,13 +1001,17 @@ function DeleteDialog({
           </button>
           <button
             onClick={() => {
+              if (isAdminUser) {
+                showErrorToast("Admin accounts cannot be deleted.")
+                return
+              }
               setDeleting(true)
               mutation.mutate(user.userid)
             }}
-            disabled={deleting}
+            disabled={deleting || isAdminUser}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting ? "Deleting..." : "Delete"}
+            {deleting ? "Deleting..." : isAdminUser ? "Cannot Delete Admin" : "Delete"}
           </button>
         </div>
       </div>
@@ -1041,6 +1093,7 @@ function AdminUsers() {
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null)
   const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
+  const [passwordCopied, setPasswordCopied] = useState(false)
   const [knownDefaultPasswords, setKnownDefaultPasswords] = useState<Record<number, string>>({})
   const [isImporting, setIsImporting] = useState(false)
   const [pendingImport, setPendingImport] = useState<PendingImportState | null>(null)
@@ -1334,6 +1387,38 @@ function AdminUsers() {
     setImportCancelRequested(true)
   }
 
+  const handleCopyCreatedPassword = async () => {
+    const password = createdUserInfo?.generated_password
+    if (!password) {
+      showErrorToast("No password available to copy.")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(password)
+      setPasswordCopied(true)
+      showSuccessToast("Password copied to clipboard.")
+      setTimeout(() => setPasswordCopied(false), 1500)
+    } catch {
+      showErrorToast("Unable to copy password. Please copy it manually.")
+    }
+  }
+
+  const handleCopyDefaultPassword = async (userId: number) => {
+    const password = knownDefaultPasswords[userId]
+    if (!password) {
+      showErrorToast("No password available to copy.")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(password)
+      showSuccessToast("Password copied to clipboard.")
+    } catch {
+      showErrorToast("Unable to copy password. Please copy it manually.")
+    }
+  }
+
   const progressPercent = importProgress
     ? Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)
     : 0
@@ -1467,9 +1552,10 @@ function AdminUsers() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           type="text"
-          placeholder="Search by name or email..."
+          placeholder="Search by name, email, or employee ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          data-testid="admin-users-search"
           className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -1651,13 +1737,15 @@ function AdminUsers() {
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => setDeleteUser(user)}
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete user"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!user.roles.includes("Admin") && (
+                          <button
+                            onClick={() => setDeleteUser(user)}
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1772,7 +1860,10 @@ function AdminUsers() {
                 {copiedItem === "dialog-password" ? "Copied!" : "Copy Password"}
               </button>
               <button
-                onClick={() => setCreatedUserInfo(null)}
+                onClick={() => {
+                  setPasswordCopied(false)
+                  setCreatedUserInfo(null)
+                }}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 Done

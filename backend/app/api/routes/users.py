@@ -105,22 +105,12 @@ def first_login_setup(
         current_user.email = body.email
 
         # Also update the linked nurse/manager email
-        if current_user.nurseid:
-            nurse = session.exec(
-                select(Nurse).where(Nurse.nurseid == current_user.nurseid)
-            ).first()
-            if nurse:
-                nurse.email = body.email
-                session.add(nurse)
-        if current_user.managerid:
-            manager = session.exec(
-                select(NurseManager).where(
-                    NurseManager.managerid == current_user.managerid
-                )
-            ).first()
-            if manager:
-                manager.email = body.email
-                session.add(manager)
+        if nurse:
+            nurse.email = body.email
+            session.add(nurse)
+        if manager:
+            manager.email = body.email
+            session.add(manager)
 
     session.add(current_user)
     session.commit()
