@@ -64,26 +64,75 @@ def first_login_setup(
             detail="Password change is not required for this account.",
         )
 
+    nurse = None
+    manager = None
     employee_id = body.employee_id.strip() if body.employee_id else None
 
-    # Optionally set employee ID for linked nurse/manager profile.
-    if employee_id:
+    if current_user.nurseid:
+        nurse = session.exec(
+            select(Nurse).where(Nurse.nurseid == current_user.nurseid)
+        ).first()
+    if current_user.managerid:
+        manager = session.exec(
+            select(NurseManager).where(NurseManager.managerid == current_user.managerid)
+        ).first()
+
+    # Staff users must confirm/set employee ID on first login.
+    if current_user.nurseid or current_user.managerid:
+        if not employee_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Employee ID is required for first-time setup.",
+            )
+
         if current_user.nurseid:
-            nurse = session.exec(
-                select(Nurse).where(Nurse.nurseid == current_user.nurseid)
-            ).first()
-            if nurse:
-                nurse.employeeid = employee_id
-                session.add(nurse)
-        if current_user.managerid:
-            manager = session.exec(
-                select(NurseManager).where(
-                    NurseManager.managerid == current_user.managerid
+            dup_nurse = session.exec(
+                select(Nurse).where(
+                    Nurse.employeeid == employee_id,
+                    Nurse.nurseid != current_user.nurseid,
                 )
             ).first()
-            if manager:
-                manager.employeeid = employee_id
-                session.add(manager)
+            if dup_nurse:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This employee ID is already assigned to another nurse.",
+                )
+            dup_manager = session.exec(
+                select(NurseManager).where(NurseManager.employeeid == employee_id)
+            ).first()
+            if dup_manager:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This employee ID is already assigned to a nurse manager.",
+                )
+
+        if current_user.managerid:
+            dup_manager = session.exec(
+                select(NurseManager).where(
+                    NurseManager.employeeid == employee_id,
+                    NurseManager.managerid != current_user.managerid,
+                )
+            ).first()
+            if dup_manager:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This employee ID is already assigned to another nurse manager.",
+                )
+            dup_nurse = session.exec(
+                select(Nurse).where(Nurse.employeeid == employee_id)
+            ).first()
+            if dup_nurse:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This employee ID is already assigned to a nurse.",
+                )
+
+        if nurse:
+            nurse.employeeid = employee_id
+            session.add(nurse)
+        if manager:
+            manager.employeeid = employee_id
+            session.add(manager)
 
     # Set new password
     current_user.passwordhash = get_password_hash(body.new_password)
