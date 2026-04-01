@@ -76,7 +76,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
           DOCKER_IMAGE_BACKEND=backend
           DOCKER_IMAGE_FRONTEND=frontend
-          BACKEND_CORS_ORIGINS='["https://${{ secrets.DOMAIN_PROD }}","https://www.${{ secrets.DOMAIN_PROD }}","https://dashboard.${{ secrets.DOMAIN_PROD }}","https://api.${{ secrets.DOMAIN_PROD }}"]'
+          BACKEND_CORS_ORIGINS=__SET_BY_WORKFLOW__
           ACCESS_TOKEN_EXPIRE_MINUTES=10080
           ALGORITHM=HS256
           EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
@@ -91,23 +91,52 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "sed -i 's/^[[:space:]]*//' ~/rosterbusters/.env"
 
-      - name: Escape dollar signs in .env for Docker Compose
+      - name: Normalize .env and escape dollar signs for Docker Compose
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
           set -e
           python3 - <<'PY'
+          import json
           from pathlib import Path
 
           env_path = Path.home() / "rosterbusters" / ".env"
           lines = env_path.read_text().splitlines()
-          escaped = []
+          values = {}
+          ordered_keys = []
           for line in lines:
               if not line or line.lstrip().startswith("#") or "=" not in line:
-                  escaped.append(line)
                   continue
               key, value = line.split("=", 1)
-              escaped.append(f"{key}={value.replace('$', '$$')}")
-          env_path.write_text("\n".join(escaped) + "\n")
+              key = key.strip()
+              value = value.strip()
+              values[key] = value
+              ordered_keys.append(key)
+
+          domain = values.get("DOMAIN", "").strip()
+          if not domain:
+              raise SystemExit("DOMAIN is missing from .env")
+
+          values["DOMAIN"] = domain
+          values["FRONTEND_HOST"] = f"https://dashboard.{domain}"
+          values["BACKEND_CORS_ORIGINS"] = json.dumps(
+              [
+                  f"https://{domain}",
+                  f"https://www.{domain}",
+                  f"https://dashboard.{domain}",
+                  f"https://api.{domain}",
+              ],
+              separators=(",", ":"),
+          )
+
+          normalized = []
+          seen = set()
+          for key in ordered_keys:
+              if key in seen:
+                  continue
+              seen.add(key)
+              normalized.append(f"{key}={values[key].replace('$', '$$')}")
+
+          env_path.write_text("\n".join(normalized) + "\n")
           PY
           EOF
 
