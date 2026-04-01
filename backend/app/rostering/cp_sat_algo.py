@@ -767,7 +767,7 @@ def run_ga_pipeline(
             model.AddMaxEquality(max_cnt, cnt_vars)
             model.AddMinEquality(min_cnt, cnt_vars)
             model.Add(spread_cnt == max_cnt - min_cnt)
-            _add_penalty(spread_cnt, W_AP_DAY_SPREAD)
+            _add_penalty(spread_cnt, W_SHIFT_DAY_SPREAD)
 
     # ── 2. Working hours per nurse ────────────────────────────────────────────
     for n in working_nurses:

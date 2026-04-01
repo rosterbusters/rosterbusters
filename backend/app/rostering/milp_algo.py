@@ -502,6 +502,27 @@ def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days, solver_st
     }
 
 
+def _is_infeasibility_error(exc):
+    message = str(exc).lower()
+    return "infeasible" in message or "no feasible" in message
+
+
+def _build_relaxed_retry_config(milp_config):
+    relaxed_cfg = dict(milp_config or {})
+    relaxed_cfg["soften_coverage"] = True
+    relaxed_cfg["soften_equivalent_target"] = True
+
+    relaxed_weights = dict(relaxed_cfg.get("weights") or {})
+    # Keep these penalties high enough that the retry still prefers notebook-like
+    # coverage/equivalent-day behaviour whenever it is achievable.
+    if float(relaxed_weights.get("cov", 0.0) or 0.0) <= 0:
+        relaxed_weights["cov"] = 1000.0
+    if float(relaxed_weights.get("eq", 0.0) or 0.0) <= 0:
+        relaxed_weights["eq"] = 50.0
+    relaxed_cfg["weights"] = relaxed_weights
+    return relaxed_cfg
+
+
 # ---------------------------------------------------------------------------
 # Core Pyomo solver  (mirrors the notebook's generate_multi_roster_pyomo)
 # ---------------------------------------------------------------------------
@@ -1206,13 +1227,14 @@ def run_milp_pipeline(
     if progress_callback:
         progress_callback(2, 4, 0.0)
 
+    effective_config = milp_config
     try:
         roster_rn, roster_en, roster_hca, tc = _solve(
             rn_list=parsed["rn_list"],
             en_list=parsed["en_list"],
             hca_list=parsed["hca_list"],
             dept_name=ward_name,
-            milp_config=milp_config,
+            milp_config=effective_config,
             shift_requirements=parsed["shift_requirements"],
             hard_requests_rn=parsed["hard_requests_rn"],
             soft_requests_rn=parsed["soft_requests_rn"],
@@ -1231,8 +1253,45 @@ def run_milp_pipeline(
             time_limit=time_limit,
         )
     except RuntimeError as e:
-        print(f"[MILP] Solver failed: {e}")
-        raise MILPError(f"MILP solver failed: {e}") from e
+        already_softened = bool((milp_config or {}).get("soften_coverage")) and bool(
+            (milp_config or {}).get("soften_equivalent_target")
+        )
+        if _is_infeasibility_error(e) and not already_softened:
+            effective_config = _build_relaxed_retry_config(milp_config)
+            print(
+                "[MILP] Initial solve was infeasible; retrying with softened "
+                "coverage/equivalent-day constraints."
+            )
+            try:
+                roster_rn, roster_en, roster_hca, tc = _solve(
+                    rn_list=parsed["rn_list"],
+                    en_list=parsed["en_list"],
+                    hca_list=parsed["hca_list"],
+                    dept_name=ward_name,
+                    milp_config=effective_config,
+                    shift_requirements=parsed["shift_requirements"],
+                    hard_requests_rn=parsed["hard_requests_rn"],
+                    soft_requests_rn=parsed["soft_requests_rn"],
+                    annual_leave_rn=parsed["annual_leave_rn"],
+                    prev_week_last2_rn=parsed["prev_week_last2_rn"],
+                    hard_requests_en=parsed["hard_requests_en"],
+                    soft_requests_en=parsed["soft_requests_en"],
+                    annual_leave_en=parsed["annual_leave_en"],
+                    prev_week_last2_en=parsed["prev_week_last2_en"],
+                    hard_requests_hca=parsed["hard_requests_hca"],
+                    soft_requests_hca=parsed["soft_requests_hca"],
+                    annual_leave_hca=parsed["annual_leave_hca"],
+                    prev_week_last2_hca=parsed["prev_week_last2_hca"],
+                    non_working_shift_codes=non_working_shift_codes,
+                    seed=seed,
+                    time_limit=time_limit,
+                )
+            except RuntimeError as retry_error:
+                print(f"[MILP] Relaxed retry failed: {retry_error}")
+                raise MILPError(f"MILP solver failed: {retry_error}") from retry_error
+        else:
+            print(f"[MILP] Solver failed: {e}")
+            raise MILPError(f"MILP solver failed: {e}") from e
 
     print("[MILP] Solver finished — formatting output")
     if progress_callback:
@@ -1240,5 +1299,5 @@ def run_milp_pipeline(
 
     return _format_output(
         nurses, roster_rn, roster_en, roster_hca, parsed["num_days"],
-        solver_status=str(tc),
+        solver_status=str(tc) if effective_config is milp_config else f"{tc} (relaxed)",
     )
