@@ -5,5 +5,12 @@ services:
       - ./traefik/certs:/certs:ro
       - ./traefik/dynamic:/dynamic:ro
     command:
+      - --providers.docker
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.http.address=:80
+      - --entrypoints.https.address=:443
+      - --accesslog
+      - --log
+      - --api
       - --providers.file.directory=/dynamic
       - --providers.file.watch=true
