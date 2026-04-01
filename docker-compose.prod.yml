@@ -40,17 +40,16 @@ services:
         - VITE_API_URL=https://api.${DOMAIN?Variable not set}
         - NODE_ENV=production
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.services.${STACK_NAME?Variable not set}-frontend.loadbalancer.server.port=80
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.rule=Host(`dashboard.${DOMAIN?Variable not set}`) || Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.entrypoints=http
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.rule=Host(`dashboard.${DOMAIN?Variable not set}`) || Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.entrypoints=https
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls=true
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls.certresolver=le
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares=https-redirect
+      traefik.enable: "true"
+      traefik.docker.network: traefik-public
+      traefik.constraint-label: traefik-public
+      traefik.http.services.${STACK_NAME?Variable not set}-frontend.loadbalancer.server.port: "80"
+      traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.rule: Host(`dashboard.${DOMAIN?Variable not set}`) || Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
+      traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.entrypoints: http
+      traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares: https-redirect
+      traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.rule: Host(`dashboard.${DOMAIN?Variable not set}`) || Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
+      traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.entrypoints: https
+      traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls: "true"
 
 networks:
   traefik-public:

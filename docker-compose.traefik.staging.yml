@@ -1,0 +1,14 @@
+services:
+  traefik:
+    labels:
+      traefik.http.routers.traefik-dashboard-https.tls.certresolver: le
+    volumes:
+      # Store Let's Encrypt certificates persistently for staging.
+      - traefik-public-certificates:/certificates
+    command:
+      - --certificatesresolvers.le.acme.email=${EMAIL?Variable not set}
+      - --certificatesresolvers.le.acme.storage=/certificates/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+
+volumes:
+  traefik-public-certificates:

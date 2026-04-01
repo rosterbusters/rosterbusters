@@ -1,0 +1,29 @@
+# GPU override — merge on top of docker-compose.yml + docker-compose.override.yml.
+#
+# Replaces the celery_worker image with a CUDA-enabled build so the GA
+# rostering algorithm can use the GPU via CuPy.
+#
+# Run with:
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.override.yml \
+#                  -f docker-compose.cuda.yml \
+#                  watch
+#
+# Prerequisites (Windows):
+#   1. NVIDIA GPU with driver >= 525
+#   2. Docker Desktop >= 4.26 with "Use GPU with Docker" enabled
+#      (Settings → Resources → GPU)
+#   3. No extra host install needed — Docker Desktop bundles the toolkit.
+
+services:
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
