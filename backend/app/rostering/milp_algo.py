@@ -726,19 +726,26 @@ def _solve(
                     # Free day: exactly one of work-shifts or DO
                     m.cons.add(sum(x_var[n, d, s] for s in SHIFTS) + off_var[n, d] == 1)
 
-            # 10 equivalent shifts = actual shifts + AL days + INHT/BL days (softened)
+            # Per-nurse equivalent-day target must account for fixed non-working days.
+            # Otherwise a nurse with >eq_target mandatory leave/non-working days
+            # becomes infeasible before the solver can assign anything.
+            fixed_equivalent_days = len(al_days) + len(other_nonwork_days)
+            adjusted_equivalent_target = min(
+                num_days,
+                max(equivalent_shift_target, fixed_equivalent_days),
+            )
             equivalent_days = (
                 sum(x_var[n, d, s] for d in DAYS for s in SHIFTS)
-                + len(al_days) + len(other_nonwork_days)
+                + fixed_equivalent_days
             )
             if soften_equivalent_target:
                 m.cons.add(
                     equivalent_days
                     + eq_under[n] - eq_over[n]
-                    == equivalent_shift_target
+                    == adjusted_equivalent_target
                 )
             else:
-                m.cons.add(equivalent_days == equivalent_shift_target)
+                m.cons.add(equivalent_days == adjusted_equivalent_target)
 
             # Weekly caps
             if WEEK1:

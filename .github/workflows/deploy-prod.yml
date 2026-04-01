@@ -119,28 +119,36 @@ jobs:
 
           APP_PROJECT=rosterbusters
           TRAEFIK_PROJECT=traefik-public
+          app_compose() {
+            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"
+          }
+          app_override_compose() {
+            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml "$@"
+          }
+          traefik_compose() {
+            docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml "$@"
+          }
           dump_logs() {
             echo "=== TRAEFIK LOGS ==="
-            docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml logs --tail=200 || true
+            traefik_compose logs --tail=200 || true
             echo "=== APP LOGS ==="
-            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml logs --tail=200 || true
+            app_compose logs --tail=200 || true
           }
           trap dump_logs ERR
 
-          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
-          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml down --remove-orphans 2>/dev/null || true
-          docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
+          app_compose down -v --remove-orphans 2>/dev/null || true
+          app_override_compose down --remove-orphans 2>/dev/null || true
 
           docker network create traefik-public 2>/dev/null || true
 
-          docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml up -d
+          traefik_compose up -d
 
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
-          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml build
+          app_compose build
 
-          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans || {
+          app_compose up -d --remove-orphans || {
             echo "=== PRESTART LOGS ==="
-            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml logs prestart
+            app_compose logs prestart
             exit 1
           }
 
@@ -151,10 +159,10 @@ jobs:
           docker network inspect traefik-public
 
           echo "=== TRAEFIK STATUS ==="
-          docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml ps
+          traefik_compose ps
 
           echo "=== APP STATUS ==="
-          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml ps
+          app_compose ps
 
           DOMAIN=$(grep '^DOMAIN=' .env | cut -d= -f2-)
 

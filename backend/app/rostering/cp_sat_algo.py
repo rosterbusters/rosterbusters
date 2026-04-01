@@ -74,6 +74,7 @@ W_WARD_AB_BAL    = 200_000   # |rank_A_count - rank_B_count| > 1 in a shift
 W_WARD_C_ORDER   = 150_000   # rank-C nurse violating ordered-slot rule
 W_SINGLE_NIGHT   = 400_000   # isolated night block (no adjacent night)
 W_NIGHT_A_OVER_B = 500_000   # per-nurse excess of Rank A over Rank B on any night shift
+W_RN_NIGHT_TARGET = 350_000  # per-day excess of Rank A night nurses above the configured target
 
 # Solver time budget in seconds.  90 s is generous for a 14-day roster;
 # increase for very large wards.
@@ -861,11 +862,12 @@ def run_ga_pipeline(
             # Interior: must have at least one adjacent night
             model.Add(x[n, d, NIGHT] <= x[n, d - 1, NIGHT] + x[n, d + 1, NIGHT])
 
-    # ── 4c. Per-day NIGHT assignment cap (HARD) ───────────────────────────────
+    # ── 4c. Per-day NIGHT assignment cap / target ─────────────────────────────
     # Prevents the solver hoarding nights on unconstrained days (particularly
     # the last day, which has no post-night-OFF cost).
     # When use_ward_demand=True the cap uses backend-configured per-day night
-    # limits for RN and HCA3 when available, plus the ward-standard total cap.
+    # settings for RN and HCA3 when available, plus the ward-standard total cap.
+    # RN is treated as a soft target; HCA3 and total-night limits stay hard.
     # When False it is the demand total.
     rn_cfg = (milp_config or {}).get("RN") if isinstance(milp_config, dict) else None
     rn_max_night_per_day = None
@@ -881,11 +883,14 @@ def run_ga_pipeline(
             hca_max_night_per_day = int(raw_hca_max_night)
     for d in range(num_days):
         if use_ward_demand:
-            # Ward standard: max 5 A+B on NIGHT, plus backend RN/HCA3 daily caps.
-            rank_a_night_cap = rn_max_night_per_day if rn_max_night_per_day is not None else 5
+            # Ward standard: max 5 A+B on NIGHT, plus backend RN/HCA3 daily settings.
+            rank_a_night_target = rn_max_night_per_day if rn_max_night_per_day is not None else 5
             rank_c_night_cap = hca_max_night_per_day if hca_max_night_per_day is not None else (1 if rank_C else 0)
             if rank_A:
-                model.Add(sum(x[n, d, NIGHT] for n in rank_A) <= rank_a_night_cap)
+                cnt_a_night = sum(x[n, d, NIGHT] for n in rank_A)
+                rn_target_excess = model.NewIntVar(0, len(rank_A), f"rna_night_exc_{d}")
+                model.Add(rn_target_excess >= cnt_a_night - rank_a_night_target)
+                _add_penalty(rn_target_excess, W_RN_NIGHT_TARGET)
             if rank_C:
                 model.Add(sum(x[n, d, NIGHT] for n in rank_C) <= rank_c_night_cap)
             max_night = 5 + rank_c_night_cap
