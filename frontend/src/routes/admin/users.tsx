@@ -1395,7 +1395,23 @@ function AdminUsers() {
     try {
       await navigator.clipboard.writeText(password)
       setPasswordCopied(true)
+      showSuccessToast("Password copied to clipboard.")
       setTimeout(() => setPasswordCopied(false), 1500)
+    } catch {
+      showErrorToast("Unable to copy password. Please copy it manually.")
+    }
+  }
+
+  const handleCopyDefaultPassword = async (userId: number) => {
+    const password = knownDefaultPasswords[userId]
+    if (!password) {
+      showErrorToast("No password available to copy.")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(password)
+      showSuccessToast("Password copied to clipboard.")
     } catch {
       showErrorToast("Unable to copy password. Please copy it manually.")
     }
@@ -1537,6 +1553,7 @@ function AdminUsers() {
           placeholder="Search by name, email, or employee ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          data-testid="admin-users-search"
           className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -1675,9 +1692,7 @@ function AdminUsers() {
                             {knownDefaultPasswords[user.userid]}
                           </span>
                           <button
-                            onClick={() =>
-                              navigator.clipboard.writeText(knownDefaultPasswords[user.userid])
-                            }
+                            onClick={() => handleCopyDefaultPassword(user.userid)}
                             className="text-xs px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-white"
                           >
                             Copy

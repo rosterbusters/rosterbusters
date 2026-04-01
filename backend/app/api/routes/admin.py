@@ -108,7 +108,7 @@ def _slugify_username(value: str) -> str:
     return slug
 
 
-def _truncate_username(value: str, max_tokens: int = 3) -> str:
+def _truncate_username(value: str, max_tokens: int = 2) -> str:
     normalized = _slugify_username(value)
     if not normalized:
         return ""

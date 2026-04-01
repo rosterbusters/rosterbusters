@@ -9,9 +9,20 @@ from authlib.integrations.starlette_client import OAuth
 from sqlmodel import select
 
 from app import crud
-from app.api.deps import SessionDep
+from app.api.deps import CurrentUser, SessionDep
 from app.core import security
 from app.core.config import settings
+from app.core.security import get_password_hash
+from app.models import Message
+from app.models import NewPassword
+from app.models.rbac import RBACUser, RBACUserPublic
+from app.utils import (
+    generate_password_reset_token,
+    generate_reset_password_email,
+    generate_password_changed_email,
+    verify_password_reset_token,
+    send_email,
+)
 
 router = APIRouter()
 

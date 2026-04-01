@@ -67,14 +67,31 @@ test("admin can see newly created nurse and nurse manager", async ({
   const ward = await getAnyWard(request, token)
 
   const suffix = Date.now().toString().slice(-6)
-  const nurseUsername = `test.nurse.${suffix}`
-  const nurseManagerUsername = `test.manager.${suffix}`
+  const nurseUsername = `testnurse${suffix}`
+  const nurseManagerUsername = `testmanager${suffix}`
   const nurseEmail = `test.nurse.${suffix}@example.com`
   const nurseManagerEmail = `test.manager.${suffix}@example.com`
 
   const createdUserIds: number[] = []
 
   try {
+    const existingNurseId = await findUserIdByUsername(
+      request,
+      token,
+      nurseUsername,
+    )
+    if (existingNurseId) {
+      await deleteUser(request, token, existingNurseId)
+    }
+    const existingManagerId = await findUserIdByUsername(
+      request,
+      token,
+      nurseManagerUsername,
+    )
+    if (existingManagerId) {
+      await deleteUser(request, token, existingManagerId)
+    }
+
     const nurse = await createUser(request, token, {
       username: nurseUsername,
       name: `Test Nurse`,
@@ -102,7 +119,8 @@ test("admin can see newly created nurse and nurse manager", async ({
 
     await page.goto("/admin/users")
 
-    const search = page.getByPlaceholder("Search by name or email...")
+    const search = page.getByTestId("admin-users-search")
+    await expect(search).toBeAttached({ timeout: 15_000 })
 
     await search.fill(nurseEmail)
     const nurseRow = page.getByRole("row").filter({ hasText: nurseUsername })
@@ -135,14 +153,31 @@ test("admin deletion removes nurse and nurse manager records", async ({
   const ward = await getAnyWard(request, token)
 
   const suffix = Date.now().toString().slice(-6)
-  const nurseUsername = `delete.nurse.${suffix}`
-  const nurseManagerUsername = `delete.manager.${suffix}`
+  const nurseUsername = `deletenurse${suffix}`
+  const nurseManagerUsername = `deletemanager${suffix}`
   const nurseEmail = `delete.nurse.${suffix}@example.com`
   const nurseManagerEmail = `delete.manager.${suffix}@example.com`
 
   const createdUserIds: number[] = []
 
   try {
+    const existingNurseId = await findUserIdByUsername(
+      request,
+      token,
+      nurseUsername,
+    )
+    if (existingNurseId) {
+      await deleteUser(request, token, existingNurseId)
+    }
+    const existingManagerId = await findUserIdByUsername(
+      request,
+      token,
+      nurseManagerUsername,
+    )
+    if (existingManagerId) {
+      await deleteUser(request, token, existingManagerId)
+    }
+
     const nurse = await createUser(request, token, {
       username: nurseUsername,
       name: "Delete Nurse",
@@ -185,7 +220,8 @@ test("admin deletion removes nurse and nurse manager records", async ({
     }, token)
     await page.goto("/admin/users")
 
-    const search = page.getByPlaceholder("Search by name or email...")
+    const search = page.getByTestId("admin-users-search")
+    await expect(search).toBeAttached({ timeout: 15_000 })
 
     await search.fill(nurseEmail)
     const nurseRow = page.getByRole("row").filter({ hasText: nurseUsername })
