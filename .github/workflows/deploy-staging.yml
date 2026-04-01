@@ -99,7 +99,7 @@ jobs:
 
           # Stop all containers including Traefik and any orphans
           docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans 2>/dev/null || true
-          docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose.traefik.yml -f docker-compose.traefik.staging.yml down --remove-orphans 2>/dev/null || true
 
           # Clean up unused images and build cache to free disk space
           docker image prune -a -f
@@ -109,7 +109,7 @@ jobs:
           docker network create traefik-public 2>/dev/null || true
 
           # Start Traefik reverse proxy (handles SSL via Let's Encrypt)
-          docker compose -f docker-compose.traefik.yml up -d
+          docker compose -f docker-compose.traefik.yml -f docker-compose.traefik.staging.yml up -d
 
           # Build and start the app in production mode
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \

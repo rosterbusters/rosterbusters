@@ -87,6 +87,28 @@ jobs:
           GRB_LICENSEID=${{ secrets.LICENSEID }}
           EOF
 
+      - name: Write Cloudflare origin certificate files on EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
+          set -e
+          mkdir -p ~/rosterbusters/traefik/certs ~/rosterbusters/traefik/dynamic
+          cat > ~/rosterbusters/traefik/certs/origin.crt <<'CRT'
+          ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
+          CRT
+          cat > ~/rosterbusters/traefik/certs/origin.key <<'KEY'
+          ${{ secrets.CLOUDFLARE_ORIGIN_KEY }}
+          KEY
+          chmod 600 ~/rosterbusters/traefik/certs/origin.key
+          cat > ~/rosterbusters/traefik/dynamic/tls.yml <<'YAML'
+          tls:
+            stores:
+              default:
+                defaultCertificate:
+                  certFile: /certs/origin.crt
+                  keyFile: /certs/origin.key
+          YAML
+          EOF
+
       - name: Strip whitespace from .env
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "sed -i 's/^[[:space:]]*//' ~/rosterbusters/.env"
@@ -155,7 +177,7 @@ jobs:
             docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml "$@"
           }
           traefik_compose() {
-            docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml "$@"
+            docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml -f docker-compose.traefik.prod.yml "$@"
           }
           dump_logs() {
             echo "=== TRAEFIK LOGS ==="
@@ -198,9 +220,9 @@ jobs:
           curl -fSs -H "Host: dashboard.$DOMAIN" http://127.0.0.1/ >/dev/null
           curl -fSs -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ >/dev/null
 
-          echo "=== PUBLIC HTTPS CHECKS (TEMPORARY, NON-BLOCKING) ==="
-          curl -kfsS https://dashboard.$DOMAIN/ >/dev/null || echo "Warning: public frontend HTTPS check failed"
-          curl -kfsS https://api.$DOMAIN/api/v1/utils/health-check/ >/dev/null || echo "Warning: public API HTTPS check failed"
+          echo "=== PUBLIC HTTPS CHECKS VIA CLOUDFLARE ==="
+          curl -fSs https://dashboard.$DOMAIN/ >/dev/null
+          curl -fSs https://api.$DOMAIN/api/v1/utils/health-check/ >/dev/null
 
           echo "Production deploy checks passed."
 
