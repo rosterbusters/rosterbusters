@@ -153,6 +153,24 @@ export async function deleteUser(
   })
 }
 
+export async function completeFirstLoginSetup(
+  request: APIRequestContext,
+  token: string,
+  payload: { new_password: string; email: string; employee_id: string },
+) {
+  const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    data: payload,
+  })
+  if (!res.ok()) {
+    const body = await res.text()
+    throw new Error(`Failed to complete first login setup: ${res.status()} ${body}`)
+  }
+}
+
 export async function findUserIdByUsername(
   request: APIRequestContext,
   token: string,
