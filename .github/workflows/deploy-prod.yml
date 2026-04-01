@@ -222,6 +222,15 @@ jobs:
           grep -n "traefik.http.routers.backend-http.rule" docker-compose.yml docker-compose.prod.yml || true
           grep -n "traefik.http.routers.adminer-http.rule" docker-compose.yml docker-compose.prod.yml || true
 
+          echo "=== LIVE FRONTEND LABELS ==="
+          docker inspect rosterbusters-frontend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
+
+          echo "=== LIVE BACKEND LABELS ==="
+          docker inspect rosterbusters-backend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
+
+          echo "=== LIVE ADMINER LABELS ==="
+          docker inspect rosterbusters-adminer-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
+
           echo "=== LOCAL FRONTEND CHECK ==="
           curl -i -H "Host: dashboard.$DOMAIN" http://127.0.0.1/ || true
 
