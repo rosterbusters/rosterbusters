@@ -1075,7 +1075,10 @@ def _apply_milp_policy_overrides(base_config: dict, policy: dict | None) -> dict
         "weekly_do_cap",
         "weekend_night_target",
         "coverage_mode",
+        "soften_coverage",
+        "soften_equivalent_target",
         "shift_priority",
+        "min_do_with_other_nonwork",
         "weights",
         "num_days",
     ):
@@ -1101,6 +1104,11 @@ def _build_milp_config(
 ) -> dict:
     config = {
         "LOW_DAYS": {6, 7, 13, 14},
+        "coverage_mode": "strict_by_class",
+        "soften_coverage": False,
+        "soften_equivalent_target": False,
+        "shift_priority": {"enabled": False},
+        "min_do_with_other_nonwork": 2,
         "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": _shift_target_from_min(rn_min)},
         "EN":  {"normal_min": en_min,  "low_exact": None, "day_target": en_min,  "shift_target": _shift_target_from_min(en_min)},
         "HCA": {"normal_min": hca_min, "low_exact": None, "day_target": hca_min, "shift_target": _shift_target_from_min(hca_min)},

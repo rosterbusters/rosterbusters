@@ -411,11 +411,15 @@ def _solve(
     equivalent_shift_target = int(cfg.get("equivalent_shift_target", 10) or 10)
     weekly_night_cap = int(cfg.get("weekly_night_cap", 2) or 2)
     weekly_work_cap = int(cfg.get("weekly_work_cap", 5) or 5)
-    weekly_do_cap = int(cfg.get("weekly_do_cap", 2) or 2)
+    weekly_do_cap_raw = cfg.get("weekly_do_cap")
+    weekly_do_cap = None if weekly_do_cap_raw in (None, "") else int(weekly_do_cap_raw)
+    min_do_with_other_nonwork = int(cfg.get("min_do_with_other_nonwork", 2) or 2)
     weekend_night_target = float(cfg.get("weekend_night_target", 0.5) or 0.5)
-    coverage_mode = str(cfg.get("coverage_mode", "hierarchical")).strip().lower()
+    coverage_mode = str(cfg.get("coverage_mode", "strict_by_class")).strip().lower()
+    soften_equivalent_target = bool(cfg.get("soften_equivalent_target", False))
+    soften_coverage = bool(cfg.get("soften_coverage", False))
     shift_priority_cfg = cfg.get("shift_priority", {}) or {}
-    shift_priority_enabled = bool(shift_priority_cfg.get("enabled", True))
+    shift_priority_enabled = bool(shift_priority_cfg.get("enabled", False))
     shift_priority_order = [
         str(shift).strip().upper()
         for shift in shift_priority_cfg.get("order", ["A", "P", "N"])
@@ -457,6 +461,8 @@ def _solve(
         "eq": 500.0, "cov": 1000.0,
         "balance": 20.0, "day_smooth": 30.0,
     }
+    if weights is None:
+        weights = cfg.get("weights")
     if weights is None:
         weights = _default_w
     else:
@@ -578,12 +584,18 @@ def _solve(
                     m.cons.add(sum(x_var[n, d, s] for s in SHIFTS) + off_var[n, d] == 1)
 
             # 10 equivalent shifts = actual shifts + AL days + INHT/BL days (softened)
-            m.cons.add(
+            equivalent_days = (
                 sum(x_var[n, d, s] for d in DAYS for s in SHIFTS)
                 + len(al_days) + len(other_nonwork_days)
-                + eq_under[n] - eq_over[n]
-                == equivalent_shift_target
             )
+            if soften_equivalent_target:
+                m.cons.add(
+                    equivalent_days
+                    + eq_under[n] - eq_over[n]
+                    == equivalent_shift_target
+                )
+            else:
+                m.cons.add(equivalent_days == equivalent_shift_target)
 
             # Weekly caps
             if WEEK1:
@@ -593,12 +605,17 @@ def _solve(
                 m.cons.add(sum(x_var[n, d, "N"] for d in WEEK2) <= weekly_night_cap)
                 m.cons.add(sum(x_var[n, d, s] for d in WEEK2 for s in SHIFTS) <= weekly_work_cap)
 
-            # ≤2 DO per week unless the nurse has leave that week (AL/INHT/BL),
-            # in which case the cap is relaxed to allow flexibility.
-            if WEEK1 and not any(d in WEEK1 for d in al_days | other_nonwork_days):
-                m.cons.add(sum(off_var[n, d] for d in WEEK1) <= weekly_do_cap)
-            if WEEK2 and not any(d in WEEK2 for d in al_days | other_nonwork_days):
-                m.cons.add(sum(off_var[n, d] for d in WEEK2) <= weekly_do_cap)
+            if weekly_do_cap is not None:
+                if WEEK1 and not any(d in WEEK1 for d in al_days | other_nonwork_days):
+                    m.cons.add(sum(off_var[n, d] for d in WEEK1) <= weekly_do_cap)
+                if WEEK2 and not any(d in WEEK2 for d in al_days | other_nonwork_days):
+                    m.cons.add(sum(off_var[n, d] for d in WEEK2) <= weekly_do_cap)
+
+            if min_do_with_other_nonwork > 0:
+                if any(d in WEEK1 for d in other_nonwork_days):
+                    m.cons.add(sum(off_var[n, d] for d in WEEK1) >= min_do_with_other_nonwork)
+                if any(d in WEEK2 for d in other_nonwork_days):
+                    m.cons.add(sum(off_var[n, d] for d in WEEK2) >= min_do_with_other_nonwork)
 
             # ---- N-N-DO block rules ----
             # No two block starts on consecutive days
@@ -669,16 +686,32 @@ def _solve(
             c_hca = _cov_hca[(d, s)]
 
             if coverage_mode == "strict_by_class":
-                m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
-                m.cons.add(c_en + m.cov_slack_en[d, s] >= e_req)
-                m.cons.add(c_hca + m.cov_slack_total[d, s] >= h_req)
+                if soften_coverage:
+                    m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
+                    m.cons.add(c_en + m.cov_slack_en[d, s] >= e_req)
+                    m.cons.add(c_hca + m.cov_slack_total[d, s] >= h_req)
+                else:
+                    m.cons.add(m.cov_slack_rn[d, s] == 0)
+                    m.cons.add(m.cov_slack_en[d, s] == 0)
+                    m.cons.add(m.cov_slack_total[d, s] == 0)
+                    m.cons.add(c_rn >= r_req)
+                    m.cons.add(c_en >= e_req)
+                    m.cons.add(c_hca >= h_req)
             else:
-                # RN-qualified coverage must satisfy RN demand (softened)
-                m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
-                # RN + EN qualified coverage must satisfy RN + EN demand (softened)
-                m.cons.add(c_rn + c_en + m.cov_slack_en[d, s] >= r_req + e_req)
-                # Total coverage must satisfy RN + EN + HCA demand (softened)
-                m.cons.add(c_rn + c_en + c_hca + m.cov_slack_total[d, s] >= r_req + e_req + h_req)
+                if soften_coverage:
+                    # RN-qualified coverage must satisfy RN demand (softened)
+                    m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
+                    # RN + EN qualified coverage must satisfy RN + EN demand (softened)
+                    m.cons.add(c_rn + c_en + m.cov_slack_en[d, s] >= r_req + e_req)
+                    # Total coverage must satisfy RN + EN + HCA demand (softened)
+                    m.cons.add(c_rn + c_en + c_hca + m.cov_slack_total[d, s] >= r_req + e_req + h_req)
+                else:
+                    m.cons.add(m.cov_slack_rn[d, s] == 0)
+                    m.cons.add(m.cov_slack_en[d, s] == 0)
+                    m.cons.add(m.cov_slack_total[d, s] == 0)
+                    m.cons.add(c_rn >= r_req)
+                    m.cons.add(c_rn + c_en >= r_req + e_req)
+                    m.cons.add(c_rn + c_en + c_hca >= r_req + e_req + h_req)
 
     # ---- Ward-wide total minimum + shift priority ordering (notebook v10) ----
     # AM >= PM >= NIGHT, with tight gaps of at most 1
