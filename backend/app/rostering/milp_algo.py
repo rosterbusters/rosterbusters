@@ -536,6 +536,8 @@ def _solve(
     soften_equivalent_target = bool(cfg.get("soften_equivalent_target", False))
     soften_coverage = bool(cfg.get("soften_coverage", False))
     total_min_cfg = cfg.get("TOTAL_MIN") or {}
+    rn_night_target = int(rn_cfg.get("nd_rn_target", 2) or 2)
+    rn_night_band = int(rn_cfg.get("nd_rn_band", 1) or 1)
     shift_priority_cfg = cfg.get("shift_priority", {}) or {}
     shift_priority_enabled = bool(shift_priority_cfg.get("enabled", False))
     shift_priority_order = [
@@ -870,7 +872,13 @@ def _solve(
                 if total_required <= 0:
                     continue
                 total_coverage = _cov_rn[(d, s)] + _cov_en[(d, s)] + _cov_hca[(d, s)]
-                m.cons.add(total_coverage >= total_required)
+                if s == "N":
+                    total_night_min = max(0, total_required - 1)
+                    total_night_max = total_required + 1
+                    m.cons.add(total_coverage >= total_night_min)
+                    m.cons.add(total_coverage <= total_night_max)
+                else:
+                    m.cons.add(total_coverage >= total_required)
 
     # ---- Ward-wide total minimum + shift priority ordering (notebook v10) ----
     # AM >= PM >= NIGHT, with tight gaps of at most 1
@@ -909,6 +917,13 @@ def _solve(
         for d in DAYS:
             m.cons.add(cov_map[(d, "N")] <= int(max_night_per_day))
 
+    # Daily RN night staffing: enforce 2 +/- 1, but keep the objective centered on 2.
+    rn_night_min = max(0, rn_night_target - rn_night_band)
+    rn_night_max = rn_night_target + rn_night_band
+    for d in DAYS:
+        m.cons.add(_cov_rn[(d, "N")] >= rn_night_min)
+        m.cons.add(_cov_rn[(d, "N")] <= rn_night_max)
+
     # ---- Shift-balance deviations (soft) ----
     def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg, class_name):
         st = class_cfg.get("shift_target", {
@@ -933,6 +948,8 @@ def _solve(
     dt_rn  = rn_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "RN", s) for s in SHIFTS})
     dt_en  = en_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "EN", s) for s in SHIFTS})
     dt_hca = hca_cfg.get("day_target", {s: _average_daily_requirement(shift_requirements, "HCA", s) for s in SHIFTS})
+    dt_rn = dict(dt_rn)
+    dt_rn["N"] = rn_night_target
 
     for d in DAYS:
         for s in SHIFTS:
