@@ -39,7 +39,7 @@ test("imports staff list from Excel with duplicates flagged", async ({
   const wardB = wards[1]
 
   const suffix = Date.now().toString().slice(-6)
-  const duplicateUsername = `import.dup.${suffix}`
+  const duplicateUsername = `importdup${suffix}`
   const duplicateEmployeeId = `DUP${suffix}`
   const psaEntries = [
     {
@@ -69,6 +69,15 @@ test("imports staff list from Excel with duplicates flagged", async ({
   let filePath = ""
 
   try {
+    const existingUserId = await findUserIdByUsername(
+      request,
+      token,
+      duplicateUsername,
+    )
+    if (existingUserId) {
+      await deleteUser(request, token, existingUserId)
+    }
+
     const duplicateUser = await createUser(request, token, {
       username: duplicateUsername,
       name: "Import Duplicate",
@@ -156,7 +165,16 @@ test("imports staff list from Excel with duplicates flagged", async ({
       page.getByTestId("toast-container"),
     ).toContainText('skipped because "PATIENT SERVICE ASST II" is a PSA role')
 
-    const search = page.getByPlaceholder("Search by name or email...")
+    const importFailuresDialog = page.getByText("Import Failures")
+    if (await importFailuresDialog.count()) {
+      await expect(importFailuresDialog).toBeVisible()
+      await page.getByRole("button", { name: "Done" }).click()
+      await expect(importFailuresDialog).toBeHidden()
+    }
+
+    const search = page.getByTestId("admin-users-search")
+    await expect(search).toBeAttached({ timeout: 15_000 })
+    await search.scrollIntoViewIfNeeded()
 
     const expectedUsers = [
       { name: `Nurse${suffix} A`, wardId: wardA.wardid },

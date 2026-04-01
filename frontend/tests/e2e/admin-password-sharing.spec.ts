@@ -69,7 +69,8 @@ test("imported users show default password in the column", async ({
     await expect(progressModal).toBeVisible()
     await expect(progressModal).toBeHidden({ timeout: 60_000 })
 
-    const search = page.getByPlaceholder("Search by name or email...")
+    const search = page.getByTestId("admin-users-search")
+    await expect(search).toBeAttached({ timeout: 15_000 })
     await search.fill(username)
 
     const row = page.getByRole("row").filter({ hasText: username })

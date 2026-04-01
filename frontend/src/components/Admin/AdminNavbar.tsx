@@ -116,14 +116,17 @@ function AdminNavbar() {
               <span className="hidden lg:inline">{userName}</span>
               <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent
+              align="end"
+              className="w-44 border border-[#E6E6E6] bg-white p-1 shadow-md"
+            >
               <DropdownMenuItem
                 onClick={logout}
-                className="text-red-600 cursor-pointer"
+                className="cursor-pointer bg-white text-red-600 focus:bg-red-50 focus:text-red-600"
                 data-testid="admin-navbar-signout"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                Sign Out
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -186,11 +189,11 @@ function AdminNavbar() {
                 setMobileMenuOpen(false)
                 logout()
               }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 w-full"
+              className="flex w-full items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
               data-testid="admin-navbar-signout"
             >
-              <LogOut className="w-4 h-4" />
-              Sign Out
+              <LogOut className="h-4 w-4" />
+              Logout
             </button>
           </div>
         </div>
