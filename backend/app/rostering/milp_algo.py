@@ -4,16 +4,14 @@
 # compatible with the algo_scheduler.py pipeline interface.
 #
 # Key notebook-aligned behaviour:
-#   1. Coverage uses hierarchical/cumulative skill-tier constraints:
-#      RN covers RN+EN+HCA demand; EN covers EN+HCA; HCA covers HCA only.
-#      (Previous version used independent per-class coverage floors.)
-#   2. Ward-wide shift priority ordering enforced each day:
-#      total_AM >= total_PM >= total_NIGHT, with tight gaps of at most 1.
-#   3. "RD" is now treated as a true off-day (alongside DO and OFF).
-#   4. v13 soft terms are included for RN/EN intra-day balance and
-#      consecutive-day staffing smoothing, plus an optional RN night cap.
-#   5. Solver accepts maxTimeLimit as a valid termination condition (in
-#      addition to optimal), allowing partial solutions under time limits.
+#   1. Coverage is strict by class: RN covers RN only, EN covers EN only,
+#      HCA covers HCA only.
+#   2. "RD" is treated as a true off-day (alongside DO and OFF).
+#   3. Any night shift must belong to an N-N-DO block with carry-over
+#      handling across horizons.
+#   4. Weekly caps remain notebook v14 defaults: <=2 night shifts and <=5
+#      total worked shifts per week.
+#   5. Objective defaults follow the notebook unless explicitly overridden.
 #
 # Expected call from algo_scheduler:
 #   run_milp_pipeline(nurses, shifts, hard_requests, soft_requests, prev_last_shift, ward_name="DEFAULT")
@@ -612,11 +610,21 @@ def _solve(
     )
 
     _default_w = {
-        "dev_shift": 1.0, "dev_day": 0.5, "AP": 3.0,
-        "pref": 100.0, "weekend": 3.0, "rest": 25.0,
-        "eq": 500.0, "cov": 1000.0,
-        "balance": 20.0, "day_smooth": 30.0,
-        "ward_day_balance": 8.0,
+        "dev_shift": 1.0,
+        "dev_day": 0.5,
+        "AP": 3.0,
+        "pref": 100.0,
+        "weekend": 3.0,
+        "rest": 25.0,
+        "balance": 20.0,
+        "day_smooth": 30.0,
+        "day_smooth_hca": 15.0,
+        "hca_morning": 20.0,
+        # Extra production-only knobs stay opt-in so default behaviour
+        # matches the notebook.
+        "eq": 0.0,
+        "cov": 0.0,
+        "ward_day_balance": 0.0,
     }
     if weights is None:
         weights = cfg.get("weights")
@@ -742,14 +750,7 @@ def _solve(
                     # Free day: exactly one of work-shifts or DO
                     m.cons.add(sum(x_var[n, d, s] for s in SHIFTS) + off_var[n, d] == 1)
 
-            # Per-nurse equivalent-day target must account for fixed non-working days.
-            # Otherwise a nurse with >eq_target mandatory leave/non-working days
-            # becomes infeasible before the solver can assign anything.
             fixed_equivalent_days = len(al_days) + len(other_nonwork_days)
-            adjusted_equivalent_target = min(
-                num_days,
-                max(equivalent_shift_target, fixed_equivalent_days),
-            )
             equivalent_days = (
                 sum(x_var[n, d, s] for d in DAYS for s in SHIFTS)
                 + fixed_equivalent_days
@@ -758,10 +759,10 @@ def _solve(
                 m.cons.add(
                     equivalent_days
                     + eq_under[n] - eq_over[n]
-                    == adjusted_equivalent_target
+                    == equivalent_shift_target
                 )
             else:
-                m.cons.add(equivalent_days == adjusted_equivalent_target)
+                m.cons.add(equivalent_days == equivalent_shift_target)
 
             # Weekly caps
             if WEEK1:
@@ -824,10 +825,7 @@ def _solve(
                     annual_leave_hca, hard_requests_hca, prev_week_last2_hca,
                     m.eq_under_hca, m.eq_over_hca)
 
-    # ---- Coverage constraints (hierarchical skill-tier, notebook v10) ----
-    # RN staff are qualified to cover RN + EN + HCA demand cumulatively.
-    # EN staff cover EN + HCA demand cumulatively.
-    # HCA staff cover only HCA demand.
+    # ---- Coverage constraints (strict by class only, notebook v14) ----
     def _req_for_day(class_name, class_cfg, d, s):
         return _resolve_requirement(class_cfg, shift_requirements, LOW_DAYS, class_name, d, s)
 
@@ -851,33 +849,17 @@ def _solve(
             c_en  = _cov_en[(d, s)]
             c_hca = _cov_hca[(d, s)]
 
-            if coverage_mode == "strict_by_class":
-                if soften_coverage:
-                    m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
-                    m.cons.add(c_en + m.cov_slack_en[d, s] >= e_req)
-                    m.cons.add(c_hca + m.cov_slack_total[d, s] >= h_req)
-                else:
-                    m.cons.add(m.cov_slack_rn[d, s] == 0)
-                    m.cons.add(m.cov_slack_en[d, s] == 0)
-                    m.cons.add(m.cov_slack_total[d, s] == 0)
-                    m.cons.add(c_rn >= r_req)
-                    m.cons.add(c_en >= e_req)
-                    m.cons.add(c_hca >= h_req)
+            if soften_coverage:
+                m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
+                m.cons.add(c_en + m.cov_slack_en[d, s] >= e_req)
+                m.cons.add(c_hca + m.cov_slack_total[d, s] >= h_req)
             else:
-                if soften_coverage:
-                    # RN-qualified coverage must satisfy RN demand (softened)
-                    m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
-                    # RN + EN qualified coverage must satisfy RN + EN demand (softened)
-                    m.cons.add(c_rn + c_en + m.cov_slack_en[d, s] >= r_req + e_req)
-                    # Total coverage must satisfy RN + EN + HCA demand (softened)
-                    m.cons.add(c_rn + c_en + c_hca + m.cov_slack_total[d, s] >= r_req + e_req + h_req)
-                else:
-                    m.cons.add(m.cov_slack_rn[d, s] == 0)
-                    m.cons.add(m.cov_slack_en[d, s] == 0)
-                    m.cons.add(m.cov_slack_total[d, s] == 0)
-                    m.cons.add(c_rn >= r_req)
-                    m.cons.add(c_rn + c_en >= r_req + e_req)
-                    m.cons.add(c_rn + c_en + c_hca >= r_req + e_req + h_req)
+                m.cons.add(m.cov_slack_rn[d, s] == 0)
+                m.cons.add(m.cov_slack_en[d, s] == 0)
+                m.cons.add(m.cov_slack_total[d, s] == 0)
+                m.cons.add(c_rn >= r_req)
+                m.cons.add(c_en >= e_req)
+                m.cons.add(c_hca >= h_req)
 
     if total_min_cfg:
         for d in DAYS:
@@ -887,19 +869,6 @@ def _solve(
                     continue
                 total_coverage = _cov_rn[(d, s)] + _cov_en[(d, s)] + _cov_hca[(d, s)]
                 m.cons.add(total_coverage >= total_required)
-
-    # ---- Ward-wide total minimum + shift priority ordering (notebook v10) ----
-    # AM >= PM >= NIGHT, with tight gaps of at most 1
-    if shift_priority_enabled:
-        for d in DAYS:
-            totals = {
-                "A": _cov_rn[(d, "A")] + _cov_en[(d, "A")] + _cov_hca[(d, "A")],
-                "P": _cov_rn[(d, "P")] + _cov_en[(d, "P")] + _cov_hca[(d, "P")],
-                "N": _cov_rn[(d, "N")] + _cov_en[(d, "N")] + _cov_hca[(d, "N")],
-            }
-            for left, right in zip(shift_priority_order, shift_priority_order[1:]):
-                m.cons.add(totals[left] >= totals[right])
-                m.cons.add(totals[left] - totals[right] <= shift_priority_gap_max)
 
     # ---- v13 RN/EN consecutive-day staffing smoothing ----
     for d in range(2, num_days + 1):
@@ -1057,15 +1026,13 @@ def _solve(
     m.obj = Objective(
         expr=(
             lw["dev_shift"] * sum(m.dev_A_rn[n] + m.dev_P_rn[n] + 2*m.dev_N_rn[n] for n in rn_nurses)
-          + lw["dev_day"]   * sum(m.dev_day_rn[d, s] for d in DAYS for s in SHIFTS)
-          + lw["AP"]        * sum(m.dev_AP_rn[d] for d in DAYS)
+          # Notebook v14 leaves RN daily target/AP deviation terms disabled.
           + lw["pref"]      * sum(m.pref_violate_rn[n, d] for n in rn_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_rn[n] for n in rn_nurses)
           + lw["rest"]      * sum(m.rest_violation_rn[n] for n in rn_nurses)
 
-          + lw["dev_shift"] * sum(m.dev_A_en[n] + m.dev_P_en[n] + 2*m.dev_N_en[n] for n in en_nurses)
-          + lw["dev_day"]   * sum(m.dev_day_en[d, s] for d in DAYS for s in SHIFTS)
-          + lw["AP"]        * sum(m.dev_AP_en[d] for d in DAYS)
+            + lw["dev_shift"] * sum(m.dev_A_en[n] + m.dev_P_en[n] + 2*m.dev_N_en[n] for n in en_nurses)
+          # Notebook v14 leaves EN daily target/AP deviation terms disabled.
           + lw["pref"]      * sum(m.pref_violate_en[n, d] for n in en_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_en[n] for n in en_nurses)
           + lw["rest"]      * sum(m.rest_violation_en[n] for n in en_nurses)
@@ -1085,12 +1052,15 @@ def _solve(
           + lw["balance"]   * (
                 sum(m.dev_rn_AP[d] + m.dev_rn_AN[d] + m.dev_rn_PN[d] for d in DAYS)
               + sum(m.dev_en_AP[d] + m.dev_en_AN[d] + m.dev_en_PN[d] for d in DAYS)
-              + sum(m.dev_hca_A_ge_P[d] + m.dev_hca_A_ge_N[d] + m.dev_hca_P_ge_N[d] for d in DAYS)
             )
           + lw["day_smooth"] * (
                 sum(m.dev_rn_day_total[d] for d in range(2, num_days + 1))
               + sum(m.dev_en_day_total[d] for d in range(2, num_days + 1))
-              + sum(m.dev_hca_day_total[d] for d in range(2, num_days + 1))
+            )
+          + lw["day_smooth_hca"] * sum(m.dev_hca_day_total[d] for d in range(2, num_days + 1))
+          + lw["hca_morning"] * sum(
+                m.dev_hca_A_ge_P[d] + m.dev_hca_A_ge_N[d] + m.dev_hca_P_ge_N[d]
+                for d in DAYS
             )
           + lw["ward_day_balance"] * (
                 sum(m.dev_total_A[d] for d in DAYS)

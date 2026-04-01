@@ -63,7 +63,7 @@ W_OFF_TO_AM    =       500   # OFF followed by AM on the next day
 W_SHIFT_VAR    =       185   # |actual − target| count per shift per day
 W_AM_PM_BAL    =       200   # |AM count − PM count| > 2 on a day
 W_DAILY_BAL    =        50   # range of total working nurses across days
-W_AP_DAY_SPREAD =      250   # range of AM/PM coverage across days
+W_SHIFT_DAY_SPREAD =   250   # range of AM/PM/NIGHT coverage across days
 W_NIGHT_FAIR   =         5   # range of total night counts across nurses
 W_WEEKEND_FAIR =         5   # range of weekend working days across nurses
 W_MORNING_PREF =         0   # reward (negative cost) per AM shift
@@ -1051,6 +1051,24 @@ def run_ga_pipeline(
             dev_sd = model.NewIntVar(0, num_nurses, f"dv_{s}_{d}")
             model.AddAbsEquality(dev_sd, diff_sd)
             _add_penalty(dev_sd, W_SHIFT_VAR)
+
+    # Also penalise the spread between the busiest and lightest day for each
+    # shift type so AM, PM and NIGHT totals stay visually consistent over time.
+    if num_days > 1 and working_nurses:
+        for s in WORK_SHIFTS:
+            day_counts: list[cp_model.IntVar] = []
+            for d in range(num_days):
+                cnt_s = model.NewIntVar(0, num_nurses, f"cnt_{s}_{d}")
+                model.Add(cnt_s == sum(x[n, d, s] for n in working_nurses))
+                day_counts.append(cnt_s)
+
+            max_s = model.NewIntVar(0, num_nurses, f"max_{s}_day")
+            min_s = model.NewIntVar(0, num_nurses, f"min_{s}_day")
+            model.AddMaxEquality(max_s, day_counts)
+            model.AddMinEquality(min_s, day_counts)
+            spread_s = model.NewIntVar(0, num_nurses, f"spread_{s}_day")
+            model.Add(spread_s == max_s - min_s)
+            _add_penalty(spread_s, W_SHIFT_DAY_SPREAD)
 
     # ── 12. AM / PM within-day balance ────────────────────────────────────────
     # Penalise when |AM count − PM count| > 2 on any day.
