@@ -23,7 +23,7 @@
 #   soft_requests : {nurse_id: [(day_idx_0based, shift_code), ...], ...} OR None
 #   prev_last_shift : {nurse_id: "AM"|"PM"|"NIGHT"|"OFF"|"AL"|...} OR None
 #   non_working_shift_codes : set[str] of DB shift codes that should count as non-working
-#   ward_name: str key into WARD_CONFIG (defaults to "DEFAULT")
+#   ward_name: retained for pipeline compatibility; not used for hard-coded staffing
 
 import random
 import pandas as pd
@@ -32,15 +32,6 @@ from pyomo.environ import (
     ConcreteModel, Set, RangeSet, Var, Binary, NonNegativeReals,
     ConstraintList, Objective, minimize, SolverFactory, TerminationCondition,
 )
-
-_DEFAULT_MILP_CONFIG = {
-    "LOW_DAYS": {6, 7, 13, 14},
-    "RN":  {"normal_min": {"A": 2, "P": 2, "N": 1}, "low_exact": None, "day_target": {"A": 4, "P": 3, "N": 2}, "shift_target": {"A": 5, "P": 3, "N": 2}},
-    "EN":  {"normal_min": {"A": 3, "P": 2, "N": 1}, "low_exact": None, "day_target": {"A": 4, "P": 3, "N": 2}, "shift_target": {"A": 5, "P": 3, "N": 2}},
-    "HCA": {"normal_min": {"A": 1, "P": 0, "N": 0}, "low_exact": None, "day_target": {"A": 1, "P": 1, "N": 1}, "shift_target": {"A": 5, "P": 3, "N": 2}},
-    "TOTAL_MIN": {"A": 6, "P": 6, "N": 3},
-}
-
 
 # ---------------------------------------------------------------------------
 # Public exception
@@ -190,6 +181,35 @@ def _parse_prev_last_shift(nurses, prev_last_shift):
     return output
 
 
+def _parse_shift_requirements(shifts):
+    """
+    Convert API shift requirements into solver-friendly day/shift/class minima.
+    """
+    reqs = {}
+    shift_map = {
+        "AM": "A",
+        "PM": "P",
+        "NIGHT": "N",
+    }
+    rank_map = {
+        "A": "RN",
+        "B": "EN",
+        "C": "HCA",
+    }
+
+    for day_idx, day_data in enumerate(shifts, start=1):
+        day_reqs = {}
+        for api_shift, milp_shift in shift_map.items():
+            shift_data = day_data.get(api_shift, {}) or {}
+            day_reqs[milp_shift] = {
+                cls: int(shift_data.get(rank, 0) or 0)
+                for rank, cls in rank_map.items()
+            }
+        reqs[day_idx] = day_reqs
+
+    return reqs
+
+
 def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift, non_working_shift_codes=None):
     """
     Convert algo_scheduler-style inputs into notebook-style dicts.
@@ -239,8 +259,19 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
         "prev_week_last2_rn":  prev_roster["RN"],
         "prev_week_last2_en":  prev_roster["EN"],
         "prev_week_last2_hca": prev_roster["HCA"],
+        "shift_requirements": _parse_shift_requirements(shifts),
         "num_days": num_days,
     }
+
+
+def _average_daily_requirement(shift_requirements, class_name, shift_code):
+    if not shift_requirements:
+        return 0
+    total = sum(
+        int(shift_requirements.get(d, {}).get(shift_code, {}).get(class_name, 0) or 0)
+        for d in shift_requirements
+    )
+    return round(total / max(len(shift_requirements), 1))
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +355,7 @@ def _solve(
     rn_list, en_list, hca_list,
     dept_name="DEFAULT",
     milp_config=None,
+    shift_requirements=None,
     hard_requests_rn=None,  soft_requests_rn=None,
     annual_leave_rn=None,   prev_week_last2_rn=None,
     hard_requests_en=None,  soft_requests_en=None,
@@ -336,12 +368,11 @@ def _solve(
     seed=None,
     time_limit=120,
 ):
-    cfg = milp_config if milp_config is not None else _DEFAULT_MILP_CONFIG
-    LOW_DAYS = set(cfg.get("LOW_DAYS", set()))
-    rn_cfg   = cfg["RN"]
-    en_cfg   = cfg["EN"]
-    hca_cfg  = cfg["HCA"]
-    tot_cfg  = cfg.get("TOTAL_MIN")
+    cfg = milp_config or {}
+    rn_cfg   = cfg.get("RN", {})
+    en_cfg   = cfg.get("EN", {})
+    hca_cfg  = cfg.get("HCA", {})
+    shift_requirements = shift_requirements or {}
 
     DAYS         = list(range(1, 15))
     SHIFTS       = ["A", "P", "N"]
@@ -550,12 +581,8 @@ def _solve(
     # RN staff are qualified to cover RN + EN + HCA demand cumulatively.
     # EN staff cover EN + HCA demand cumulatively.
     # HCA staff cover only HCA demand.
-    def _req_for_day(class_cfg, d, s):
-        low_exact  = class_cfg.get("low_exact")
-        normal_min = class_cfg.get("normal_min", {"A": 0, "P": 0, "N": 0})
-        if low_exact is not None and d in LOW_DAYS:
-            return low_exact[s]
-        return normal_min[s]
+    def _req_for_day(class_name, d, s):
+        return int(shift_requirements.get(d, {}).get(s, {}).get(class_name, 0) or 0)
 
     m.cov_slack_rn    = Var(m.D, m.S, within=NonNegativeReals)
     m.cov_slack_en    = Var(m.D, m.S, within=NonNegativeReals)
@@ -569,9 +596,9 @@ def _solve(
 
     for d in DAYS:
         for s in SHIFTS:
-            r_req = _req_for_day(rn_cfg,  d, s)
-            e_req = _req_for_day(en_cfg,  d, s)
-            h_req = _req_for_day(hca_cfg, d, s)
+            r_req = _req_for_day("RN",  d, s)
+            e_req = _req_for_day("EN",  d, s)
+            h_req = _req_for_day("HCA", d, s)
 
             c_rn  = _cov_rn[(d, s)]
             c_en  = _cov_en[(d, s)]
@@ -591,20 +618,18 @@ def _solve(
         total_P = _cov_rn[(d, "P")] + _cov_en[(d, "P")] + _cov_hca[(d, "P")]
         total_N = _cov_rn[(d, "N")] + _cov_en[(d, "N")] + _cov_hca[(d, "N")]
 
-        # Optional ward-wide total minimum (additional floor on top of skill coverage)
-        if tot_cfg:
-            m.cons.add(total_A >= tot_cfg["A"])
-            m.cons.add(total_P >= tot_cfg["P"])
-            m.cons.add(total_N >= tot_cfg["N"])
-
         m.cons.add(total_A >= total_P)
         m.cons.add(total_P >= total_N)
         m.cons.add(total_A - total_P <= 1)
         m.cons.add(total_P - total_N <= 1)
 
     # ---- Shift-balance deviations (soft) ----
-    def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg):
-        st = class_cfg.get("shift_target", {"A": 5, "P": 3, "N": 2})
+    def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg, class_name):
+        st = class_cfg.get("shift_target", {
+            "A": round(sum(_req_for_day(class_name, d, "A") for d in DAYS) / max(len(class_nurses), 1)),
+            "P": round(sum(_req_for_day(class_name, d, "P") for d in DAYS) / max(len(class_nurses), 1)),
+            "N": round(sum(_req_for_day(class_name, d, "N") for d in DAYS) / max(len(class_nurses), 1)),
+        })
         tA, tP, tN = st["A"], st["P"], st["N"]
         for n in class_nurses:
             tA_ = sum(x_var[n, d, "A"] for d in DAYS)
@@ -614,23 +639,21 @@ def _solve(
             m.cons.add(tP_ - tP <= dev_P[n]); m.cons.add(-(tP_ - tP) <= dev_P[n])
             m.cons.add(tN_ - tN <= dev_N[n]); m.cons.add(-(tN_ - tN) <= dev_N[n])
 
-    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  rn_cfg)
-    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  en_cfg)
-    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, hca_cfg)
+    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  rn_cfg,  "RN")
+    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  en_cfg,  "EN")
+    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, hca_cfg, "HCA")
 
     # ---- Daily smoothing + A–P balance (soft) ----
-    dt_rn  = rn_cfg.get("day_target",  {"A": 4, "P": 3, "N": 2})
-    dt_en  = en_cfg.get("day_target",  {"A": 4, "P": 3, "N": 2})
-    dt_hca = hca_cfg.get("day_target", {"A": 1, "P": 1, "N": 1})
+    dt_rn  = rn_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "RN", s) for s in SHIFTS})
+    dt_en  = en_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "EN", s) for s in SHIFTS})
+    dt_hca = hca_cfg.get("day_target", {s: _average_daily_requirement(shift_requirements, "HCA", s) for s in SHIFTS})
 
     for d in DAYS:
-        # RN smoothing (skip LOW_DAYS when low_exact active)
-        if not (rn_cfg.get("low_exact") is not None and d in LOW_DAYS):
-            for s in SHIFTS:
-                y = _cov_rn[(d, s)]
-                t = dt_rn[s]
-                m.cons.add(y - t <= m.dev_day_rn[d, s])
-                m.cons.add(-(y - t) <= m.dev_day_rn[d, s])
+        for s in SHIFTS:
+            y = _cov_rn[(d, s)]
+            t = dt_rn[s]
+            m.cons.add(y - t <= m.dev_day_rn[d, s])
+            m.cons.add(-(y - t) <= m.dev_day_rn[d, s])
 
         for s in SHIFTS:
             y = _cov_en[(d, s)]; t = dt_en[s]
@@ -838,8 +861,9 @@ def run_milp_pipeline(
     soft_requests : optional pending requests
     prev_last_shift : optional previous-period final shift per nurse
     non_working_shift_codes : optional non-working DB shift codes
-    ward_name   : key into WARD_CONFIG; falls back to "DEFAULT" if unknown
-    milp_config : optional WARD_CONFIG-compatible override dict (from staffing_json)
+    ward_name   : retained for pipeline compatibility / logging
+    milp_config : optional tuning override dict (typically derived from staffing_json)
+                  for soft targets and penalties; hard coverage always comes from shifts
 
     Returns
     -------
@@ -875,6 +899,7 @@ def run_milp_pipeline(
             hca_list=parsed["hca_list"],
             dept_name=ward_name,
             milp_config=milp_config,
+            shift_requirements=parsed["shift_requirements"],
             hard_requests_rn=parsed["hard_requests_rn"],
             soft_requests_rn=parsed["soft_requests_rn"],
             annual_leave_rn=parsed["annual_leave_rn"],
