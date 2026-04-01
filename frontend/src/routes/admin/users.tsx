@@ -9,7 +9,6 @@ import {
   type AdminUserCreate,
   type DesignationOption,
   type AdminUserUpdate,
-  type DesignationOption,
   type WardOption,
 } from "@/client/adminService"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
