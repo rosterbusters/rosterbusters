@@ -24,7 +24,6 @@ run_ga_pipeline(...)
 from __future__ import annotations
 
 import os
-import math
 import random
 
 try:
@@ -143,7 +142,7 @@ def _build_greedy_hint(
     """
     # Start optimistic: everyone works AM (easier for the solver to improve from
     # a working state than from all-OFF which violates coverage on every day).
-    night_constant = math.ceil(((num_nurses * 2)/3)/4)
+    night_constant = 4
     sched = [[AM] * num_days for _ in range(num_nurses)]
 
     # ── Step 1: pin fixed slots ───────────────────────────────────────────────
@@ -179,7 +178,7 @@ def _build_greedy_hint(
                 continue
             if d > 0 and sched[n][d - 1] == NIGHT:
                 continue   # already in a block started yesterday
-            if night_counts[n] >= night_constant: #Change this to a ratio of nurses
+            if night_counts[n] >= night_constant:
                 continue   # fortnightly cap
 
             sched[n][d] = NIGHT
@@ -190,7 +189,7 @@ def _build_greedy_hint(
             if (d + 1 < num_days
                     and sched[n][d + 1] not in (AL,)
                     and (d + 1) not in al_day_req[n]
-                    and night_counts[n] < 4):
+                    and night_counts[n] < night_constant):
                 sched[n][d + 1] = NIGHT
                 night_counts[n] += 1
 
@@ -246,6 +245,7 @@ def run_ga_pipeline(
     non_working_shift_codes=None,
     progress_callback=None,
     use_ward_demand: bool = True,
+    milp_config: dict | None = None,
 ):
     """
     Generate a nurse roster using OR-Tools CP-SAT.
@@ -695,22 +695,18 @@ def run_ga_pipeline(
             model.Add(total_offs == target)
 
     # ── 4. Night shifts over fortnight — target = 2–4 total (soft) ───────────
-    # Previously enforced 1–2 nights per 7-day window, which created a circular
-    # tension with the mandatory post-block OFF rule: the solver was pushed to
-    # schedule nights every week (to avoid W_NIGHT_LOW) yet was simultaneously
-    # penalised for the extra OFFs those blocks forced (W_DAYOFF_OVER).
-    # Switching to a fortnightly window (2–4 nights across all 14 days) gives
-    # the solver freedom to cluster nights in one week rather than being
-    # squeezed on both sides of every 7-day boundary.
+    # A roster should give each working nurse a reasonable share of nights
+    # without hard-coding an exact total; daily HCA3 night caps are enforced
+    # separately from backend ward configuration in section 4c.
     for n in working_nurses:
         total_nights = sum(x[n, d, NIGHT] for d in range(num_days))
 
         low = model.NewIntVar(0, num_days, f"nl_{n}")
-        model.Add(low >= 2 - total_nights)   # at least 2 nights per fortnight
+        model.Add(low >= 2 - total_nights)
         _add_penalty(low, W_NIGHT_LOW)
 
         high = model.NewIntVar(0, num_days, f"nh_{n}")
-        model.Add(high >= total_nights - 4)  # no more than 4 nights per fortnight
+        model.Add(high >= total_nights - 4)
         _add_penalty(high, W_NIGHT_HIGH)
 
     # ── 4b. Night block rules (HARD) ─────────────────────────────────────────
@@ -759,12 +755,22 @@ def run_ga_pipeline(
     # ── 4c. Per-day NIGHT assignment cap (HARD) ───────────────────────────────
     # Prevents the solver hoarding nights on unconstrained days (particularly
     # the last day, which has no post-night-OFF cost).
-    # When use_ward_demand=True the cap is the ward-standard max (5 A+B + however
-    # many C nurses may go to NIGHT).  When False it is the demand total.
+    # When use_ward_demand=True the cap uses ward-standard A+B limits plus the
+    # backend-configured HCA3 night cap (milp_config["HCA"]["max_night_per_day"])
+    # when available. When False it is the demand total.
+    hca_cfg = (milp_config or {}).get("HCA") if isinstance(milp_config, dict) else None
+    hca_max_night_per_day = None
+    if isinstance(hca_cfg, dict):
+        raw_hca_max_night = hca_cfg.get("max_night_per_day")
+        if raw_hca_max_night is not None:
+            hca_max_night_per_day = int(raw_hca_max_night)
     for d in range(num_days):
         if use_ward_demand:
-            # Ward standard: max 5 A+B on NIGHT, plus at most 1 C on NIGHT
-            max_night = 5 + (1 if rank_C else 0)
+            # Ward standard: max 5 A+B on NIGHT, plus the backend HCA3 night cap.
+            rank_c_night_cap = hca_max_night_per_day if hca_max_night_per_day is not None else (1 if rank_C else 0)
+            if rank_C:
+                model.Add(sum(x[n, d, NIGHT] for n in rank_C) <= rank_c_night_cap)
+            max_night = 5 + rank_c_night_cap
             model.Add(sum(x[n, d, NIGHT] for n in working_nurses) <= max_night)
         else:
             night_demand = (

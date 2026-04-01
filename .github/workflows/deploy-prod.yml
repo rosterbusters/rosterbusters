@@ -91,20 +91,35 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "sed -i 's/^[[:space:]]*//' ~/rosterbusters/.env"
 
+      - name: Escape dollar signs in .env for Docker Compose
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+
+          env_path = Path.home() / "rosterbusters" / ".env"
+          lines = env_path.read_text().splitlines()
+          escaped = []
+          for line in lines:
+              if not line or line.lstrip().startswith("#") or "=" not in line:
+                  escaped.append(line)
+                  continue
+              key, value = line.split("=", 1)
+              escaped.append(f"{key}={value.replace('$', '$$')}")
+          env_path.write_text("\n".join(escaped) + "\n")
+          PY
+          EOF
+
       - name: Build & run Docker on EC2
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
           set -e
           cd ~/rosterbusters
 
-          docker stop $(docker ps -q) 2>/dev/null || true
           docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
           docker compose -f docker-compose.yml -f docker-compose.override.yml down --remove-orphans 2>/dev/null || true
           docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
-          docker container prune -f
-
-          docker image prune -a -f
-          docker builder prune -a -f
 
           docker network create traefik-public 2>/dev/null || true
 
@@ -118,5 +133,23 @@ jobs:
             docker compose -f docker-compose.yml -f docker-compose.prod.yml logs prestart
             exit 1
           }
+
+          echo "=== TRAEFIK NETWORK ==="
+          docker network inspect traefik-public
+
+          echo "=== TRAEFIK STATUS ==="
+          docker compose -f docker-compose.traefik.yml ps
+
+          echo "=== APP STATUS ==="
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+
+          curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
+          curl -fSs -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ >/dev/null
+
+          echo "=== PUBLIC HTTPS CHECKS ==="
+          curl -fSs https://$DOMAIN/ >/dev/null
+          curl -fSs https://api.$DOMAIN/api/v1/utils/health-check/ >/dev/null
+
+          echo "Production deploy checks passed."
 
           EOF

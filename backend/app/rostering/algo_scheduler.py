@@ -171,6 +171,7 @@ def generate_roster(
             non_working_shift_codes=non_working_shift_codes,
             progress_callback=progress_callback,
             shift_hours=shift_hours,
+            milp_config=milp_config,
         )
         print("[SCHEDULER] CP-SAT succeeded — returning result")
         return {"method": "CP-SAT", "roster": roster}
@@ -225,6 +226,7 @@ def generate_roster(
         non_working_shift_codes=non_working_shift_codes,
         progress_callback=progress_callback,
         shift_hours=shift_hours,
+        milp_config=milp_config,
     )
     print("[SCHEDULER] CP-SAT succeeded — returning result")
     return {"method": "CP-SAT", "roster": roster}
