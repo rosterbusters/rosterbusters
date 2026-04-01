@@ -149,6 +149,8 @@ jobs:
           echo "=== APP STATUS ==="
           docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml ps
 
+          DOMAIN=$(grep '^DOMAIN=' .env | cut -d= -f2-)
+
           curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
           curl -fSs -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ >/dev/null
 
