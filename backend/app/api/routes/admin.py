@@ -5,6 +5,7 @@ All endpoints require the Admin role.
 """
 
 from datetime import datetime, timezone
+import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +23,7 @@ from app.designation_mapping import (
     canonical_designation_from_value,
     load_designation_rank_map,
 )
+from app.models.designation import Designation
 from app.models import Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
@@ -70,7 +72,6 @@ class AdminPasswordResetResponse(SQLModel):
 
 
 class AdminUserCreate(SQLModel):
-    username: str = Field(min_length=1, max_length=255)
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
@@ -90,6 +91,42 @@ class AdminUserUpdate(SQLModel):
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
     ward_ids: Optional[list[int]] = None
+
+
+class DesignationOption(SQLModel):
+    designation: str
+    rank: str
+
+
+def _slugify_username(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", ".", value.lower()).strip(".")
+    slug = re.sub(r"\.+", ".", slug)
+    return slug
+
+
+def _generate_unique_username(
+    session,
+    *,
+    name: str | None,
+    email: str | None,
+    employee_id: str | None,
+) -> str:
+    seed = ""
+    if name:
+        words = [word for word in name.strip().split() if word][:3]
+        seed = ".".join(words)
+    if not seed and email:
+        seed = email.split("@")[0]
+    if not seed and employee_id:
+        seed = employee_id
+
+    base = _slugify_username(seed) or "user"
+    candidate = base
+    suffix = 2
+    while session.exec(select(RBACUser).where(RBACUser.username == candidate)).first():
+        candidate = f"{base}{suffix}"
+        suffix += 1
+    return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +189,17 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
 # ---------------------------------------------------------------------------
 #  CRUD endpoints
 # ---------------------------------------------------------------------------
+
+@router.get("/designations", response_model=list[DesignationOption])
+def list_designations(session: SessionDep) -> Any:
+    """List designation options from reference table."""
+    rows = session.exec(
+        select(Designation).order_by(Designation.rank, Designation.designation)
+    ).all()
+    return [
+        DesignationOption(designation=row.designation, rank=row.rank)
+        for row in rows
+    ]
 
 @router.get("/users", response_model=AdminUsersPublic)
 def list_users(
@@ -216,15 +264,12 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
                 detail="A user with this email already exists.",
             )
 
-    # Check duplicate username
-    existing_username = session.exec(
-        select(RBACUser).where(RBACUser.username == body.username)
-    ).first()
-    if existing_username:
-        raise HTTPException(
-            status_code=400,
-            detail="A user with this username already exists.",
-        )
+    username = _generate_unique_username(
+        session,
+        name=name,
+        email=body.email,
+        employee_id=employee_id,
+    )
 
     if employee_id:
         existing_nurse = session.exec(
@@ -264,7 +309,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     raw_password = body.password if body.password else generate_random_password()
 
     user = RBACUser(
-        username=body.username,
+        username=username,
         email=body.email,
         passwordhash=get_password_hash(raw_password),
         isactive=body.is_active,
@@ -282,7 +327,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
             raise HTTPException(status_code=400, detail="Designation cannot be empty.")
         canonical_designation = _normalize_designation(designation or "SN")
         nurse = Nurse(
-            name=name or body.username,
+            name=name or username,
             employeeid=employee_id,
             designation=canonical_designation or "SN",
             email=body.email or "",
@@ -301,7 +346,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
 
     elif body.role == "NurseManager":
         manager = NurseManager(
-            name=name or body.username,
+            name=name or username,
             employeeid=employee_id,
             email=body.email or "",
             contactnumber="",

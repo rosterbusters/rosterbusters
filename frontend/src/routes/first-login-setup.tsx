@@ -1,8 +1,8 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useForm, type SubmitHandler } from "react-hook-form"
-import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
+import { FiLock, FiMail, FiEye, FiEyeOff, FiHash } from "react-icons/fi"
 import {
   Box,
   Container,
@@ -22,7 +22,7 @@ import { isLoggedIn } from "@/hooks/useAuth"
 import { AdminService } from "@/client/adminService"
 import { UsersService } from "@/client"
 import type { CurrentUser } from "@/hooks/useAuth"
-import { passwordRules, confirmPasswordRules } from "@/utils"
+import { passwordRules } from "@/utils"
 
 export const Route = createFileRoute("/first-login-setup")({
   component: FirstLoginSetup,
@@ -37,6 +37,7 @@ interface SetupFormData {
   new_password: string
   confirm_password: string
   email: string
+  employee_id: string
 }
 
 function FirstLoginSetup() {
@@ -49,6 +50,7 @@ function FirstLoginSetup() {
     register,
     handleSubmit,
     getValues,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<SetupFormData>({
     mode: "onBlur",
@@ -56,11 +58,27 @@ function FirstLoginSetup() {
       new_password: "",
       confirm_password: "",
       email: "",
+      employee_id: "",
     },
   })
 
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["currentUser"],
+    queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  useEffect(() => {
+    if (!currentUser) return
+    reset((values) => ({
+      ...values,
+      email: values.email || currentUser.email || "",
+      employee_id: values.employee_id || currentUser.employee_id || "",
+    }))
+  }, [currentUser, reset])
+
   const mutation = useMutation({
-    mutationFn: (data: { new_password: string; email?: string }) =>
+    mutationFn: (data: { new_password: string; email?: string; employee_id?: string }) =>
       AdminService.firstLoginSetup(data),
     onSuccess: async () => {
       showSuccessToast("Account setup completed! Redirecting...")
@@ -86,6 +104,7 @@ function FirstLoginSetup() {
     mutation.mutate({
       new_password: data.new_password,
       email: data.email,
+      employee_id: data.employee_id || undefined,
     })
   }
 
@@ -176,6 +195,23 @@ function FirstLoginSetup() {
                       })}
                       placeholder="your.email@example.com"
                       type="email"
+                      size="md"
+                      variant="subtle"
+                      bg="gray.50"
+                    />
+                  </InputGroup>
+                </Field>
+
+                <Field
+                  label="Employee ID"
+                  invalid={!!errors.employee_id}
+                  errorText={errors.employee_id?.message}
+                >
+                  <InputGroup startElement={<FiHash color="gray" />} w="100%">
+                    <Input
+                      {...register("employee_id")}
+                      placeholder="EMP00123"
+                      type="text"
                       size="md"
                       variant="subtle"
                       bg="gray.50"

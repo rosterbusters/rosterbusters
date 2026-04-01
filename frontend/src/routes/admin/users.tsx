@@ -7,6 +7,7 @@ import {
   AdminService,
   type AdminUser,
   type AdminUserCreate,
+  type DesignationOption,
   type AdminUserUpdate,
   type WardOption,
 } from "@/client/adminService"
@@ -41,7 +42,6 @@ export const Route = createFileRoute("/admin/users")({
 /* ------------------------------------------------------------------ */
 
 interface UserFormData {
-  username: string
   name: string
   email: string
   employee_id: string
@@ -121,11 +121,11 @@ const slugifyUsername = (value: string) =>
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "")
 
-const takeFirstTwoWords = (value: string) =>
-  value.trim().split(/\s+/).filter(Boolean).slice(0, 2).join(" ")
+const takeFirstThreeWords = (value: string) =>
+  value.trim().split(/\s+/).filter(Boolean).slice(0, 3).join(" ")
 
 const buildUsernameFromName = (value: string) =>
-  slugifyUsername(takeFirstTwoWords(value))
+  slugifyUsername(takeFirstThreeWords(value))
 
 const NURSE_MANAGER_IMPORT_ROLE_MATCHERS = [
   "nursingmanager",
@@ -512,6 +512,12 @@ function UserFormDialog({
     staleTime: 60_000,
   })
 
+  const { data: designations = [] } = useQuery<DesignationOption[]>({
+    queryKey: ["admin-designations"],
+    queryFn: () => AdminService.listDesignations(),
+    staleTime: 60_000,
+  })
+
   const currentRole = isEdit ? (editUser.roles[0] ?? "") : ""
 
   // Multi-ward selection state
@@ -538,7 +544,6 @@ function UserFormDialog({
     mode: "onBlur",
     defaultValues: isEdit
       ? {
-          username: editUser.username,
           name: editUser.name ?? "",
           email: editUser.email ?? "",
           employee_id: editUser.employee_id ?? "",
@@ -549,7 +554,6 @@ function UserFormDialog({
           role: currentRole,
         }
       : {
-          username: "",
           name: "",
           email: "",
           employee_id: "",
@@ -602,7 +606,6 @@ function UserFormDialog({
   const onSubmit: SubmitHandler<UserFormData> = (data) => {
     if (isEdit) {
       const payload: AdminUserUpdate = {
-        username: data.username,
         name: data.name || undefined,
         email: data.email || undefined,
         is_active: data.is_active,
@@ -621,7 +624,6 @@ function UserFormDialog({
       updateMutation.mutate(payload)
     } else {
       const payload: AdminUserCreate = {
-        username: data.username,
         name: data.name || undefined,
         is_active: data.is_active,
         role: data.role,
@@ -674,21 +676,6 @@ function UserFormDialog({
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username <span className="text-red-500">*</span>
-              </label>
-              <input
-                {...register("username", { required: "Username is required" })}
-                type="text"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="johndoe"
-              />
-              {errors.username && (
-                <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
-              )}
-            </div>
-
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -730,17 +717,64 @@ function UserFormDialog({
               </div>
             )}
 
+            {/* Role (only on create) */}
+            {!isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register("role")}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Nurse">Nurse</option>
+                  <option value="NurseManager">Nurse Manager</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+            )}
+
+            {/* Role display (read-only on edit) */}
+            {isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <div className="flex flex-wrap gap-1 py-2">
+                  {editUser!.roles.map((role) => (
+                    <span
+                      key={role}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        role === "Admin"
+                          ? "bg-orange-100 text-orange-700"
+                          : role === "NurseManager"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {role === "NurseManager" ? "Nurse Manager" : role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Designation
                 </label>
-                <input
+                <select
                   {...register("designation")}
-                  type="text"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Staff Nurse I"
-                />
+                >
+                  <option value="">Select designation</option>
+                  {designations.map((option) => (
+                    <option key={option.designation} value={option.designation}>
+                      {option.designation}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -788,48 +822,6 @@ function UserFormDialog({
                 <p className="text-red-500 text-xs mt-1">{errors.confirm_password.message}</p>
               )}
             </div>
-
-            {/* Role (only on create) */}
-            {!isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role <span className="text-red-500">*</span>
-                </label>
-                <select
-                  {...register("role")}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Nurse">Nurse</option>
-                  <option value="NurseManager">Nurse Manager</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-            )}
-
-            {/* Role display (read-only on edit) */}
-            {isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <div className="flex flex-wrap gap-1 py-2">
-                  {editUser!.roles.map((role) => (
-                    <span
-                      key={role}
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        role === "Admin"
-                          ? "bg-orange-100 text-orange-700"
-                          : role === "NurseManager"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {role === "NurseManager" ? "Nurse Manager" : role}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Ward assignment — show for Nurse / NurseManager */}
             {(isEdit
@@ -1056,7 +1048,14 @@ function AdminUsers() {
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null)
   const [importCancelRequested, setImportCancelRequested] = useState(false)
   const [importFailures, setImportFailures] = useState<string[] | null>(null)
+  const [copiedItem, setCopiedItem] = useState<string | null>(null)
   const importCancelRequestedRef = useRef(false)
+
+  const handleCopyWithFeedback = (text: string, itemId: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedItem(itemId)
+    setTimeout(() => setCopiedItem(null), 2000)
+  }
 
   const importRows = async (file: File, password?: string) => {
     importCancelRequestedRef.current = false
@@ -1120,7 +1119,6 @@ function AdminUsers() {
       })
       try {
         const createdUser = await AdminService.createUser({
-          username: row.username,
           name: row.name,
           email: row.email,
           employee_id: row.employee_id,
@@ -1611,11 +1609,15 @@ function AdminUsers() {
                           </span>
                           <button
                             onClick={() =>
-                              navigator.clipboard.writeText(knownDefaultPasswords[user.userid])
+                              handleCopyWithFeedback(knownDefaultPasswords[user.userid], `table-${user.userid}`)
                             }
-                            className="text-xs px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-white"
+                            className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                              copiedItem === `table-${user.userid}`
+                                ? "bg-green-100 border-green-300 text-green-700"
+                                : "border-gray-300 text-gray-600 hover:bg-white"
+                            }`}
                           >
-                            Copy
+                            {copiedItem === `table-${user.userid}` ? "Copied!" : "Copy"}
                           </button>
                         </div>
                       ) : (
@@ -1756,13 +1758,18 @@ function AdminUsers() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(
+                  handleCopyWithFeedback(
                     createdUserInfo.generated_password ?? "",
+                    "dialog-password",
                   )
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  copiedItem === "dialog-password"
+                    ? "bg-green-100 text-green-700 border border-green-300"
+                    : "text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+                }`}
               >
-                Copy Password
+                {copiedItem === "dialog-password" ? "Copied!" : "Copy Password"}
               </button>
               <button
                 onClick={() => setCreatedUserInfo(null)}
