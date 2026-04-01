@@ -117,31 +117,37 @@ jobs:
           set -e
           cd ~/rosterbusters
 
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
-          docker compose -f docker-compose.yml -f docker-compose.override.yml down --remove-orphans 2>/dev/null || true
-          docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
+          APP_PROJECT=rosterbusters
+          TRAEFIK_PROJECT=traefik-public
+
+          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
+          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml down --remove-orphans 2>/dev/null || true
+          docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
 
           docker network create traefik-public 2>/dev/null || true
 
-          docker compose -f docker-compose.traefik.yml up -d
+          docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml up -d
 
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml build
 
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans || {
+          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans || {
             echo "=== PRESTART LOGS ==="
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml logs prestart
+            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml logs prestart
             exit 1
           }
+
+          echo "=== WAIT FOR BACKEND HEALTH ==="
+          timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-backend-1 2>/dev/null)" = "healthy" ]; do sleep 2; done'
 
           echo "=== TRAEFIK NETWORK ==="
           docker network inspect traefik-public
 
           echo "=== TRAEFIK STATUS ==="
-          docker compose -f docker-compose.traefik.yml ps
+          docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml ps
 
           echo "=== APP STATUS ==="
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+          docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml ps
 
           curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
           curl -fSs -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ >/dev/null
