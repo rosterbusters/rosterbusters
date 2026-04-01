@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { useForm, type SubmitHandler } from "react-hook-form"
-import { FiLock, FiMail, FiEye, FiEyeOff, FiHash } from "react-icons/fi"
+import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
 import {
   Box,
   Container,
@@ -46,11 +47,17 @@ function FirstLoginSetup() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["currentUser"],
+    queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
+  })
+  const requiresEmployeeId = !!(currentUser?.nurseid || currentUser?.managerid)
+
   const {
     register,
     handleSubmit,
     getValues,
-    reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<SetupFormData>({
     mode: "onBlur",
@@ -62,20 +69,24 @@ function FirstLoginSetup() {
     },
   })
 
-  const { data: currentUser } = useQuery<CurrentUser>({
-    queryKey: ["currentUser"],
-    queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
-    staleTime: 5 * 60 * 1000,
-  })
+  useEffect(() => {
+    const existingEmail = currentUser?.email?.trim()
+    if (!existingEmail) return
+
+    // Prefill with the account email only if the field is still blank.
+    if (!getValues("email")) {
+      setValue("email", existingEmail)
+    }
+  }, [currentUser?.email, getValues, setValue])
 
   useEffect(() => {
-    if (!currentUser) return
-    reset((values) => ({
-      ...values,
-      email: values.email || currentUser.email || "",
-      employee_id: values.employee_id || currentUser.employee_id || "",
-    }))
-  }, [currentUser, reset])
+    const existingEmployeeId = currentUser?.employee_id?.trim()
+    if (!existingEmployeeId) return
+
+    if (!getValues("employee_id")) {
+      setValue("employee_id", existingEmployeeId)
+    }
+  }, [currentUser?.employee_id, getValues, setValue])
 
   const mutation = useMutation({
     mutationFn: (data: { new_password: string; email?: string; employee_id?: string }) =>
@@ -104,7 +115,7 @@ function FirstLoginSetup() {
     mutation.mutate({
       new_password: data.new_password,
       email: data.email,
-      employee_id: data.employee_id || undefined,
+      employee_id: data.employee_id?.trim() || undefined,
     })
   }
 
@@ -202,22 +213,26 @@ function FirstLoginSetup() {
                   </InputGroup>
                 </Field>
 
-                <Field
-                  label="Employee ID"
-                  invalid={!!errors.employee_id}
-                  errorText={errors.employee_id?.message}
-                >
-                  <InputGroup startElement={<FiHash color="gray" />} w="100%">
+                {requiresEmployeeId && (
+                  <Field
+                    label="Employee ID"
+                    invalid={!!errors.employee_id}
+                    errorText={errors.employee_id?.message}
+                    required
+                  >
                     <Input
-                      {...register("employee_id")}
-                      placeholder="EMP00123"
+                      {...register("employee_id", {
+                        validate: (value) =>
+                          !requiresEmployeeId || value.trim().length > 0 || "Employee ID is required",
+                      })}
+                      placeholder="Enter your employee ID"
                       type="text"
                       size="md"
                       variant="subtle"
                       bg="gray.50"
                     />
-                  </InputGroup>
-                </Field>
+                  </Field>
+                )}
 
                 {/* New Password */}
                 <Field
