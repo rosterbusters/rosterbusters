@@ -217,10 +217,26 @@ jobs:
 
           DOMAIN=$(grep '^DOMAIN=' .env | cut -d= -f2-)
 
+          echo "=== DEPLOYED ROUTER CONFIG ==="
+          grep -n "traefik.http.routers.frontend-http.rule" docker-compose.yml docker-compose.prod.yml || true
+          grep -n "traefik.http.routers.backend-http.rule" docker-compose.yml docker-compose.prod.yml || true
+          grep -n "traefik.http.routers.adminer-http.rule" docker-compose.yml docker-compose.prod.yml || true
+
+          echo "=== LOCAL FRONTEND CHECK ==="
+          curl -i -H "Host: dashboard.$DOMAIN" http://127.0.0.1/ || true
+
+          echo "=== LOCAL API CHECK ==="
+          curl -i -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ || true
+
+          echo "=== PUBLIC FRONTEND CHECK ==="
+          curl -i https://dashboard.$DOMAIN/ || true
+
+          echo "=== PUBLIC API CHECK ==="
+          curl -i https://api.$DOMAIN/api/v1/utils/health-check/ || true
+
+          echo "=== ENFORCED HEALTH CHECKS ==="
           curl -fSs -H "Host: dashboard.$DOMAIN" http://127.0.0.1/ >/dev/null
           curl -fSs -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ >/dev/null
-
-          echo "=== PUBLIC HTTPS CHECKS VIA CLOUDFLARE ==="
           curl -fSs https://dashboard.$DOMAIN/ >/dev/null
           curl -fSs https://api.$DOMAIN/api/v1/utils/health-check/ >/dev/null
 
