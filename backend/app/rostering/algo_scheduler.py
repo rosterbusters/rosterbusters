@@ -2,9 +2,9 @@
 from app.rostering.milp_algo import MILPError, run_milp_pipeline
 
 
-def _run_ga_pipeline(*args, **kwargs):
+def _run_cp_sat_pipeline(*args, **kwargs):
     """
-    Import the GA/CP-SAT pipeline lazily so the backend can start even when
+    Import the CP-SAT pipeline lazily so the backend can start even when
     optional solver dependencies (for example ortools) are not installed.
     """
     try:
@@ -12,7 +12,7 @@ def _run_ga_pipeline(*args, **kwargs):
     except ModuleNotFoundError as exc:
         if exc.name == "ortools":
             raise RuntimeError(
-                "GA fallback requires the optional 'ortools' dependency, "
+                "CP-SAT requires the optional 'ortools' dependency, "
                 "but it is not installed in this environment."
             ) from exc
         raise
@@ -71,7 +71,7 @@ def generate_roster(
     algorithm=None,
 ):
     """
-    Generate a nurse roster using MILP (primary) or GA (fallback).
+    Generate a nurse roster using MILP (primary) or CP-SAT (fallback).
 
     Parameters
     ----------
@@ -99,10 +99,10 @@ def generate_roster(
         Previous-period final shift keyed by nurse_id.
 
     shift_hours : dict, optional
-        DB-derived GA shift durations keyed by AM/PM/NIGHT/OFF.
+        DB-derived shift durations keyed by AM/PM/NIGHT/OFF.
 
     non_working_shift_codes : collection[str], optional
-        Shift codes that should be treated as non-working by GA fallback.
+        Shift codes that should be treated as non-working by CP-SAT.
 
     ward_name : str, optional
         Key into WARD_CONFIG (e.g. "WARD 04", "WARD 08").
@@ -115,7 +115,7 @@ def generate_roster(
     Returns
     -------
     {
-        "method": "MILP" | "GA",
+        "method": "MILP" | "CP-SAT",
         "roster": {
             "nurses": [
                 {
@@ -136,10 +136,10 @@ def generate_roster(
             "metadata": {
                 "num_days":    int,
                 "num_nurses":  int,
-                "algorithm":   "MILP" | "GA",
+                "algorithm":   "MILP" | "CP-SAT",
                 "solver_status": str   # MILP only
                 # OR
-                "penalty_score": float # GA only
+                "penalty_score": float # CP-SAT only
             }
         }
     }
@@ -156,11 +156,13 @@ def generate_roster(
     validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes)
 
     forced = str(algorithm).upper() if algorithm else None
-
-    # ── GA-only path ───────────────────────────────────────────────────────
     if forced == "GA":
-        print("[SCHEDULER] Running GA (forced by caller)")
-        roster = _run_ga_pipeline(
+        forced = "CP-SAT"
+
+    # ── CP-SAT-only path ───────────────────────────────────────────────────
+    if forced in {"CP-SAT", "CPSAT"}:
+        print("[SCHEDULER] Running CP-SAT (forced by caller)")
+        roster = _run_cp_sat_pipeline(
             nurses,
             shifts,
             hard_requests=hard_requests,
@@ -170,8 +172,8 @@ def generate_roster(
             progress_callback=progress_callback,
             shift_hours=shift_hours,
         )
-        print("[SCHEDULER] GA succeeded — returning result")
-        return {"method": "GA", "roster": roster}
+        print("[SCHEDULER] CP-SAT succeeded — returning result")
+        return {"method": "CP-SAT", "roster": roster}
 
     # ── MILP-only path ─────────────────────────────────────────────────────
     if forced == "MILP":
@@ -190,7 +192,7 @@ def generate_roster(
         print("[SCHEDULER] MILP succeeded — returning result")
         return {"method": "MILP", "roster": roster}
 
-    # ── Auto: MILP primary, GA fallback ────────────────────────────────────
+    # ── Auto: MILP primary, CP-SAT fallback ────────────────────────────────
     print("[SCHEDULER] Running MILP (primary algorithm)")
     try:
         roster = run_milp_pipeline(
@@ -208,13 +210,13 @@ def generate_roster(
         return {"method": "MILP", "roster": roster}
 
     except MILPError as e:
-        print(f"[SCHEDULER] MILP failed: {e} — falling back to GA")
+        print(f"[SCHEDULER] MILP failed: {e} — falling back to CP-SAT")
     except Exception as e:
-        print(f"[SCHEDULER] MILP failed with unexpected error: {e} — falling back to GA")
+        print(f"[SCHEDULER] MILP failed with unexpected error: {e} — falling back to CP-SAT")
 
-    # ── Fallback: GA ───────────────────────────────────────────────────────
-    print("[SCHEDULER] Running GA (fallback algorithm)")
-    roster = _run_ga_pipeline(
+    # ── Fallback: CP-SAT ───────────────────────────────────────────────────
+    print("[SCHEDULER] Running CP-SAT (fallback algorithm)")
+    roster = _run_cp_sat_pipeline(
         nurses,
         shifts,
         hard_requests=hard_requests,
@@ -224,8 +226,8 @@ def generate_roster(
         progress_callback=progress_callback,
         shift_hours=shift_hours,
     )
-    print("[SCHEDULER] GA succeeded — returning result")
-    return {"method": "GA", "roster": roster}
+    print("[SCHEDULER] CP-SAT succeeded — returning result")
+    return {"method": "CP-SAT", "roster": roster}
 
 
 def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes=None):

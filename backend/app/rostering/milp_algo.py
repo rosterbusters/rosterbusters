@@ -1,16 +1,18 @@
 # milp_algo.py
 # MILP nurse rostering algorithm.
-# Mirrors the logic in scheduling_v10.ipynb while remaining
+# Mirrors the logic in the later scheduling notebooks while remaining
 # compatible with the algo_scheduler.py pipeline interface.
 #
-# Key changes aligned with notebook v10:
+# Key notebook-aligned behaviour:
 #   1. Coverage uses hierarchical/cumulative skill-tier constraints:
 #      RN covers RN+EN+HCA demand; EN covers EN+HCA; HCA covers HCA only.
 #      (Previous version used independent per-class coverage floors.)
 #   2. Ward-wide shift priority ordering enforced each day:
 #      total_AM >= total_PM >= total_NIGHT, with tight gaps of at most 1.
 #   3. "RD" is now treated as a true off-day (alongside DO and OFF).
-#   4. Solver accepts maxTimeLimit as a valid termination condition (in
+#   4. v13 soft terms are included for RN/EN intra-day balance and
+#      consecutive-day staffing smoothing, plus an optional RN night cap.
+#   5. Solver accepts maxTimeLimit as a valid termination condition (in
 #      addition to optimal), allowing partial solutions under time limits.
 #
 # Expected call from algo_scheduler:
@@ -410,6 +412,7 @@ def _solve(
         "dev_shift": 1.0, "dev_day": 0.5, "AP": 3.0,
         "pref": 100.0, "weekend": 3.0, "rest": 25.0,
         "eq": 500.0, "cov": 1000.0,
+        "balance": 20.0, "day_smooth": 30.0,
     }
     if weights is None:
         weights = _default_w
@@ -448,6 +451,16 @@ def _solve(
         setattr(m, f"pref_violate_{grp}",   Var(getattr(m, f"N_{grp.upper()}"), m.D, within=Binary))
         setattr(m, f"eq_under_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
         setattr(m, f"eq_over_{grp}",  Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
+
+    # Extra v13 soft terms: RN/EN daily A-P-N balance and day-to-day smoothing.
+    m.dev_rn_AP = Var(m.D, within=NonNegativeReals)
+    m.dev_rn_AN = Var(m.D, within=NonNegativeReals)
+    m.dev_rn_PN = Var(m.D, within=NonNegativeReals)
+    m.dev_en_AP = Var(m.D, within=NonNegativeReals)
+    m.dev_en_AN = Var(m.D, within=NonNegativeReals)
+    m.dev_en_PN = Var(m.D, within=NonNegativeReals)
+    m.dev_rn_day_total = Var(RangeSet(2, 14), within=NonNegativeReals)
+    m.dev_en_day_total = Var(RangeSet(2, 14), within=NonNegativeReals)
 
     m.cons = ConstraintList()
 
@@ -623,6 +636,23 @@ def _solve(
         m.cons.add(total_A - total_P <= 1)
         m.cons.add(total_P - total_N <= 1)
 
+    # ---- v13 RN/EN consecutive-day staffing smoothing ----
+    for d in range(2, 15):
+        rn_total_today = sum(m.x_rn[n, d, s] for n in rn_nurses for s in SHIFTS)
+        rn_total_prev  = sum(m.x_rn[n, d - 1, s] for n in rn_nurses for s in SHIFTS)
+        m.cons.add(rn_total_today - rn_total_prev <= m.dev_rn_day_total[d])
+        m.cons.add(rn_total_prev - rn_total_today <= m.dev_rn_day_total[d])
+
+        en_total_today = sum(m.x_en[n, d, s] for n in en_nurses for s in SHIFTS)
+        en_total_prev  = sum(m.x_en[n, d - 1, s] for n in en_nurses for s in SHIFTS)
+        m.cons.add(en_total_today - en_total_prev <= m.dev_en_day_total[d])
+        m.cons.add(en_total_prev - en_total_today <= m.dev_en_day_total[d])
+
+    max_rn_night_per_day = rn_cfg.get("max_night_per_day")
+    if max_rn_night_per_day is not None:
+        for d in DAYS:
+            m.cons.add(_cov_rn[(d, "N")] <= max_rn_night_per_day)
+
     # ---- Shift-balance deviations (soft) ----
     def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg, class_name):
         st = class_cfg.get("shift_target", {
@@ -677,6 +707,21 @@ def _solve(
         A_h = _cov_hca[(d, "A")]
         P_h = _cov_hca[(d, "P")]
         m.cons.add(A_h - P_h <= m.dev_AP_hca[d]); m.cons.add(-(A_h - P_h) <= m.dev_AP_hca[d])
+
+        # v13 daily RN/EN class-level balance across all shift pairs.
+        A_rn = _cov_rn[(d, "A")]
+        P_rn = _cov_rn[(d, "P")]
+        N_rn = _cov_rn[(d, "N")]
+        m.cons.add(A_rn - P_rn <= m.dev_rn_AP[d]); m.cons.add(P_rn - A_rn <= m.dev_rn_AP[d])
+        m.cons.add(A_rn - N_rn <= m.dev_rn_AN[d]); m.cons.add(N_rn - A_rn <= m.dev_rn_AN[d])
+        m.cons.add(P_rn - N_rn <= m.dev_rn_PN[d]); m.cons.add(N_rn - P_rn <= m.dev_rn_PN[d])
+
+        A_en = _cov_en[(d, "A")]
+        P_en = _cov_en[(d, "P")]
+        N_en = _cov_en[(d, "N")]
+        m.cons.add(A_en - P_en <= m.dev_en_AP[d]); m.cons.add(P_en - A_en <= m.dev_en_AP[d])
+        m.cons.add(A_en - N_en <= m.dev_en_AN[d]); m.cons.add(N_en - A_en <= m.dev_en_AN[d])
+        m.cons.add(P_en - N_en <= m.dev_en_PN[d]); m.cons.add(N_en - P_en <= m.dev_en_PN[d])
 
     # ---- Soft preferences ----
     def add_soft_prefs(class_nurses, x_var, hard_dict, soft_dict, pref_viol):
@@ -751,6 +796,14 @@ def _solve(
                 sum(m.eq_under_rn[n] + m.eq_over_rn[n] for n in rn_nurses)
               + sum(m.eq_under_en[n] + m.eq_over_en[n] for n in en_nurses)
               + sum(m.eq_under_hca[n] + m.eq_over_hca[n] for n in hca_nurses)
+            )
+          + lw["balance"]   * (
+                sum(m.dev_rn_AP[d] + m.dev_rn_AN[d] + m.dev_rn_PN[d] for d in DAYS)
+              + sum(m.dev_en_AP[d] + m.dev_en_AN[d] + m.dev_en_PN[d] for d in DAYS)
+            )
+          + lw["day_smooth"] * (
+                sum(m.dev_rn_day_total[d] for d in range(2, 15))
+              + sum(m.dev_en_day_total[d] for d in range(2, 15))
             )
           + lw["cov"]       * (
                 sum(m.cov_slack_rn[d, s] for d in DAYS for s in SHIFTS)
