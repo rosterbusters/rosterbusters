@@ -476,6 +476,10 @@ def run_ga_pipeline(
         _add_penalty(v, weight)
         return v
 
+    def _enforce_strict_night_min(count_expr, required: int) -> None:
+        if required > 0:
+            model.Add(count_expr >= required)
+
     def _excess(name: str, cap: int, supplied_expr, limit: int, weight: int):
         """Penalise excess: var = max(0, supplied − limit)."""
         v = model.NewIntVar(0, cap, name)
@@ -519,8 +523,12 @@ def run_ga_pipeline(
                     model.Add(cnt_A_expr <= req_A)
 
                 _shortage(f"sh_tot_{d}_{s}", total_req, total_req, cnt_tot_expr, W_SHIFT_SHORT)
-                if req_A > 0:
+                if s == NIGHT and req_A > 0:
+                    _enforce_strict_night_min(cnt_A_expr, req_A)
+                elif req_A > 0:
                     _shortage(f"sh_a_{d}_{s}", req_A, req_A, cnt_A_expr, W_RANK_A_SHORT)
+                if s == NIGHT and req_C > 0:
+                    _enforce_strict_night_min(cnt_C_expr, req_C)
                 if req_A + req_B > 0:
                     _shortage(
                         f"sh_ab_{d}_{s}", req_A + req_B,
@@ -556,6 +564,9 @@ def run_ga_pipeline(
         WARD_AB_MIN = {AM: 6, PM: 6, NIGHT: 4}
         WARD_AB_MAX = {AM: 7, PM: 6, NIGHT: 5}
 
+        rn_night_min = int((((milp_config or {}).get("RN") or {}).get("normal_min") or {}).get("N", 0) or 0)
+        hca_night_min = int((((milp_config or {}).get("HCA") or {}).get("normal_min") or {}).get("N", 0) or 0)
+
         # Heavily penalized weights
         W_AB_MIN = 1_000_000
         W_AB_MAX = 1_000_000
@@ -567,10 +578,15 @@ def run_ga_pipeline(
             for s in WORK_SHIFTS:
                 cnt_A = sum(x[n, d, s] for n in rank_A) if rank_A else 0
                 cnt_B = sum(x[n, d, s] for n in rank_B) if rank_B else 0
+                cnt_C = sum(x[n, d, s] for n in rank_C) if rank_C else 0
                 cnt_AB = cnt_A + cnt_B
 
                 ab_min = WARD_AB_MIN[s]
                 ab_max = WARD_AB_MAX[s]
+
+                if s == NIGHT:
+                    _enforce_strict_night_min(cnt_A, rn_night_min)
+                    _enforce_strict_night_min(cnt_C, hca_night_min)
 
                 # --- A+B minimum (SOFT) ---
                 viol_ab_min = model.NewIntVar(0, len(rank_AB), f"viol_ab_min_{d}_{s}")
