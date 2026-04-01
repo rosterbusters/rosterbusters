@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
+import { completeFirstLoginSetup } from "./admin-helpers"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const ADMIN_EMAIL =
@@ -169,6 +170,8 @@ test("ward staff can create a shift request from the calendar", async ({
   const suffix = Date.now().toString().slice(-6)
   const nurseUsername = `e2e.nurse.${suffix}`
   const nursePassword = `TestNr${suffix}!`
+  const nurseEmail = `e2e.nurse.${suffix}@example.com`
+  const nurseEmployeeId = `NU${suffix}`
   const nurseName = "E2E Nurse"
 
   const createdUserIds: number[] = []
@@ -179,8 +182,8 @@ test("ward staff can create a shift request from the calendar", async ({
     const nurseUser = await createUser(request, adminToken, {
       username: nurseUsername,
       name: nurseName,
-      email: `e2e.nurse.${suffix}@example.com`,
-      employee_id: `NU${suffix}`,
+      email: nurseEmail,
+      employee_id: nurseEmployeeId,
       role: "Nurse",
       ward_ids: [ward.wardid],
       designation: "RN",
@@ -189,6 +192,14 @@ test("ward staff can create a shift request from the calendar", async ({
     createdUserIds.push(nurseUser.userid)
 
     nurseToken = await loginToken(request, nurseUsername, nursePassword)
+
+    // Newly created users are flagged for first-time setup and are route-guarded
+    // away from ward-staff pages until setup is completed.
+    await completeFirstLoginSetup(request, nurseToken, {
+      new_password: nursePassword,
+      email: nurseEmail,
+      employee_id: nurseEmployeeId,
+    })
 
     const periodRes = await request.get(
       `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,

@@ -3,6 +3,7 @@ import {
   API_BASE_URL,
   createUser,
   deleteUser,
+  completeFirstLoginSetup,
   getAdminToken,
   getAnyWard,
 } from "./admin-helpers"
@@ -41,6 +42,8 @@ test("ward staff can create a leave request from the calendar", async ({
   const suffix = Date.now().toString().slice(-6)
   const nurseUsername = `e2e.leave.${suffix}`
   const nursePassword = `Leave${suffix}!`
+  const nurseEmail = `e2e.leave.${suffix}@example.com`
+  const nurseEmployeeId = `LE${suffix}`
 
   const createdUserIds: number[] = []
   let nurseToken = ""
@@ -50,8 +53,8 @@ test("ward staff can create a leave request from the calendar", async ({
     const nurseUser = await createUser(request, adminToken, {
       username: nurseUsername,
       name: "E2E Leave Nurse",
-      email: `e2e.leave.${suffix}@example.com`,
-      employee_id: `LE${suffix}`,
+      email: nurseEmail,
+      employee_id: nurseEmployeeId,
       role: "Nurse",
       ward_ids: [ward.wardid],
       designation: "RN",
@@ -60,6 +63,14 @@ test("ward staff can create a leave request from the calendar", async ({
     createdUserIds.push(nurseUser.userid)
 
     nurseToken = await loginToken(request, nurseUsername, nursePassword)
+
+    // Newly created users are flagged for first-time setup and are route-guarded
+    // away from ward-staff pages until setup is completed.
+    await completeFirstLoginSetup(request, nurseToken, {
+      new_password: nursePassword,
+      email: nurseEmail,
+      employee_id: nurseEmployeeId,
+    })
 
     const leaveCodesRes = await request.get(
       `${API_BASE_URL}/api/v1/leave/leave-codes`,
