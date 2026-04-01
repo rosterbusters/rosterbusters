@@ -35,57 +35,85 @@ class RequestSeed:
     request_type: str  # "shift_request" | "leave_request"
 
 
-# Hardcoded, anonymized seed list (no real names).
-# This is the target output location for future generation functions as well.
+@dataclass(frozen=True)
+class NurseSeed:
+    source_id: int
+    anonymized_name: str
+    designation: str
+
+
+APRIL_ACTIVE_NURSES: list[NurseSeed] = [
+    NurseSeed(7, "Nurse 1", "SNR ENROLLED NURSE I"),
+    NurseSeed(8, "Nurse 2", "SNR STAFF NURSE II"),
+    NurseSeed(9, "Nurse 3", "SNR STAFF NURSE II"),
+    NurseSeed(10, "Nurse 4", "HEALTHCARE ASST III"),
+    NurseSeed(11, "Nurse 5", "SNR STAFF NURSE I"),
+    NurseSeed(12, "Nurse 6", "SNR STAFF NURSE I"),
+    NurseSeed(13, "Nurse 7", "STAFF NURSE II"),
+    NurseSeed(14, "Nurse 8", "HEALTHCARE ASST I"),
+    NurseSeed(15, "Nurse 9", "HEALTHCARE ASST III"),
+    NurseSeed(16, "Nurse 10", "STAFF NURSE I"),
+    NurseSeed(17, "Nurse 11", "STAFF NURSE I"),
+    NurseSeed(18, "Nurse 12", "ENROLLED NURSE II"),
+    NurseSeed(19, "Nurse 13", "HEALTHCARE ASST I"),
+    NurseSeed(20, "Nurse 14", "NURSING AIDE I"),
+    NurseSeed(21, "Nurse 15", "ENROLLED NURSE I"),
+    NurseSeed(22, "Nurse 16", "NURSING AIDE II"),
+    NurseSeed(23, "Nurse 17", "NURSING AIDE II"),
+    NurseSeed(24, "Nurse 18", "HEALTHCARE ASST III"),
+    NurseSeed(25, "Nurse 19", "HEALTHCARE ASST III"),
+    NurseSeed(26, "Nurse 20", "STAFF NURSE II"),
+    NurseSeed(27, "Nurse 21", "STAFF NURSE II"),
+    NurseSeed(28, "Nurse 22", "STAFF NURSE I"),
+    NurseSeed(29, "Nurse 23", "ENROLLED NURSE II"),
+    NurseSeed(33, "Nurse 24", "NURSING AIDE II"),
+    NurseSeed(34, "Nurse 25", "ENROLLED NURSE II"),
+    NurseSeed(35, "Nurse 26", "Staff Nurse"),
+    NurseSeed(36, "Nurse 27", "Staff Nurse"),
+    NurseSeed(37, "Nurse 28", "Staff Nurse"),
+    NurseSeed(38, "Nurse 29", "Staff Nurse"),
+    NurseSeed(40, "Nurse 30", "Staff Nurse II"),
+    NurseSeed(41, "Nurse 31", "Staff Nurse II"),
+]
+
+APRIL_ANON_NAME_BY_SOURCE_ID = {
+    nurse.source_id: nurse.anonymized_name for nurse in APRIL_ACTIVE_NURSES
+}
+
+
+# Hardcoded, anonymized April seed list based on the provided Ward 6 data.
+# Only active nurses are represented; inactive or missing source rows are omitted.
 HARDCODED_REQUESTS: list[RequestSeed] = [
-    # EN (3)
-    RequestSeed("Nurse 11", date(2026, 4, 1), "DO", "shift_request"),
-    RequestSeed("Nurse 12", date(2026, 3, 29), "P", "shift_request"),
-    RequestSeed("Nurse 13", date(2026, 3, 30), "AL", "leave_request"),
-    RequestSeed("Nurse 13", date(2026, 3, 31), "AL", "leave_request"),
-    RequestSeed("Nurse 13", date(2026, 4, 1), "AL", "leave_request"),
-    RequestSeed("Nurse 13", date(2026, 4, 2), "AL", "leave_request"),
-    RequestSeed("Nurse 13", date(2026, 4, 3), "AL", "leave_request"),
-    # HCA12 (1)
-    RequestSeed("Nurse 27", date(2026, 4, 3), "DO", "shift_request"),
-    # HCA3 (3)
-    RequestSeed("Nurse 21", date(2026, 3, 25), "HOL", "leave_request"),
-    RequestSeed("Nurse 22", date(2026, 3, 28), "HOL", "leave_request"),
-    RequestSeed("Nurse 23", date(2026, 4, 1), "AL", "leave_request"),
-    RequestSeed("Nurse 23", date(2026, 4, 2), "AL", "leave_request"),
-    RequestSeed("Nurse 23", date(2026, 4, 3), "AL", "leave_request"),
-    RequestSeed("Nurse 23", date(2026, 4, 4), "AL", "leave_request"),
-    RequestSeed("Nurse 23", date(2026, 4, 5), "AL", "leave_request"),
-    # NA (2)
-    RequestSeed("Nurse 16", date(2026, 3, 23), "AL", "leave_request"),
-    RequestSeed("Nurse 16", date(2026, 3, 24), "AL", "leave_request"),
-    RequestSeed("Nurse 16", date(2026, 3, 25), "AL", "leave_request"),
-    RequestSeed("Nurse 16", date(2026, 3, 26), "AL", "leave_request"),
-    RequestSeed("Nurse 16", date(2026, 3, 27), "AL", "leave_request"),
-    RequestSeed("Nurse 16", date(2026, 3, 30), "AL", "leave_request"),
-    RequestSeed("Nurse 16", date(2026, 3, 31), "AL", "leave_request"),
-    RequestSeed("Nurse 17", date(2026, 3, 25), "A", "shift_request"),
-    # RN (8)
-    RequestSeed("Nurse 1", date(2026, 3, 30), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 3, 31), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 4, 1), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 4, 2), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 4, 3), "AL", "leave_request"),
-    RequestSeed("Nurse 2", date(2026, 3, 23), "AL", "leave_request"),
-    RequestSeed("Nurse 2", date(2026, 3, 24), "AL", "leave_request"),
-    RequestSeed("Nurse 3", date(2026, 4, 2), "P", "shift_request"),
-    RequestSeed("Nurse 4", date(2026, 3, 25), "AL", "leave_request"),
-    RequestSeed("Nurse 4", date(2026, 3, 26), "AL", "leave_request"),
-    RequestSeed("Nurse 4", date(2026, 3, 27), "AL", "leave_request"),
-    RequestSeed("Nurse 4", date(2026, 3, 30), "AL", "leave_request"),
-    RequestSeed("Nurse 4", date(2026, 3, 31), "AL", "leave_request"),
-    RequestSeed("Nurse 5", date(2026, 4, 2), "P", "shift_request"),
-    RequestSeed("Nurse 6", date(2026, 3, 26), "A", "shift_request"),
-    RequestSeed("Nurse 7", date(2026, 3, 27), "A", "shift_request"),
-    RequestSeed("Nurse 8", date(2026, 3, 28), "A", "shift_request"),
-    RequestSeed("Nurse 9", date(2026, 4, 1), "AL", "leave_request"),
-    RequestSeed("Nurse 9", date(2026, 4, 2), "AL", "leave_request"),
-    RequestSeed("Nurse 9", date(2026, 4, 3), "HOL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 6), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 7), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 8), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 9), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 10), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 11), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 12), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 13), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 14), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 15), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 16), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 17), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 18), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 19), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[11], date(2026, 4, 20), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 6), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 7), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 8), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 9), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 10), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 11), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 12), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 13), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 14), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 15), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 16), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 17), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 18), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 19), "AL", "leave_request"),
+    RequestSeed(APRIL_ANON_NAME_BY_SOURCE_ID[34], date(2026, 4, 20), "AL", "leave_request"),
 ]
 
 TEST_MANAGER_USERNAME = "manager"
@@ -114,36 +142,7 @@ def _normalize_shift_request_code(code: str) -> str:
 
 
 ANON_DESIGNATIONS: dict[str, str] = {
-    # Matches Ward 06 distribution from ward6.xlsx (omit nurse manager/clinician):
-    # RN/Staff Nurse: 10, EN: 5, NA: 5, HCA3: 6, HCA12(HCA1/2): 2
-    "Nurse 1": "STAFF NURSE",
-    "Nurse 2": "STAFF NURSE",
-    "Nurse 3": "STAFF NURSE",
-    "Nurse 4": "STAFF NURSE",
-    "Nurse 5": "STAFF NURSE",
-    "Nurse 6": "STAFF NURSE",
-    "Nurse 7": "STAFF NURSE",
-    "Nurse 8": "STAFF NURSE",
-    "Nurse 9": "STAFF NURSE",
-    "Nurse 10": "STAFF NURSE",
-    "Nurse 11": "ENROLLED NURSE",
-    "Nurse 12": "ENROLLED NURSE",
-    "Nurse 13": "ENROLLED NURSE",
-    "Nurse 14": "ENROLLED NURSE",
-    "Nurse 15": "ENROLLED NURSE",
-    "Nurse 16": "NURSING AIDE",
-    "Nurse 17": "NURSING AIDE",
-    "Nurse 18": "NURSING AIDE",
-    "Nurse 19": "NURSING AIDE",
-    "Nurse 20": "NURSING AIDE",
-    "Nurse 21": "HCA 3",
-    "Nurse 22": "HCA 3",
-    "Nurse 23": "HCA 3",
-    "Nurse 24": "HCA 3",
-    "Nurse 25": "HCA 3",
-    "Nurse 26": "HCA 3",
-    "Nurse 27": "HCA 2",
-    "Nurse 28": "HCA 2",
+    nurse.anonymized_name: nurse.designation for nurse in APRIL_ACTIVE_NURSES
 }
 
 
@@ -247,7 +246,7 @@ WARD_6_REQUIREMENTS = {
     "am_rn": 2,
     "am_en_na_min": 4,
     "am_en_na_max": 5,
-    "am_hca_min": 0,
+    "am_hca_min": 1,
     "am_hca_max": 2,
     "pm_total": 7,
     "pm_rn": 2,

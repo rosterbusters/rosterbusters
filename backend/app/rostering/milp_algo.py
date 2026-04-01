@@ -65,8 +65,10 @@ def _classify(raw, non_working_shift_codes=None):
         return ("WORK_SHIFT", s)
     if s in _OFF_CODES:
         return ("OFF", s)
-    if s in _EQUIV_LEAVE or s in {str(code).upper() for code in (non_working_shift_codes or set())}:
+    if s in _EQUIV_LEAVE:
         return ("EQUIV_LEAVE", s)
+    if s in {str(code).upper() for code in (non_working_shift_codes or set())}:
+        return ("EQUIV_WORK", s)
     return ("EQUIV_WORK", s)   # INHT / BL / …
 
 
@@ -148,8 +150,10 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
                 normalized_shift = str(shift_name).upper()
                 if normalized_shift in _OFF_CODES:
                     milp_code = "DO"
-                elif normalized_shift == "AL" or normalized_shift in _EQUIV_LEAVE or normalized_shift in non_working_shift_codes:
+                elif normalized_shift == "AL" or normalized_shift in _EQUIV_LEAVE:
                     milp_code = "AL"
+                elif normalized_shift in non_working_shift_codes:
+                    milp_code = normalized_shift
                 else:
                     milp_code = _sched_to_milp.get(normalized_shift, normalized_shift)
                 target[name][f"Day {day_idx + 1}"] = milp_code
@@ -159,24 +163,33 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
 
 def _parse_prev_last_shift(nurses, prev_last_shift):
     """
-    Convert {nurse_id: shift_name} → {class: {nurse_name: ["", "N"]}} for
-    NIGHT shifts.  The last2 format is ["day13_code", "day14_code"]; since we
-    only have a single last-shift value here we use ("", "N") to indicate the
-    final day was a night.
+    Convert previous-period carryover input into notebook-style last2 state.
+
+    Accepted values per nurse_id:
+      - "NIGHT" / "AM" / ...
+      - ["A", "N"] or ("A", "N")
+      - {"last2": ["A", "N"]}
     """
     prev_last_shift = prev_last_shift or {}
     _rank_class = {"A": "RN", "B": "EN", "C": "HCA"}
     id_to_nurse = {n["id"]: n for n in nurses}
     output = {"RN": {}, "EN": {}, "HCA": {}}
 
-    for nurse_id, shift_name in prev_last_shift.items():
+    for nurse_id, shift_value in prev_last_shift.items():
         nurse = id_to_nurse.get(nurse_id)
         if nurse is None:
             continue
         cls = _rank_class.get(nurse["rank"])
         if cls is None:
             continue
-        mapped = str(shift_name).strip().upper()
+
+        if isinstance(shift_value, (list, tuple, dict)):
+            day13, day14 = _normalize_last2(shift_value)
+            if day13 or day14:
+                output[cls][nurse["name"]] = [day13, day14]
+            continue
+
+        mapped = str(shift_value).strip().upper()
         if mapped == "NIGHT":
             output[cls][nurse["name"]] = ["", "N"]
 
@@ -418,6 +431,7 @@ def _solve(
     coverage_mode = str(cfg.get("coverage_mode", "strict_by_class")).strip().lower()
     soften_equivalent_target = bool(cfg.get("soften_equivalent_target", False))
     soften_coverage = bool(cfg.get("soften_coverage", False))
+    total_min_cfg = cfg.get("TOTAL_MIN") or {}
     shift_priority_cfg = cfg.get("shift_priority", {}) or {}
     shift_priority_enabled = bool(shift_priority_cfg.get("enabled", False))
     shift_priority_order = [
@@ -712,6 +726,15 @@ def _solve(
                     m.cons.add(c_rn >= r_req)
                     m.cons.add(c_rn + c_en >= r_req + e_req)
                     m.cons.add(c_rn + c_en + c_hca >= r_req + e_req + h_req)
+
+    if total_min_cfg:
+        for d in DAYS:
+            for s in SHIFTS:
+                total_required = int(total_min_cfg.get(s, 0) or 0)
+                if total_required <= 0:
+                    continue
+                total_coverage = _cov_rn[(d, s)] + _cov_en[(d, s)] + _cov_hca[(d, s)]
+                m.cons.add(total_coverage >= total_required)
 
     # ---- Ward-wide total minimum + shift priority ordering (notebook v10) ----
     # AM >= PM >= NIGHT, with tight gaps of at most 1
