@@ -23,6 +23,7 @@ from app.designation_mapping import (
     canonical_designation_from_value,
     load_designation_rank_map,
 )
+from app.models.designation import Designation
 from app.models import Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
@@ -71,7 +72,6 @@ class AdminPasswordResetResponse(SQLModel):
 
 
 class AdminUserCreate(SQLModel):
-    username: Optional[str] = Field(default=None, min_length=1, max_length=255)
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
@@ -96,6 +96,37 @@ class AdminUserUpdate(SQLModel):
 class DesignationOption(SQLModel):
     designation: str
     rank: str
+
+
+def _slugify_username(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", ".", value.lower()).strip(".")
+    slug = re.sub(r"\.+", ".", slug)
+    return slug
+
+
+def _generate_unique_username(
+    session,
+    *,
+    name: str | None,
+    email: str | None,
+    employee_id: str | None,
+) -> str:
+    seed = ""
+    if name:
+        words = [word for word in name.strip().split() if word][:3]
+        seed = ".".join(words)
+    if not seed and email:
+        seed = email.split("@")[0]
+    if not seed and employee_id:
+        seed = employee_id
+
+    base = _slugify_username(seed) or "user"
+    candidate = base
+    suffix = 2
+    while session.exec(select(RBACUser).where(RBACUser.username == candidate)).first():
+        candidate = f"{base}{suffix}"
+        suffix += 1
+    return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +221,17 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
 #  CRUD endpoints
 # ---------------------------------------------------------------------------
 
+@router.get("/designations", response_model=list[DesignationOption])
+def list_designations(session: SessionDep) -> Any:
+    """List designation options from reference table."""
+    rows = session.exec(
+        select(Designation).order_by(Designation.rank, Designation.designation)
+    ).all()
+    return [
+        DesignationOption(designation=row.designation, rank=row.rank)
+        for row in rows
+    ]
+
 @router.get("/users", response_model=AdminUsersPublic)
 def list_users(
     session: SessionDep, skip: int = 0, limit: int = 100, search: str = ""
@@ -271,21 +313,11 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
                 detail="A user with this email already exists.",
             )
 
-    if requested_username:
-        # Check duplicate username only when one is explicitly provided
-        existing_username = session.exec(
-            select(RBACUser).where(RBACUser.username == requested_username)
-        ).first()
-        if existing_username:
-            raise HTTPException(
-                status_code=400,
-                detail="A user with this username already exists.",
-            )
-
-    # Generate username from name (fallback email prefix) when omitted
-    username = requested_username or _generate_unique_username(
+    username = _generate_unique_username(
         session,
-        name or (body.email.split("@")[0] if body.email else ""),
+        name=name,
+        email=body.email,
+        employee_id=employee_id,
     )
 
     if employee_id:
