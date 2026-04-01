@@ -8,7 +8,7 @@ from sqlmodel import or_, select
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.models.enums import NotificationType
-from app.models.rbac import Nurse, NurseManager, NursePublic
+from app.models.rbac import Nurse, NurseManager, NursePublic, Role, UserRole
 from app.models.roster import (
     Roster,
     RosterPeriod,
@@ -25,8 +25,21 @@ from app.models.shifts import (
     ShiftRequestReview,
     ShiftRequestUpdate,
 )
+from app.utils import (
+    generate_shift_request_approved_email,
+    generate_shift_request_rejected_email,
+    send_email,
+)
+from app.core.config import settings
 from app.rbac import get_rbac_user_by_email, user_has_role
-from app.services.roster_period_service import ensure_roster_period_window, get_period_window
+from app.services.roster_period_service import (
+    ensure_roster_period_window,
+    get_period_window,
+    get_planning_lock_date,
+)
+
+import logging
+logger = logging.getLogger(__name__)
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -274,10 +287,24 @@ def get_shift_codes_by_ward(
 # ROSTER PERIOD ENDPOINTS
 # ─────────────────────────────────────────────
 
+def _to_roster_period_public(period: RosterPeriod) -> RosterPeriodPublic:
+    return RosterPeriodPublic(
+        periodid=period.periodid,
+        name=period.name,
+        startdate=period.startdate,
+        enddate=period.enddate,
+        requestopendate=period.requestopendate,
+        requestclosedate=period.requestclosedate,
+        planninglockdate=get_planning_lock_date(period.startdate),
+        status=period.status,
+    )
+
+
 @router.get("/periods", response_model=list[RosterPeriodPublic])
 def get_roster_periods(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all roster periods."""
-    return ensure_roster_period_window(session)
+    periods = ensure_roster_period_window(session)
+    return [_to_roster_period_public(period) for period in periods]
 
 
 @router.get("/period", response_model=RosterPeriodPublic)
@@ -295,7 +322,7 @@ def get_roster_period(
     period = session.exec(statement).first()
     if not period:
         raise HTTPException(status_code=404, detail="No roster period found for the given date")
-    return period
+    return _to_roster_period_public(period)
 
 
 @router.get("/periods/current-upcoming", response_model=RosterPeriodWindowPublic)
@@ -305,10 +332,15 @@ def get_current_and_upcoming_roster_periods(
     """Get the current, upcoming, and request-open roster periods."""
     periods = ensure_roster_period_window(session)
     current_period, upcoming_period, request_open_period = get_period_window(periods)
+    def _map(period: RosterPeriod | None):
+        if not period:
+            return None
+        return _to_roster_period_public(period)
+
     return RosterPeriodWindowPublic(
-        current_period=current_period,
-        upcoming_period=upcoming_period,
-        request_open_period=request_open_period,
+        current_period=_map(current_period),
+        upcoming_period=_map(upcoming_period),
+        request_open_period=_map(request_open_period),
     )
 
 
@@ -471,6 +503,34 @@ def review_shift_request(
                 related_entity_id=request_id,
                 roster_period=period.name,
             )
+
+            if settings.emails_enabled:
+                nurse = session.get(Nurse, shift_request.nurseid)
+                if nurse and nurse.email:
+                    try:
+                        if review_in.status == "Approved":
+                            email_data = generate_shift_request_approved_email(
+                                email_to=nurse.email,
+                                roster_period=period.name,
+                                nurse_name=nurse.name,
+                            )
+                        else:
+                            email_data = generate_shift_request_rejected_email(
+                                email_to=nurse.email,
+                                roster_period=period.name,
+                                nurse_name=nurse.name,
+                                rejection_reason=review_in.rejectionreason,
+                            )
+                        send_email(
+                            email_to=nurse.email,
+                            subject=email_data.subject,
+                            html_content=email_data.html_content,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to send shift request review email to nurse %s",
+                            shift_request.nurseid,
+                        )
 
     session.commit()
     session.refresh(shift_request)

@@ -44,6 +44,7 @@ def update_password_me(
         )
     hashed_password = get_password_hash(body.new_password)
     current_user.passwordhash = hashed_password
+    current_user.default_password_encrypted = None
     session.add(current_user)
     session.commit()
     return Message(message="Password updated successfully")
@@ -136,6 +137,7 @@ def first_login_setup(
     # Set new password
     current_user.passwordhash = get_password_hash(body.new_password)
     current_user.must_change_password = False
+    current_user.default_password_encrypted = None
 
     # Optionally set email
     if body.email:

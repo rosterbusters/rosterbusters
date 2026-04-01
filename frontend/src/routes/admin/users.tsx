@@ -54,6 +54,7 @@ interface UserFormData {
 }
 
 interface CreatedUserInfo {
+  userid?: number
   username: string
   name?: string | null
   generated_password?: string | null
@@ -121,17 +122,34 @@ const slugifyUsername = (value: string) =>
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "")
 
+const takeFirstTwoWords = (value: string) =>
+  value.trim().split(/\s+/).filter(Boolean).slice(0, 2).join(" ")
+
+const buildUsernameFromName = (value: string) =>
+  slugifyUsername(takeFirstTwoWords(value))
+
 const NURSE_MANAGER_IMPORT_ROLE_MATCHERS = [
   "nursingmanager",
   "nursemanager",
   "nurseclinician",
 ]
 
+const isExcludedImportRole = (value: string) => {
+  const normalized = normalizeHeader(value)
+  if (!normalized) return false
+  return (
+    normalized.includes("psa") ||
+    normalized.includes("patientserviceassistant") ||
+    normalized.includes("patientserviceasst")
+  )
+}
+
 const resolveImportedRole = (
   value: string,
 ): "Admin" | "NurseManager" | "Nurse" | null => {
   const normalized = normalizeHeader(value)
   if (!normalized) return null
+  if (isExcludedImportRole(value)) return null
   if (
     NURSE_MANAGER_IMPORT_ROLE_MATCHERS.some((matcher) =>
       normalized.includes(matcher),
@@ -222,8 +240,19 @@ const parseWorkbookWardIds = (value: string, wards: WardOption[]) => {
 }
 
 const buildImportedUsername = (name: string, rowNumber: number) => {
-  const base = slugifyUsername(name) || `staff.${rowNumber}`
+  const base = buildUsernameFromName(name) || `staff.${rowNumber}`
   return base
+}
+
+const ensureUniqueUsername = (base: string, used: Set<string>) => {
+  let candidate = base
+  let suffix = 1
+  while (used.has(candidate)) {
+    suffix += 1
+    candidate = `${base}${suffix}`
+  }
+  used.add(candidate)
+  return candidate
 }
 
 const parseExactStaffWorkbook = (
@@ -249,6 +278,13 @@ const parseExactStaffWorkbook = (
 
       if (!name) {
         skipped.push(`NUR row ${index + 2} skipped because name is missing.`)
+        return
+      }
+
+      if (isExcludedImportRole(occupation)) {
+        skipped.push(
+          `NUR row ${index + 2} skipped because "${occupation}" is a PSA role.`,
+        )
         return
       }
 
@@ -296,6 +332,13 @@ const parseExactStaffWorkbook = (
 
       if (!name) {
         skipped.push(`CEN Listing row ${index + 2} skipped because name is missing.`)
+        return
+      }
+
+      if (isExcludedImportRole(position)) {
+        skipped.push(
+          `CEN Listing row ${index + 2} skipped because "${position}" is a PSA role.`,
+        )
         return
       }
 
@@ -364,74 +407,89 @@ async function parseStaffWorkbook(
     throw new Error("The selected sheet is empty.")
   }
 
-  return {
-    rows: rows.map((row, index) => {
-      const employeeId = findCellValue(row, [
-        "employee id",
-        "employee_id",
-        "employeeid",
-        "staff id",
-        "staffid",
-      ])
-      const designation = findCellValue(row, [
-        "designation",
-        "occupation",
-        "position",
-        "job title",
-      ])
-      const role = inferRole(
-        findCellValue(row, ["role", "designation", "position", "user role"]),
+  const parsedRows: ParsedImportRow[] = []
+  const skipped: string[] = []
+
+  rows.forEach((row, index) => {
+    const employeeId = findCellValue(row, [
+      "employee id",
+      "employee_id",
+      "employeeid",
+      "staff id",
+      "staffid",
+    ])
+    const designation = findCellValue(row, [
+      "designation",
+      "occupation",
+      "position",
+      "job title",
+    ])
+    const roleText = findCellValue(row, [
+      "role",
+      "designation",
+      "position",
+      "user role",
+    ])
+    if (isExcludedImportRole(roleText)) {
+      skipped.push(
+        `Row ${index + 2} skipped because "${roleText}" is a PSA role.`,
       )
+      return
+    }
+    const role = inferRole(roleText)
       const email = findCellValue(row, ["email", "email address", "e-mail"])
       const rawUsername = findCellValue(row, [
         "username",
         "user name",
         "name",
-        "staff name",
-        "employee name",
-        "full name",
-      ])
-      const username =
-        rawUsername || slugifyUsername(email.split("@")[0] || employeeId)
-      const name = rawUsername || username
-      const wardText = findCellValue(row, [
-        "ward",
-        "ward name",
-        "assigned ward",
-        "wards",
-        "unit",
-      ])
-      const password = findCellValue(row, ["password", "temporary password"])
-      const isActive = parseActiveValue(
-        findCellValue(row, ["active", "is active", "status"]),
-      )
+      "staff name",
+      "employee name",
+      "full name",
+    ])
+      const username = rawUsername
+        ? (rawUsername.trim().includes(" ")
+            ? buildUsernameFromName(rawUsername)
+            : slugifyUsername(rawUsername))
+        : slugifyUsername(email.split("@")[0] || employeeId)
+    const name = rawUsername || username
+    const wardText = findCellValue(row, [
+      "ward",
+      "ward name",
+      "assigned ward",
+      "wards",
+      "unit",
+    ])
+    const password = findCellValue(row, ["password", "temporary password"])
+    const isActive = parseActiveValue(
+      findCellValue(row, ["active", "is active", "status"]),
+    )
 
-      if (!username) {
-        throw new Error(`Row ${index + 2}: missing username/name/email.`)
-      }
+    if (!username) {
+      throw new Error(`Row ${index + 2}: missing username/name/email.`)
+    }
 
-      if ((role === "Nurse" || role === "NurseManager") && !employeeId) {
-        throw new Error(`Row ${index + 2}: missing employee ID.`)
-      }
+    if ((role === "Nurse" || role === "NurseManager") && !employeeId) {
+      throw new Error(`Row ${index + 2}: missing employee ID.`)
+    }
 
-      return {
-        rowNumber: index + 2,
-        username,
-        name: name || undefined,
-        email: email || undefined,
-        employee_id: employeeId || undefined,
-        designation: designation || undefined,
-        password: password || undefined,
-        is_active: isActive,
-        role,
-        ward_ids:
-          role === "Nurse" || role === "NurseManager"
-            ? parseWardIds(wardText, wards)
-            : undefined,
-      }
-    }),
-    skipped: [],
-  }
+    parsedRows.push({
+      rowNumber: index + 2,
+      username,
+      name: name || undefined,
+      email: email || undefined,
+      employee_id: employeeId || undefined,
+      designation: designation || undefined,
+      password: password || undefined,
+      is_active: isActive,
+      role,
+      ward_ids:
+        role === "Nurse" || role === "NurseManager"
+          ? parseWardIds(wardText, wards)
+          : undefined,
+    })
+  })
+
+  return { rows: parsedRows, skipped }
 }
 
 function UserFormDialog({
@@ -520,6 +578,7 @@ function UserFormDialog({
       showSuccessToast("User created successfully.")
       if (result.generated_password) {
         onCreated?.({
+          userid: result.userid,
           username: result.username,
           generated_password: result.generated_password,
         })
@@ -1039,12 +1098,13 @@ function AdminUsers() {
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null)
   const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
   const [passwordCopied, setPasswordCopied] = useState(false)
-  const [importGeneratedPasswords, setImportGeneratedPasswords] = useState<Record<number, string>>({})
+  const [knownDefaultPasswords, setKnownDefaultPasswords] = useState<Record<number, string>>({})
   const [isImporting, setIsImporting] = useState(false)
   const [pendingImport, setPendingImport] = useState<PendingImportState | null>(null)
   const [importPassword, setImportPassword] = useState("")
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null)
   const [importCancelRequested, setImportCancelRequested] = useState(false)
+  const [importFailures, setImportFailures] = useState<string[] | null>(null)
   const importCancelRequestedRef = useRef(false)
 
   const importRows = async (file: File, password?: string) => {
@@ -1064,25 +1124,44 @@ function AdminUsers() {
       return
     }
 
+    let existingUsernames = new Set<string>()
+    try {
+      const firstPage = await AdminService.listUsers(0, 200, "")
+      firstPage.data.forEach((user) => existingUsernames.add(user.username))
+      const total = firstPage.count
+      for (let skip = firstPage.data.length; skip < total; skip += 200) {
+        const nextPage = await AdminService.listUsers(skip, 200, "")
+        nextPage.data.forEach((user) => existingUsernames.add(user.username))
+      }
+    } catch (error: any) {
+      showErrorToast(error?.body?.detail ?? "Failed to validate usernames.")
+      return
+    }
+
+    const rowsToImport = result.rows.map((row) => ({
+      ...row,
+      username: ensureUniqueUsername(row.username, existingUsernames),
+    }))
+
     const failures: string[] = []
     let importedCount = 0
     let failedCount = 0
 
     setImportProgress({
-      total: result.rows.length,
+      total: rowsToImport.length,
       processed: 0,
       imported: 0,
       failed: 0,
       currentLabel: "",
     })
 
-    for (const [index, row] of result.rows.entries()) {
+    for (const [index, row] of rowsToImport.entries()) {
       if (importCancelRequestedRef.current) {
         break
       }
 
       setImportProgress({
-        total: result.rows.length,
+        total: rowsToImport.length,
         processed: index,
         imported: importedCount,
         failed: failedCount,
@@ -1101,7 +1180,7 @@ function AdminUsers() {
           ward_ids: row.ward_ids,
         })
         if (createdUser.generated_password) {
-          setImportGeneratedPasswords((prev) => ({
+          setKnownDefaultPasswords((prev) => ({
             ...prev,
             [createdUser.userid]: createdUser.generated_password!,
           }))
@@ -1116,7 +1195,7 @@ function AdminUsers() {
 
       if (importCancelRequestedRef.current) {
         setImportProgress({
-          total: result.rows.length,
+          total: rowsToImport.length,
           processed: index + 1,
           imported: importedCount,
           failed: failedCount,
@@ -1126,7 +1205,7 @@ function AdminUsers() {
       }
 
       setImportProgress({
-        total: result.rows.length,
+        total: rowsToImport.length,
         processed: index + 1,
         imported: importedCount,
         failed: failedCount,
@@ -1151,6 +1230,7 @@ function AdminUsers() {
     }
 
     if (failures.length > 0) {
+      setImportFailures(failures)
       showErrorToast(failures.slice(0, 3).join(" "))
     }
 
@@ -1185,9 +1265,30 @@ function AdminUsers() {
     staleTime: 60_000,
   })
 
+  const selectedWardName =
+    wardFilter === "all"
+      ? "all-wards"
+      : wards.find((ward) => String(ward.wardid) === wardFilter)?.wardname ??
+        `ward-${wardFilter}`
+
   const users = data?.data ?? []
   const count = data?.count ?? 0
   const totalPages = Math.ceil(count / PER_PAGE)
+
+  useEffect(() => {
+    if (users.length === 0) return
+    setKnownDefaultPasswords((prev) => {
+      const next = { ...prev }
+      let changed = false
+      users.forEach((user) => {
+        if (user.generated_password && !next[user.userid]) {
+          next[user.userid] = user.generated_password
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [users])
 
   const filteredUsers = users.filter((user) => {
     const matchesRole =
@@ -1213,8 +1314,15 @@ function AdminUsers() {
   const resetPasswordMutation = useMutation({
     mutationFn: (user: AdminUser) => AdminService.resetUserPassword(user.userid),
     onSuccess: (result) => {
+      if (resetPasswordUser?.userid) {
+        setKnownDefaultPasswords((prev) => ({
+          ...prev,
+          [resetPasswordUser.userid]: result.generated_password,
+        }))
+      }
       setResetPasswordUser(null)
       setCreatedUserInfo({
+        userid: resetPasswordUser?.userid,
         username: result.username,
         generated_password: result.generated_password,
       })
@@ -1297,6 +1405,81 @@ function AdminUsers() {
     ? Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)
     : 0
 
+  const handleExportDefaultPasswords = async () => {
+    if (wardFilter === "all") {
+      showErrorToast("Select a specific ward to export default passwords.")
+      return
+    }
+    const wardId = Number(wardFilter)
+    if (Number.isNaN(wardId)) {
+      showErrorToast("Invalid ward selection.")
+      return
+    }
+
+    let allUsers: AdminUser[] = []
+    try {
+      const firstPage = await AdminService.listUsers(0, 200, "")
+      allUsers = firstPage.data
+      const total = firstPage.count
+      for (let skip = allUsers.length; skip < total; skip += 200) {
+        const nextPage = await AdminService.listUsers(skip, 200, "")
+        allUsers = allUsers.concat(nextPage.data)
+      }
+    } catch (error: any) {
+      showErrorToast(error?.body?.detail ?? "Failed to fetch users for export.")
+      return
+    }
+
+    const rows = allUsers
+      .filter((user) =>
+        user.wards.some((ward) => ward.ward_id === wardId),
+      )
+      .filter(
+        (user) =>
+          user.must_change_password && knownDefaultPasswords[user.userid],
+      )
+      .map((user) => ({
+        name: user.name ?? "",
+        username: user.username,
+        ward: user.wards.map((w) => w.ward_name).join("; "),
+        password: knownDefaultPasswords[user.userid],
+      }))
+
+    if (rows.length === 0) {
+      showErrorToast("No default passwords found for the selected ward.")
+      return
+    }
+
+    const escapeCsv = (value: string) => {
+      const safe = value.replace(/"/g, '""')
+      return /[",\n]/.test(safe) ? `"${safe}"` : safe
+    }
+
+    const header = ["Name", "Username", "Ward", "Default Password"]
+    const lines = [
+      header.join(","),
+      ...rows.map((row) =>
+        [
+          escapeCsv(row.name),
+          escapeCsv(row.username),
+          escapeCsv(row.ward),
+          escapeCsv(row.password),
+        ].join(","),
+      ),
+    ]
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    const dateStamp = new Date().toISOString().slice(0, 10)
+    link.href = url
+    link.download = `default-passwords-${selectedWardName}-${dateStamp}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -1335,6 +1518,13 @@ function AdminUsers() {
           >
             <Plus className="w-4 h-4" />
             Add User
+          </button>
+          <button
+            onClick={handleExportDefaultPasswords}
+            disabled={wardFilter === "all"}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Export Default Passwords (CSV)
           </button>
         </div>
       </div>
@@ -1414,7 +1604,7 @@ function AdminUsers() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Ward</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Password</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Default Password</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
@@ -1479,16 +1669,16 @@ function AdminUsers() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {importGeneratedPasswords[user.userid] ? (
-                        <div className="flex items-center gap-2">
+                      {user.must_change_password && knownDefaultPasswords[user.userid] ? (
+                        <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
                           <span className="font-mono text-xs text-gray-900">
-                            {importGeneratedPasswords[user.userid]}
+                            {knownDefaultPasswords[user.userid]}
                           </span>
                           <button
                             onClick={() =>
-                              navigator.clipboard.writeText(importGeneratedPasswords[user.userid])
+                              navigator.clipboard.writeText(knownDefaultPasswords[user.userid])
                             }
-                            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                            className="text-xs px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-white"
                           >
                             Copy
                           </button>
@@ -1583,8 +1773,14 @@ function AdminUsers() {
         }}
         editUser={editUser}
         onCreated={(info) => {
-          setPasswordCopied(false)
           setCreatedUserInfo(info)
+          const userId = info.userid
+          if (info.generated_password && typeof userId === "number") {
+            setKnownDefaultPasswords((prev) => ({
+              ...prev,
+              [userId]: info.generated_password!,
+            }))
+          }
         }}
       />
       <DeleteDialog
@@ -1739,6 +1935,36 @@ function AdminUsers() {
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 {importCancelRequested ? "Cancelling..." : "Cancel Import"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importFailures && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
+              Import Failures
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              {importFailures.length} row{importFailures.length !== 1 ? "s" : ""} failed to import.
+            </p>
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50">
+              <ul className="divide-y divide-gray-200">
+                {importFailures.map((failure, index) => (
+                  <li key={`${failure}-${index}`} className="px-4 py-2 text-sm text-gray-700">
+                    {failure}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setImportFailures(null)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                Done
               </button>
             </div>
           </div>

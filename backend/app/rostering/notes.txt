@@ -1,0 +1,2 @@
+1. Make sure AL is not assigned if it is not requested
+2. Reduce the penalty for hours

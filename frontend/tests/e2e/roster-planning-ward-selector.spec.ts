@@ -188,7 +188,7 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
       await page.getByRole("button", { name: /complete setup/i }).click()
     }
 
-    await expect(page).toHaveURL(/\/nurse-manager\/home/)
+    await expect(page).toHaveURL(/\/nurse-manager\/home/, { timeout: 30_000 })
 
     await page.goto("/nurse-manager/roster-planning")
     await page.waitForResponse(

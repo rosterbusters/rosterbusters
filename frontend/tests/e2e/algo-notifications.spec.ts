@@ -81,95 +81,140 @@ test.describe("algorithm notifications", () => {
       )
     }
 
-    if (taskId) {
-      const cancelResponse = await request.post(
-        `${API_URL}/api/v1/roster/task/${taskId}/cancel`,
+    try {
+      if (taskId) {
+        const cancelResponse = await request.post(
+          `${API_URL}/api/v1/roster/task/${taskId}/cancel`,
+          {
+            headers: {
+              Authorization: `Bearer ${managerToken}`,
+            },
+          },
+        )
+        expect(cancelResponse.ok()).toBeTruthy()
+      }
+
+      const inProgressResponse = await request.post(
+        `${API_URL}/api/v1/roster/algorithm-notification`,
         {
           headers: {
             Authorization: `Bearer ${managerToken}`,
           },
+          data: {
+            ward_id: wardId,
+            period_id: period.periodid,
+            notification_type: "ALGORITHM_IN_PROGRESS",
+          },
         },
       )
-      expect(cancelResponse.ok()).toBeTruthy()
-    }
+      expect(inProgressResponse.ok()).toBeTruthy()
+      const inProgressPayload = (await inProgressResponse.json()) as {
+        status?: string
+        notification_type?: string
+        message?: string
+      }
+      if (inProgressPayload.notification_type !== "ALGORITHM_IN_PROGRESS") {
+        throw new Error(
+          `In-progress notification not queued. Received: ${JSON.stringify(inProgressPayload)}`,
+        )
+      }
 
-    const inProgressResponse = await request.post(
-      `${API_URL}/api/v1/roster/algorithm-notification`,
-      {
-        headers: {
-          Authorization: `Bearer ${managerToken}`,
-        },
-        data: {
-          ward_id: wardId,
-          period_id: period.periodid,
-          notification_type: "ALGORITHM_IN_PROGRESS",
-        },
-      },
-    )
-    expect(inProgressResponse.ok()).toBeTruthy()
-    const inProgressPayload = (await inProgressResponse.json()) as {
-      status?: string
-      notification_type?: string
-      message?: string
-    }
-    if (inProgressPayload.notification_type !== "ALGORITHM_IN_PROGRESS") {
-      throw new Error(
-        `In-progress notification not queued. Received: ${JSON.stringify(inProgressPayload)}`,
+      const expectedInProgress = `Algorithm generation in progress for ${rosterPeriodName}`
+      const inProgressFound = await waitForMessage(
+        request,
+        managerToken,
+        expectedInProgress,
       )
-    }
+      if (!inProgressFound) {
+        const recent = await listRecentMessages(request, managerToken)
+        throw new Error(
+          `Expected in-progress notification not found. Recent messages:\n${recent.join("\n")}`,
+        )
+      }
 
-    const expectedInProgress = `Algorithm generation in progress for ${rosterPeriodName}`
-    const inProgressFound = await waitForMessage(
-      request,
-      managerToken,
-      expectedInProgress,
-    )
-    if (!inProgressFound) {
-      const recent = await listRecentMessages(request, managerToken)
-      throw new Error(
-        `Expected in-progress notification not found. Recent messages:\n${recent.join("\n")}`,
-      )
-    }
-
-    const completionResponse = await request.post(
-      `${API_URL}/api/v1/roster/algorithm-notification`,
-      {
-        headers: {
-          Authorization: `Bearer ${managerToken}`,
+      const completionResponse = await request.post(
+        `${API_URL}/api/v1/roster/algorithm-notification`,
+        {
+          headers: {
+            Authorization: `Bearer ${managerToken}`,
+          },
+          data: {
+            ward_id: wardId,
+            period_id: period.periodid,
+            notification_type: "ALGORITHM_GENERATION",
+          },
         },
-        data: {
-          ward_id: wardId,
-          period_id: period.periodid,
-          notification_type: "ALGORITHM_GENERATION",
-        },
-      },
-    )
-    expect(completionResponse.ok()).toBeTruthy()
-    const completionPayload = (await completionResponse.json()) as {
-      status?: string
-      notification_type?: string
-      message?: string
-    }
-    if (completionPayload.notification_type !== "ALGORITHM_GENERATION") {
-      throw new Error(
-        `Generation notification not queued. Received: ${JSON.stringify(completionPayload)}`,
       )
-    }
+      expect(completionResponse.ok()).toBeTruthy()
+      const completionPayload = (await completionResponse.json()) as {
+        status?: string
+        notification_type?: string
+        message?: string
+      }
+      if (completionPayload.notification_type !== "ALGORITHM_GENERATION") {
+        throw new Error(
+          `Generation notification not queued. Received: ${JSON.stringify(completionPayload)}`,
+        )
+      }
 
-    const expectedGenerated = `Algorithm generated for ${rosterPeriodName}`
-    const generatedFound = await waitForMessage(
-      request,
-      managerToken,
-      expectedGenerated,
-    )
-    if (!generatedFound) {
-      const recent = await listRecentMessages(request, managerToken)
-      throw new Error(
-        `Expected generated notification not found. Recent messages:\n${recent.join("\n")}`,
+      const expectedGenerated = `Algorithm generated for ${rosterPeriodName}`
+      const generatedFound = await waitForMessage(
+        request,
+        managerToken,
+        expectedGenerated,
       )
+      if (!generatedFound) {
+        const recent = await listRecentMessages(request, managerToken)
+        throw new Error(
+          `Expected generated notification not found. Recent messages:\n${recent.join("\n")}`,
+        )
+      }
+    } finally {
+      const managerUserId = await findUserIdByEmail(
+        request,
+        adminToken,
+        managerEmail,
+      )
+      if (managerUserId) {
+        await deleteUser(request, adminToken, managerUserId)
+      }
     }
   })
 })
+
+async function findUserIdByEmail(
+  request: APIRequestContext,
+  adminToken: string,
+  email: string,
+) {
+  const params = new URLSearchParams({
+    skip: "0",
+    limit: "20",
+    search: email,
+  })
+  const res = await request.get(
+    `${API_URL}/api/v1/admin/users?${params.toString()}`,
+    {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    },
+  )
+  if (!res.ok()) return null
+  const json = (await res.json()) as {
+    data: Array<{ userid: number; email?: string; username: string }>
+  }
+  const match = json.data.find((u) => u.email === email)
+  return match?.userid ?? null
+}
+
+async function deleteUser(
+  request: APIRequestContext,
+  adminToken: string,
+  userId: number,
+) {
+  await request.delete(`${API_URL}/api/v1/admin/users/${userId}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  })
+}
 
 async function getAccessToken(
   request: APIRequestContext,

@@ -13,8 +13,17 @@ from pydantic import EmailStr
 from sqlmodel import Field, SQLModel, func, or_, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
-from app.core.security import generate_random_password, get_password_hash
-from app.models import Designation, Message, RBACUser, Role, UserRole
+from app.core.security import (
+    decrypt_default_password,
+    encrypt_default_password,
+    generate_random_password,
+    get_password_hash,
+)
+from app.designation_mapping import (
+    canonical_designation_from_value,
+    load_designation_rank_map,
+)
+from app.models import Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
 from app.rbac import get_user_roles, get_user_roles_by_userid
@@ -156,6 +165,10 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         for w in managed_wards:
             ward_list.append(WardInfo(ward_id=w.wardid, ward_name=w.wardname))
 
+    generated_password = None
+    if user.must_change_password and user.default_password_encrypted:
+        generated_password = decrypt_default_password(user.default_password_encrypted)
+
     return AdminUserPublic(
         userid=user.userid,
         username=user.username,
@@ -169,6 +182,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         must_change_password=user.must_change_password,
         roles=roles,
         wards=ward_list,
+        generated_password=generated_password,
     )
 
 
@@ -232,6 +246,17 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = _truncate_name(body.name.strip()) if body.name else None
     designation = body.designation.strip() if body.designation else None
+    rank_map = load_designation_rank_map(session)
+
+    def _normalize_designation(raw: str | None) -> str | None:
+        if raw is None:
+            return None
+        canonical = canonical_designation_from_value(raw)
+        if not canonical:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        if canonical.upper() not in rank_map:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        return canonical
     requested_username = (
         _truncate_username(body.username.strip()) if body.username else ""
     )
@@ -307,6 +332,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
         passwordhash=get_password_hash(raw_password),
         isactive=body.is_active,
         must_change_password=True,
+        default_password_encrypted=encrypt_default_password(raw_password),
         createdat=datetime.now(timezone.utc),
     )
     session.add(user)
@@ -315,10 +341,13 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
 
     # Create linked Nurse/NurseManager record and assign wards
     if body.role == "Nurse":
+        if body.designation is not None and designation is None:
+            raise HTTPException(status_code=400, detail="Designation cannot be empty.")
+        canonical_designation = _normalize_designation(designation or "SN")
         nurse = Nurse(
             name=name or username,
             employeeid=employee_id,
-            designation=designation or "RN",
+            designation=canonical_designation or "SN",
             email=body.email or "",
             contactnumber="",
             wardid=body.ward_ids[0] if body.ward_ids else None,
@@ -385,6 +414,19 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = body.name.strip() if body.name else None
     designation = body.designation.strip() if body.designation else None
+    rank_map = load_designation_rank_map(session)
+
+    def _normalize_designation(raw: str | None) -> str | None:
+        if raw is None:
+            return None
+        if not raw:
+            raise HTTPException(status_code=400, detail="Designation cannot be empty.")
+        canonical = canonical_designation_from_value(raw)
+        if not canonical:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        if canonical.upper() not in rank_map:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        return canonical
     email_provided = "email" in body.model_fields_set
 
     if email_provided and body.email is not None and body.email != user.email:
@@ -403,6 +445,9 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
 
     nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
     manager = session.get(NurseManager, user.managerid) if user.managerid else None
+
+    if body.designation is not None and designation is None:
+        raise HTTPException(status_code=400, detail="Designation cannot be empty.")
 
     if body.employee_id is not None:
         if nurse:
@@ -455,6 +500,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
         user.email = body.email
     if body.password is not None:
         user.passwordhash = get_password_hash(body.password)
+        user.default_password_encrypted = None
     if body.is_active is not None:
         user.isactive = body.is_active
 
@@ -466,7 +512,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
         if nurse:
             nurse.employeeid = employee_id
             if body.designation is not None:
-                nurse.designation = designation or "RN"
+                nurse.designation = _normalize_designation(designation)
             if body.name is not None:
                 nurse.name = name or user.username
             if email_provided:
@@ -486,7 +532,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     elif body.username is not None or body.name is not None or email_provided or body.designation is not None:
         if nurse:
             if body.designation is not None:
-                nurse.designation = designation or "RN"
+                nurse.designation = _normalize_designation(designation)
             if body.name is not None:
                 nurse.name = name or user.username
             if email_provided:
@@ -548,6 +594,7 @@ def reset_user_password(session: SessionDep, userid: int) -> Any:
     raw_password = generate_random_password()
     user.passwordhash = get_password_hash(raw_password)
     user.must_change_password = True
+    user.default_password_encrypted = encrypt_default_password(raw_password)
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -565,6 +612,9 @@ def delete_user(session: SessionDep, userid: int) -> Message:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
+    manager = session.get(NurseManager, user.managerid) if user.managerid else None
+
     user_roles = get_user_roles_by_userid(session, userid)
     if "Admin" in user_roles:
         raise HTTPException(
@@ -579,6 +629,18 @@ def delete_user(session: SessionDep, userid: int) -> Message:
     for r in roles:
         session.delete(r)
 
+    if manager:
+        managed_wards = session.exec(
+            select(Ward).where(Ward.managerid == manager.managerid)
+        ).all()
+        for ward in managed_wards:
+            ward.managerid = None
+            session.add(ward)
+
     session.delete(user)
+    if nurse:
+        session.delete(nurse)
+    if manager:
+        session.delete(manager)
     session.commit()
     return Message(message="User deleted successfully")

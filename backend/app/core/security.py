@@ -3,9 +3,12 @@ from typing import Any
 
 import secrets
 import string
+import base64
+import hashlib
 
 import jwt
 from passlib.context import CryptContext
+from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import settings
 
@@ -33,3 +36,28 @@ def get_password_hash(password: str) -> str:
 def generate_random_password() -> str:
     alphabet = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(alphabet) for _ in range(12))
+
+
+def _derive_default_password_key(secret: str) -> bytes:
+    digest = hashlib.sha256(secret.encode()).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
+def _get_default_password_fernet() -> Fernet:
+    key = settings.DEFAULT_PASSWORD_ENCRYPTION_KEY
+    if key:
+        return Fernet(key.encode())
+    return Fernet(_derive_default_password_key(settings.SECRET_KEY))
+
+
+def encrypt_default_password(value: str) -> str:
+    fernet = _get_default_password_fernet()
+    return fernet.encrypt(value.encode()).decode()
+
+
+def decrypt_default_password(token: str) -> str | None:
+    fernet = _get_default_password_fernet()
+    try:
+        return fernet.decrypt(token.encode()).decode()
+    except InvalidToken:
+        return None

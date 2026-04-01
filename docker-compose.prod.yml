@@ -1,4 +1,34 @@
 services:
+  proxy:
+    image: traefik:3.6
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certificates:/certificates
+    command:
+      - --providers.docker
+      - --providers.docker.constraints=Label(`traefik.constraint-label`, `traefik-public`)
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.http.address=:80
+      - --entrypoints.https.address=:443
+      - --certificatesresolvers.le.acme.email=${EMAIL?Variable not set}
+      - --certificatesresolvers.le.acme.storage=/certificates/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --accesslog
+      - --log
+      - --api
+    labels:
+      - traefik.enable=true
+      - traefik.constraint-label=traefik-public
+      - traefik.http.middlewares.https-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.https-redirect.redirectscheme.permanent=true
+    networks:
+      - traefik-public
+      - default
+
   db:
     profiles: []  # override prod, re-enable db for staging
     restart: unless-stopped
@@ -51,3 +81,10 @@ services:
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls=true
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls.certresolver=le
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares=https-redirect
+
+volumes:
+  traefik-certificates:
+
+networks:
+  traefik-public:
+    external: false

@@ -136,6 +136,21 @@ test("roster period notifications appear in queue and dropdown", async ({
     )
     expect(triggerRes.ok()).toBeTruthy()
 
+    // Skip on "gap days" between roster cycles when no period is RequestOpen.
+    // On those days only "Now Closed" notifications are queued, never "Now Open".
+    const periodsCheckRes = await request.get(
+      `${API_BASE_URL}/api/v1/shift-requests/periods`,
+      { headers: { Authorization: `Bearer ${nurseToken}` } },
+    )
+    if (periodsCheckRes.ok()) {
+      const periods = (await periodsCheckRes.json()) as Array<{ status: string }>
+      const hasOpenPeriod = periods.some((p) => p.status === "RequestOpen")
+      test.skip(
+        !hasOpenPeriod,
+        "No shift request period is currently open — skipping on gap day between roster cycles",
+      )
+    }
+
     await expect
       .poll(
         async () => {

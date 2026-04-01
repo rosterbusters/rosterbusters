@@ -79,6 +79,7 @@ export interface RosterPeriod {
   name: string;
   startDate: string;
   endDate: string;
+  planningLockDate?: string;
   status: 'RequestOpen' | 'Pending' | 'Published' | 'RequestClosed' | 'Finalized';
 }
 

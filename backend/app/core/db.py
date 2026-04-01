@@ -24,12 +24,15 @@ def init_db(session: Session) -> None:
 
     # Ensure the first admin RBACUser exists
     from datetime import datetime, timezone
+    username = settings.FIRST_SUPERUSER.split("@")[0]
     user = session.exec(
-        select(RBACUser).where(RBACUser.email == settings.FIRST_SUPERUSER)
+        select(RBACUser).where(
+            (RBACUser.email == settings.FIRST_SUPERUSER) | (RBACUser.username == username)
+        )
     ).first()
     if not user:
         user = RBACUser(
-            username=settings.FIRST_SUPERUSER.split("@")[0],
+            username=username,
             email=settings.FIRST_SUPERUSER,
             passwordhash=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD),
             isactive=True,
