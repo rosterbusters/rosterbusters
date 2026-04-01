@@ -1,6 +1,22 @@
 #this is the algorithm scheduler
-from app.rostering.cp_sat_algo import run_ga_pipeline
 from app.rostering.milp_algo import MILPError, run_milp_pipeline
+
+
+def _run_ga_pipeline(*args, **kwargs):
+    """
+    Import the GA/CP-SAT pipeline lazily so the backend can start even when
+    optional solver dependencies (for example ortools) are not installed.
+    """
+    try:
+        from app.rostering.cp_sat_algo import run_ga_pipeline
+    except ModuleNotFoundError as exc:
+        if exc.name == "ortools":
+            raise RuntimeError(
+                "GA fallback requires the optional 'ortools' dependency, "
+                "but it is not installed in this environment."
+            ) from exc
+        raise
+    return run_ga_pipeline(*args, **kwargs)
 
 
 def _normalize_shift_name(shift_name):
@@ -144,7 +160,7 @@ def generate_roster(
     # ── GA-only path ───────────────────────────────────────────────────────
     if forced == "GA":
         print("[SCHEDULER] Running GA (forced by caller)")
-        roster = run_ga_pipeline(
+        roster = _run_ga_pipeline(
             nurses,
             shifts,
             hard_requests=hard_requests,
@@ -198,7 +214,7 @@ def generate_roster(
 
     # ── Fallback: GA ───────────────────────────────────────────────────────
     print("[SCHEDULER] Running GA (fallback algorithm)")
-    roster = run_ga_pipeline(
+    roster = _run_ga_pipeline(
         nurses,
         shifts,
         hard_requests=hard_requests,
