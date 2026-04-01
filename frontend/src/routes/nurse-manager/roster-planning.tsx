@@ -77,6 +77,8 @@ export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
 });
 
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
 // Generate empty roster data for manual editing mode (before algorithm generation)
 function generateEmptyRosterData(): RosterRow[] {
   const mockNurses = [
@@ -491,7 +493,7 @@ function RosterPlanningPage() {
     setIsSeedingRequests(true);
     try {
       const token = localStorage.getItem("access_token");
-      const res = await fetch(`/api/v1/roster/ward/${selectedWard.wardId}/seed-requests`, {
+      const res = await fetch(`${API_BASE}/api/v1/roster/ward/${selectedWard.wardId}/seed-requests`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
