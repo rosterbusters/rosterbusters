@@ -24,12 +24,9 @@ run_ga_pipeline(...)
 from __future__ import annotations
 
 import os
+from ortools.sat.python import cp_model
+import math
 import random
-
-try:
-    from ortools.sat.python import cp_model
-except ModuleNotFoundError:
-    cp_model = None
 
 # ─── Shift codes (must match ga_algo constants) ───────────────────────────────
 OFF, AM, PM, NIGHT, AL = 0, 1, 2, 3, 4
@@ -55,15 +52,14 @@ W_DAYOFF_OVER  =   144_000   # 1 more than required days-off (×0.9 like GA)
 W_HOUR_UNDER   =    0   # 1 unit (0.1 h) below per-nurse minimum
 W_HOUR_OVER    =    0   # 1 unit (0.1 h) above per-nurse maximum
 W_NDO          = 1_500_000   # missing post-night day-off on day 0
-W_NIGHT_LOW    =    64_000   # fewer than 1 night per week (×0.8 like GA)
-W_NIGHT_HIGH   =    80_000   # more than 2 nights per week
+W_NIGHT_LOW    =    80_000   # fewer than 1 night per week (×0.8 like GA)
+W_NIGHT_HIGH   = 1_300_000   # more than 2 nights per week
 W_APPROVED_REQ =    35_000   # unmet approved (hard) shift request
 W_PENDING_REQ  =       550   # unmet pending (soft) shift request
 W_OFF_TO_AM    =       500   # OFF followed by AM on the next day
 W_SHIFT_VAR    =       185   # |actual − target| count per shift per day
 W_AM_PM_BAL    =       200   # |AM count − PM count| > 2 on a day
 W_DAILY_BAL    =        50   # range of total working nurses across days
-W_SHIFT_DAY_SPREAD =   250   # range of AM/PM/NIGHT coverage across days
 W_NIGHT_FAIR   =         5   # range of total night counts across nurses
 W_WEEKEND_FAIR =         5   # range of weekend working days across nurses
 W_MORNING_PREF =         0   # reward (negative cost) per AM shift
@@ -75,10 +71,7 @@ W_WARD_AB_BAL    = 200_000   # |rank_A_count - rank_B_count| > 1 in a shift
 W_WARD_C_ORDER   = 150_000   # rank-C nurse violating ordered-slot rule
 W_SINGLE_NIGHT   = 400_000   # isolated night block (no adjacent night)
 W_NIGHT_A_OVER_B = 500_000   # per-nurse excess of Rank A over Rank B on any night shift
-W_RN_NIGHT_TARGET = 350_000  # per-day excess of Rank A night nurses above the configured target
-W_NIGHT_TOTAL_TARGET = 300_000  # per-day deviation of total night staffing outside target +/- 1
 
-# Solver time budget in seconds.  90 s is generous for a 14-day roster;
 # increase for very large wards.
 _TIME_LIMIT_S = 100.0
 
@@ -138,14 +131,14 @@ def _build_greedy_hint(
     time budget improving rather than finding a first solution.  The strategy:
 
       1. Pin fixed slots (full AL, single-day AL requests, post-night day-0 OFF).
-      2. Seed night blocks (starting from 2 per nurse where feasible) round-robin across nurses,
+      2. Assign night blocks (≤4 per fortnight) round-robin across nurses,
          in N-N patterns where possible, then add mandatory post-block OFFs.
       3. Reserve 2 voluntary OFF days per week per nurse (weekends preferred).
       4. Fill remaining days with AM or PM to match demand.
     """
     # Start optimistic: everyone works AM (easier for the solver to improve from
     # a working state than from all-OFF which violates coverage on every day).
-    night_constant = 2
+    night_constant = math.ceil(((num_nurses * 2)/3)/4)
     sched = [[AM] * num_days for _ in range(num_nurses)]
 
     # ── Step 1: pin fixed slots ───────────────────────────────────────────────
@@ -181,8 +174,8 @@ def _build_greedy_hint(
                 continue
             if d > 0 and sched[n][d - 1] == NIGHT:
                 continue   # already in a block started yesterday
-            if night_counts[n] >= night_constant:
-                continue   # warm-start seed target; solver may later assign more
+            if night_counts[n] >= night_constant: #Change this to a ratio of nurses
+                continue   # fortnightly cap
 
             sched[n][d] = NIGHT
             night_counts[n] += 1
@@ -192,7 +185,7 @@ def _build_greedy_hint(
             if (d + 1 < num_days
                     and sched[n][d + 1] not in (AL,)
                     and (d + 1) not in al_day_req[n]
-                    and night_counts[n] < night_constant):
+                    and night_counts[n] < 4):
                 sched[n][d + 1] = NIGHT
                 night_counts[n] += 1
 
@@ -236,91 +229,6 @@ def _build_greedy_hint(
     return sched
 
 
-def _debug_hard_feasibility(
-    *,
-    num_days: int,
-    nurse_names: list[str],
-    nurse_ranks: list[str],
-    working_nurses: list[int],
-    al_day_req: list[set[int]],
-    approved: list[list[tuple[int, int]]],
-    prev_last_shift: dict,
-    id_to_idx: dict[int, int],
-    nurses_sorted: list[dict],
-    milp_config: dict | None,
-    use_ward_demand: bool,
-    demand: list[dict[int, dict[str, int]]],
-) -> None:
-    rank_counts = {r: sum(1 for idx in working_nurses if nurse_ranks[idx] == r) for r in "ABC"}
-    print(
-        "[CP-SAT DEBUG] working nurses="
-        f"{len(working_nurses)} rankA={rank_counts['A']} rankB={rank_counts['B']} rankC={rank_counts['C']}"
-    )
-    print(f"[CP-SAT DEBUG] partial AL days={sum(len(days) for days in al_day_req)}")
-
-    carry_over = []
-    for nurse_id, shift_name in prev_last_shift.items():
-        if str(shift_name).strip().upper() != "NIGHT":
-            continue
-        idx = id_to_idx.get(nurse_id)
-        if idx is not None:
-            carry_over.append(nurse_names[idx])
-    if carry_over:
-        print(f"[CP-SAT DEBUG] prev-period NIGHT carry-over count={len(carry_over)}")
-
-    approved_night_total = sum(1 for reqs in approved for _, shift_code in reqs if shift_code == NIGHT)
-    print(f"[CP-SAT DEBUG] approved NIGHT requests={approved_night_total}")
-
-    single_night_requests: list[str] = []
-    day0_conflicts: list[str] = []
-    for nurse in nurses_sorted:
-        nurse_id = nurse["id"]
-        idx = id_to_idx[nurse_id]
-        approved_days = {day_idx: shift_code for day_idx, shift_code in approved[idx]}
-        for day_idx, shift_code in approved[idx]:
-            if shift_code != NIGHT:
-                continue
-            left_night = approved_days.get(day_idx - 1) == NIGHT if day_idx > 0 else False
-            right_night = approved_days.get(day_idx + 1) == NIGHT if day_idx + 1 < num_days else False
-            if not left_night and not right_night:
-                single_night_requests.append(f"{nurse_names[idx]}@{day_idx}")
-        day0_shift = approved_days.get(0)
-        if str(prev_last_shift.get(nurse_id, "")).strip().upper() == "NIGHT" and day0_shift not in (None, OFF):
-            day0_conflicts.append(f"{nurse_names[idx]}->{day0_shift}")
-
-    if single_night_requests:
-        print(
-            "[CP-SAT DEBUG] approved NIGHT requests without adjacent approved NIGHT="
-            f"{single_night_requests[:10]}"
-        )
-    if day0_conflicts:
-        print(f"[CP-SAT DEBUG] day-0 conflicts after previous NIGHT={day0_conflicts[:10]}")
-
-    min_total_nights = 2 * len(working_nurses)
-    if use_ward_demand:
-        rn_cfg = (milp_config or {}).get("RN") if isinstance(milp_config, dict) else None
-        hca_cfg = (milp_config or {}).get("HCA") if isinstance(milp_config, dict) else None
-        rn_max_night = int(rn_cfg.get("max_night_per_day")) if isinstance(rn_cfg, dict) and rn_cfg.get("max_night_per_day") is not None else 5
-        hca_max_night = int(hca_cfg.get("max_night_per_day")) if isinstance(hca_cfg, dict) and hca_cfg.get("max_night_per_day") is not None else (1 if rank_counts["C"] > 0 else 0)
-        total_night_capacity = num_days * (5 + hca_max_night)
-        rank_a_capacity = num_days * min(rank_counts["A"], rn_max_night)
-        rank_c_capacity = num_days * min(rank_counts["C"], hca_max_night)
-        print(
-            "[CP-SAT DEBUG] night capacity total="
-            f"{total_night_capacity} rankA={rank_a_capacity} rankC={rank_c_capacity} "
-            f"vs per-nurse minimum total={min_total_nights}"
-        )
-    else:
-        total_night_capacity = sum(
-            day_req[NIGHT].get("A", 0) + day_req[NIGHT].get("B", 0) + day_req[NIGHT].get("C", 0)
-            for day_req in demand
-        )
-        print(
-            "[CP-SAT DEBUG] demand-driven night slots="
-            f"{total_night_capacity} vs per-nurse minimum total={min_total_nights}"
-        )
-
-
 # ─── Public entry point ───────────────────────────────────────────────────────
 
 def run_ga_pipeline(
@@ -333,7 +241,6 @@ def run_ga_pipeline(
     non_working_shift_codes=None,
     progress_callback=None,
     use_ward_demand: bool = True,
-    milp_config: dict | None = None,
 ):
     """
     Generate a nurse roster using OR-Tools CP-SAT.
@@ -356,12 +263,6 @@ def run_ga_pipeline(
                         • Single-night blocks are forbidden (hard constraint).
     """
     # ── Defaults ──────────────────────────────────────────────────────────────
-    if cp_model is None:
-        raise RuntimeError(
-            "CP-SAT requires the optional 'ortools' dependency, "
-            "but it is not installed in this environment."
-        )
-
     hard_requests   = hard_requests   or {}
     soft_requests   = soft_requests   or {}
     prev_last_shift = prev_last_shift or {}
@@ -501,20 +402,6 @@ def run_ga_pipeline(
 
     # ── Pre-solve: warn on structurally unmet demand ──────────────────────────
     _check_demand_feasibility(demand, nurse_ranks, working_nurses, num_days)
-    _debug_hard_feasibility(
-        num_days=num_days,
-        nurse_names=nurse_names,
-        nurse_ranks=nurse_ranks,
-        working_nurses=working_nurses,
-        al_day_req=al_day_req,
-        approved=approved,
-        prev_last_shift=prev_last_shift,
-        id_to_idx=id_to_idx,
-        nurses_sorted=nurses_sorted,
-        milp_config=milp_config,
-        use_ward_demand=use_ward_demand,
-        demand=demand,
-    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Build the CP-SAT model
@@ -578,10 +465,6 @@ def run_ga_pipeline(
         _add_penalty(v, weight)
         return v
 
-    def _enforce_strict_night_min(count_expr, required: int) -> None:
-        if required > 0:
-            model.Add(count_expr >= required)
-
     def _excess(name: str, cap: int, supplied_expr, limit: int, weight: int):
         """Penalise excess: var = max(0, supplied − limit)."""
         v = model.NewIntVar(0, cap, name)
@@ -625,12 +508,8 @@ def run_ga_pipeline(
                     model.Add(cnt_A_expr <= req_A)
 
                 _shortage(f"sh_tot_{d}_{s}", total_req, total_req, cnt_tot_expr, W_SHIFT_SHORT)
-                if s == NIGHT and req_A > 0:
-                    _enforce_strict_night_min(cnt_A_expr, req_A)
-                elif req_A > 0:
+                if req_A > 0:
                     _shortage(f"sh_a_{d}_{s}", req_A, req_A, cnt_A_expr, W_RANK_A_SHORT)
-                if s == NIGHT and req_C > 0:
-                    _enforce_strict_night_min(cnt_C_expr, req_C)
                 if req_A + req_B > 0:
                     _shortage(
                         f"sh_ab_{d}_{s}", req_A + req_B,
@@ -662,14 +541,9 @@ def run_ga_pipeline(
         # Rank A/B nurses in excess of the daily maximum (i.e. all AB slots
         # are full) are freely assigned to AM or PM (feedback item 4).
 
-        # Ward-standard shift targets (min, max) for A+B combined.
-        # NIGHT is now fixed at 4 A+B nurses; the separate RN night target/cap
-        # in section 4c still applies on top of this.
+        # Ward-standard shift targets (min, max) for A+B combined
         WARD_AB_MIN = {AM: 6, PM: 6, NIGHT: 4}
-        WARD_AB_MAX = {AM: 7, PM: 6, NIGHT: 4}
-
-        rn_night_min = int((((milp_config or {}).get("RN") or {}).get("normal_min") or {}).get("N", 0) or 0)
-        hca_night_min = int((((milp_config or {}).get("HCA") or {}).get("normal_min") or {}).get("N", 0) or 0)
+        WARD_AB_MAX = {AM: 7, PM: 6, NIGHT: 5}
 
         # Heavily penalized weights
         W_AB_MIN = 1_000_000
@@ -682,15 +556,10 @@ def run_ga_pipeline(
             for s in WORK_SHIFTS:
                 cnt_A = sum(x[n, d, s] for n in rank_A) if rank_A else 0
                 cnt_B = sum(x[n, d, s] for n in rank_B) if rank_B else 0
-                cnt_C = sum(x[n, d, s] for n in rank_C) if rank_C else 0
                 cnt_AB = cnt_A + cnt_B
 
                 ab_min = WARD_AB_MIN[s]
                 ab_max = WARD_AB_MAX[s]
-
-                if s == NIGHT:
-                    _enforce_strict_night_min(cnt_A, rn_night_min)
-                    _enforce_strict_night_min(cnt_C, hca_night_min)
 
                 # --- A+B minimum (SOFT) ---
                 viol_ab_min = model.NewIntVar(0, len(rank_AB), f"viol_ab_min_{d}_{s}")
@@ -755,22 +624,6 @@ def run_ga_pipeline(
 
                     _add_penalty(viol_ce, W_WARD_C_ORDER)
 
-        # Keep AM and PM coverage steadier from day to day in ward mode.
-        for s in (AM, PM):
-            cnt_vars: list[cp_model.IntVar] = []
-            for d in range(num_days):
-                cnt_sd = model.NewIntVar(0, num_nurses, f"ward_cov_{s}_{d}")
-                model.Add(cnt_sd == sum(x[n, d, s] for n in working_nurses))
-                cnt_vars.append(cnt_sd)
-
-            max_cnt = model.NewIntVar(0, num_nurses, f"ward_cov_max_{s}")
-            min_cnt = model.NewIntVar(0, num_nurses, f"ward_cov_min_{s}")
-            spread_cnt = model.NewIntVar(0, num_nurses, f"ward_cov_spread_{s}")
-            model.AddMaxEquality(max_cnt, cnt_vars)
-            model.AddMinEquality(min_cnt, cnt_vars)
-            model.Add(spread_cnt == max_cnt - min_cnt)
-            _add_penalty(spread_cnt, W_SHIFT_DAY_SPREAD)
-
     # ── 2. Working hours per nurse ────────────────────────────────────────────
     for n in working_nurses:
         hours_expr = sum(
@@ -830,14 +683,24 @@ def run_ga_pipeline(
             # All OFFs (including post-night mandatory ones) count toward target
             model.Add(total_offs == target)
 
-    # ── 4. Night shifts over roster — min 2, max 4 total (HARD) ───────────────
-    # Each working nurse must be assigned between 2 and 4 NIGHT shifts across
-    # the generated roster. The separate backend HCA3 per-day cap is enforced
-    # in section 4c and applies in addition to this rule.
+    # ── 4. Night shifts over fortnight — target = 2–4 total (soft) ───────────
+    # Previously enforced 1–2 nights per 7-day window, which created a circular
+    # tension with the mandatory post-block OFF rule: the solver was pushed to
+    # schedule nights every week (to avoid W_NIGHT_LOW) yet was simultaneously
+    # penalised for the extra OFFs those blocks forced (W_DAYOFF_OVER).
+    # Switching to a fortnightly window (2–4 nights across all 14 days) gives
+    # the solver freedom to cluster nights in one week rather than being
+    # squeezed on both sides of every 7-day boundary.
     for n in working_nurses:
         total_nights = sum(x[n, d, NIGHT] for d in range(num_days))
-        model.Add(total_nights >= 2)
-        model.Add(total_nights <= 4)
+
+        low = model.NewIntVar(0, num_days, f"nl_{n}")
+        model.Add(low >= 2 - total_nights)   # at least 2 nights per fortnight
+        _add_penalty(low, W_NIGHT_LOW)
+
+        high = model.NewIntVar(0, num_days, f"nh_{n}")
+        model.Add(high >= total_nights - 4)  # no more than 4 nights per fortnight
+        _add_penalty(high, W_NIGHT_HIGH)
 
     # ── 4b. Night block rules (HARD) ─────────────────────────────────────────
     # Rule A — maximum block length of 2 consecutive nights.
@@ -882,51 +745,16 @@ def run_ga_pipeline(
             # Interior: must have at least one adjacent night
             model.Add(x[n, d, NIGHT] <= x[n, d - 1, NIGHT] + x[n, d + 1, NIGHT])
 
-    # ── 4c. Per-day NIGHT assignment cap / target ─────────────────────────────
+    # ── 4c. Per-day NIGHT assignment cap (HARD) ───────────────────────────────
     # Prevents the solver hoarding nights on unconstrained days (particularly
     # the last day, which has no post-night-OFF cost).
-    # When use_ward_demand=True the cap uses backend-configured per-day night
-    # settings for RN and HCA3 when available, plus the ward-standard total cap.
-    # RN is treated as a soft target; HCA3 and total-night limits stay hard.
-    # When False it is the demand total.
-    rn_cfg = (milp_config or {}).get("RN") if isinstance(milp_config, dict) else None
-    rn_max_night_per_day = None
-    if isinstance(rn_cfg, dict):
-        raw_rn_max_night = rn_cfg.get("max_night_per_day")
-        if raw_rn_max_night is not None:
-            rn_max_night_per_day = int(raw_rn_max_night)
-    hca_cfg = (milp_config or {}).get("HCA") if isinstance(milp_config, dict) else None
-    hca_max_night_per_day = None
-    if isinstance(hca_cfg, dict):
-        raw_hca_max_night = hca_cfg.get("max_night_per_day")
-        if raw_hca_max_night is not None:
-            hca_max_night_per_day = int(raw_hca_max_night)
+    # When use_ward_demand=True the cap is the ward-standard max (5 A+B + however
+    # many C nurses may go to NIGHT).  When False it is the demand total.
     for d in range(num_days):
         if use_ward_demand:
-            # Ward standard: aim for the configured NIGHT headcount with a
-            # small +/- 1 tolerance so the cap is enforced without becoming
-            # overly brittle.
-            rank_a_night_target = rn_max_night_per_day if rn_max_night_per_day is not None else 5
-            rank_c_night_cap = hca_max_night_per_day if hca_max_night_per_day is not None else (1 if rank_C else 0)
-            if rank_A:
-                cnt_a_night = sum(x[n, d, NIGHT] for n in rank_A)
-                rn_target_excess = model.NewIntVar(0, len(rank_A), f"rna_night_exc_{d}")
-                model.Add(rn_target_excess >= cnt_a_night - rank_a_night_target)
-                _add_penalty(rn_target_excess, W_RN_NIGHT_TARGET)
-            if rank_C:
-                model.Add(sum(x[n, d, NIGHT] for n in rank_C) <= rank_c_night_cap)
-            target_total_night = 5 + rank_c_night_cap
-            cnt_total_night = model.NewIntVar(0, len(working_nurses), f"cnt_total_night_{d}")
-            model.Add(cnt_total_night == sum(x[n, d, NIGHT] for n in working_nurses))
-
-            night_total_short = model.NewIntVar(0, len(working_nurses), f"night_total_short_{d}")
-            night_total_excess = model.NewIntVar(0, len(working_nurses), f"night_total_excess_{d}")
-            model.Add(night_total_short >= (target_total_night - 1) - cnt_total_night)
-            model.Add(night_total_excess >= cnt_total_night - (target_total_night + 1))
-            _add_penalty(night_total_short, W_NIGHT_TOTAL_TARGET)
-            _add_penalty(night_total_excess, W_NIGHT_TOTAL_TARGET)
-
-            model.Add(cnt_total_night <= target_total_night + 1)
+            # Ward standard: max 5 A+B on NIGHT, plus at most 1 C on NIGHT
+            max_night = 5 + (1 if rank_C else 0)
+            model.Add(sum(x[n, d, NIGHT] for n in working_nurses) <= max_night)
         else:
             night_demand = (
                 demand[d][NIGHT].get("A", 0)
@@ -1054,24 +882,6 @@ def run_ga_pipeline(
             model.AddAbsEquality(dev_sd, diff_sd)
             _add_penalty(dev_sd, W_SHIFT_VAR)
 
-    # Also penalise the spread between the busiest and lightest day for each
-    # shift type so AM, PM and NIGHT totals stay visually consistent over time.
-    if num_days > 1 and working_nurses:
-        for s in WORK_SHIFTS:
-            day_counts: list[cp_model.IntVar] = []
-            for d in range(num_days):
-                cnt_s = model.NewIntVar(0, num_nurses, f"cnt_{s}_{d}")
-                model.Add(cnt_s == sum(x[n, d, s] for n in working_nurses))
-                day_counts.append(cnt_s)
-
-            max_s = model.NewIntVar(0, num_nurses, f"max_{s}_day")
-            min_s = model.NewIntVar(0, num_nurses, f"min_{s}_day")
-            model.AddMaxEquality(max_s, day_counts)
-            model.AddMinEquality(min_s, day_counts)
-            spread_s = model.NewIntVar(0, num_nurses, f"spread_{s}_day")
-            model.Add(spread_s == max_s - min_s)
-            _add_penalty(spread_s, W_SHIFT_DAY_SPREAD)
-
     # ── 12. AM / PM within-day balance ────────────────────────────────────────
     # Penalise when |AM count − PM count| > 2 on any day.
     if working_nurses:
@@ -1154,7 +964,7 @@ def run_ga_pipeline(
     if progress_callback:
         progress_callback(0, 1, float("inf"))
 
-    status     = solver.Solve(model)
+    status = solver.Solve(model)
     status_str = solver.StatusName(status)
     obj_val    = solver.ObjectiveValue() if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) else float("inf")
 
@@ -1189,104 +999,6 @@ def run_ga_pipeline(
         nurses_sorted, schedule, nurse_names, nurse_ranks,
         num_days, obj_val, leave_overlay,
     )
-
-
-def parse_inputs(
-    nurses,
-    shifts,
-    hard_requests=None,
-    soft_requests=None,
-    prev_last_shift=None,
-    shift_hours=None,
-    non_working_shift_codes=None,
-):
-    """
-    Compatibility helper that exposes the legacy parsed-input structure used by
-    older tests and tooling.
-    """
-    hard_requests = hard_requests or {}
-    soft_requests = soft_requests or {}
-    prev_last_shift = prev_last_shift or {}
-    shift_hours = shift_hours or {"AM": 8.0, "PM": 8.0, "NIGHT": 10.0, "OFF": 0.0}
-    nw_codes = {str(code).upper() for code in (non_working_shift_codes or set())}
-
-    nurses_sorted = sorted(nurses, key=lambda nurse: nurse["id"])
-    num_days = len(shifts)
-    num_nurses = len(nurses_sorted)
-    id_to_idx = {nurse["id"]: idx for idx, nurse in enumerate(nurses_sorted)}
-
-    shift_str_to_code = {
-        "AM": AM, "A": AM,
-        "PM": PM, "P": PM,
-        "NIGHT": NIGHT, "N": NIGHT,
-        "OFF": OFF, "DO": OFF, "RD": OFF,
-        "AL": AL,
-    }
-    leave_codes = _LEAVE_CODES | {"AL"}
-
-    def _to_code(raw):
-        normalized = str(raw).strip().upper()
-        if normalized in shift_str_to_code:
-            return shift_str_to_code[normalized]
-        if normalized in leave_codes or normalized in nw_codes:
-            return AL
-        return None
-
-    approved_requests: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
-    pending_requests: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
-    al_day_requests: list[set[int]] = [set() for _ in range(num_nurses)]
-    hard_constraints: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
-
-    for nurse_id, prev_shift in prev_last_shift.items():
-        nurse_idx = id_to_idx.get(nurse_id)
-        if nurse_idx is None:
-            continue
-        if str(prev_shift).strip().upper() == "NIGHT":
-            hard_constraints[nurse_idx].append((0, OFF))
-
-    for nurse_id, req_list in hard_requests.items():
-        nurse_idx = id_to_idx.get(nurse_id)
-        if nurse_idx is None:
-            continue
-        for day_idx, raw_shift in req_list:
-            if not 0 <= day_idx < num_days:
-                continue
-            shift_code = _to_code(raw_shift)
-            if shift_code is None:
-                continue
-            if shift_code == AL:
-                al_day_requests[nurse_idx].add(day_idx)
-                continue
-            approved_requests[nurse_idx].append((day_idx, shift_code))
-
-    for nurse_id, req_list in soft_requests.items():
-        nurse_idx = id_to_idx.get(nurse_id)
-        if nurse_idx is None:
-            continue
-        for day_idx, raw_shift in req_list:
-            if not 0 <= day_idx < num_days:
-                continue
-            shift_code = _to_code(raw_shift)
-            if shift_code is None:
-                continue
-            if shift_code == AL:
-                al_day_requests[nurse_idx].add(day_idx)
-                continue
-            pending_requests[nurse_idx].append((day_idx, shift_code))
-
-    full_al_nurses = frozenset(
-        nurse_idx for nurse_idx, al_days in enumerate(al_day_requests)
-        if len(al_days) >= num_days
-    )
-
-    return {
-        "approved_requests": approved_requests,
-        "pending_requests": pending_requests,
-        "al_day_requests": [frozenset(days) for days in al_day_requests],
-        "al_nurses": full_al_nurses,
-        "hard_requests": hard_constraints,
-        "shift_hours": shift_hours,
-    }
 
 
 # ─── Output formatter (mirrors ga_algo.format_output exactly) ─────────────────
