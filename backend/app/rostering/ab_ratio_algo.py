@@ -41,7 +41,7 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
     "daily_ratio_night": 5_000,
-    "rn_night": 6_000,
+    "rn_night": 8_000,
     "rn_night_over": 800,
     "class_balance_day": 1_200,
     "class_balance_shift": 700,
