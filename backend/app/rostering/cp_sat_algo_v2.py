@@ -91,8 +91,10 @@ def _to_code(raw: str, non_working: set[str]) -> int | None:
     norm = str(raw).strip().upper()
     if norm in _STR_TO_CODE:
         return _STR_TO_CODE[norm]
-    if norm in _LEAVE_CODES or norm in non_working:
+    if norm in _LEAVE_CODES:
         return AL
+    if norm in non_working:
+        return DO
     return None
 
 
