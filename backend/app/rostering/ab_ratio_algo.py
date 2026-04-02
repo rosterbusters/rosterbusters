@@ -43,6 +43,8 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_night": 5_000,
     "rn_night": 2_000,
     "rn_night_over": 800,
+    "class_balance_day": 1_200,
+    "class_balance_shift": 700,
     "soft_request": 200,
 }
 _DEFAULT_TIME_LIMIT_S = 60.0
@@ -107,6 +109,12 @@ def _distribute_targets(total: int, num_days: int) -> list[int]:
     base = total // num_days
     remainder = total % num_days
     return [base + (1 if day_idx < remainder else 0) for day_idx in range(num_days)]
+
+
+def _weekly_do_target(week_len: int) -> int:
+    if week_len <= 0:
+        return 0
+    return max(1, round(2 * week_len / 7))
 
 
 def _normalize_ab_shift_ratio(config_ratio) -> dict[int, int]:
@@ -204,6 +212,8 @@ def parse_ab_ratio_inputs(
     rank_c = [idx for idx in range(num_nurses) if nurse_ranks[idx] == "C"]
     rank_ab = [idx for idx in range(num_nurses) if nurse_ranks[idx] in {"A", "B"}]
     working_ab = [idx for idx in working_nurses if nurse_ranks[idx] in {"A", "B"}]
+    working_rank_a = [idx for idx in working_ab if nurse_ranks[idx] == "A"]
+    working_rank_b = [idx for idx in working_ab if nurse_ranks[idx] == "B"]
 
     post_night_off: set[int] = set()
     for nurse_id, shift_name in prev_last_shift.items():
@@ -227,19 +237,30 @@ def parse_ab_ratio_inputs(
     )
     ab_shift_ratio = _normalize_ab_shift_ratio(cfg.get("ab_shift_ratio"))
 
-    ab_required_nonworking_days: dict[int, int] = {}
+    ab_weekly_do_targets: dict[int, list[int]] = {}
     expected_ab_work_slots = 0
     for nurse_idx in working_ab:
-        fixed_nonworking_days = len(al_day_req[nurse_idx])
-        fixed_nonworking_days += sum(
-            1 for shift_code in hard_assignments[nurse_idx].values() if shift_code == OFF
-        )
-        if nurse_idx in post_night_off and 0 not in al_day_req[nurse_idx]:
-            if hard_assignments[nurse_idx].get(0) != OFF:
-                fixed_nonworking_days += 1
-        required_nonworking_days = max(4, fixed_nonworking_days)
-        ab_required_nonworking_days[nurse_idx] = required_nonworking_days
-        expected_ab_work_slots += max(0, num_days - required_nonworking_days)
+        weekly_targets = []
+        total_do_target = 0
+        for week_start in range(0, num_days, 7):
+            week_end = min(week_start + 7, num_days)
+            fixed_off_days = {
+                day_idx
+                for day_idx in range(week_start, week_end)
+                if hard_assignments[nurse_idx].get(day_idx) == OFF
+            }
+            if (
+                nurse_idx in post_night_off
+                and week_start <= 0 < week_end
+                and 0 not in al_day_req[nurse_idx]
+                and hard_assignments[nurse_idx].get(0) != OFF
+            ):
+                fixed_off_days.add(0)
+            target_do = max(_weekly_do_target(week_end - week_start), len(fixed_off_days))
+            weekly_targets.append(target_do)
+            total_do_target += target_do
+        ab_weekly_do_targets[nurse_idx] = weekly_targets
+        expected_ab_work_slots += max(0, num_days - len(al_day_req[nurse_idx]) - total_do_target)
 
     ab_target_totals, ab_target_ratios = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
     ab_daily_targets = {
@@ -298,7 +319,9 @@ def parse_ab_ratio_inputs(
         "rank_ab": rank_ab,
         "working_nurses": working_nurses,
         "working_ab": working_ab,
-        "ab_required_nonworking_days": ab_required_nonworking_days,
+        "working_rank_a": working_rank_a,
+        "working_rank_b": working_rank_b,
+        "ab_weekly_do_targets": ab_weekly_do_targets,
         "ab_shift_ratio": ab_shift_ratio,
         "expected_ab_work_slots": expected_ab_work_slots,
         "ab_target_totals": ab_target_totals,
@@ -418,7 +441,9 @@ def run_ab_ratio_pipeline(
     hard_assignments = parsed["hard_assignments"]
     soft_assignments = parsed["soft_assignments"]
     post_night_off = parsed["post_night_off"]
-    ab_required_nonworking_days = parsed["ab_required_nonworking_days"]
+    working_rank_a = parsed["working_rank_a"]
+    working_rank_b = parsed["working_rank_b"]
+    ab_weekly_do_targets = parsed["ab_weekly_do_targets"]
     ab_daily_targets = parsed["ab_daily_targets"]
     rn_night_allowed_excess = parsed["rn_night_allowed_excess"]
     weights = parsed["weights"]
@@ -480,8 +505,11 @@ def run_ab_ratio_pipeline(
 
         total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
         total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
-        model.Add(total_non_working == ab_required_nonworking_days[nurse_idx])
-        model.Add(total_do <= 4)
+        model.Add(total_non_working >= 4)
+        for week_index, week_start in enumerate(range(0, num_days, 7)):
+            week_end = min(week_start + 7, num_days)
+            week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
+            model.Add(week_do == ab_weekly_do_targets[nurse_idx][week_index])
 
         for day_idx in range(num_days - 2):
             model.Add(
@@ -555,6 +583,54 @@ def run_ab_ratio_pipeline(
         over_cap = model.NewIntVar(0, len(rank_a), f"rn_night_over_{day_idx}")
         model.Add(over_cap >= count_a_night - allowed_max)
         add_penalty(over_cap, weights["rn_night_over"])
+
+    if working_rank_a and working_rank_b:
+        a_pool = len(working_rank_a)
+        b_pool = len(working_rank_b)
+        daily_balance_bound = len(working_ab) * max(a_pool, b_pool)
+        shift_balance_bound = max(len(working_rank_a), len(working_rank_b)) * max(a_pool, b_pool)
+
+        for day_idx in range(num_days):
+            total_a_day = sum(
+                x[nurse_idx, day_idx, shift_code]
+                for nurse_idx in working_rank_a
+                for shift_code in WORK_SHIFTS
+            )
+            total_b_day = sum(
+                x[nurse_idx, day_idx, shift_code]
+                for nurse_idx in working_rank_b
+                for shift_code in WORK_SHIFTS
+            )
+            daily_balance_diff = model.NewIntVar(
+                -daily_balance_bound,
+                daily_balance_bound,
+                f"class_balance_day_diff_{day_idx}",
+            )
+            model.Add(daily_balance_diff == total_a_day * b_pool - total_b_day * a_pool)
+            daily_balance_dev = model.NewIntVar(
+                0,
+                daily_balance_bound,
+                f"class_balance_day_dev_{day_idx}",
+            )
+            model.AddAbsEquality(daily_balance_dev, daily_balance_diff)
+            add_penalty(daily_balance_dev, weights["class_balance_day"])
+
+            for shift_code in WORK_SHIFTS:
+                total_a_shift = sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_rank_a)
+                total_b_shift = sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_rank_b)
+                shift_balance_diff = model.NewIntVar(
+                    -shift_balance_bound,
+                    shift_balance_bound,
+                    f"class_balance_shift_diff_{day_idx}_{shift_code}",
+                )
+                model.Add(shift_balance_diff == total_a_shift * b_pool - total_b_shift * a_pool)
+                shift_balance_dev = model.NewIntVar(
+                    0,
+                    shift_balance_bound,
+                    f"class_balance_shift_dev_{day_idx}_{shift_code}",
+                )
+                model.AddAbsEquality(shift_balance_dev, shift_balance_diff)
+                add_penalty(shift_balance_dev, weights["class_balance_shift"])
 
     for nurse_idx in working_nurses:
         hard_days = set(hard_assignments[nurse_idx])
