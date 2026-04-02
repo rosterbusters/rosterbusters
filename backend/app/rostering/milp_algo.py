@@ -648,6 +648,9 @@ def _solve(
         "ward_day_balance": 0.0,
         # Prefer hitting the ward-wide night target when one is provided.
         "ward_night_balance": 30.0,
+        # Prefer keeping RN night coverage at or below 2, but allow overflow
+        # when required to satisfy the per-nurse night minimum.
+        "rn_night_target": 150.0,
     }
     if weights is None:
         weights = cfg.get("weights")
@@ -705,6 +708,7 @@ def _solve(
     m.dev_total_A = Var(m.D, within=NonNegativeReals)
     m.dev_total_P = Var(m.D, within=NonNegativeReals)
     m.dev_total_N = Var(m.D, within=NonNegativeReals)
+    m.dev_rn_night_target = Var(m.D, within=NonNegativeReals)
 
     m.cons = ConstraintList()
 
@@ -911,12 +915,14 @@ def _solve(
         m.cons.add(hca_total_today - hca_total_prev <= m.dev_hca_day_total[d])
         m.cons.add(hca_total_prev - hca_total_today <= m.dev_hca_day_total[d])
 
-    for class_cfg, cov_map in ((rn_cfg, _cov_rn), (en_cfg, _cov_en), (hca_cfg, _cov_hca)):
+    rn_night_target = 2
+    for class_name, class_cfg, cov_map in (("RN", rn_cfg, _cov_rn), ("EN", en_cfg, _cov_en), ("HCA", hca_cfg, _cov_hca)):
         max_night_per_day = class_cfg.get("max_night_per_day")
-        if max_night_per_day is None:
-            continue
         for d in DAYS:
-            m.cons.add(cov_map[(d, "N")] <= int(max_night_per_day))
+            if class_name == "RN":
+                m.cons.add(cov_map[(d, "N")] - rn_night_target <= m.dev_rn_night_target[d])
+            elif max_night_per_day is not None:
+                m.cons.add(cov_map[(d, "N")] <= int(max_night_per_day))
 
     # ---- Shift-balance deviations (soft) ----
     def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg, class_name):
@@ -1103,6 +1109,7 @@ def _solve(
               + sum(m.dev_total_P[d] for d in DAYS)
             )
           + lw["ward_night_balance"] * sum(m.dev_total_N[d] for d in DAYS)
+          + lw["rn_night_target"] * sum(m.dev_rn_night_target[d] for d in DAYS)
           + lw["cov"]       * (
                 sum(m.cov_slack_rn[d, s] for d in DAYS for s in SHIFTS)
               + sum(m.cov_slack_en[d, s] for d in DAYS for s in SHIFTS)

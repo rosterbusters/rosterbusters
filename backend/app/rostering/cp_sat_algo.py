@@ -75,6 +75,7 @@ W_WARD_AB_BAL    = 200_000   # |rank_A_count - rank_B_count| > 1 in a shift
 W_WARD_C_ORDER   = 150_000   # rank-C nurse violating ordered-slot rule
 W_SINGLE_NIGHT   = 400_000   # isolated night block (no adjacent night)
 W_NIGHT_A_OVER_B = 500_000   # per-nurse excess of Rank A over Rank B on any night shift
+W_NIGHT_A_TARGET = 250_000   # per-day excess of Rank A night nurses above the preferred target of 2
 
 # increase for very large wards.
 _TIME_LIMIT_S = 100.0
@@ -274,6 +275,9 @@ def run_ga_pipeline(
             "but it is not installed in this environment."
         )
 
+    if progress_callback:
+        progress_callback(0, 4, float("inf"))
+
     hard_requests   = hard_requests   or {}
     soft_requests   = soft_requests   or {}
     prev_last_shift = prev_last_shift or {}
@@ -317,6 +321,9 @@ def run_ga_pipeline(
             req = day_sh.get(s_name, {})
             d[s_code] = {r: int(req.get(r, 0)) for r in "ABC"}
         demand.append(d)
+
+    if progress_callback:
+        progress_callback(1, 4, float("inf"))
 
     # ── Helper: raw shift string → internal code ──────────────────────────────
     def _to_code(raw) -> int | None:
@@ -413,6 +420,9 @@ def run_ga_pipeline(
 
     # ── Pre-solve: warn on structurally unmet demand ──────────────────────────
     _check_demand_feasibility(demand, nurse_ranks, working_nurses, num_days)
+
+    if progress_callback:
+        progress_callback(2, 4, float("inf"))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Build the CP-SAT model
@@ -514,8 +524,10 @@ def run_ga_pipeline(
                 cnt_tot_expr = cnt_A_expr + cnt_B_expr + cnt_C_expr
 
                 # HARD: Rank A nurses may not exceed the number of Rank A slots
-                # (prevents A from filling B or C slots)
-                if rank_A and req_A < len(rank_A):
+                # (prevents A from filling B or C slots). NIGHT is exempt so
+                # Rank A can overstaff overnight when required to satisfy the
+                # per-nurse minimum night target.
+                if s != NIGHT and rank_A and req_A < len(rank_A):
                     model.Add(cnt_A_expr <= req_A)
 
                 _shortage(f"sh_tot_{d}_{s}", total_req, total_req, cnt_tot_expr, W_SHIFT_SHORT)
@@ -776,6 +788,11 @@ def run_ga_pipeline(
                 model.Add(
                     sum(x[n, d, NIGHT] for n in working_nurses) <= night_demand
                 )
+        if rank_A:
+            cnt_A_night = sum(x[n, d, NIGHT] for n in rank_A)
+            excess_A_target = model.NewIntVar(0, len(rank_A), f"nat_exc_{d}")
+            model.Add(excess_A_target >= cnt_A_night - 2)
+            _add_penalty(excess_A_target, W_NIGHT_A_TARGET)
 
     # ── 4d. Night Rank A > Rank B penalty ────────────────────────────────────
     # On every night shift, the number of Rank A (RN) nurses must not exceed
@@ -973,7 +990,7 @@ def run_ga_pipeline(
     print("[CP-SAT] Greedy warm-start hint injected")
 
     if progress_callback:
-        progress_callback(0, 1, float("inf"))
+        progress_callback(3, 4, float("inf"))
 
     status = solver.Solve(model)
     status_str = solver.StatusName(status)
@@ -983,7 +1000,7 @@ def run_ga_pipeline(
           f"  WallTime={solver.WallTime():.1f}s")
 
     if progress_callback:
-        progress_callback(1, 1, obj_val)
+        progress_callback(4, 4, obj_val)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         raise RuntimeError(
