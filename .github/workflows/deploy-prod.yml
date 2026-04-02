@@ -95,17 +95,17 @@ jobs:
           cat > ~/rosterbusters/traefik/dynamic/tls.yml <<'YAML'
           tls:
             certificates:
-              - certFile: /certs/origin.crt
-                keyFile: /certs/origin.key
+              - certFile: /certs/cloudflare-origin.crt
+                keyFile: /certs/cloudflare-origin.key
             stores:
               default:
                 defaultCertificate:
-                  certFile: /certs/origin.crt
-                  keyFile: /certs/origin.key
+                  certFile: /certs/cloudflare-origin.crt
+                  keyFile: /certs/cloudflare-origin.key
           YAML
-          test -s ~/rosterbusters/traefik/certs/origin.crt
-          test -s ~/rosterbusters/traefik/certs/origin.key
-          chmod 600 ~/rosterbusters/traefik/certs/origin.key
+          test -s ~/rosterbusters/traefik/certs/cloudflare-origin.crt
+          test -s ~/rosterbusters/traefik/certs/cloudflare-origin.key
+          chmod 600 ~/rosterbusters/traefik/certs/cloudflare-origin.key
           EOF
 
       - name: Strip whitespace from .env
@@ -185,11 +185,11 @@ jobs:
             ls -l ~/rosterbusters/traefik/certs ~/rosterbusters/traefik/dynamic || true
             echo "--- ~/rosterbusters/traefik/dynamic/tls.yml ---"
             sed -n '1,120p' ~/rosterbusters/traefik/dynamic/tls.yml || true
-            echo "--- ~/rosterbusters/traefik/certs/origin.crt ---"
-            sed -n '1,10p' ~/rosterbusters/traefik/certs/origin.crt || true
-            echo "--- ~/rosterbusters/traefik/certs/origin.key metadata ---"
-            wc -c ~/rosterbusters/traefik/certs/origin.key || true
-            grep -n -- 'BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/origin.key || true
+            echo "--- ~/rosterbusters/traefik/certs/cloudflare-origin.crt ---"
+            sed -n '1,10p' ~/rosterbusters/traefik/certs/cloudflare-origin.crt || true
+            echo "--- ~/rosterbusters/traefik/certs/cloudflare-origin.key metadata ---"
+            wc -c ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
+            grep -n -- 'BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
 
             echo "=== TRAEFIK CONTAINER TLS FILES ==="
             docker exec traefik-public-traefik-1 sh -lc '
@@ -197,16 +197,16 @@ jobs:
               ls -l /certs /dynamic || true
               echo "--- /dynamic/tls.yml ---"
               sed -n "1,120p" /dynamic/tls.yml || true
-              echo "--- /certs/origin.crt ---"
-              sed -n "1,10p" /certs/origin.crt || true
-              echo "--- /certs/origin.key metadata ---"
-              wc -c /certs/origin.key || true
-              grep -n -- "BEGIN .*PRIVATE KEY" /certs/origin.key || true
+              echo "--- /certs/cloudflare-origin.crt ---"
+              sed -n "1,10p" /certs/cloudflare-origin.crt || true
+              echo "--- /certs/cloudflare-origin.key metadata ---"
+              wc -c /certs/cloudflare-origin.key || true
+              grep -n -- "BEGIN .*PRIVATE KEY" /certs/cloudflare-origin.key || true
             ' || true
 
             echo "=== TLS FILE METADATA ==="
-            wc -c ~/rosterbusters/traefik/certs/origin.crt ~/rosterbusters/traefik/certs/origin.key ~/rosterbusters/traefik/dynamic/tls.yml || true
-            grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/origin.crt ~/rosterbusters/traefik/certs/origin.key || true
+            wc -c ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key ~/rosterbusters/traefik/dynamic/tls.yml || true
+            grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
           }
           dump_logs() {
             echo "=== TRAEFIK LOGS ==="

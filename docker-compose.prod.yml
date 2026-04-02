@@ -6,12 +6,16 @@ services:
     profiles: []  # ensure adminer can find db
     restart: unless-stopped
   prestart:
-    depends_on: {}
+    depends_on:
+      db:
+        condition: service_started
     environment:
       - POSTGRES_SERVER=${POSTGRES_SERVER}
 
   backend:
     depends_on:
+      db:
+        condition: service_started
       prestart:
         condition: service_completed_successfully
     volumes: []
