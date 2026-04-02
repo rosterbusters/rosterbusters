@@ -42,14 +42,16 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_pm": 3_000,
     "daily_ratio_night": 5_000,
     "rn_night": 2_000,
+    "rn_night_over": 800,
     "soft_request": 200,
 }
 _DEFAULT_TIME_LIMIT_S = 60.0
 _DEFAULT_AB_SHIFT_RATIO = {
     AM: 3,
-    PM: 2,
+    PM: 3,
     NIGHT: 2,
 }
+_DEFAULT_RN_NIGHT_ALLOWED_EXCESS = 1
 
 
 def _coerce_int(value, default: int) -> int:
@@ -220,6 +222,9 @@ def parse_ab_ratio_inputs(
     ratio_weights["soft_request"] = _coerce_int(
         cfg.get("soft_request_weight"), ratio_weights["soft_request"]
     )
+    ratio_weights["rn_night_over"] = _coerce_int(
+        cfg.get("rn_night_over_weight"), ratio_weights["rn_night_over"]
+    )
     ab_shift_ratio = _normalize_ab_shift_ratio(cfg.get("ab_shift_ratio"))
 
     ab_required_nonworking_days: dict[int, int] = {}
@@ -242,30 +247,37 @@ def parse_ab_ratio_inputs(
         for shift_code in (AM, PM, NIGHT)
     }
 
+    default_rn_night_targets = [demand[day_idx][NIGHT]["A"] for day_idx in range(num_days)]
     raw_rn_target = cfg.get("rn_night_min_per_day")
     if isinstance(raw_rn_target, (list, tuple)):
         rn_night_targets = [
-            _coerce_int(raw_rn_target[day_idx], 0) if day_idx < len(raw_rn_target) else 0
+            _coerce_int(raw_rn_target[day_idx], default_rn_night_targets[day_idx])
+            if day_idx < len(raw_rn_target)
+            else default_rn_night_targets[day_idx]
             for day_idx in range(num_days)
         ]
     elif isinstance(raw_rn_target, dict):
         rn_night_targets = [
-            _coerce_int(raw_rn_target.get(day_idx, raw_rn_target.get(str(day_idx), demand[day_idx][NIGHT]["A"])), demand[day_idx][NIGHT]["A"])
+            _coerce_int(
+                raw_rn_target.get(
+                    day_idx,
+                    raw_rn_target.get(str(day_idx), default_rn_night_targets[day_idx]),
+                ),
+                default_rn_night_targets[day_idx],
+            )
             for day_idx in range(num_days)
         ]
     elif raw_rn_target is None:
-        daily_ab_night_target = round(ab_target_totals[NIGHT] / num_days) if num_days else 0
-        if rank_ab and rank_a and daily_ab_night_target > 0:
-            inferred_rn_target = max(
-                1,
-                round(daily_ab_night_target * len(rank_a) / len(rank_ab)),
-            )
-        else:
-            inferred_rn_target = 0
-        rn_night_targets = [inferred_rn_target for _ in range(num_days)]
+        rn_night_targets = list(default_rn_night_targets)
     else:
         default_target = _coerce_int(raw_rn_target, 0)
         rn_night_targets = [default_target for _ in range(num_days)]
+
+    raw_rn_allowed_excess = cfg.get("rn_night_allowed_excess", _DEFAULT_RN_NIGHT_ALLOWED_EXCESS)
+    rn_night_allowed_excess = _coerce_int(
+        raw_rn_allowed_excess,
+        _DEFAULT_RN_NIGHT_ALLOWED_EXCESS,
+    )
 
     return {
         "nurses_sorted": nurses_sorted,
@@ -293,6 +305,7 @@ def parse_ab_ratio_inputs(
         "ab_target_ratios": ab_target_ratios,
         "ab_daily_targets": ab_daily_targets,
         "rn_night_targets": rn_night_targets,
+        "rn_night_allowed_excess": rn_night_allowed_excess,
         "weights": ratio_weights,
     }
 
@@ -407,6 +420,7 @@ def run_ab_ratio_pipeline(
     post_night_off = parsed["post_night_off"]
     ab_required_nonworking_days = parsed["ab_required_nonworking_days"]
     ab_daily_targets = parsed["ab_daily_targets"]
+    rn_night_allowed_excess = parsed["rn_night_allowed_excess"]
     weights = parsed["weights"]
 
     x = {}
@@ -537,6 +551,10 @@ def run_ab_ratio_pipeline(
         shortage = model.NewIntVar(0, target, f"rn_night_short_{day_idx}")
         model.Add(shortage >= target - count_a_night)
         add_penalty(shortage, weights["rn_night"])
+        allowed_max = target + max(rn_night_allowed_excess, 0)
+        over_cap = model.NewIntVar(0, len(rank_a), f"rn_night_over_{day_idx}")
+        model.Add(over_cap >= count_a_night - allowed_max)
+        add_penalty(over_cap, weights["rn_night_over"])
 
     for nurse_idx in working_nurses:
         hard_days = set(hard_assignments[nurse_idx])
