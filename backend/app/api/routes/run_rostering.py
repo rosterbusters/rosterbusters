@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import queue
 import threading
@@ -35,6 +36,18 @@ from app.rbac import user_has_role
 from app.utils import generate_roster_release_email, send_email
 import app.crud as crud
 from app.rostering.algo_scheduler import generate_roster
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe_value(inner) for key, inner in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(item) for item in value]
+    return value
 
 
 class ChangelogCreateRequest(BaseModel):
@@ -843,11 +856,13 @@ def trigger_scheduled_generation(
 def get_task_status(task_id: str):
     """Poll the status of a queued roster generation task."""
     result = _get_celery_app().AsyncResult(task_id)
+    safe_info = _json_safe_value(result.info)
+    safe_result = _json_safe_value(result.result)
     logger.info(
         "Polled roster task status task_id=%s state=%s info=%s",
         task_id,
         result.state,
-        result.info,
+        safe_info,
     )
 
     if result.state == "PENDING":
@@ -855,16 +870,16 @@ def get_task_status(task_id: str):
     if result.state == "STARTED":
         return {"task_id": task_id, "status": "started"}
     if result.state == "PROGRESS":
-        return {"task_id": task_id, "status": "in_progress", **(result.info or {})}
+        return {"task_id": task_id, "status": "in_progress", **(safe_info or {})}
     if result.state == "SUCCESS":
-        return {"task_id": task_id, "status": "complete", **(result.result or {})}
+        return {"task_id": task_id, "status": "complete", **(safe_result or {})}
     if result.state == "FAILURE":
         logger.error(
             "Roster task failed task_id=%s error=%s",
             task_id,
-            result.info,
+            safe_info,
         )
-        return {"task_id": task_id, "status": "failed", "error": str(result.info)}
+        return {"task_id": task_id, "status": "failed", "error": str(safe_info)}
     return {"task_id": task_id, "status": result.state.lower()}
 
 

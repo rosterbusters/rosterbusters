@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import timedelta
 
 from sqlmodel import Session, delete, select
@@ -24,6 +25,12 @@ SHIFT_CODE_TO_DB = {
     "P": "P",
     "N": "N",
 }
+
+
+def _json_safe_number(value: float | int | None) -> float | int | None:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 def _save_roster_result(
     db: Session,
@@ -152,7 +159,7 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
                     "generation": gen,
                     "total": total_gens,
                     "percent": round(gen / total_gens * 100),
-                    "best_score": round(best_score, 2),
+                    "best_score": _json_safe_number(round(best_score, 2)),
                 },
             )
             logger.info(
