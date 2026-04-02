@@ -24,9 +24,13 @@ run_ga_pipeline(...)
 from __future__ import annotations
 
 import os
-from ortools.sat.python import cp_model
 import math
 import random
+
+try:
+    from ortools.sat.python import cp_model
+except ModuleNotFoundError:
+    cp_model = None
 
 # ─── Shift codes (must match ga_algo constants) ───────────────────────────────
 OFF, AM, PM, NIGHT, AL = 0, 1, 2, 3, 4
@@ -241,6 +245,7 @@ def run_ga_pipeline(
     non_working_shift_codes=None,
     progress_callback=None,
     use_ward_demand: bool = True,
+    milp_config: dict | None = None,
 ):
     """
     Generate a nurse roster using OR-Tools CP-SAT.
@@ -263,6 +268,12 @@ def run_ga_pipeline(
                         • Single-night blocks are forbidden (hard constraint).
     """
     # ── Defaults ──────────────────────────────────────────────────────────────
+    if cp_model is None:
+        raise RuntimeError(
+            "CP-SAT requires the optional 'ortools' dependency, "
+            "but it is not installed in this environment."
+        )
+
     hard_requests   = hard_requests   or {}
     soft_requests   = soft_requests   or {}
     prev_last_shift = prev_last_shift or {}
@@ -999,6 +1010,104 @@ def run_ga_pipeline(
         nurses_sorted, schedule, nurse_names, nurse_ranks,
         num_days, obj_val, leave_overlay,
     )
+
+
+def parse_inputs(
+    nurses,
+    shifts,
+    hard_requests=None,
+    soft_requests=None,
+    prev_last_shift=None,
+    shift_hours=None,
+    non_working_shift_codes=None,
+):
+    """
+    Compatibility helper that exposes the legacy parsed-input structure used by
+    older tests and tooling.
+    """
+    hard_requests = hard_requests or {}
+    soft_requests = soft_requests or {}
+    prev_last_shift = prev_last_shift or {}
+    shift_hours = shift_hours or {"AM": 8.0, "PM": 8.0, "NIGHT": 10.0, "OFF": 0.0}
+    nw_codes = {str(code).upper() for code in (non_working_shift_codes or set())}
+
+    nurses_sorted = sorted(nurses, key=lambda nurse: nurse["id"])
+    num_days = len(shifts)
+    num_nurses = len(nurses_sorted)
+    id_to_idx = {nurse["id"]: idx for idx, nurse in enumerate(nurses_sorted)}
+
+    shift_str_to_code = {
+        "AM": AM, "A": AM,
+        "PM": PM, "P": PM,
+        "NIGHT": NIGHT, "N": NIGHT,
+        "OFF": OFF, "DO": OFF, "RD": OFF,
+        "AL": AL,
+    }
+    leave_codes = _LEAVE_CODES | {"AL"}
+
+    def _to_code(raw):
+        normalized = str(raw).strip().upper()
+        if normalized in shift_str_to_code:
+            return shift_str_to_code[normalized]
+        if normalized in leave_codes or normalized in nw_codes:
+            return AL
+        return None
+
+    approved_requests: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
+    pending_requests: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
+    al_day_requests: list[set[int]] = [set() for _ in range(num_nurses)]
+    hard_constraints: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
+
+    for nurse_id, prev_shift in prev_last_shift.items():
+        nurse_idx = id_to_idx.get(nurse_id)
+        if nurse_idx is None:
+            continue
+        if str(prev_shift).strip().upper() == "NIGHT":
+            hard_constraints[nurse_idx].append((0, OFF))
+
+    for nurse_id, req_list in hard_requests.items():
+        nurse_idx = id_to_idx.get(nurse_id)
+        if nurse_idx is None:
+            continue
+        for day_idx, raw_shift in req_list:
+            if not 0 <= day_idx < num_days:
+                continue
+            shift_code = _to_code(raw_shift)
+            if shift_code is None:
+                continue
+            if shift_code == AL:
+                al_day_requests[nurse_idx].add(day_idx)
+                continue
+            approved_requests[nurse_idx].append((day_idx, shift_code))
+
+    for nurse_id, req_list in soft_requests.items():
+        nurse_idx = id_to_idx.get(nurse_id)
+        if nurse_idx is None:
+            continue
+        for day_idx, raw_shift in req_list:
+            if not 0 <= day_idx < num_days:
+                continue
+            shift_code = _to_code(raw_shift)
+            if shift_code is None:
+                continue
+            if shift_code == AL:
+                al_day_requests[nurse_idx].add(day_idx)
+                continue
+            pending_requests[nurse_idx].append((day_idx, shift_code))
+
+    full_al_nurses = frozenset(
+        nurse_idx for nurse_idx, al_days in enumerate(al_day_requests)
+        if len(al_days) >= num_days
+    )
+
+    return {
+        "approved_requests": approved_requests,
+        "pending_requests": pending_requests,
+        "al_day_requests": [frozenset(days) for days in al_day_requests],
+        "al_nurses": full_al_nurses,
+        "hard_requests": hard_constraints,
+        "shift_hours": shift_hours,
+    }
 
 
 # ─── Output formatter (mirrors ga_algo.format_output exactly) ─────────────────
