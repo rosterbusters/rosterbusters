@@ -766,11 +766,18 @@ def run_v2_pipeline(
             model.AddHint(x[ni, d, s], 1 if s == s_code else 0)
 
     # ── Solve ─────────────────────────────────────────────────────────────────
+    search_branching = getattr(
+        cp_model,
+        "PORTFOLIO_WITH_QUICK_RESTART",
+        getattr(cp_model, "PORTFOLIO_WITH_QUICK_RESTART_SEARCH", None),
+    )
+
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds       = time_limit_s
     solver.parameters.num_workers               = max(1, (os.cpu_count() or 2) - 1)
     solver.parameters.linearization_level       = 1
-    solver.parameters.search_branching          = cp_model.PORTFOLIO_WITH_QUICK_RESTART
+    if search_branching is not None:
+        solver.parameters.search_branching = search_branching
     solver.parameters.log_search_progress       = False
 
     _report_progress(progress_callback, 2, 4, float("inf"))
