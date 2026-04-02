@@ -80,6 +80,12 @@ def _coerce_int(val: Any, default: int = 0) -> int:
         return default
 
 
+def _report_progress(progress_callback, step: int, total_steps: int, best_score: float) -> None:
+    """Match the existing backend progress callback contract."""
+    if progress_callback:
+        progress_callback(step, total_steps, best_score)
+
+
 def _to_code(raw: str, non_working: set[str]) -> int | None:
     """Convert a raw shift string to an internal code, or None if unrecognised."""
     norm = str(raw).strip().upper()
@@ -544,8 +550,7 @@ def run_v2_pipeline(
         ab_nurses, hard_ab, al_days_per_nurse, prev_last_night, num_days
     )
 
-    if progress_callback:
-        progress_callback(5, "V2: Building CP-SAT model…")
+    _report_progress(progress_callback, 1, 4, float("inf"))
 
     # ── Build model ───────────────────────────────────────────────────────────
     model = cp_model.CpModel()
@@ -768,8 +773,7 @@ def run_v2_pipeline(
     solver.parameters.search_branching          = cp_model.PORTFOLIO_WITH_QUICK_RESTART
     solver.parameters.log_search_progress       = False
 
-    if progress_callback:
-        progress_callback(10, "V2: CP-SAT solver running…")
+    _report_progress(progress_callback, 2, 4, float("inf"))
 
     status      = solver.Solve(model)
     status_name = solver.StatusName(status)
@@ -779,11 +783,9 @@ def run_v2_pipeline(
         "INFEASIBLE": "infeasible",
     }.get(status_name, status_name.lower())
 
-    if progress_callback:
-        progress_callback(90, f"V2: Solver finished — {status_name}")
-
     feasible = status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     penalty_score = float(solver.ObjectiveValue()) if feasible else float("inf")
+    _report_progress(progress_callback, 3, 4, penalty_score)
 
     # ── Extract schedules ─────────────────────────────────────────────────────
     ab_schedules: list[list[int]] = []
@@ -812,6 +814,8 @@ def run_v2_pipeline(
             warnings.append(
                 f"Nurse '{nurse['name']}': final N-N pair spills mandatory post-night DO into next roster"
             )
+
+    _report_progress(progress_callback, 4, 4, penalty_score)
 
     return _format_output(
         ab_schedules, ab_nurses, c_results,

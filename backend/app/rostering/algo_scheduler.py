@@ -7,6 +7,7 @@ def _run_cp_sat_pipeline(*args, **kwargs):
     Import the CP-SAT pipeline lazily so the backend can start even when
     optional solver dependencies (for example ortools) are not installed.
     """
+    kwargs.pop("milp_config", None)
     try:
         from app.rostering.cp_sat_algo import run_ga_pipeline
     except ModuleNotFoundError as exc:
