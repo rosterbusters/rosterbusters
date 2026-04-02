@@ -94,6 +94,9 @@ jobs:
           mkdir -p ~/rosterbusters/traefik/certs ~/rosterbusters/traefik/dynamic
           cat > ~/rosterbusters/traefik/dynamic/tls.yml <<'YAML'
           tls:
+            certificates:
+              - certFile: /certs/origin.crt
+                keyFile: /certs/origin.key
             stores:
               default:
                 defaultCertificate:
@@ -174,9 +177,41 @@ jobs:
           traefik_compose() {
             docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml -f docker-compose.traefik.prod.yml "$@"
           }
+          debug_traefik_tls() {
+            echo "=== TRAEFIK COMPOSE CONFIG ==="
+            traefik_compose config || true
+
+            echo "=== EC2 TRAEFIK TLS FILES ==="
+            ls -l ~/rosterbusters/traefik/certs ~/rosterbusters/traefik/dynamic || true
+            echo "--- ~/rosterbusters/traefik/dynamic/tls.yml ---"
+            sed -n '1,120p' ~/rosterbusters/traefik/dynamic/tls.yml || true
+            echo "--- ~/rosterbusters/traefik/certs/origin.crt ---"
+            sed -n '1,10p' ~/rosterbusters/traefik/certs/origin.crt || true
+            echo "--- ~/rosterbusters/traefik/certs/origin.key metadata ---"
+            wc -c ~/rosterbusters/traefik/certs/origin.key || true
+            grep -n -- 'BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/origin.key || true
+
+            echo "=== TRAEFIK CONTAINER TLS FILES ==="
+            docker exec traefik-public-traefik-1 sh -lc '
+              echo "--- mounted dirs ---"
+              ls -l /certs /dynamic || true
+              echo "--- /dynamic/tls.yml ---"
+              sed -n "1,120p" /dynamic/tls.yml || true
+              echo "--- /certs/origin.crt ---"
+              sed -n "1,10p" /certs/origin.crt || true
+              echo "--- /certs/origin.key metadata ---"
+              wc -c /certs/origin.key || true
+              grep -n -- "BEGIN .*PRIVATE KEY" /certs/origin.key || true
+            ' || true
+
+            echo "=== TLS FILE METADATA ==="
+            wc -c ~/rosterbusters/traefik/certs/origin.crt ~/rosterbusters/traefik/certs/origin.key ~/rosterbusters/traefik/dynamic/tls.yml || true
+            grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/origin.crt ~/rosterbusters/traefik/certs/origin.key || true
+          }
           dump_logs() {
             echo "=== TRAEFIK LOGS ==="
             traefik_compose logs --tail=200 || true
+            debug_traefik_tls
             echo "=== APP LOGS ==="
             app_compose logs --tail=200 || true
           }
@@ -206,6 +241,9 @@ jobs:
 
           echo "=== TRAEFIK STATUS ==="
           traefik_compose ps
+
+          echo "=== TRAEFIK TLS DEBUG ==="
+          debug_traefik_tls
 
           echo "=== APP STATUS ==="
           app_compose ps
