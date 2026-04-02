@@ -34,9 +34,7 @@ _SHIFT_STR_TO_CODE = {
 }
 
 _DEFAULT_WEIGHTS = {
-    "coverage_total": 2_000_000,
-    "coverage_ab": 1_500_000,
-    "coverage_a": 1_000_000,
+    "coverage_c": 600_000,
     "ratio_am": 8_000,
     "ratio_pm": 8_000,
     "ratio_night": 14_000,
@@ -44,6 +42,11 @@ _DEFAULT_WEIGHTS = {
     "soft_request": 200,
 }
 _DEFAULT_TIME_LIMIT_S = 60.0
+_DEFAULT_AB_SHIFT_RATIO = {
+    AM: 3,
+    PM: 2,
+    NIGHT: 2,
+}
 
 
 def _coerce_int(value, default: int) -> int:
@@ -63,23 +66,48 @@ def _to_internal_code(raw, leave_codes: set[str], non_working_codes: set[str]) -
 
 
 def _build_ab_targets(
-    shifts: list[dict],
-) -> tuple[dict[int, list[int]], dict[int, int], dict[int, float]]:
-    per_day_totals = {AM: [], PM: [], NIGHT: []}
-    roster_totals = {AM: 0, PM: 0, NIGHT: 0}
-    for day in shifts:
-        for shift_name, shift_code in (("AM", AM), ("PM", PM), ("NIGHT", NIGHT)):
-            req = day.get(shift_name, {}) or {}
-            total = _coerce_int(req.get("A", 0), 0) + _coerce_int(req.get("B", 0), 0)
-            per_day_totals[shift_code].append(total)
-            roster_totals[shift_code] += total
+    total_slots: int,
+    ratio_weights: dict[int, int],
+) -> tuple[dict[int, int], dict[int, float]]:
+    grand_total = sum(max(int(ratio_weights.get(shift_code, 0)), 0) for shift_code in (AM, PM, NIGHT))
+    if total_slots <= 0 or grand_total <= 0:
+        return {AM: 0, PM: 0, NIGHT: 0}, {AM: 0.0, PM: 0.0, NIGHT: 0.0}
 
-    grand_total = sum(roster_totals.values())
-    ratios = {
-        shift_code: (roster_totals[shift_code] / grand_total if grand_total else 0.0)
+    exact_targets = {
+        shift_code: (total_slots * max(int(ratio_weights.get(shift_code, 0)), 0) / grand_total)
         for shift_code in (AM, PM, NIGHT)
     }
-    return per_day_totals, roster_totals, ratios
+    roster_totals = {
+        shift_code: int(exact_targets[shift_code]) for shift_code in (AM, PM, NIGHT)
+    }
+    assigned = sum(roster_totals.values())
+    remainder_order = sorted(
+        (AM, PM, NIGHT),
+        key=lambda shift_code: (exact_targets[shift_code] - roster_totals[shift_code], -shift_code),
+        reverse=True,
+    )
+    for index in range(total_slots - assigned):
+        roster_totals[remainder_order[index % len(remainder_order)]] += 1
+
+    ratios = {
+        shift_code: (roster_totals[shift_code] / total_slots if total_slots else 0.0)
+        for shift_code in (AM, PM, NIGHT)
+    }
+    return roster_totals, ratios
+
+
+def _normalize_ab_shift_ratio(config_ratio) -> dict[int, int]:
+    normalized = dict(_DEFAULT_AB_SHIFT_RATIO)
+    if isinstance(config_ratio, dict):
+        for raw_key, value in config_ratio.items():
+            key = str(raw_key).strip().upper()
+            if key in {"AM", "A"}:
+                normalized[AM] = max(_coerce_int(value, normalized[AM]), 0)
+            elif key in {"PM", "P"}:
+                normalized[PM] = max(_coerce_int(value, normalized[PM]), 0)
+            elif key in {"NIGHT", "N"}:
+                normalized[NIGHT] = max(_coerce_int(value, normalized[NIGHT]), 0)
+    return normalized
 
 
 def parse_ab_ratio_inputs(
@@ -172,8 +200,6 @@ def parse_ab_ratio_inputs(
         if str(shift_name).strip().upper() == "NIGHT":
             post_night_off.add(nurse_idx)
 
-    _, ab_target_totals, ab_target_ratios = _build_ab_targets(shifts)
-
     cfg = dict(milp_config or {})
     ratio_weights = dict(_DEFAULT_WEIGHTS)
     ratio_weights.update(cfg.get("ab_ratio_weights") or {})
@@ -183,6 +209,23 @@ def parse_ab_ratio_inputs(
     ratio_weights["soft_request"] = _coerce_int(
         cfg.get("soft_request_weight"), ratio_weights["soft_request"]
     )
+    ab_shift_ratio = _normalize_ab_shift_ratio(cfg.get("ab_shift_ratio"))
+
+    ab_required_nonworking_days: dict[int, int] = {}
+    expected_ab_work_slots = 0
+    for nurse_idx in working_ab:
+        fixed_nonworking_days = len(al_day_req[nurse_idx])
+        fixed_nonworking_days += sum(
+            1 for shift_code in hard_assignments[nurse_idx].values() if shift_code == OFF
+        )
+        if nurse_idx in post_night_off and 0 not in al_day_req[nurse_idx]:
+            if hard_assignments[nurse_idx].get(0) != OFF:
+                fixed_nonworking_days += 1
+        required_nonworking_days = max(4, fixed_nonworking_days)
+        ab_required_nonworking_days[nurse_idx] = required_nonworking_days
+        expected_ab_work_slots += max(0, num_days - required_nonworking_days)
+
+    ab_target_totals, ab_target_ratios = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
 
     raw_rn_target = cfg.get("rn_night_min_per_day")
     if isinstance(raw_rn_target, (list, tuple)):
@@ -196,7 +239,15 @@ def parse_ab_ratio_inputs(
             for day_idx in range(num_days)
         ]
     elif raw_rn_target is None:
-        rn_night_targets = [demand[day_idx][NIGHT]["A"] for day_idx in range(num_days)]
+        daily_ab_night_target = round(ab_target_totals[NIGHT] / num_days) if num_days else 0
+        if rank_ab and rank_a and daily_ab_night_target > 0:
+            inferred_rn_target = max(
+                1,
+                round(daily_ab_night_target * len(rank_a) / len(rank_ab)),
+            )
+        else:
+            inferred_rn_target = 0
+        rn_night_targets = [inferred_rn_target for _ in range(num_days)]
     else:
         default_target = _coerce_int(raw_rn_target, 0)
         rn_night_targets = [default_target for _ in range(num_days)]
@@ -220,6 +271,9 @@ def parse_ab_ratio_inputs(
         "rank_ab": rank_ab,
         "working_nurses": working_nurses,
         "working_ab": working_ab,
+        "ab_required_nonworking_days": ab_required_nonworking_days,
+        "ab_shift_ratio": ab_shift_ratio,
+        "expected_ab_work_slots": expected_ab_work_slots,
         "ab_target_totals": ab_target_totals,
         "ab_target_ratios": ab_target_ratios,
         "rn_night_targets": rn_night_targets,
@@ -335,6 +389,7 @@ def run_ab_ratio_pipeline(
     hard_assignments = parsed["hard_assignments"]
     soft_assignments = parsed["soft_assignments"]
     post_night_off = parsed["post_night_off"]
+    ab_required_nonworking_days = parsed["ab_required_nonworking_days"]
     weights = parsed["weights"]
 
     x = {}
@@ -379,32 +434,13 @@ def run_ab_ratio_pipeline(
 
     for day_idx in range(num_days):
         for shift_code in WORK_SHIFTS:
-            req_a = demand[day_idx][shift_code]["A"]
-            req_b = demand[day_idx][shift_code]["B"]
             req_c = demand[day_idx][shift_code]["C"]
-            total_req = req_a + req_b + req_c
-
-            count_a = sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in rank_a) if rank_a else 0
-            count_b = sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in rank_b) if rank_b else 0
+            if req_c <= 0:
+                continue
             count_c = sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in rank_c) if rank_c else 0
-            count_total = count_a + count_b + count_c
-
-            if shift_code != NIGHT and rank_a and req_a < len(rank_a):
-                model.Add(count_a <= req_a)
-
-            total_short = model.NewIntVar(0, max(total_req, 1), f"cover_total_{day_idx}_{shift_code}")
-            model.Add(total_short >= total_req - count_total)
-            add_penalty(total_short, weights["coverage_total"])
-
-            if req_a + req_b > 0:
-                ab_short = model.NewIntVar(0, req_a + req_b, f"cover_ab_{day_idx}_{shift_code}")
-                model.Add(ab_short >= req_a + req_b - (count_a + count_b))
-                add_penalty(ab_short, weights["coverage_ab"])
-
-            if req_a > 0:
-                a_short = model.NewIntVar(0, req_a, f"cover_a_{day_idx}_{shift_code}")
-                model.Add(a_short >= req_a - count_a)
-                add_penalty(a_short, weights["coverage_a"])
+            c_short = model.NewIntVar(0, req_c, f"cover_c_{day_idx}_{shift_code}")
+            model.Add(c_short >= req_c - count_c)
+            add_penalty(c_short, weights["coverage_c"])
 
     for nurse_idx in working_ab:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
@@ -413,7 +449,7 @@ def run_ab_ratio_pipeline(
 
         total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
         total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
-        model.Add(total_non_working >= 4)
+        model.Add(total_non_working == ab_required_nonworking_days[nurse_idx])
         model.Add(total_do <= 4)
 
         for day_idx in range(num_days - 2):
