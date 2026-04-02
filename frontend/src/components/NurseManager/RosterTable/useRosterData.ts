@@ -599,7 +599,7 @@ export function useGenerateAlgorithmRoster() {
       wardId: number;
       periodId: number;
       startDate: Date;
-      algorithm?: "MILP" | "GA";
+      algorithm?: "MILP" | "GA" | "AB-RATIO";
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
       const startedAt = new Date();

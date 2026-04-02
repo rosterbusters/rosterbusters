@@ -19,6 +19,23 @@ def _run_cp_sat_pipeline(*args, **kwargs):
     return run_ga_pipeline(*args, **kwargs)
 
 
+def _run_ab_ratio_pipeline(*args, **kwargs):
+    """
+    Import the A/B ratio pipeline lazily so the backend can start even when
+    optional solver dependencies are not installed.
+    """
+    try:
+        from app.rostering.ab_ratio_algo import run_ab_ratio_pipeline
+    except ModuleNotFoundError as exc:
+        if exc.name == "ortools":
+            raise RuntimeError(
+                "AB-RATIO requires the optional 'ortools' dependency, "
+                "but it is not installed in this environment."
+            ) from exc
+        raise
+    return run_ab_ratio_pipeline(*args, **kwargs)
+
+
 def _normalize_shift_name(shift_name):
     normalized = str(shift_name).strip().upper()
     return {
@@ -71,7 +88,7 @@ def generate_roster(
     algorithm=None,
 ):
     """
-    Generate a nurse roster using MILP (primary) or CP-SAT (fallback).
+    Generate a nurse roster using MILP (primary), CP-SAT, or AB-RATIO.
 
     Parameters
     ----------
@@ -158,6 +175,22 @@ def generate_roster(
     forced = str(algorithm).upper() if algorithm else None
     if forced == "GA":
         forced = "CP-SAT"
+    elif forced in {"AB_RATIO", "ABRATIO"}:
+        forced = "AB-RATIO"
+
+    if forced == "AB-RATIO":
+        roster = _run_ab_ratio_pipeline(
+            nurses,
+            shifts,
+            hard_requests=hard_requests,
+            soft_requests=soft_requests,
+            prev_last_shift=prev_last_shift,
+            non_working_shift_codes=non_working_shift_codes,
+            progress_callback=progress_callback,
+            shift_hours=shift_hours,
+            milp_config=milp_config,
+        )
+        return {"method": "AB-RATIO", "roster": roster}
 
     # ── CP-SAT-only path ───────────────────────────────────────────────────
     if forced in {"CP-SAT", "CPSAT"}:

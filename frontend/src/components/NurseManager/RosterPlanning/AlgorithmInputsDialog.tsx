@@ -20,7 +20,7 @@ interface AlgorithmInputsDialogProps {
   periodId: number | null;
   periodName?: string | null;
   periodStartDate?: string | null;
-  algorithmType?: "MILP" | "GA" | null;
+  algorithmType?: "MILP" | "GA" | "AB-RATIO" | null;
   lastRunAt?: Date | null;
   lastRunMs?: number | null;
   rosterData?: RosterRow[];

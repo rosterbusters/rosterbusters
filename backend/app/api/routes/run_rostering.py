@@ -54,7 +54,7 @@ class RosterCommentUpdate(BaseModel):
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
-    algorithm: Optional[str] = None  # "MILP" | "CP-SAT" | None (auto)
+    algorithm: Optional[str] = None  # "MILP" | "CP-SAT" | "AB-RATIO" | None (auto)
 
 
 class TriggeredItem(BaseModel):

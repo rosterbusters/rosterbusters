@@ -62,8 +62,8 @@ interface RosterPlanningHeaderProps {
   isGenerating?: boolean;
   isPublishing?: boolean;
   generationProgress?: number;
-  algorithmType?: "MILP" | "GA" | null;
-  onAlgorithmTypeChange?: (type: "MILP" | "GA" | null) => void;
+  algorithmType?: "MILP" | "GA" | "AB-RATIO" | null;
+  onAlgorithmTypeChange?: (type: "MILP" | "GA" | "AB-RATIO" | null) => void;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
@@ -110,6 +110,10 @@ export function RosterPlanningHeader({
 }: RosterPlanningHeaderProps) {
   // TODO: Hide algorithm controls for prod and staging once feature gating is ready.
   const showAlgorithmControls = true;
+  const normalizedGenerationProgress = Math.min(
+    100,
+    Math.max(0, Math.round(Number.isFinite(generationProgress) ? generationProgress : 0)),
+  );
   const today = moment().startOf("day");
   const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
   const sortedPeriods = useMemo(
@@ -503,21 +507,28 @@ export function RosterPlanningHeader({
         {/* Algorithm Generation Buttons */}
         {showAlgorithmControls && (
           <>
+            {isGenerating && (
+              <Flex direction="column" align="center" gap={2} w="full">
+                <Box w="250px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
+                  <Box
+                    h="full"
+                    bg="#4B8798"
+                    borderRadius="full"
+                    style={{
+                      width: `${normalizedGenerationProgress}%`,
+                      transition: "width 0.4s ease",
+                    }}
+                  />
+                </Box>
+                <Text fontSize="sm" color="#4A4A4A">
+                  {normalizedGenerationProgress}% complete
+                </Text>
+              </Flex>
+            )}
             {!isAlgorithmGenerated ? (
               // Generate + Mock Data row
               <Flex direction="column" align="center" gap={2} w="full">
-                {/* Progress bar — visible only while generating */}
-                {isGenerating && (
-                  <Box w="250px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
-                    <Box
-                      h="full"
-                      bg="#4B8798"
-                      borderRadius="full"
-                      style={{ width: `${generationProgress}%`, transition: "width 0.4s ease" }}
-                    />
-                  </Box>
-                )}
-              <HStack gap={4} flexWrap="wrap" justify="center">
+                <HStack gap={4} flexWrap="wrap" justify="center">
                 {/* Algorithm type toggle */}
                 <HStack
                   gap={0}
@@ -567,6 +578,20 @@ export function RosterPlanningHeader({
                   >
                     CP-SAT
                   </Button>
+                  <Button
+                    size="sm"
+                    variant={"outlinegrey" as any}
+                    fontWeight="normal"
+                    onClick={() => onAlgorithmTypeChange?.("AB-RATIO")}
+                    bg={algorithmType === "AB-RATIO" ? "#4B8798" : "transparent"}
+                    color={algorithmType === "AB-RATIO" ? "white" : "foreground"}
+                    _hover={{ bg: algorithmType === "AB-RATIO" ? "#4B8798" : "#F8FAFC" }}
+                    borderRadius={0}
+                    px={4}
+                    disabled={isGenerating}
+                  >
+                    AB-RATIO
+                  </Button>
                 </HStack>
 
                 <Button
@@ -586,7 +611,7 @@ export function RosterPlanningHeader({
                   {isGenerating ? (
                     <HStack gap={2}>
                       <Spinner size="sm" />
-                      <Text>Generating… {generationProgress}%</Text>
+                      <Text>Generating… {normalizedGenerationProgress}%</Text>
                     </HStack>
                   ) : (
                     <HStack gap={2}>
