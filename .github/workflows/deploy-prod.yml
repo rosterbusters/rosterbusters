@@ -271,16 +271,16 @@ jobs:
           curl -i -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ || true
 
           echo "=== PUBLIC FRONTEND CHECK ==="
-          curl -i https://$DOMAIN/ || true
+          curl -k -i https://$DOMAIN/ || true
 
           echo "=== PUBLIC API CHECK ==="
-          curl -i https://api.$DOMAIN/api/v1/utils/health-check/ || true
+          curl -k -i https://api.$DOMAIN/api/v1/utils/health-check/ || true
 
           echo "=== ENFORCED HEALTH CHECKS ==="
           curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
           curl -fSs -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ >/dev/null
-          curl -fSs https://$DOMAIN/ >/dev/null
-          curl -fSs https://api.$DOMAIN/api/v1/utils/health-check/ >/dev/null
+          curl -kfSs https://$DOMAIN/ >/dev/null
+          curl -kfSs https://api.$DOMAIN/api/v1/utils/health-check/ >/dev/null
 
           echo "Production deploy checks passed."
 
