@@ -175,7 +175,7 @@ function RosterPlanningPage() {
   const [generatedAlgorithmMethod, setGeneratedAlgorithmMethod] = useState<
     string | null
   >(null);
-  const [algorithmType, setAlgorithmType] = useState<"MILP" | "GA" | "AB-RATIO" | null>(null);
+  const [algorithmType, setAlgorithmType] = useState<"MILP" | "GA" | "AB-RATIO" | "V2" | null>(null);
   const [isSeedingRequests, setIsSeedingRequests] = useState(false);
 
   // Staffing guidelines — initialised from ward data, editable via the summary table
