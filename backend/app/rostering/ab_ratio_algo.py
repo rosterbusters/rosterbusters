@@ -41,7 +41,7 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
     "daily_ratio_night": 5_000,
-    "rn_night": 2_000,
+    "rn_night": 6_000,
     "rn_night_over": 800,
     "class_balance_day": 1_200,
     "class_balance_shift": 700,
@@ -231,6 +231,9 @@ def parse_ab_ratio_inputs(
     )
     ratio_weights["soft_request"] = _coerce_int(
         cfg.get("soft_request_weight"), ratio_weights["soft_request"]
+    )
+    ratio_weights["rn_night"] = _coerce_int(
+        cfg.get("rn_night_weight"), ratio_weights["rn_night"]
     )
     ratio_weights["rn_night_over"] = _coerce_int(
         cfg.get("rn_night_over_weight"), ratio_weights["rn_night_over"]

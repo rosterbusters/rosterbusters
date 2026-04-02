@@ -775,10 +775,25 @@ def generate_roster_async(
         notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
     )
 
+    logger.info(
+        "Queueing async roster generation ward_id=%s period_id=%s algorithm=%s user_id=%s",
+        request_data.ward_id,
+        request_data.period_id,
+        request_data.algorithm,
+        getattr(current_user, "userid", None),
+    )
+
     task = _get_celery_app().send_task(
         "tasks.generate_roster",
         args=[request_data.ward_id, request_data.period_id],
         kwargs={"algorithm": request_data.algorithm},
+    )
+    logger.info(
+        "Queued async roster generation task_id=%s ward_id=%s period_id=%s algorithm=%s",
+        task.id,
+        request_data.ward_id,
+        request_data.period_id,
+        request_data.algorithm,
     )
     return {"task_id": task.id, "status": "queued"}
 
@@ -828,6 +843,12 @@ def trigger_scheduled_generation(
 def get_task_status(task_id: str):
     """Poll the status of a queued roster generation task."""
     result = _get_celery_app().AsyncResult(task_id)
+    logger.info(
+        "Polled roster task status task_id=%s state=%s info=%s",
+        task_id,
+        result.state,
+        result.info,
+    )
 
     if result.state == "PENDING":
         return {"task_id": task_id, "status": "pending"}
@@ -838,6 +859,11 @@ def get_task_status(task_id: str):
     if result.state == "SUCCESS":
         return {"task_id": task_id, "status": "complete", **(result.result or {})}
     if result.state == "FAILURE":
+        logger.error(
+            "Roster task failed task_id=%s error=%s",
+            task_id,
+            result.info,
+        )
         return {"task_id": task_id, "status": "failed", "error": str(result.info)}
     return {"task_id": task_id, "status": result.state.lower()}
 

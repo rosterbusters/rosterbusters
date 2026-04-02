@@ -518,6 +518,14 @@ function RosterPlanningPage() {
     const startedAt = Date.now();
     try {
       setGenerationProgress(0);
+      console.info("[Algorithm Debug] Starting roster generation", {
+        wardId: selectedWard.wardId,
+        wardName: selectedWard.wardName,
+        periodId: selectedPeriod.periodId,
+        periodName: selectedPeriod.name,
+        startDate: currentStartDate.toISOString(),
+        algorithmType: algorithmType ?? "AUTO",
+      });
       const result = await generateAlgorithmRoster.mutateAsync({
         wardId: selectedWard.wardId, // CamelCase to match hook params
         periodId: selectedPeriod.periodId,
@@ -540,7 +548,11 @@ function RosterPlanningPage() {
     } catch (error) {
       console.error("Failed:", error);
       setGenerationProgress(0);
-      showErrorToast("Failed to generate roster.");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate roster.";
+      showErrorToast(message);
     }
   }, [
     selectedWard,
@@ -915,7 +927,11 @@ function RosterPlanningPage() {
       if (resumeCancelledRef.current) return;
       console.error("Failed:", error);
       setIsResumingAlgorithm(false);
-      showErrorToast("Failed to generate roster.");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate roster.";
+      showErrorToast(message);
     });
   }, [
     selectedWard,

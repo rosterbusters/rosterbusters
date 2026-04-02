@@ -451,6 +451,36 @@ export type AlgorithmTaskStorage = {
   startedAt: string;
 };
 
+type AlgorithmDebugContext = {
+  wardId?: number;
+  periodId?: number;
+  algorithm?: "MILP" | "GA" | "AB-RATIO" | "V2";
+  taskId?: string;
+  attempt?: number;
+};
+
+function logAlgorithmDebug(
+  message: string,
+  context: AlgorithmDebugContext = {},
+  extra?: unknown,
+) {
+  if (extra === undefined) {
+    console.info(`[Algorithm Debug] ${message}`, context);
+    return;
+  }
+  console.info(`[Algorithm Debug] ${message}`, context, extra);
+}
+
+function describeAlgorithmError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "Unknown algorithm error";
+}
+
 export function getAlgorithmTaskStorageKey(wardId: number, periodId: number) {
   return `${ALGO_TASK_STORAGE_PREFIX}:${wardId}:${periodId}`;
 }
@@ -493,14 +523,25 @@ export function clearAlgorithmTask(wardId: number, periodId: number) {
 async function pollAlgorithmTask(
   taskId: string,
   startDate: Date,
+  debugContext: AlgorithmDebugContext = {},
   onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void,
 ) {
   let algorithmResult: Extract<AlgorithmTaskStatus, { status: "complete" }> | null = null;
+  let lastStatus: string | null = null;
 
   for (let attempt = 0; attempt < 360000; attempt += 1) {
     const taskStatus = await fetchWithAuth(
       `/api/v1/roster/task/${taskId}/status`,
     ) as AlgorithmTaskStatus;
+
+    if (taskStatus.status !== lastStatus || taskStatus.status === "failed") {
+      lastStatus = taskStatus.status;
+      logAlgorithmDebug(
+        "Polled task status",
+        { ...debugContext, taskId, attempt: attempt + 1 },
+        taskStatus,
+      );
+    }
 
     if (taskStatus.status === "in_progress") {
       onProgress?.(
@@ -517,7 +558,11 @@ async function pollAlgorithmTask(
       algorithmResult = taskStatus;
       break;
     } else if (taskStatus.status === "failed") {
-      throw new Error(taskStatus.error || "Algorithm generation failed.");
+      throw new Error(
+        taskStatus.error
+          ? `Algorithm task ${taskId} failed: ${taskStatus.error}`
+          : `Algorithm task ${taskId} failed.`,
+      );
     }
 
     await sleep(1000);
@@ -603,6 +648,11 @@ export function useGenerateAlgorithmRoster() {
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
       const startedAt = new Date();
+      logAlgorithmDebug("Queueing algorithm task", {
+        wardId,
+        periodId,
+        algorithm,
+      });
       const queuedTask: { task_id: string; status: string } = await fetchWithAuth(
         "/api/v1/roster/generate-algorithm-async",
         {
@@ -610,15 +660,32 @@ export function useGenerateAlgorithmRoster() {
           body: JSON.stringify({ ward_id: wardId, period_id: periodId, algorithm: algorithm ?? null }),
         },
       );
+      logAlgorithmDebug(
+        "Algorithm task queued",
+        { wardId, periodId, algorithm, taskId: queuedTask.task_id },
+        queuedTask,
+      );
       saveAlgorithmTask(wardId, periodId, queuedTask.task_id, startedAt);
       onProgress?.(5, 0, 0, 0);
 
       try {
-        return await pollAlgorithmTask(queuedTask.task_id, startDate, onProgress);
+        return await pollAlgorithmTask(
+          queuedTask.task_id,
+          startDate,
+          { wardId, periodId, algorithm, taskId: queuedTask.task_id },
+          onProgress,
+        );
       } catch (error) {
         if ((error as { code?: string }).code !== "ALGO_TIMEOUT") {
           clearAlgorithmTask(wardId, periodId);
         }
+        console.error("[Algorithm Debug] Generation request failed", {
+          wardId,
+          periodId,
+          algorithm,
+          taskId: queuedTask.task_id,
+          error: describeAlgorithmError(error),
+        });
         throw error;
       }
     },
@@ -662,11 +729,27 @@ export function useResumeAlgorithmTask() {
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
       try {
-        return await pollAlgorithmTask(taskId, startDate, onProgress);
+        logAlgorithmDebug("Resuming algorithm task", {
+          wardId,
+          periodId,
+          taskId,
+        });
+        return await pollAlgorithmTask(
+          taskId,
+          startDate,
+          { wardId, periodId, taskId },
+          onProgress,
+        );
       } catch (error) {
         if ((error as { code?: string }).code !== "ALGO_TIMEOUT") {
           clearAlgorithmTask(wardId, periodId);
         }
+        console.error("[Algorithm Debug] Resume request failed", {
+          wardId,
+          periodId,
+          taskId,
+          error: describeAlgorithmError(error),
+        });
         throw error;
       }
     },
