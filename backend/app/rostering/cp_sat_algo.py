@@ -56,7 +56,7 @@ W_DAYOFF_OVER  =   144_000   # 1 more than required days-off (×0.9 like GA)
 W_HOUR_UNDER   =    0   # 1 unit (0.1 h) below per-nurse minimum
 W_HOUR_OVER    =    0   # 1 unit (0.1 h) above per-nurse maximum
 W_NDO          = 1_500_000   # missing post-night day-off on day 0
-W_NIGHT_LOW    =    80_000   # fewer than 1 night per week (×0.8 like GA)
+W_NIGHT_LOW    =   400_000   # fewer than 2 nights across the roster; higher priority than RN daily night target
 W_NIGHT_HIGH   = 1_300_000   # more than 2 nights per week
 W_APPROVED_REQ =    35_000   # unmet approved (hard) shift request
 W_PENDING_REQ  =       550   # unmet pending (soft) shift request
@@ -75,7 +75,7 @@ W_WARD_AB_BAL    = 200_000   # |rank_A_count - rank_B_count| > 1 in a shift
 W_WARD_C_ORDER   = 150_000   # rank-C nurse violating ordered-slot rule
 W_SINGLE_NIGHT   = 400_000   # isolated night block (no adjacent night)
 W_NIGHT_A_OVER_B = 500_000   # per-nurse excess of Rank A over Rank B on any night shift
-W_NIGHT_A_TARGET = 250_000   # per-day excess of Rank A night nurses above the preferred target of 2
+W_NIGHT_A_TARGET =  25_000   # per-day excess of Rank A night nurses above the preferred target of 2
 
 # increase for very large wards.
 _TIME_LIMIT_S = 100.0

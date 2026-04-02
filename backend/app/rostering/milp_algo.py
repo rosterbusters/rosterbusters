@@ -651,6 +651,8 @@ def _solve(
         # Prefer keeping RN night coverage at or below 2, but allow overflow
         # when required to satisfy the per-nurse night minimum.
         "rn_night_target": 150.0,
+        # Each nurse should hit at least 2 NIGHT assignments across the roster.
+        "min_night": 600.0,
     }
     if weights is None:
         weights = cfg.get("weights")
@@ -689,6 +691,7 @@ def _solve(
         setattr(m, f"weekend_dev_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
         setattr(m, f"rest_violation_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=Binary))
         setattr(m, f"pref_violate_{grp}",   Var(getattr(m, f"N_{grp.upper()}"), m.D, within=Binary))
+        setattr(m, f"min_night_shortfall_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
         setattr(m, f"eq_under_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
         setattr(m, f"eq_over_{grp}",  Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
 
@@ -925,7 +928,7 @@ def _solve(
                 m.cons.add(cov_map[(d, "N")] <= int(max_night_per_day))
 
     # ---- Shift-balance deviations (soft) ----
-    def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, class_cfg, class_name):
+    def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, min_night_shortfall, class_cfg, class_name):
         st = class_cfg.get("shift_target", {
             "A": round(sum(_req_for_day(class_name, class_cfg, d, "A") for d in DAYS) / max(len(class_nurses), 1)),
             "P": round(sum(_req_for_day(class_name, class_cfg, d, "P") for d in DAYS) / max(len(class_nurses), 1)),
@@ -939,10 +942,11 @@ def _solve(
             m.cons.add(tA_ - tA <= dev_A[n]); m.cons.add(-(tA_ - tA) <= dev_A[n])
             m.cons.add(tP_ - tP <= dev_P[n]); m.cons.add(-(tP_ - tP) <= dev_P[n])
             m.cons.add(tN_ - tN <= dev_N[n]); m.cons.add(-(tN_ - tN) <= dev_N[n])
+            m.cons.add(2 - tN_ <= min_night_shortfall[n])
 
-    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  rn_cfg,  "RN")
-    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  en_cfg,  "EN")
-    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, hca_cfg, "HCA")
+    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  m.min_night_shortfall_rn,  rn_cfg,  "RN")
+    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  m.min_night_shortfall_en,  en_cfg,  "EN")
+    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, m.min_night_shortfall_hca, hca_cfg, "HCA")
 
     # ---- Daily smoothing + A–P balance (soft) ----
     dt_rn  = rn_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "RN", s) for s in SHIFTS})
@@ -1090,6 +1094,11 @@ def _solve(
                 sum(m.eq_under_rn[n] + m.eq_over_rn[n] for n in rn_nurses)
               + sum(m.eq_under_en[n] + m.eq_over_en[n] for n in en_nurses)
               + sum(m.eq_under_hca[n] + m.eq_over_hca[n] for n in hca_nurses)
+            )
+          + lw["min_night"] * (
+                sum(m.min_night_shortfall_rn[n] for n in rn_nurses)
+              + sum(m.min_night_shortfall_en[n] for n in en_nurses)
+              + sum(m.min_night_shortfall_hca[n] for n in hca_nurses)
             )
           + lw["balance"]   * (
                 sum(m.dev_rn_AP[d] + m.dev_rn_AN[d] + m.dev_rn_PN[d] for d in DAYS)
