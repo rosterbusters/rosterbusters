@@ -662,9 +662,11 @@ def run_ga_pipeline(
         # Rank A/B nurses in excess of the daily maximum (i.e. all AB slots
         # are full) are freely assigned to AM or PM (feedback item 4).
 
-        # Ward-standard shift targets (min, max) for A+B combined
+        # Ward-standard shift targets (min, max) for A+B combined.
+        # NIGHT is now fixed at 4 A+B nurses; the separate RN night target/cap
+        # in section 4c still applies on top of this.
         WARD_AB_MIN = {AM: 6, PM: 6, NIGHT: 4}
-        WARD_AB_MAX = {AM: 7, PM: 6, NIGHT: 5}
+        WARD_AB_MAX = {AM: 7, PM: 6, NIGHT: 4}
 
         rn_night_min = int((((milp_config or {}).get("RN") or {}).get("normal_min") or {}).get("N", 0) or 0)
         hca_night_min = int((((milp_config or {}).get("HCA") or {}).get("normal_min") or {}).get("N", 0) or 0)

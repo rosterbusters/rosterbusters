@@ -646,6 +646,8 @@ def _solve(
         "eq": 0.0,
         "cov": 0.0,
         "ward_day_balance": 0.0,
+        # Prefer hitting the ward-wide night target when one is provided.
+        "ward_night_balance": 30.0,
     }
     if weights is None:
         weights = cfg.get("weights")
@@ -702,6 +704,7 @@ def _solve(
     m.dev_hca_P_ge_N = Var(m.D, within=NonNegativeReals)
     m.dev_total_A = Var(m.D, within=NonNegativeReals)
     m.dev_total_P = Var(m.D, within=NonNegativeReals)
+    m.dev_total_N = Var(m.D, within=NonNegativeReals)
 
     m.cons = ConstraintList()
 
@@ -941,6 +944,15 @@ def _solve(
     dt_hca = hca_cfg.get("day_target", {s: _average_daily_requirement(shift_requirements, "HCA", s) for s in SHIFTS})
     total_A_target = _average_daily_total_requirement(shift_requirements, "A")
     total_P_target = _average_daily_total_requirement(shift_requirements, "P")
+    raw_total_N_target = cfg.get("night_total_target")
+    if raw_total_N_target in (None, ""):
+        raw_total_N_target = cfg.get("total_night_target")
+    if raw_total_N_target in (None, ""):
+        total_N_target = _average_daily_total_requirement(shift_requirements, "N")
+        if total_N_target <= 0:
+            total_N_target = int(total_min_cfg.get("N", 0) or 0)
+    else:
+        total_N_target = int(raw_total_N_target or 0)
 
     for d in DAYS:
         for s in SHIFTS:
@@ -970,10 +982,13 @@ def _solve(
 
         total_A = _cov_rn[(d, "A")] + _cov_en[(d, "A")] + _cov_hca[(d, "A")]
         total_P = _cov_rn[(d, "P")] + _cov_en[(d, "P")] + _cov_hca[(d, "P")]
+        total_N = _cov_rn[(d, "N")] + _cov_en[(d, "N")] + _cov_hca[(d, "N")]
         m.cons.add(total_A - total_A_target <= m.dev_total_A[d])
         m.cons.add(-(total_A - total_A_target) <= m.dev_total_A[d])
         m.cons.add(total_P - total_P_target <= m.dev_total_P[d])
         m.cons.add(-(total_P - total_P_target) <= m.dev_total_P[d])
+        m.cons.add(total_N - total_N_target <= m.dev_total_N[d])
+        m.cons.add(-(total_N - total_N_target) <= m.dev_total_N[d])
 
         A_h = _cov_hca[(d, "A")]
         P_h = _cov_hca[(d, "P")]
@@ -1087,6 +1102,7 @@ def _solve(
                 sum(m.dev_total_A[d] for d in DAYS)
               + sum(m.dev_total_P[d] for d in DAYS)
             )
+          + lw["ward_night_balance"] * sum(m.dev_total_N[d] for d in DAYS)
           + lw["cov"]       * (
                 sum(m.cov_slack_rn[d, s] for d in DAYS for s in SHIFTS)
               + sum(m.cov_slack_en[d, s] for d in DAYS for s in SHIFTS)
