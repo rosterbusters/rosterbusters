@@ -411,10 +411,10 @@ def run_ab_ratio_pipeline(
         model.Add(total_nights >= 2)
         model.Add(total_nights <= 4)
 
-        total_non_working = sum(
-            x[nurse_idx, day_idx, OFF] + x[nurse_idx, day_idx, AL] for day_idx in range(num_days)
-        )
+        total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
+        total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
         model.Add(total_non_working >= 4)
+        model.Add(total_do <= 4)
 
         for day_idx in range(num_days - 2):
             model.Add(
