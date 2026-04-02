@@ -38,6 +38,9 @@ _DEFAULT_WEIGHTS = {
     "ratio_am": 8_000,
     "ratio_pm": 8_000,
     "ratio_night": 14_000,
+    "daily_ratio_am": 3_000,
+    "daily_ratio_pm": 3_000,
+    "daily_ratio_night": 5_000,
     "rn_night": 2_000,
     "soft_request": 200,
 }
@@ -94,6 +97,14 @@ def _build_ab_targets(
         for shift_code in (AM, PM, NIGHT)
     }
     return roster_totals, ratios
+
+
+def _distribute_targets(total: int, num_days: int) -> list[int]:
+    if num_days <= 0:
+        return []
+    base = total // num_days
+    remainder = total % num_days
+    return [base + (1 if day_idx < remainder else 0) for day_idx in range(num_days)]
 
 
 def _normalize_ab_shift_ratio(config_ratio) -> dict[int, int]:
@@ -226,6 +237,10 @@ def parse_ab_ratio_inputs(
         expected_ab_work_slots += max(0, num_days - required_nonworking_days)
 
     ab_target_totals, ab_target_ratios = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
+    ab_daily_targets = {
+        shift_code: _distribute_targets(ab_target_totals[shift_code], num_days)
+        for shift_code in (AM, PM, NIGHT)
+    }
 
     raw_rn_target = cfg.get("rn_night_min_per_day")
     if isinstance(raw_rn_target, (list, tuple)):
@@ -276,6 +291,7 @@ def parse_ab_ratio_inputs(
         "expected_ab_work_slots": expected_ab_work_slots,
         "ab_target_totals": ab_target_totals,
         "ab_target_ratios": ab_target_ratios,
+        "ab_daily_targets": ab_daily_targets,
         "rn_night_targets": rn_night_targets,
         "weights": ratio_weights,
     }
@@ -390,6 +406,7 @@ def run_ab_ratio_pipeline(
     soft_assignments = parsed["soft_assignments"]
     post_night_off = parsed["post_night_off"]
     ab_required_nonworking_days = parsed["ab_required_nonworking_days"]
+    ab_daily_targets = parsed["ab_daily_targets"]
     weights = parsed["weights"]
 
     x = {}
@@ -491,6 +508,27 @@ def run_ab_ratio_pipeline(
         dev = model.NewIntVar(0, len(working_ab) * max(num_days, 1), f"ab_dev_{shift_code}")
         model.AddAbsEquality(dev, diff)
         add_penalty(dev, weights[weight_key])
+
+    for shift_code, weight_key in (
+        (AM, "daily_ratio_am"),
+        (PM, "daily_ratio_pm"),
+        (NIGHT, "daily_ratio_night"),
+    ):
+        for day_idx in range(num_days):
+            actual_day_total = model.NewIntVar(0, len(working_ab), f"ab_day_actual_{shift_code}_{day_idx}")
+            model.Add(
+                actual_day_total
+                == sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_ab)
+            )
+            day_diff = model.NewIntVar(
+                -len(working_ab),
+                len(working_ab),
+                f"ab_day_diff_{shift_code}_{day_idx}",
+            )
+            model.Add(day_diff == actual_day_total - ab_daily_targets[shift_code][day_idx])
+            day_dev = model.NewIntVar(0, len(working_ab), f"ab_day_dev_{shift_code}_{day_idx}")
+            model.AddAbsEquality(day_dev, day_diff)
+            add_penalty(day_dev, weights[weight_key])
 
     for day_idx, target in enumerate(parsed["rn_night_targets"]):
         if target <= 0 or not rank_a:
