@@ -43,27 +43,28 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
     "daily_ratio_night": 4_000,
-    "rn_night": 8_000,
+    "rn_night": 10_000,
     "rn_night_over": 18_000,
-    "rank_b_night": 8_000,
+    "rank_b_night": 10_000,
     "rank_b_night_over": 18_000,
     "rank_c_night_over": 14_000,
     "class_balance_day": 1_200,
     "class_balance_shift": 700,
     "daily_total_shift_balance": 8_000,
+    "daily_total_shift_balance_c": 3_500,
     "c_ratio_am": 4_000,
-    "c_ratio_pm": 3_000,
-    "c_ratio_night": 3_000,
+    "c_ratio_pm": 4_200,
+    "c_ratio_night": 4_200,
     "c_daily_ratio_am": 1_800,
-    "c_daily_ratio_pm": 2_000,
-    "c_daily_ratio_night": 2_000,
+    "c_daily_ratio_pm": 2_600,
+    "c_daily_ratio_night": 2_600,
     "soft_request": 200,
 }
 _DEFAULT_TIME_LIMIT_S = 60.0
 _DEFAULT_AB_SHIFT_RATIO = {
-    AM: 3.2,
+    AM: 3.1,
     PM: 3,
-    NIGHT: 1.5,
+    NIGHT: 2,
 }
 _DEFAULT_C_SHIFT_RATIO = {
     AM: 2,
@@ -356,6 +357,10 @@ def parse_ab_ratio_inputs(
     ratio_weights["daily_total_shift_balance"] = _coerce_int(
         cfg.get("daily_total_shift_balance_weight"),
         ratio_weights["daily_total_shift_balance"],
+    )
+    ratio_weights["daily_total_shift_balance_c"] = _coerce_int(
+        cfg.get("daily_total_shift_balance_c_weight"),
+        ratio_weights["daily_total_shift_balance_c"],
     )
     ratio_weights["c_ratio_am"] = _coerce_int(
         cfg.get("c_ratio_am_weight"),
@@ -880,23 +885,48 @@ def run_ab_ratio_pipeline(
     if daily_total_shift_balance_enabled:
         for day_idx in range(num_days):
             shift_totals = [
-                model.NewIntVar(0, len(working_nurses), f"day_total_{shift_code}_{day_idx}")
+                model.NewIntVar(0, len(working_ab), f"day_total_ab_{shift_code}_{day_idx}")
                 for shift_code in WORK_SHIFTS
             ]
             for total_var, shift_code in zip(shift_totals, WORK_SHIFTS):
                 model.Add(
                     total_var
-                    == sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_nurses)
+                    == sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_ab)
                 )
-            day_max = model.NewIntVar(0, len(working_nurses), f"day_total_max_{day_idx}")
-            day_min = model.NewIntVar(0, len(working_nurses), f"day_total_min_{day_idx}")
+            day_max = model.NewIntVar(0, len(working_ab), f"day_total_ab_max_{day_idx}")
+            day_min = model.NewIntVar(0, len(working_ab), f"day_total_ab_min_{day_idx}")
             model.AddMaxEquality(day_max, shift_totals)
             model.AddMinEquality(day_min, shift_totals)
-            day_spread = model.NewIntVar(0, len(working_nurses), f"day_total_spread_{day_idx}")
+            day_spread = model.NewIntVar(0, len(working_ab), f"day_total_ab_spread_{day_idx}")
             model.Add(day_spread == day_max - day_min)
-            gap_penalty = model.NewIntVar(0, len(working_nurses), f"day_total_gap_penalty_{day_idx}")
+            gap_penalty = model.NewIntVar(0, len(working_ab), f"day_total_ab_gap_penalty_{day_idx}")
             model.Add(gap_penalty >= day_spread - daily_total_shift_gap_target)
             add_penalty(gap_penalty, weights["daily_total_shift_balance"])
+
+        if working_rank_c:
+            for day_idx in range(num_days):
+                c_shift_totals = [
+                    model.NewIntVar(0, len(working_rank_c), f"day_total_c_{shift_code}_{day_idx}")
+                    for shift_code in WORK_SHIFTS
+                ]
+                for total_var, shift_code in zip(c_shift_totals, WORK_SHIFTS):
+                    model.Add(
+                        total_var
+                        == sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_rank_c)
+                    )
+                c_day_max = model.NewIntVar(0, len(working_rank_c), f"day_total_c_max_{day_idx}")
+                c_day_min = model.NewIntVar(0, len(working_rank_c), f"day_total_c_min_{day_idx}")
+                model.AddMaxEquality(c_day_max, c_shift_totals)
+                model.AddMinEquality(c_day_min, c_shift_totals)
+                c_day_spread = model.NewIntVar(0, len(working_rank_c), f"day_total_c_spread_{day_idx}")
+                model.Add(c_day_spread == c_day_max - c_day_min)
+                c_gap_penalty = model.NewIntVar(
+                    0,
+                    len(working_rank_c),
+                    f"day_total_c_gap_penalty_{day_idx}",
+                )
+                model.Add(c_gap_penalty >= c_day_spread - daily_total_shift_gap_target)
+                add_penalty(c_gap_penalty, weights["daily_total_shift_balance_c"])
 
     for day_idx, target in enumerate(parsed["rn_night_targets"]):
         if target <= 0 or not rank_a:
