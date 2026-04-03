@@ -39,10 +39,10 @@ _DEFAULT_WEIGHTS = {
     "coverage_c_night": 300_000,
     "ratio_am": 8_000,
     "ratio_pm": 8_000,
-    "ratio_night": 6_000,
+    "ratio_night": 9_000,
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
-    "daily_ratio_night": 3_000,
+    "daily_ratio_night": 4_000,
     "rn_night": 8_000,
     "rn_night_over": 18_000,
     "rank_b_night": 8_000,
@@ -50,20 +50,20 @@ _DEFAULT_WEIGHTS = {
     "rank_c_night_over": 14_000,
     "class_balance_day": 1_200,
     "class_balance_shift": 700,
-    "daily_total_shift_balance": 4_000,
+    "daily_total_shift_balance": 8_000,
     "c_ratio_am": 4_000,
     "c_ratio_pm": 3_000,
     "c_ratio_night": 3_000,
     "c_daily_ratio_am": 1_800,
-    "c_daily_ratio_pm": 1_400,
-    "c_daily_ratio_night": 1_400,
+    "c_daily_ratio_pm": 2_000,
+    "c_daily_ratio_night": 2_000,
     "soft_request": 200,
 }
 _DEFAULT_TIME_LIMIT_S = 60.0
 _DEFAULT_AB_SHIFT_RATIO = {
-    AM: 3,
+    AM: 3.2,
     PM: 3,
-    NIGHT: 2,
+    NIGHT: 1.5,
 }
 _DEFAULT_C_SHIFT_RATIO = {
     AM: 2,
