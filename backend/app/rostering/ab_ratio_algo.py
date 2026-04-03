@@ -39,14 +39,15 @@ _DEFAULT_WEIGHTS = {
     "coverage_c_night": 300_000,
     "ratio_am": 8_000,
     "ratio_pm": 8_000,
-    "ratio_night": 14_000,
+    "ratio_night": 4_000,
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
-    "daily_ratio_night": 5_000,
+    "daily_ratio_night": 1_500,
     "rn_night": 8_000,
-    "rn_night_over": 800,
+    "rn_night_over": 18_000,
     "rank_b_night": 7_000,
-    "rank_b_night_over": 700,
+    "rank_b_night_over": 16_000,
+    "rank_c_night_over": 14_000,
     "class_balance_day": 1_200,
     "class_balance_shift": 700,
     "daily_total_shift_balance": 4_000,
@@ -145,6 +146,32 @@ def _weekly_do_target(week_len: int) -> int:
     if week_len <= 0:
         return 0
     return max(1, round(2 * week_len / 7))
+
+
+def _resolve_daily_targets(raw_target, default_targets: list[int]) -> list[int]:
+    num_days = len(default_targets)
+    if isinstance(raw_target, (list, tuple)):
+        return [
+            _coerce_int(raw_target[day_idx], default_targets[day_idx])
+            if day_idx < len(raw_target)
+            else default_targets[day_idx]
+            for day_idx in range(num_days)
+        ]
+    if isinstance(raw_target, dict):
+        return [
+            _coerce_int(
+                raw_target.get(
+                    day_idx,
+                    raw_target.get(str(day_idx), default_targets[day_idx]),
+                ),
+                default_targets[day_idx],
+            )
+            for day_idx in range(num_days)
+        ]
+    if raw_target is None:
+        return list(default_targets)
+    default_target = _coerce_int(raw_target, 0)
+    return [default_target for _ in range(num_days)]
 
 
 def _normalize_ab_shift_ratio(config_ratio) -> dict[int, int]:
@@ -312,6 +339,10 @@ def parse_ab_ratio_inputs(
         cfg.get("rank_b_night_over_weight"),
         ratio_weights["rank_b_night_over"],
     )
+    ratio_weights["rank_c_night_over"] = _coerce_int(
+        cfg.get("rank_c_night_over_weight"),
+        ratio_weights["rank_c_night_over"],
+    )
     ratio_weights["daily_total_shift_balance"] = _coerce_int(
         cfg.get("daily_total_shift_balance_weight"),
         ratio_weights["daily_total_shift_balance"],
@@ -354,30 +385,40 @@ def parse_ab_ratio_inputs(
         0,
     )
 
+    def _build_weekly_do_targets_for_group(group_nurses: list[int]) -> tuple[dict[int, list[int]], int]:
+        weekly_targets_by_nurse: dict[int, list[int]] = {}
+        expected_work_slots = 0
+
+        for nurse_idx in group_nurses:
+            weekly_targets = []
+            total_do_target = 0
+            for week_start in range(0, num_days, 7):
+                week_end = min(week_start + 7, num_days)
+                fixed_off_days = {
+                    day_idx
+                    for day_idx in range(week_start, week_end)
+                    if hard_assignments[nurse_idx].get(day_idx) == OFF
+                }
+                if (
+                    nurse_idx in post_night_off
+                    and week_start <= 0 < week_end
+                    and 0 not in al_day_req[nurse_idx]
+                    and hard_assignments[nurse_idx].get(0) != OFF
+                ):
+                    fixed_off_days.add(0)
+                target_do = max(_weekly_do_target(week_end - week_start), len(fixed_off_days))
+                weekly_targets.append(target_do)
+                total_do_target += target_do
+
+            weekly_targets_by_nurse[nurse_idx] = weekly_targets
+            expected_work_slots += max(0, num_days - len(al_day_req[nurse_idx]) - total_do_target)
+
+        return weekly_targets_by_nurse, expected_work_slots
+
     ab_weekly_do_targets: dict[int, list[int]] = {}
     expected_ab_work_slots = 0
-    for nurse_idx in working_ab:
-        weekly_targets = []
-        total_do_target = 0
-        for week_start in range(0, num_days, 7):
-            week_end = min(week_start + 7, num_days)
-            fixed_off_days = {
-                day_idx
-                for day_idx in range(week_start, week_end)
-                if hard_assignments[nurse_idx].get(day_idx) == OFF
-            }
-            if (
-                nurse_idx in post_night_off
-                and week_start <= 0 < week_end
-                and 0 not in al_day_req[nurse_idx]
-                and hard_assignments[nurse_idx].get(0) != OFF
-            ):
-                fixed_off_days.add(0)
-            target_do = max(_weekly_do_target(week_end - week_start), len(fixed_off_days))
-            weekly_targets.append(target_do)
-            total_do_target += target_do
-        ab_weekly_do_targets[nurse_idx] = weekly_targets
-        expected_ab_work_slots += max(0, num_days - len(al_day_req[nurse_idx]) - total_do_target)
+    if working_ab:
+        ab_weekly_do_targets, expected_ab_work_slots = _build_weekly_do_targets_for_group(working_ab)
 
     ab_target_totals, ab_target_ratios = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
     ab_daily_targets = {
@@ -385,10 +426,10 @@ def parse_ab_ratio_inputs(
         for shift_code in (AM, PM, NIGHT)
     }
 
+    c_weekly_do_targets: dict[int, list[int]] = {}
     expected_c_work_slots = 0
-    for nurse_idx in working_rank_c:
-        hard_off_days = sum(1 for shift_code in hard_assignments[nurse_idx].values() if shift_code == OFF)
-        expected_c_work_slots += max(0, num_days - len(al_day_req[nurse_idx]) - hard_off_days)
+    if working_rank_c:
+        c_weekly_do_targets, expected_c_work_slots = _build_weekly_do_targets_for_group(working_rank_c)
     c_target_totals, c_target_ratios = _build_ab_targets(expected_c_work_slots, c_shift_ratio)
     c_daily_targets = {
         shift_code: _distribute_targets(c_target_totals[shift_code], num_days)
@@ -397,29 +438,7 @@ def parse_ab_ratio_inputs(
 
     default_rn_night_targets = [demand[day_idx][NIGHT]["A"] for day_idx in range(num_days)]
     raw_rn_target = cfg.get("rn_night_min_per_day")
-    if isinstance(raw_rn_target, (list, tuple)):
-        rn_night_targets = [
-            _coerce_int(raw_rn_target[day_idx], default_rn_night_targets[day_idx])
-            if day_idx < len(raw_rn_target)
-            else default_rn_night_targets[day_idx]
-            for day_idx in range(num_days)
-        ]
-    elif isinstance(raw_rn_target, dict):
-        rn_night_targets = [
-            _coerce_int(
-                raw_rn_target.get(
-                    day_idx,
-                    raw_rn_target.get(str(day_idx), default_rn_night_targets[day_idx]),
-                ),
-                default_rn_night_targets[day_idx],
-            )
-            for day_idx in range(num_days)
-        ]
-    elif raw_rn_target is None:
-        rn_night_targets = list(default_rn_night_targets)
-    else:
-        default_target = _coerce_int(raw_rn_target, 0)
-        rn_night_targets = [default_target for _ in range(num_days)]
+    rn_night_targets = _resolve_daily_targets(raw_rn_target, default_rn_night_targets)
 
     raw_rn_allowed_excess = cfg.get("rn_night_allowed_excess", _DEFAULT_RN_NIGHT_ALLOWED_EXCESS)
     rn_night_allowed_excess = _coerce_int(
@@ -427,31 +446,24 @@ def parse_ab_ratio_inputs(
         _DEFAULT_RN_NIGHT_ALLOWED_EXCESS,
     )
 
+    default_rank_a_night_caps = [demand[day_idx][NIGHT]["A"] for day_idx in range(num_days)]
+    raw_rank_a_cap = cfg.get("rank_a_night_cap_per_day", cfg.get("a_night_cap_per_day"))
+    rank_a_night_caps = _resolve_daily_targets(raw_rank_a_cap, default_rank_a_night_caps)
+    raw_rank_a_allowed_excess = cfg.get(
+        "rank_a_night_allowed_excess",
+        cfg.get("a_night_allowed_excess", rn_night_allowed_excess),
+    )
+    rank_a_night_allowed_excess = _coerce_int(
+        raw_rank_a_allowed_excess,
+        rn_night_allowed_excess,
+    )
+
     default_rank_b_night_targets = [demand[day_idx][NIGHT]["B"] for day_idx in range(num_days)]
     raw_rank_b_target = cfg.get("rank_b_night_min_per_day", cfg.get("b_night_min_per_day"))
-    if isinstance(raw_rank_b_target, (list, tuple)):
-        rank_b_night_targets = [
-            _coerce_int(raw_rank_b_target[day_idx], default_rank_b_night_targets[day_idx])
-            if day_idx < len(raw_rank_b_target)
-            else default_rank_b_night_targets[day_idx]
-            for day_idx in range(num_days)
-        ]
-    elif isinstance(raw_rank_b_target, dict):
-        rank_b_night_targets = [
-            _coerce_int(
-                raw_rank_b_target.get(
-                    day_idx,
-                    raw_rank_b_target.get(str(day_idx), default_rank_b_night_targets[day_idx]),
-                ),
-                default_rank_b_night_targets[day_idx],
-            )
-            for day_idx in range(num_days)
-        ]
-    elif raw_rank_b_target is None:
-        rank_b_night_targets = list(default_rank_b_night_targets)
-    else:
-        default_target = _coerce_int(raw_rank_b_target, 0)
-        rank_b_night_targets = [default_target for _ in range(num_days)]
+    rank_b_night_targets = _resolve_daily_targets(raw_rank_b_target, default_rank_b_night_targets)
+    default_rank_b_night_caps = [demand[day_idx][NIGHT]["B"] for day_idx in range(num_days)]
+    raw_rank_b_cap = cfg.get("rank_b_night_cap_per_day", cfg.get("b_night_cap_per_day"))
+    rank_b_night_caps = _resolve_daily_targets(raw_rank_b_cap, default_rank_b_night_caps)
 
     raw_rank_b_allowed_excess = cfg.get(
         "rank_b_night_allowed_excess",
@@ -459,6 +471,18 @@ def parse_ab_ratio_inputs(
     )
     rank_b_night_allowed_excess = _coerce_int(
         raw_rank_b_allowed_excess,
+        _DEFAULT_RN_NIGHT_ALLOWED_EXCESS,
+    )
+
+    default_rank_c_night_caps = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
+    raw_rank_c_cap = cfg.get("rank_c_night_cap_per_day", cfg.get("c_night_cap_per_day"))
+    rank_c_night_caps = _resolve_daily_targets(raw_rank_c_cap, default_rank_c_night_caps)
+    raw_rank_c_allowed_excess = cfg.get(
+        "rank_c_night_allowed_excess",
+        cfg.get("c_night_allowed_excess", _DEFAULT_RN_NIGHT_ALLOWED_EXCESS),
+    )
+    rank_c_night_allowed_excess = _coerce_int(
+        raw_rank_c_allowed_excess,
         _DEFAULT_RN_NIGHT_ALLOWED_EXCESS,
     )
 
@@ -490,6 +514,7 @@ def parse_ab_ratio_inputs(
         "ab_target_totals": ab_target_totals,
         "ab_target_ratios": ab_target_ratios,
         "ab_daily_targets": ab_daily_targets,
+        "c_weekly_do_targets": c_weekly_do_targets,
         "c_shift_ratio": c_shift_ratio,
         "expected_c_work_slots": expected_c_work_slots,
         "c_target_totals": c_target_totals,
@@ -497,8 +522,13 @@ def parse_ab_ratio_inputs(
         "c_daily_targets": c_daily_targets,
         "rn_night_targets": rn_night_targets,
         "rn_night_allowed_excess": rn_night_allowed_excess,
+        "rank_a_night_caps": rank_a_night_caps,
+        "rank_a_night_allowed_excess": rank_a_night_allowed_excess,
         "rank_b_night_targets": rank_b_night_targets,
+        "rank_b_night_caps": rank_b_night_caps,
         "rank_b_night_allowed_excess": rank_b_night_allowed_excess,
+        "rank_c_night_caps": rank_c_night_caps,
+        "rank_c_night_allowed_excess": rank_c_night_allowed_excess,
         "daily_total_shift_balance_enabled": daily_total_shift_balance_enabled,
         "daily_total_shift_gap_target": daily_total_shift_gap_target,
         "weights": ratio_weights,
@@ -617,11 +647,14 @@ def run_ab_ratio_pipeline(
     working_rank_a = parsed["working_rank_a"]
     working_rank_b = parsed["working_rank_b"]
     ab_weekly_do_targets = parsed["ab_weekly_do_targets"]
+    c_weekly_do_targets = parsed["c_weekly_do_targets"]
     ab_daily_targets = parsed["ab_daily_targets"]
     c_target_totals = parsed["c_target_totals"]
     c_daily_targets = parsed["c_daily_targets"]
     rn_night_allowed_excess = parsed["rn_night_allowed_excess"]
+    rank_a_night_allowed_excess = parsed["rank_a_night_allowed_excess"]
     rank_b_night_allowed_excess = parsed["rank_b_night_allowed_excess"]
+    rank_c_night_allowed_excess = parsed["rank_c_night_allowed_excess"]
     daily_total_shift_balance_enabled = parsed["daily_total_shift_balance_enabled"]
     daily_total_shift_gap_target = parsed["daily_total_shift_gap_target"]
     weights = parsed["weights"]
@@ -693,6 +726,42 @@ def run_ab_ratio_pipeline(
             week_end = min(week_start + 7, num_days)
             week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
             model.Add(week_do == ab_weekly_do_targets[nurse_idx][week_index])
+
+        for day_idx in range(num_days - 2):
+            model.Add(
+                x[nurse_idx, day_idx, NIGHT]
+                + x[nurse_idx, day_idx + 1, NIGHT]
+                + x[nurse_idx, day_idx + 2, NIGHT]
+                <= 2
+            )
+
+        for day_idx in range(num_days - 1):
+            next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
+            model.Add(
+                x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
+            )
+
+        if num_days >= 2:
+            model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
+            model.Add(x[nurse_idx, num_days - 1, NIGHT] <= x[nurse_idx, num_days - 2, NIGHT])
+        for day_idx in range(1, num_days - 1):
+            model.Add(
+                x[nurse_idx, day_idx, NIGHT]
+                <= x[nurse_idx, day_idx - 1, NIGHT] + x[nurse_idx, day_idx + 1, NIGHT]
+            )
+
+    for nurse_idx in working_rank_c:
+        total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
+        model.Add(total_nights >= 2)
+        model.Add(total_nights <= 4)
+
+        total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
+        total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
+        model.Add(total_non_working >= 4)
+        for week_index, week_start in enumerate(range(0, num_days, 7)):
+            week_end = min(week_start + 7, num_days)
+            week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
+            model.Add(week_do == c_weekly_do_targets[nurse_idx][week_index])
 
         for day_idx in range(num_days - 2):
             model.Add(
@@ -820,7 +889,12 @@ def run_ab_ratio_pipeline(
         shortage = model.NewIntVar(0, target, f"rn_night_short_{day_idx}")
         model.Add(shortage >= target - count_a_night)
         add_penalty(shortage, weights["rn_night"])
-        allowed_max = target + max(rn_night_allowed_excess, 0)
+
+    for day_idx, cap in enumerate(parsed["rank_a_night_caps"]):
+        if not rank_a:
+            continue
+        count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
+        allowed_max = cap + max(rank_a_night_allowed_excess, 0)
         over_cap = model.NewIntVar(0, len(rank_a), f"rn_night_over_{day_idx}")
         model.Add(over_cap >= count_a_night - allowed_max)
         add_penalty(over_cap, weights["rn_night_over"])
@@ -832,10 +906,24 @@ def run_ab_ratio_pipeline(
         shortage = model.NewIntVar(0, target, f"rank_b_night_short_{day_idx}")
         model.Add(shortage >= target - count_b_night)
         add_penalty(shortage, weights["rank_b_night"])
-        allowed_max = target + max(rank_b_night_allowed_excess, 0)
+
+    for day_idx, cap in enumerate(parsed["rank_b_night_caps"]):
+        if not rank_b:
+            continue
+        count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
+        allowed_max = cap + max(rank_b_night_allowed_excess, 0)
         over_cap = model.NewIntVar(0, len(rank_b), f"rank_b_night_over_{day_idx}")
         model.Add(over_cap >= count_b_night - allowed_max)
         add_penalty(over_cap, weights["rank_b_night_over"])
+
+    for day_idx, cap in enumerate(parsed["rank_c_night_caps"]):
+        if not rank_c:
+            continue
+        count_c_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_c)
+        allowed_max = cap + max(rank_c_night_allowed_excess, 0)
+        over_cap = model.NewIntVar(0, len(rank_c), f"rank_c_night_over_{day_idx}")
+        model.Add(over_cap >= count_c_night - allowed_max)
+        add_penalty(over_cap, weights["rank_c_night_over"])
 
     if working_rank_a and working_rank_b:
         a_pool = len(working_rank_a)
