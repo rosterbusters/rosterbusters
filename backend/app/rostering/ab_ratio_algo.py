@@ -48,8 +48,6 @@ _DEFAULT_WEIGHTS = {
     "rank_b_night": 10_000,
     "rank_b_night_over": 18_000,
     "rank_c_night_over": 14_000,
-    "class_balance_day": 1_200,
-    "class_balance_shift": 700,
     "daily_total_shift_balance": 8_000,
     "daily_total_shift_balance_c": 3_500,
     "c_ratio_am": 4_000,
@@ -970,54 +968,6 @@ def run_ab_ratio_pipeline(
         over_cap = model.NewIntVar(0, len(rank_c), f"rank_c_night_over_{day_idx}")
         model.Add(over_cap >= count_c_night - allowed_max)
         add_penalty(over_cap, weights["rank_c_night_over"])
-
-    if working_rank_a and working_rank_b:
-        a_pool = len(working_rank_a)
-        b_pool = len(working_rank_b)
-        daily_balance_bound = len(working_ab) * max(a_pool, b_pool)
-        shift_balance_bound = max(len(working_rank_a), len(working_rank_b)) * max(a_pool, b_pool)
-
-        for day_idx in range(num_days):
-            total_a_day = sum(
-                x[nurse_idx, day_idx, shift_code]
-                for nurse_idx in working_rank_a
-                for shift_code in WORK_SHIFTS
-            )
-            total_b_day = sum(
-                x[nurse_idx, day_idx, shift_code]
-                for nurse_idx in working_rank_b
-                for shift_code in WORK_SHIFTS
-            )
-            daily_balance_diff = model.NewIntVar(
-                -daily_balance_bound,
-                daily_balance_bound,
-                f"class_balance_day_diff_{day_idx}",
-            )
-            model.Add(daily_balance_diff == total_a_day * b_pool - total_b_day * a_pool)
-            daily_balance_dev = model.NewIntVar(
-                0,
-                daily_balance_bound,
-                f"class_balance_day_dev_{day_idx}",
-            )
-            model.AddAbsEquality(daily_balance_dev, daily_balance_diff)
-            add_penalty(daily_balance_dev, weights["class_balance_day"])
-
-            for shift_code in WORK_SHIFTS:
-                total_a_shift = sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_rank_a)
-                total_b_shift = sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in working_rank_b)
-                shift_balance_diff = model.NewIntVar(
-                    -shift_balance_bound,
-                    shift_balance_bound,
-                    f"class_balance_shift_diff_{day_idx}_{shift_code}",
-                )
-                model.Add(shift_balance_diff == total_a_shift * b_pool - total_b_shift * a_pool)
-                shift_balance_dev = model.NewIntVar(
-                    0,
-                    shift_balance_bound,
-                    f"class_balance_shift_dev_{day_idx}_{shift_code}",
-                )
-                model.AddAbsEquality(shift_balance_dev, shift_balance_diff)
-                add_penalty(shift_balance_dev, weights["class_balance_shift"])
 
     for nurse_idx in working_nurses:
         hard_days = set(hard_assignments[nurse_idx])
