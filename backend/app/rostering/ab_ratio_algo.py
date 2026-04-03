@@ -43,10 +43,11 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
     "daily_ratio_night": 4_000,
-    "rn_night": 10_000,
+    "rn_night": 18_000,
     "rn_night_over": 18_000,
-    "rank_b_night": 10_000,
+    "rank_b_night": 18_000,
     "rank_b_night_over": 18_000,
+    "rank_c_night": 9_000,
     "rank_c_night_over": 14_000,
     "daily_total_shift_balance": 8_000,
     "daily_total_shift_balance_c": 3_500,
@@ -352,6 +353,10 @@ def parse_ab_ratio_inputs(
         cfg.get("rank_c_night_over_weight"),
         ratio_weights["rank_c_night_over"],
     )
+    ratio_weights["rank_c_night"] = _coerce_int(
+        cfg.get("rank_c_night_weight"),
+        ratio_weights["rank_c_night"],
+    )
     ratio_weights["daily_total_shift_balance"] = _coerce_int(
         cfg.get("daily_total_shift_balance_weight"),
         ratio_weights["daily_total_shift_balance"],
@@ -509,6 +514,9 @@ def parse_ab_ratio_inputs(
     )
 
     default_rank_c_night_caps = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
+    default_rank_c_night_targets = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
+    raw_rank_c_target = cfg.get("rank_c_night_min_per_day", cfg.get("c_night_min_per_day"))
+    rank_c_night_targets = _resolve_daily_targets(raw_rank_c_target, default_rank_c_night_targets)
     raw_rank_c_cap = cfg.get("rank_c_night_cap_per_day", cfg.get("c_night_cap_per_day"))
     rank_c_night_caps = _resolve_daily_targets(raw_rank_c_cap, default_rank_c_night_caps)
     raw_rank_c_allowed_excess = cfg.get(
@@ -563,6 +571,7 @@ def parse_ab_ratio_inputs(
         "rank_b_night_targets": rank_b_night_targets,
         "rank_b_night_caps": rank_b_night_caps,
         "rank_b_night_allowed_excess": rank_b_night_allowed_excess,
+        "rank_c_night_targets": rank_c_night_targets,
         "rank_c_night_caps": rank_c_night_caps,
         "rank_c_night_allowed_excess": rank_c_night_allowed_excess,
         "ab_ratio_coverage_mode": ab_ratio_coverage_mode,
