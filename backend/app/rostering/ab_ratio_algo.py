@@ -51,6 +51,7 @@ _DEFAULT_WEIGHTS = {
     "rank_c_night_over": 14_000,
     "daily_total_shift_balance": 8_000,
     "daily_total_shift_balance_c": 3_500,
+    "daily_ap_balance": 4_000,
     "c_ratio_am": 4_000,
     "c_ratio_pm": 4_200,
     "c_ratio_night": 4_200,
@@ -364,6 +365,10 @@ def parse_ab_ratio_inputs(
     ratio_weights["daily_total_shift_balance_c"] = _coerce_int(
         cfg.get("daily_total_shift_balance_c_weight"),
         ratio_weights["daily_total_shift_balance_c"],
+    )
+    ratio_weights["daily_ap_balance"] = _coerce_int(
+        cfg.get("daily_ap_balance_weight"),
+        ratio_weights["daily_ap_balance"],
     )
     ratio_weights["c_ratio_am"] = _coerce_int(
         cfg.get("c_ratio_am_weight"),
@@ -956,6 +961,22 @@ def run_ab_ratio_pipeline(
                 )
                 model.Add(gap_penalty >= day_spread - daily_total_shift_gap_target)
                 add_penalty(gap_penalty, weights["daily_total_shift_balance"])
+
+                am_total = shift_totals[0]
+                pm_total = shift_totals[1]
+                ap_diff = model.NewIntVar(
+                    -len(group_nurses),
+                    len(group_nurses),
+                    f"day_total_{group_name}_ap_diff_{day_idx}",
+                )
+                model.Add(ap_diff == am_total - pm_total)
+                ap_dev = model.NewIntVar(
+                    0,
+                    len(group_nurses),
+                    f"day_total_{group_name}_ap_dev_{day_idx}",
+                )
+                model.AddAbsEquality(ap_dev, ap_diff)
+                add_penalty(ap_dev, weights["daily_ap_balance"])
 
         if working_rank_c:
             for day_idx in range(num_days):
