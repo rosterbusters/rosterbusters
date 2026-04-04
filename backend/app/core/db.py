@@ -1,3 +1,5 @@
+import sqlalchemy as sa
+from sqlalchemy import inspect
 from sqlmodel import Session, create_engine, select
 
 from app.core.config import settings
@@ -12,6 +14,16 @@ engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
 # otherwise, SQLModel might fail to initialize relationships properly
 # for more details: https://github.com/fastapi/full-stack-fastapi-template/issues/28
 
+def _ensure_user_auth_columns(session: Session) -> None:
+    """Heal legacy bootstrap schemas before ORM queries touch newer fields."""
+    bind = session.get_bind()
+    inspector = inspect(bind)
+    user_columns = {column["name"] for column in inspector.get_columns("User")}
+
+    if "defaultpassword" not in user_columns:
+        session.exec(sa.text('ALTER TABLE "User" ADD COLUMN defaultpassword VARCHAR'))
+        session.commit()
+
 
 def init_db(session: Session) -> None:
     # Tables should be created with Alembic migrations
@@ -21,6 +33,8 @@ def init_db(session: Session) -> None:
 
     # This works because the models are already imported and registered from app.models
     # SQLModel.metadata.create_all(engine)
+
+    _ensure_user_auth_columns(session)
 
     # Ensure the first admin RBACUser exists
     from datetime import datetime, timezone
