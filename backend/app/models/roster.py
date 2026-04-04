@@ -126,6 +126,7 @@ class RosterPeriodPublic(SQLModel):
     enddate: date
     requestopendate: date
     requestclosedate: date
+    planninglockdate: Optional[date] = None
     status: str
 
 

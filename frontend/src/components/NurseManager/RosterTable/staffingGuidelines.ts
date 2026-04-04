@@ -38,7 +38,7 @@ export const MOCK_STAFFING_GUIDELINES: DailyStaffingGuideline = {
 };
 
 export type RosterRank = "A" | "B" | "C";
-export type RoleGroupKey = "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3/PSA" | "Other";
+export type RoleGroupKey = "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3" | "Other";
 
 const DESIGNATION_ALIASES: Record<string, string> = {
   RN: "SN",
@@ -65,11 +65,7 @@ const DESIGNATION_ALIASES: Record<string, string> = {
   NURSINGAIDEII: "NA",
   SENIORNURSINGAIDEI: "NA",
   SENIORNURSINGAIDEII: "NA",
-  PATIENTSERVICEASST: "PSA",
-  PATIENTSERVICEASSTI: "PSA",
-  PATIENTSERVICEASSTII: "PSA",
-  PATIENTSERVICEASSISTANT: "PSA",
-  SNRPATIENTSERVICEASST: "PSA",
+  // PSA roles are intentionally excluded from the roster UI.
   HCA: "HCA1",
   HCA1: "HCA1",
   HCA2: "HCA2",
@@ -95,7 +91,6 @@ const CANONICAL_DESIGNATIONS: Record<string, StaffRole> = {
   EN: "EN",
   NA: "NA",
   HCA3: "HCA3",
-  PSA: "HCA3",
 };
 
 const STAFF_ROLE_TO_RANK: Record<StaffRole, RosterRank> = {
@@ -110,6 +105,15 @@ function normalizeDesignation(designation: string): string {
   return designation.replace(/[^A-Za-z0-9]+/g, "").trim().toUpperCase();
 }
 
+export function isPsaDesignation(designation: string): boolean {
+  const normalized = normalizeDesignation(designation);
+  return (
+    normalized === "PSA" ||
+    normalized.includes("PATIENTSERVICEASST") ||
+    normalized.includes("PATIENTSERVICEASSISTANT")
+  );
+}
+
 /**
  * Maps nurse designation strings to summary role categories.
  * Mirrors the backend designation mapping used for roster grouping.
@@ -119,6 +123,7 @@ export function mapDesignationToRole(
 ): "RN" | "EN" | "NA" | "HCA12" | "HCA3" | null {
   const normalized = normalizeDesignation(designation);
   if (!normalized) return null;
+  if (isPsaDesignation(designation)) return null;
 
   const canonical = DESIGNATION_ALIASES[normalized] ?? normalized;
   return CANONICAL_DESIGNATIONS[canonical] ?? null;
@@ -138,7 +143,7 @@ export function mapDesignationToRosterRank(designation: string): RosterRank | nu
 export function mapRosterRankToGroup(rank: RosterRank | null): RoleGroupKey {
   if (rank === "A") return "SSN/SN";
   if (rank === "B") return "EN/NA/HCA1/HCA2";
-  if (rank === "C") return "HCA3/PSA";
+  if (rank === "C") return "HCA3";
   return "Other";
 }
 

@@ -232,8 +232,122 @@ def generate_shift_request_period_closed_email(email_to: str, roster_period: str
             "project_name": settings.PROJECT_NAME,
             "email": email_to,
             "roster_period": roster_period,
-            "ward_name": ward_name or "",
-            "message": message,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_shift_request_approved_email(
+    email_to: str,
+    roster_period: str,
+    nurse_name: str | None = None,
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Shift request approved"
+    html_content = render_email_template(
+        template_name="shift_request_approved.html",
+        context={
+            "project_name": project_name,
+            "email": email_to,
+            "roster_period": roster_period,
+            "nurse_name": nurse_name or "",
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_shift_request_rejected_email(
+    email_to: str,
+    roster_period: str,
+    nurse_name: str | None = None,
+    rejection_reason: str | None = None,
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Shift request rejected"
+    html_content = render_email_template(
+        template_name="shift_request_rejected.html",
+        context={
+            "project_name": project_name,
+            "email": email_to,
+            "roster_period": roster_period,
+            "nurse_name": nurse_name or "",
+            "rejection_reason": rejection_reason or "",
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_leave_request_manager_email(
+    email_to: str,
+    nurse_name: str,
+    leave_code: str,
+    start_date: str,
+    end_date: str,
+    manager_name: str | None = None,
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - New leave request from {nurse_name}"
+    html_content = render_email_template(
+        template_name="leave_request_manager.html",
+        context={
+            "project_name": project_name,
+            "email": email_to,
+            "nurse_name": nurse_name,
+            "leave_code": leave_code,
+            "start_date": start_date,
+            "end_date": end_date,
+            "manager_name": manager_name or "Nurse Manager",
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_leave_review_nurse_email(
+    email_to: str,
+    nurse_name: str,
+    leave_code: str,
+    start_date: str,
+    end_date: str,
+    status: str,  # "Approved" or "Rejected"
+    rejection_reason: str | None = None,
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Leave request {status.lower()}"
+    html_content = render_email_template(
+        template_name="leave_review_nurse.html",
+        context={
+            "project_name": project_name,
+            "email": email_to,
+            "nurse_name": nurse_name,
+            "leave_code": leave_code,
+            "start_date": start_date,
+            "end_date": end_date,
+            "status": status,
+            "is_approved": status == "Approved",
+            "rejection_reason": rejection_reason or "",
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_shift_updated_email(
+    email_to: str,
+    nurse_name: str,
+    shift_date: str,
+    new_shift_code: str,
+    old_shift_code: str | None = None,
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Your shift has been updated"
+    html_content = render_email_template(
+        template_name="shift_updated.html",
+        context={
+            "project_name": project_name,
+            "email": email_to,
+            "nurse_name": nurse_name,
+            "shift_date": shift_date,
+            "new_shift_code": new_shift_code,
+            "old_shift_code": old_shift_code or "",
         },
     )
     return EmailData(html_content=html_content, subject=subject)

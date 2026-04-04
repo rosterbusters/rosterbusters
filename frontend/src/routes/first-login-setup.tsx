@@ -1,6 +1,7 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { useForm, type SubmitHandler } from "react-hook-form"
 import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
 import {
@@ -22,7 +23,7 @@ import { isLoggedIn } from "@/hooks/useAuth"
 import { AdminService } from "@/client/adminService"
 import { UsersService } from "@/client"
 import type { CurrentUser } from "@/hooks/useAuth"
-import { passwordRules, confirmPasswordRules } from "@/utils"
+import { passwordRules } from "@/utils"
 
 export const Route = createFileRoute("/first-login-setup")({
   component: FirstLoginSetup,
@@ -37,6 +38,7 @@ interface SetupFormData {
   new_password: string
   confirm_password: string
   email: string
+  employee_id: string
 }
 
 function FirstLoginSetup() {
@@ -45,10 +47,17 @@ function FirstLoginSetup() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["currentUser"],
+    queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
+  })
+  const requiresEmployeeId = !!(currentUser?.nurseid || currentUser?.managerid)
+
   const {
     register,
     handleSubmit,
     getValues,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<SetupFormData>({
     mode: "onBlur",
@@ -56,11 +65,31 @@ function FirstLoginSetup() {
       new_password: "",
       confirm_password: "",
       email: "",
+      employee_id: "",
     },
   })
 
+  useEffect(() => {
+    const existingEmail = currentUser?.email?.trim()
+    if (!existingEmail) return
+
+    // Prefill with the account email only if the field is still blank.
+    if (!getValues("email")) {
+      setValue("email", existingEmail)
+    }
+  }, [currentUser?.email, getValues, setValue])
+
+  useEffect(() => {
+    const existingEmployeeId = currentUser?.employee_id?.trim()
+    if (!existingEmployeeId) return
+
+    if (!getValues("employee_id")) {
+      setValue("employee_id", existingEmployeeId)
+    }
+  }, [currentUser?.employee_id, getValues, setValue])
+
   const mutation = useMutation({
-    mutationFn: (data: { new_password: string; email?: string }) =>
+    mutationFn: (data: { new_password: string; email?: string; employee_id?: string }) =>
       AdminService.firstLoginSetup(data),
     onSuccess: async () => {
       showSuccessToast("Account setup completed! Redirecting...")
@@ -86,6 +115,7 @@ function FirstLoginSetup() {
     mutation.mutate({
       new_password: data.new_password,
       email: data.email,
+      employee_id: data.employee_id?.trim() || undefined,
     })
   }
 
@@ -182,6 +212,27 @@ function FirstLoginSetup() {
                     />
                   </InputGroup>
                 </Field>
+
+                {requiresEmployeeId && (
+                  <Field
+                    label="Employee ID"
+                    invalid={!!errors.employee_id}
+                    errorText={errors.employee_id?.message}
+                    required
+                  >
+                    <Input
+                      {...register("employee_id", {
+                        validate: (value) =>
+                          !requiresEmployeeId || value.trim().length > 0 || "Employee ID is required",
+                      })}
+                      placeholder="Enter your employee ID"
+                      type="text"
+                      size="md"
+                      variant="subtle"
+                      bg="gray.50"
+                    />
+                  </Field>
+                )}
 
                 {/* New Password */}
                 <Field

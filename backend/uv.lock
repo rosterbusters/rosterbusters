@@ -133,7 +133,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.25.1,<1.0.0" },
     { name = "itsdangerous", specifier = ">=2.1.2,<3.0.0" },
     { name = "jinja2", specifier = ">=3.1.4,<4.0.0" },
-    { name = "ortools", specifier = ">=9.14.6206" },
+    { name = "ortools" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4,<2.0.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1.13,<4.0.0" },

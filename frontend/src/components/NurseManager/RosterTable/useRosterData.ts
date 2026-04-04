@@ -43,6 +43,7 @@ function mapApiPeriod(data: Record<string, unknown>): RosterPeriod {
     name: data.name as string,
     startDate: data.startdate as string,
     endDate: data.enddate as string,
+    planningLockDate: data.planninglockdate as string | undefined,
     status: data.status as RosterPeriod["status"],
   };
 }
@@ -410,6 +411,15 @@ export function useClearRoster() {
       );
     },
     onSuccess: (_data, variables) => {
+      queryClient.setQueryData(
+        ["roster", "ward", variables.wardId, variables.periodId],
+        (prev) => {
+          if (!prev) return prev;
+          const next = { ...(prev as WardRosterResponse) };
+          next.roster_entries = [];
+          return next;
+        },
+      );
       queryClient.invalidateQueries({
         queryKey: ["roster", "ward", variables.wardId, variables.periodId],
       });
@@ -738,11 +748,28 @@ async function pollAlgorithmTask(
     );
     const contractedHours = 44;
 
+    const inferredDesignation =
+      nurse.rank === "A"
+        ? "RN"
+        : nurse.rank === "B"
+        ? "EN"
+        : nurse.rank === "C"
+        ? "HCA3"
+        : "HCA";
+    const inferredStaffingRole =
+      nurse.rank === "A"
+        ? "RN"
+        : nurse.rank === "B"
+        ? "EN"
+        : nurse.rank === "C"
+        ? "HCA3"
+        : "HCA12";
+
     return {
       nurseId: nurse.id,
       name: nurse.name,
-      designation: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA",
-      staffingRole: nurse.rank === "A" ? "RN" : nurse.rank === "B" ? "EN" : "HCA12",
+      designation: inferredDesignation,
+      staffingRole: inferredStaffingRole,
       hours: { worked: workedHours, contracted: contractedHours },
       shifts: shiftsObject,
       hasOvertime: workedHours > contractedHours,

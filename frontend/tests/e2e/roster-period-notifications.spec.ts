@@ -45,6 +45,24 @@ async function createUser(
   return res.json() as Promise<{ userid: number; nurseid?: number | null }>
 }
 
+async function completeFirstLoginSetup(
+  request: APIRequestContext,
+  token: string,
+  payload: { new_password: string; email: string; employee_id: string },
+) {
+  const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    data: payload,
+  })
+  if (!res.ok()) {
+    const body = await res.text()
+    throw new Error(`Failed to complete first login setup: ${res.status()} ${body}`)
+  }
+}
+
 async function deleteUser(
   request: APIRequestContext,
   token: string,
@@ -108,6 +126,7 @@ test("roster period notifications appear in queue and dropdown", async ({
   const nurseUsername = `e2e.nurse.${suffix}`
   const nursePassword = `TestNr${suffix}!`
   const nurseEmail = `e2e.nurse.${suffix}@example.com`
+  const nurseEmployeeId = `NU${suffix}`
 
   const createdUserIds: number[] = []
 
@@ -120,7 +139,7 @@ test("roster period notifications appear in queue and dropdown", async ({
       username: nurseUsername,
       name: "E2E Nurse",
       email: nurseEmail,
-      employee_id: `NU${suffix}`,
+      employee_id: nurseEmployeeId,
       role: "Nurse",
       ward_ids: [ward.wardid],
       designation: "RN",
@@ -130,11 +149,34 @@ test("roster period notifications appear in queue and dropdown", async ({
 
     const nurseToken = await loginToken(request, nurseUsername, nursePassword)
 
+    // Newly created users are flagged for first-time setup and are route-guarded
+    // away from ward-staff pages until setup is completed.
+    await completeFirstLoginSetup(request, nurseToken, {
+      new_password: nursePassword,
+      email: nurseEmail,
+      employee_id: nurseEmployeeId,
+    })
+
     const triggerRes = await request.get(
       `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,
       { headers: { Authorization: `Bearer ${nurseToken}` } },
     )
     expect(triggerRes.ok()).toBeTruthy()
+
+    // Skip on "gap days" between roster cycles when no period is RequestOpen.
+    // On those days only "Now Closed" notifications are queued, never "Now Open".
+    const periodsCheckRes = await request.get(
+      `${API_BASE_URL}/api/v1/shift-requests/periods`,
+      { headers: { Authorization: `Bearer ${nurseToken}` } },
+    )
+    if (periodsCheckRes.ok()) {
+      const periods = (await periodsCheckRes.json()) as Array<{ status: string }>
+      const hasOpenPeriod = periods.some((p) => p.status === "RequestOpen")
+      test.skip(
+        !hasOpenPeriod,
+        "No shift request period is currently open — skipping on gap day between roster cycles",
+      )
+    }
 
     await expect
       .poll(

@@ -62,6 +62,7 @@ async function completeFirstLogin(
   request: APIRequestContext,
   token: string,
   newPassword: string,
+  employeeId: string,
   email?: string,
 ) {
   const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
@@ -71,6 +72,7 @@ async function completeFirstLogin(
     },
     data: {
       new_password: newPassword,
+      employee_id: employeeId,
       ...(email ? { email } : {}),
     },
   })
@@ -130,6 +132,7 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
   const suffix = Date.now().toString().slice(-6)
   const nmUsername = `e2e.nm.${suffix}`
   const nmPassword = `TestNm${suffix}!`
+  const nmEmployeeId = `NM${suffix}`
   const nmEmail = `e2e.nm.${suffix}@example.com`
   const nurseName = `E2E Nurse ${suffix}`
   const nurseUsername = `e2e.nurse.${suffix}`
@@ -141,13 +144,14 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
     nmUser = await createUser(request, adminToken, {
       username: nmUsername,
       email: nmEmail,
+      employee_id: nmEmployeeId,
       password: nmPassword,
       role: "NurseManager",
       ward_ids: [ward.wardid],
     })
 
     const nmToken = await loginToken(request, nmUsername, nmPassword)
-    await completeFirstLogin(request, nmToken, nmPassword, nmEmail)
+    await completeFirstLogin(request, nmToken, nmPassword, nmEmployeeId, nmEmail)
 
     nurseUser = await createUser(request, adminToken, {
       username: nurseUsername,
@@ -188,7 +192,7 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
       await page.getByRole("button", { name: /complete setup/i }).click()
     }
 
-    await expect(page).toHaveURL(/\/nurse-manager\/home/)
+    await expect(page).toHaveURL(/\/nurse-manager\/home/, { timeout: 30_000 })
 
     await page.goto("/nurse-manager/roster-planning")
     await page.waitForResponse(

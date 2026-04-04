@@ -1,93 +1,97 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { expect, test } from "@playwright/test"
+import { execFileSync } from "node:child_process"
+import {
+  createUser,
+  deleteUser,
+  getAdminToken,
+  getAnyWard,
+  findUserIdByUsername,
+  getUserByUsername,
+} from "./admin-helpers"
 
-const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
-const ADMIN_EMAIL =
-  process.env.E2E_SUPERUSER || process.env.FIRST_SUPERUSER || ""
-const ADMIN_PASSWORD =
-  process.env.E2E_SUPERUSER_PASSWORD ||
-  process.env.FIRST_SUPERUSER_PASSWORD ||
-  ""
+const DB_CONTAINER_ENV =
+  process.env.E2E_DB_CONTAINER ||
+  process.env.DB_CONTAINER ||
+  process.env.POSTGRES_CONTAINER
 
-async function getAdminToken(request: APIRequestContext) {
-  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+const DB_NAME = process.env.POSTGRES_DB || "app"
+const DB_USER = process.env.POSTGRES_USER || "postgres"
+
+const getDbContainerName = () => {
+  if (DB_CONTAINER_ENV) return DB_CONTAINER_ENV
+
+  try {
+    const output = execFileSync(
+      "docker",
+      ["ps", "--format", "{{.Names}} {{.Image}}"],
+      { encoding: "utf8" },
+    )
+    const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    const match = lines.find((line) => {
+      const [, image] = line.split(/\s+/, 2)
+      if (!image) return false
+      return image.startsWith("postgres:")
+    })
+    if (match) return match.split(/\s+/, 1)[0]
+  } catch (error) {
     throw new Error(
-      "Missing admin credentials. Set E2E_SUPERUSER and E2E_SUPERUSER_PASSWORD (or FIRST_SUPERUSER / FIRST_SUPERUSER_PASSWORD).",
+      `Unable to locate the Postgres container. Set E2E_DB_CONTAINER to the DB container name. ${String(error)}`,
     )
   }
 
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-  })
-
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login as admin: ${res.status()} ${body}`)
-  }
-
-  const json = await res.json()
-  return json.access_token as string
+  throw new Error(
+    "Unable to locate the Postgres container. Set E2E_DB_CONTAINER to the DB container name.",
+  )
 }
 
-async function getAnyWard(request: APIRequestContext, token: string) {
-  const res = await request.get(`${API_BASE_URL}/api/v1/wards/`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to load wards: ${res.status()} ${body}`)
-  }
-  const wards = (await res.json()) as Array<{ wardid: number; wardname: string }>
-  if (!wards.length) {
-    throw new Error("No wards found. Seed a ward before running this test.")
-  }
-  return wards[0]
+const runScalarQuery = (sql: string) => {
+  const container = getDbContainerName()
+  return execFileSync(
+    "docker",
+    ["exec", container, "psql", "-U", DB_USER, "-d", DB_NAME, "-t", "-A", "-c", sql],
+    { encoding: "utf8" },
+  ).trim()
 }
 
-async function createUser(
-  request: APIRequestContext,
-  token: string,
-  payload: Record<string, unknown>,
-) {
-  const res = await request.post(`${API_BASE_URL}/api/v1/admin/users`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    data: payload,
-  })
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to create user: ${res.status()} ${body}`)
-  }
-  return res.json() as Promise<{ userid: number; username: string; email?: string }>
-}
-
-async function deleteUser(
-  request: APIRequestContext,
-  token: string,
-  userid: number,
-) {
-  await request.delete(`${API_BASE_URL}/api/v1/admin/users/${userid}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+const countRows = (sql: string) => {
+  const value = runScalarQuery(sql)
+  return Number.parseInt(value || "0", 10)
 }
 
 test("admin can see newly created nurse and nurse manager", async ({
   page,
   request,
 }) => {
+  test.setTimeout(60_000)
   const token = await getAdminToken(request)
   const ward = await getAnyWard(request, token)
 
   const suffix = Date.now().toString().slice(-6)
-  const nurseUsername = `test.nurse.${suffix}`
-  const nurseManagerUsername = `test.manager.${suffix}`
+  const nurseUsername = `testnurse${suffix}`
+  const nurseManagerUsername = `testmanager${suffix}`
   const nurseEmail = `test.nurse.${suffix}@example.com`
   const nurseManagerEmail = `test.manager.${suffix}@example.com`
 
   const createdUserIds: number[] = []
 
   try {
+    const existingNurseId = await findUserIdByUsername(
+      request,
+      token,
+      nurseUsername,
+    )
+    if (existingNurseId) {
+      await deleteUser(request, token, existingNurseId)
+    }
+    const existingManagerId = await findUserIdByUsername(
+      request,
+      token,
+      nurseManagerUsername,
+    )
+    if (existingManagerId) {
+      await deleteUser(request, token, existingManagerId)
+    }
+
     const nurse = await createUser(request, token, {
       username: nurseUsername,
       name: `Test Nurse`,
@@ -115,7 +119,8 @@ test("admin can see newly created nurse and nurse manager", async ({
 
     await page.goto("/admin/users")
 
-    const search = page.getByPlaceholder("Search by name or email...")
+    const search = page.getByTestId("admin-users-search")
+    await expect(search).toBeAttached({ timeout: 15_000 })
 
     await search.fill(nurseEmail)
     const nurseRow = page.getByRole("row").filter({ hasText: nurseUsername })
@@ -132,6 +137,127 @@ test("admin can see newly created nurse and nurse manager", async ({
     await expect(
       managerRow.getByTestId(`admin-user-ward-${ward.wardid}`),
     ).toBeVisible()
+  } finally {
+    for (const userid of createdUserIds.reverse()) {
+      await deleteUser(request, token, userid)
+    }
+  }
+})
+
+test("admin deletion removes nurse and nurse manager records", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000)
+  const token = await getAdminToken(request)
+  const ward = await getAnyWard(request, token)
+
+  const suffix = Date.now().toString().slice(-6)
+  const nurseUsername = `deletenurse${suffix}`
+  const nurseManagerUsername = `deletemanager${suffix}`
+  const nurseEmail = `delete.nurse.${suffix}@example.com`
+  const nurseManagerEmail = `delete.manager.${suffix}@example.com`
+
+  const createdUserIds: number[] = []
+
+  try {
+    const existingNurseId = await findUserIdByUsername(
+      request,
+      token,
+      nurseUsername,
+    )
+    if (existingNurseId) {
+      await deleteUser(request, token, existingNurseId)
+    }
+    const existingManagerId = await findUserIdByUsername(
+      request,
+      token,
+      nurseManagerUsername,
+    )
+    if (existingManagerId) {
+      await deleteUser(request, token, existingManagerId)
+    }
+
+    const nurse = await createUser(request, token, {
+      username: nurseUsername,
+      name: "Delete Nurse",
+      email: nurseEmail,
+      employee_id: `DN${suffix}`,
+      designation: "RN",
+      role: "Nurse",
+      ward_ids: [ward.wardid],
+    })
+    createdUserIds.push(nurse.userid)
+
+    const manager = await createUser(request, token, {
+      username: nurseManagerUsername,
+      name: "Delete Manager",
+      email: nurseManagerEmail,
+      employee_id: `DM${suffix}`,
+      role: "NurseManager",
+      ward_ids: [ward.wardid],
+    })
+    createdUserIds.push(manager.userid)
+
+    const nurseDetails = await getUserByUsername<{
+      userid: number
+      nurseid?: number | null
+    }>(request, token, nurseUsername)
+    const managerDetails = await getUserByUsername<{
+      userid: number
+      managerid?: number | null
+    }>(request, token, nurseManagerUsername)
+
+    if (!nurseDetails?.nurseid) {
+      throw new Error("Expected nurse to have a nurseid.")
+    }
+    if (!managerDetails?.managerid) {
+      throw new Error("Expected nurse manager to have a managerid.")
+    }
+
+    await page.addInitScript((value) => {
+      localStorage.setItem("access_token", value)
+    }, token)
+    await page.goto("/admin/users")
+
+    const search = page.getByTestId("admin-users-search")
+    await expect(search).toBeAttached({ timeout: 15_000 })
+
+    await search.fill(nurseEmail)
+    const nurseRow = page.getByRole("row").filter({ hasText: nurseUsername })
+    await expect(nurseRow).toContainText(nurseUsername)
+    await nurseRow.getByTitle("Delete user").click()
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+
+    await expect.poll(async () => {
+      const id = await findUserIdByUsername(request, token, nurseUsername)
+      return id ?? null
+    }).toBe(null)
+
+    await expect.poll(() =>
+      countRows(`select count(*) from "User" where userid = ${nurseDetails.userid};`),
+    ).toBe(0)
+    await expect.poll(() =>
+      countRows(`select count(*) from nurse where nurseid = ${nurseDetails.nurseid};`),
+    ).toBe(0)
+
+    await search.fill(nurseManagerEmail)
+    const managerRow = page.getByRole("row").filter({ hasText: nurseManagerUsername })
+    await expect(managerRow).toContainText(nurseManagerUsername)
+    await managerRow.getByTitle("Delete user").click()
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+
+    await expect.poll(async () => {
+      const id = await findUserIdByUsername(request, token, nurseManagerUsername)
+      return id ?? null
+    }).toBe(null)
+
+    await expect.poll(() =>
+      countRows(`select count(*) from "User" where userid = ${managerDetails.userid};`),
+    ).toBe(0)
+    await expect.poll(() =>
+      countRows(`select count(*) from nursemanager where managerid = ${managerDetails.managerid};`),
+    ).toBe(0)
   } finally {
     for (const userid of createdUserIds.reverse()) {
       await deleteUser(request, token, userid)

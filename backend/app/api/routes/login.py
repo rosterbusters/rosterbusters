@@ -1,30 +1,29 @@
-import logging
-
 from datetime import timedelta, datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.requests import Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from authlib.integrations.starlette_client import OAuth
-from sqlmodel import Field, SQLModel, select
+from sqlmodel import select
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.core import security
 from app.core.config import settings
 from app.core.security import get_password_hash
-from app.models import Message, RBACUser, RBACUserPublic
+from app.models import Message
+from app.models import NewPassword
+from app.models.rbac import RBACUser, RBACUserPublic
 from app.utils import (
-    generate_password_changed_email,
     generate_password_reset_token,
     generate_reset_password_email,
-    send_email,
+    generate_password_changed_email,
     verify_password_reset_token,
+    send_email,
 )
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # oauth = OAuth()
@@ -35,11 +34,6 @@ router = APIRouter()
 #     server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
 #     client_kwargs={"scope": "openid email profile"},
 # )
-
-
-class NewPassword(SQLModel):
-    token: str
-    new_password: str = Field(min_length=8, max_length=128)
 
 
 @router.get("/login/google")
@@ -75,7 +69,7 @@ async def auth_google_callback(
                     detail=f"Only {', '.join(allowed_domains)} email addresses are allowed",
                 )
 
-        from app.models import Nurse, NurseManager, Role, UserRole
+        from app.models import Nurse, NurseManager, RBACUser, Role, UserRole
 
         rbac_statement = select(RBACUser).where(RBACUser.email == email)
         rbac_user = session.exec(rbac_statement).first()
@@ -189,7 +183,9 @@ def recover_password(email: str, session: SessionDep) -> Message:
 
 
 @router.post("/reset-password/")
-def reset_password(session: SessionDep, body: NewPassword) -> Message:
+def reset_password(
+    session: SessionDep, body: NewPassword, background_tasks: BackgroundTasks
+) -> Message:
     """
     Reset password using a valid recovery token.
     After a successful reset, send a security notification email to the user.
@@ -212,20 +208,18 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
     session.add(user)
     session.commit()
 
-    # Send security notification — wrapped in try/except so a mail failure
-    # never rolls back the already-committed password change.
     try:
         notification = generate_password_changed_email(
             email_to=user.email,
             username=user.username,
         )
-        send_email(
+        background_tasks.add_task(
+            send_email,
             email_to=user.email,
             subject=notification.subject,
             html_content=notification.html_content,
         )
     except Exception:
-        # Log but don't surface mail errors to the caller
         logger.warning(f"Failed to send password-changed notification to {user.email}")
 
     return Message(message="Password updated successfully")

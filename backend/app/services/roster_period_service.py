@@ -24,6 +24,7 @@ PERIOD_LENGTH_DAYS = 14
 PERIODS_PER_ROSTER_YEAR = 26
 ROSTER_YEAR_LENGTH_DAYS = PERIOD_LENGTH_DAYS * PERIODS_PER_ROSTER_YEAR
 ROSTER_YEARS_TO_KEEP = 2
+PLANNING_LOCK_OFFSET_DAYS = 3
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +45,10 @@ def get_roster_year_start(for_date: date) -> date:
     return ROSTER_CYCLE_ANCHOR + timedelta(days=year_offset * ROSTER_YEAR_LENGTH_DAYS)
 
 
+def get_planning_lock_date(startdate: date) -> date:
+    return startdate - timedelta(days=PLANNING_LOCK_OFFSET_DAYS)
+
+
 def build_roster_period_definitions(today: date | None = None) -> list[RosterPeriodDefinition]:
     today = today or date.today()
     current_year_start = get_roster_year_start(today)
@@ -61,7 +66,7 @@ def build_roster_period_definitions(today: date | None = None) -> list[RosterPer
             requestopendate = startdate - timedelta(days=14)
             # TODO: revert to original close date (startdate - 10 days) once request window timing is finalised
             # requestclosedate = startdate - timedelta(days=10)
-            requestclosedate = startdate - timedelta(days=13)
+            requestclosedate = startdate - timedelta(days=2)
 
             if today > enddate:
                 status = "Published"

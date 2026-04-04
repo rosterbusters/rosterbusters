@@ -15,7 +15,7 @@ export interface RosterPlanningLockStatus {
   isLoading: boolean;
 }
 
-async function fetchWithAuth(url: string): Promise<AlgorithmTaskStatus> {
+async function fetchWithAuth<T>(url: string): Promise<T> {
   const token = localStorage.getItem("access_token") || "";
   const response = await fetch(`${API_BASE}${url}`, {
     headers: {
@@ -29,6 +29,26 @@ async function fetchWithAuth(url: string): Promise<AlgorithmTaskStatus> {
   return response.json();
 }
 
+interface RosterPeriodApi {
+  periodid: number;
+  startdate: string;
+  enddate: string;
+  planninglockdate?: string;
+}
+
+function resolveLockWindow(period: RosterPeriodApi | null) {
+  if (!period) return { lockStart: undefined, lockEnd: undefined };
+  if (!period.planninglockdate) {
+    return { lockStart: undefined, lockEnd: undefined };
+  }
+  const lockStart = new Date(period.planninglockdate);
+  const lockEnd = new Date(period.startdate);
+  return {
+    lockStart,
+    lockEnd,
+  };
+}
+
 export function useRosterPlanningLockStatus(
   wardId: number | null,
   periodId: number | null,
@@ -40,28 +60,43 @@ export function useRosterPlanningLockStatus(
 
   const taskId = storedTask?.taskId ?? null;
 
-  const { data, isLoading } = useQuery({
+  const { data: taskData, isLoading: isLoadingTask } = useQuery({
     queryKey: ["roster", "algorithm-task-status", wardId, periodId, taskId],
     queryFn: async () => {
       if (!taskId) throw new Error("Task ID required");
-      return fetchWithAuth(`/api/v1/roster/task/${taskId}/status`);
+      return fetchWithAuth<AlgorithmTaskStatus>(`/api/v1/roster/task/${taskId}/status`);
     },
     enabled: !!taskId,
     refetchInterval: taskId ? 3000 : false,
     staleTime: 0,
   });
 
+  const { data: periodData, isLoading: isLoadingPeriod } = useQuery({
+    queryKey: ["roster", "periods", periodId],
+    queryFn: async () => {
+      const periods = await fetchWithAuth<RosterPeriodApi[]>(
+        "/api/v1/shift-requests/periods",
+      );
+      return periods.find((period) => period.periodid === periodId) ?? null;
+    },
+    enabled: !!periodId,
+    staleTime: 10 * 60 * 1000,
+  });
+
   return useMemo(() => {
     if (!taskId) {
+      const { lockStart, lockEnd } = resolveLockWindow(periodData ?? null);
+      const now = new Date();
+      const isLockedByPeriod = !!lockStart && now >= lockStart;
       return {
-        isLocked: false,
-        nextWindowStart: undefined,
-        nextWindowEnd: undefined,
-        isLoading: false,
+        isLocked: isLockedByPeriod,
+        nextWindowStart: lockStart?.toISOString(),
+        nextWindowEnd: lockEnd?.toISOString(),
+        isLoading: isLoadingPeriod,
       };
     }
 
-    if (isLoading) {
+    if (isLoadingTask || isLoadingPeriod) {
       return {
         isLocked: false,
         nextWindowStart: undefined,
@@ -70,9 +105,13 @@ export function useRosterPlanningLockStatus(
       };
     }
 
-    const status = data?.status;
-    const isLocked =
+    const status = taskData?.status;
+    const isLockedByTask =
       status === "pending" || status === "started" || status === "in_progress";
+    const { lockStart, lockEnd } = resolveLockWindow(periodData ?? null);
+    const now = new Date();
+    const isLockedByPeriod = !!lockStart && now >= lockStart;
+    const isLocked = isLockedByTask || isLockedByPeriod;
 
     if ((status === "complete" || status === "failed") && wardId && periodId) {
       clearAlgorithmTask(wardId, periodId);
@@ -80,9 +119,9 @@ export function useRosterPlanningLockStatus(
 
     return {
       isLocked,
-      nextWindowStart: undefined,
-      nextWindowEnd: undefined,
+      nextWindowStart: lockStart?.toISOString(),
+      nextWindowEnd: lockEnd?.toISOString(),
       isLoading: false,
     };
-  }, [data?.status, isLoading, periodId, taskId, wardId]);
+  }, [isLoadingPeriod, isLoadingTask, periodData, periodId, taskData?.status, taskId, wardId]);
 }
