@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.models.enums import NotificationType
 from app.designation_mapping import classify_designation, staffing_role_to_roster_rank
 from app.models.enums import NotificationType
-from app.models.rbac import Nurse, NurseManager
+from app.models.rbac import Nurse, NurseManager, Role, UserRole
 from app.models.roster import (
     NursePeriodConstraint,
     NursePeriodConstraintPublic,
@@ -177,8 +177,26 @@ def _get_celery_app():
     return celery_app
 
 
+def _get_managed_ward_ids(session: Session, user_id: int | None) -> set[int]:
+    if not user_id:
+        return set()
+    ward_ids = session.exec(
+        select(UserRole.wardid)
+        .join(Role, UserRole.roleid == Role.roleid)
+        .where(
+            UserRole.userid == user_id,
+            UserRole.isactive == True,  # noqa: E712
+            UserRole.wardid.is_not(None),
+            Role.rolename == "NurseManager",
+        )
+    ).all()
+    return {ward_id for ward_id in ward_ids if ward_id is not None}
+
+
 def _can_manage_ward(session: Session, current_user: CurrentUser, ward: Ward) -> bool:
     if current_user.managerid == ward.managerid:
+        return True
+    if ward.wardid in _get_managed_ward_ids(session, current_user.userid):
         return True
     if current_user.email:
         return user_has_role(session, current_user.email, "Admin")
