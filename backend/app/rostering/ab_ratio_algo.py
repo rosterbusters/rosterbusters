@@ -495,10 +495,18 @@ def parse_ab_ratio_inputs(
     pattern_nurses = {
         idx for idx, pattern in shift_pattern_by_nurse.items() if pattern is not None
     }
-    ratio_working_ab = [idx for idx in working_ab if idx not in pattern_nurses]
-    ratio_working_rank_c = [idx for idx in working_rank_c if idx not in pattern_nurses]
-    ratio_working_rank_a = [idx for idx in working_rank_a if idx not in pattern_nurses]
-    ratio_working_rank_b = [idx for idx in working_rank_b if idx not in pattern_nurses]
+    ratio_working_ab = [
+        idx for idx in working_ab if idx not in pattern_nurses and idx not in no_night_ids
+    ]
+    ratio_working_rank_c = [
+        idx for idx in working_rank_c if idx not in pattern_nurses and idx not in no_night_ids
+    ]
+    ratio_working_rank_a = [
+        idx for idx in working_rank_a if idx not in pattern_nurses and idx not in no_night_ids
+    ]
+    ratio_working_rank_b = [
+        idx for idx in working_rank_b if idx not in pattern_nurses and idx not in no_night_ids
+    ]
 
     post_night_off: set[int] = set()
     for nurse_id, shift_name in prev_last_shift.items():
