@@ -17,6 +17,8 @@ down_revision = "p1q2r3s4t5u6"
 branch_labels = None
 depends_on = None
 
+_DEFAULT_DESIGNATION = "SN"
+
 _ALIASES: dict[str, str] = {
     "RN": "SN",
     "REGISTEREDNURSE": "SN",
@@ -56,6 +58,10 @@ _ALIASES: dict[str, str] = {
     "HEALTHCAREASSTIII": "HCA3",
     "SENIORHEALTHCAREASSISTANTI": "HCA1",
     "SENIORHEALTHCAREASSISTANTII": "HCA2",
+    # Legacy placeholder values from imported seed/test data.
+    "NIL": _DEFAULT_DESIGNATION,
+    "NULL": _DEFAULT_DESIGNATION,
+    "NONE": _DEFAULT_DESIGNATION,
 }
 
 
