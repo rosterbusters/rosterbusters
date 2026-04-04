@@ -21,6 +21,10 @@ def upgrade() -> None:
     bind = op.get_bind()
     insp = inspect(bind)
 
+    user_columns = {column["name"] for column in insp.get_columns("User")}
+    if "defaultpassword" not in user_columns:
+        op.add_column("User", sa.Column("defaultpassword", sa.String(), nullable=True))
+
     nurse_columns = {column["name"] for column in insp.get_columns("nurse")}
     if "shiftpattern" not in nurse_columns:
         op.add_column("nurse", sa.Column("shiftpattern", sa.String(length=20), nullable=True))
@@ -62,3 +66,7 @@ def downgrade() -> None:
     nurse_columns = {column["name"] for column in insp.get_columns("nurse")}
     if "shiftpattern" in nurse_columns:
         op.drop_column("nurse", "shiftpattern")
+
+    user_columns = {column["name"] for column in insp.get_columns("User")}
+    if "defaultpassword" in user_columns:
+        op.drop_column("User", "defaultpassword")
