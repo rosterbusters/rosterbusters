@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import MetaData, Table, inspect as sa_inspect
 from sqlmodel import Session, select, delete
 
 from app import crud
@@ -120,6 +121,47 @@ class NursePeriodConstraintCreateRequest(BaseModel):
 
 
 router = APIRouter()
+
+
+def _list_table_columns(session: Session, table_name: str) -> set[str]:
+    return {
+        column["name"]
+        for column in sa_inspect(session.get_bind()).get_columns(table_name)
+    }
+
+
+def _table_exists(session: Session, table_name: str) -> bool:
+    return sa_inspect(session.get_bind()).has_table(table_name)
+
+
+def _fetch_active_ward_nurses(session: Session, ward_id: int) -> list[dict[str, Any]]:
+    """Read nurse rows using table reflection so the API tolerates lagging schemas."""
+    metadata = MetaData()
+    nurse_table = Table("nurse", metadata, autoload_with=session.get_bind())
+
+    required_columns = [
+        "nurseid",
+        "name",
+        "designation",
+        "email",
+        "wardid",
+        "employmenttype",
+        "isactive",
+    ]
+    selected_columns = [nurse_table.c[column_name] for column_name in required_columns]
+
+    for optional_column in ("contactnumber", "shiftpattern", "employeeid"):
+        if optional_column in nurse_table.c:
+            selected_columns.append(nurse_table.c[optional_column])
+
+    rows = session.execute(
+        select(*selected_columns).where(
+            nurse_table.c.wardid == ward_id,
+            nurse_table.c.isactive == True,  # noqa: E712
+        )
+    ).mappings()
+
+    return [dict(row) for row in rows]
 
 
 def _get_celery_app():
@@ -289,25 +331,23 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    nurses = db.exec(
-        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
-    ).all()
+    nurses = _fetch_active_ward_nurses(db, ward_id)
 
     return {
         "ward": {"wardId": ward.wardid, "wardName": ward.wardname},
         "nurses": [
             {
-                "nurseId": n.nurseid,
-                "name": n.name,
-                "designation": n.designation,
-                "email": n.email,
-                "contactNumber": n.contactnumber,
-                "wardId": n.wardid,
-                "employmentType": n.employmenttype,
-                "shiftPattern": n.shiftpattern,
-                "isActive": n.isactive,
-                "staffing_role": classify_designation(n.designation).staffing_role,
-                "roster_rank": classify_designation(n.designation).roster_rank,
+                "nurseId": n["nurseid"],
+                "name": n["name"],
+                "designation": n["designation"],
+                "email": n["email"],
+                "contactNumber": n.get("contactnumber", ""),
+                "wardId": n["wardid"],
+                "employmentType": n["employmenttype"],
+                "shiftPattern": n.get("shiftpattern"),
+                "isActive": n["isactive"],
+                "staffing_role": classify_designation(n["designation"] or "").staffing_role,
+                "roster_rank": classify_designation(n["designation"] or "").roster_rank,
             }
             for n in nurses
         ],
@@ -1369,25 +1409,23 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
 
     shifts_data, milp_config = _staffing_to_algo_inputs(ward)
 
-    nurses_db = db.exec(
-        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
-    ).all()
+    nurses_db = _fetch_active_ward_nurses(db, ward_id)
     period_constraints = _load_nurse_period_constraints(
         db,
         ward_id,
         period_id,
-        [n.nurseid for n in nurses_db if n.nurseid is not None],
+        [n["nurseid"] for n in nurses_db if n.get("nurseid") is not None],
     )
     nurses_data = [
         {
-            "id": n.nurseid,
-            "name": n.name,
-            "rank": _map_rank(n.designation),
-            "shift_pattern": n.shiftpattern,
-            "constraints": period_constraints.get(n.nurseid or -1, []),
+            "id": n["nurseid"],
+            "name": n["name"],
+            "rank": _map_rank(n["designation"] or ""),
+            "shift_pattern": n.get("shiftpattern"),
+            "constraints": period_constraints.get(n["nurseid"] or -1, []),
             "no_night": any(
                 constraint.get("type") == "NO_NIGHT"
-                for constraint in period_constraints.get(n.nurseid or -1, [])
+                for constraint in period_constraints.get(n["nurseid"] or -1, [])
             ),
         }
         for n in nurses_db
@@ -1555,6 +1593,21 @@ def _load_nurse_period_constraints(
     nurse_ids: list[int],
 ) -> dict[int, list[dict[str, str | int | None]]]:
     if not nurse_ids:
+        return {}
+
+    if not _table_exists(db, "nurseperiodconstraint"):
+        logger.warning(
+            "Skipping period constraints load because nurseperiodconstraint table is missing"
+        )
+        return {}
+
+    expected_columns = {"constraintid", "nurseid", "periodid", "constrainttype", "value", "reason"}
+    existing_columns = _list_table_columns(db, "nurseperiodconstraint")
+    if not expected_columns.issubset(existing_columns):
+        logger.warning(
+            "Skipping period constraints load because nurseperiodconstraint columns are incomplete: %s",
+            sorted(existing_columns),
+        )
         return {}
 
     rows = db.exec(

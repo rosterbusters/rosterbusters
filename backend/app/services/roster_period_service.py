@@ -126,8 +126,11 @@ def ensure_roster_period_window(
     periods = list(
         session.exec(select(RosterPeriod).order_by(RosterPeriod.startdate.desc())).all()
     )
-    _queue_shift_request_open_notifications(session, periods, today=today)
-    _queue_shift_request_closed_notifications(session, periods, today=today)
+    try:
+        _queue_shift_request_open_notifications(session, periods, today=today)
+        _queue_shift_request_closed_notifications(session, periods, today=today)
+    except Exception:
+        logger.exception("Failed to queue roster period notifications")
     session.commit()
 
     return periods
