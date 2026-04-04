@@ -80,6 +80,10 @@ _DEFAULT_AB_RATIO_COVERAGE_MODE = "night_caps_only"
 logger = logging.getLogger(__name__)
 
 
+class ABRatioInfeasibilityError(RuntimeError):
+    """Raised when AB-RATIO is deterministically infeasible under current hard rules."""
+
+
 def _coerce_int(value, default: int) -> int:
     try:
         return int(value)
@@ -1392,6 +1396,7 @@ def run_ab_ratio_pipeline(
 
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        feasible_relaxations: list[str] = []
         if not diagnostic_retry_active:
             diagnostic_profiles = [
                 ("post_night_rest", {"_ab_ratio_relax_post_night_rest": True}),
@@ -1423,11 +1428,17 @@ def run_ab_ratio_pipeline(
                         label,
                     )
                 else:
+                    feasible_relaxations.append(label)
                     logger.warning(
                         "[AB-DEBUG] diagnostic relaxation became feasible: %s",
                         label,
                     )
-        raise RuntimeError(
+        if feasible_relaxations == ["min_nights"]:
+            raise ABRatioInfeasibilityError(
+                "AB-RATIO infeasible: the hard minimum 2-night requirement conflicts with the current "
+                "no-night, leave, and hard-request constraints for this roster period."
+            )
+        raise ABRatioInfeasibilityError(
             f"AB-RATIO solver returned '{solver.StatusName(status)}' - no feasible solution found."
         )
 

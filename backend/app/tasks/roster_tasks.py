@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.models.enums import NotificationType
 from app.models.rbac import NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
+from app.rostering.ab_ratio_algo import ABRatioInfeasibilityError
 from app.rostering.algo_scheduler import generate_roster
 from app.worker import celery_app
 
@@ -208,6 +209,17 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             "method": result["method"],
             "roster": result["roster"],
         }
+
+    except ABRatioInfeasibilityError as exc:
+        logger.exception(
+            "Roster generation task failed without retry task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
+            self.request.id,
+            ward_id,
+            period_id,
+            algorithm,
+            self.request.retries,
+        )
+        raise exc
 
     except Exception as exc:
         logger.exception(
