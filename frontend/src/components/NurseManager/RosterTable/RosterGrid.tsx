@@ -68,6 +68,8 @@ interface RosterGridProps {
   isRosterGenerated?: boolean;
   showSummary?: boolean;
   shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>;
+  highlightedNurseIds?: Set<number>;
+  onNurseNameClick?: (row: RosterRow) => void;
 }
 
 // Generate day columns based on view mode and start date
@@ -149,6 +151,8 @@ export function RosterGrid({
   isRosterGenerated = false,
   showSummary = true,
   shiftRequestOverlays = {},
+  highlightedNurseIds,
+  onNurseNameClick,
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -596,6 +600,7 @@ export function RosterGrid({
   // Render a single data row
   const renderDataRow = (row: RosterRow) => {
     const displayName = getDisplayName(row);
+    const isHighlighted = highlightedNurseIds?.has(row.nurseId) ?? false;
 
     return (
     <Table.Row
@@ -616,9 +621,29 @@ export function RosterGrid({
         minW="160px"
       >
         <HStack gap={2}>
-          <Text fontSize="sm" fontWeight="medium">
+          <Text
+            fontSize="sm"
+            fontWeight="medium"
+            color={isHighlighted ? "#b45309" : undefined}
+            textDecoration={isHighlighted ? "underline" : undefined}
+            cursor={onNurseNameClick ? "pointer" : "default"}
+            onClick={() => onNurseNameClick?.(row)}
+          >
             {displayName}
           </Text>
+          {isHighlighted && (
+            <Box
+              px={2}
+              py={0.5}
+              borderRadius="full"
+              bg="#fef3c7"
+              color="#92400e"
+              fontSize="10px"
+              fontWeight="semibold"
+            >
+              No night
+            </Box>
+          )}
           {/* {row.hasWarning && (
             <Icon as={AlertCircle} boxSize={4} color="danger" />
           )} */}

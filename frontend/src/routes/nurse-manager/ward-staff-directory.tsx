@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Box,
@@ -19,18 +19,10 @@ import { Filter, X } from "lucide-react";
 
 import { WardsService, type Ward } from "@/client";
 import {
-  useDeletePeriodConstraint,
-  usePeriodConstraints,
-  useRosterPeriods,
   useWardStatistics,
   useUpdateNurseShiftPattern,
-  useUpsertPeriodConstraint,
 } from "@/components/NurseManager/RosterTable/useRosterData";
-import type {
-  NursePeriodConstraint,
-  RosterPeriod,
-  ShiftPattern,
-} from "@/components/NurseManager/RosterTable/types";
+import type { ShiftPattern } from "@/components/NurseManager/RosterTable/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
@@ -214,7 +206,7 @@ function FilterMenu({
                     size="sm"
                     checked={selectedValues.has(option)}
                     onCheckedChange={() => onToggle(option)}
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event: MouseEvent) => event.stopPropagation()}
                     colorPalette="cyan"
                   />
                   <Text fontSize="xs" color="gray.700" userSelect="none">
@@ -230,10 +222,6 @@ function FilterMenu({
   );
 }
 
-function formatPeriodLabel(period: RosterPeriod) {
-  return `${period.name} (${period.startDate} to ${period.endDate})`;
-}
-
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -243,7 +231,6 @@ function getErrorMessage(error: unknown) {
 
 function WardStaffDirectoryPage() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null);
   const [nameFilterOpen, setNameFilterOpen] = useState(false);
   const [designationFilterOpen, setDesignationFilterOpen] = useState(false);
   const [nameFilterSearch, setNameFilterSearch] = useState("");
@@ -255,9 +242,6 @@ function WardStaffDirectoryPage() {
   const [savingPatternNurseId, setSavingPatternNurseId] = useState<number | null>(
     null,
   );
-  const [savingNoNightNurseId, setSavingNoNightNurseId] = useState<number | null>(
-    null,
-  );
   const nameFilterAnchorRef = useRef<HTMLDivElement>(null);
   const designationFilterAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -265,18 +249,13 @@ function WardStaffDirectoryPage() {
     queryKey: ["wards"],
     queryFn: WardsService.getWards,
   });
-  const { data: periods = [], isLoading: periodsLoading } = useRosterPeriods();
 
   const {
     data: statistics,
     isLoading: isStatisticsLoading,
     isError: isStatisticsError,
   } = useWardStatistics(selectedWard?.wardid ?? null);
-  const { data: periodConstraints = [], isLoading: isConstraintsLoading } =
-    usePeriodConstraints(selectedWard?.wardid ?? null, selectedPeriod?.periodId ?? null);
   const updateShiftPattern = useUpdateNurseShiftPattern();
-  const upsertConstraint = useUpsertPeriodConstraint();
-  const deleteConstraint = useDeletePeriodConstraint();
 
   useEffect(() => {
     if (wards.length === 0 || selectedWard) {
@@ -291,19 +270,6 @@ function WardStaffDirectoryPage() {
     setSelectedWard(restoredWard ?? wards[0]);
   }, [selectedWard, wards]);
 
-  useEffect(() => {
-    if (periods.length === 0 || selectedPeriod) {
-      return;
-    }
-
-    const savedId = localStorage.getItem("selectedWardDirectoryPeriodId");
-    const restoredPeriod = savedId
-      ? periods.find((period) => String(period.periodId) === savedId)
-      : null;
-
-    setSelectedPeriod(restoredPeriod ?? periods[0]);
-  }, [periods, selectedPeriod]);
-
   const wardCollection = useMemo(
     () =>
       createListCollection({
@@ -312,16 +278,6 @@ function WardStaffDirectoryPage() {
         itemToValue: (ward) => String(ward.wardid),
       }),
     [wards],
-  );
-
-  const periodCollection = useMemo(
-    () =>
-      createListCollection({
-        items: periods,
-        itemToString: formatPeriodLabel,
-        itemToValue: (period) => String(period.periodId),
-      }),
-    [periods],
   );
 
   const rows = useMemo<DirectoryRow[]>(
@@ -338,16 +294,6 @@ function WardStaffDirectoryPage() {
       })),
     [statistics],
   );
-
-  const noNightConstraintByNurse = useMemo(() => {
-    const constraintMap = new Map<number, NursePeriodConstraint>();
-    for (const constraint of periodConstraints) {
-      if (constraint.constrainttype === "NO_NIGHT") {
-        constraintMap.set(constraint.nurseid, constraint);
-      }
-    }
-    return constraintMap;
-  }, [periodConstraints]);
 
   const allNames = useMemo(
     () => Array.from(new Set(rows.map((row) => row.name))).sort(),
@@ -408,11 +354,6 @@ function WardStaffDirectoryPage() {
     setDesignationFilterOpen(false);
   };
 
-  const handlePeriodChange = (period: RosterPeriod) => {
-    setSelectedPeriod(period);
-    localStorage.setItem("selectedWardDirectoryPeriodId", String(period.periodId));
-  };
-
   const toggleName = (name: string) => {
     setSelectedNames((previous) => {
       const next = new Set(previous);
@@ -453,50 +394,7 @@ function WardStaffDirectoryPage() {
     }
   };
 
-  const handleNoNightToggle = async (row: DirectoryRow, checked: boolean) => {
-    if (!selectedWard || !selectedPeriod) {
-      showErrorToast("Select a roster period before updating temporary night restrictions.");
-      return;
-    }
-
-    const wardId = selectedWard.wardid;
-    if (wardId == null) {
-      showErrorToast("The selected ward is missing its identifier.");
-      return;
-    }
-
-    const existingConstraint = noNightConstraintByNurse.get(row.nurseId);
-    setSavingNoNightNurseId(row.nurseId);
-
-    try {
-      if (checked) {
-        await upsertConstraint.mutateAsync({
-          wardId,
-          nurseId: row.nurseId,
-          periodId: selectedPeriod.periodId,
-          constraintType: "NO_NIGHT",
-          value: "true",
-          reason: "Temporary special duty",
-        });
-        showSuccessToast("Temporary no-night restriction saved.");
-      } else if (existingConstraint) {
-        await deleteConstraint.mutateAsync({
-          constraintId: existingConstraint.constraintid,
-        });
-        showSuccessToast("Temporary no-night restriction removed.");
-      }
-    } catch (error) {
-      showErrorToast(getErrorMessage(error));
-    } finally {
-      setSavingNoNightNurseId(null);
-    }
-  };
-
-  const isLoading =
-    wardsLoading ||
-    periodsLoading ||
-    isStatisticsLoading ||
-    (selectedPeriod ? isConstraintsLoading : false);
+  const isLoading = wardsLoading || isStatisticsLoading;
 
   return (
     <Flex
@@ -520,9 +418,8 @@ function WardStaffDirectoryPage() {
             Ward Staff Directory
           </Text>
           <Text color="foreground" fontWeight="light">
-            Review live nurse records by ward, set permanent AM or PM-only
-            patterns, and apply temporary no-night restrictions for a roster
-            period.
+            Review live nurse records by ward and set permanent AM or PM-only
+            patterns for permanent staff.
           </Text>
         </VStack>
 
@@ -572,44 +469,6 @@ function WardStaffDirectoryPage() {
               </Portal>
             </Select.Root>
 
-            <Text fontSize="sm" fontWeight="medium">
-              Roster Period
-            </Text>
-            <Select.Root
-              collection={periodCollection}
-              size="sm"
-              width={{ base: "full", md: "320px" }}
-              value={selectedPeriod ? [String(selectedPeriod.periodId)] : []}
-              onValueChange={(details) => {
-                const period = periods.find(
-                  (item) => String(item.periodId) === details.value[0],
-                );
-                if (period) {
-                  handlePeriodChange(period);
-                }
-              }}
-            >
-              <Select.HiddenSelect />
-              <Select.Control>
-                <Select.Trigger>
-                  <Select.ValueText placeholder="Select roster period" />
-                </Select.Trigger>
-                <Select.IndicatorGroup>
-                  <Select.Indicator />
-                </Select.IndicatorGroup>
-              </Select.Control>
-              <Portal>
-                <Select.Positioner zIndex={1500}>
-                  <Select.Content>
-                    {periodCollection.items.map((period) => (
-                      <Select.Item key={period.periodId} item={period}>
-                        {formatPeriodLabel(period)}
-                      </Select.Item>
-                    ))}
-                  </Select.Content>
-                </Select.Positioner>
-              </Portal>
-            </Select.Root>
           </HStack>
 
           <HStack gap={3} color="foreground" flexWrap="wrap">
@@ -628,11 +487,7 @@ function WardStaffDirectoryPage() {
           </HStack>
         </Flex>
 
-        <Flex
-          direction={{ base: "column", md: "row" }}
-          justify="space-between"
-          align={{ base: "start", md: "center" }}
-          gap={2}
+        <Box
           px={4}
           py={3}
           rounded="md"
@@ -641,13 +496,11 @@ function WardStaffDirectoryPage() {
           borderColor="blackAlpha.100"
         >
           <Text fontSize="sm" color="foreground">
-            Permanent pattern applies on every generated roster. Temporary
-            no-night applies only to the selected roster period.
+            Permanent AM-only and PM-only patterns are configured here. Temporary
+            no-night settings are now managed from roster planning for the selected
+            roster period.
           </Text>
-          <Text fontSize="sm" color="primary" fontWeight="semibold">
-            {selectedPeriod ? formatPeriodLabel(selectedPeriod) : "No roster period selected"}
-          </Text>
-        </Flex>
+        </Box>
 
         <Box
           w="full"
@@ -834,17 +687,6 @@ function WardStaffDirectoryPage() {
                     Permanent Pattern
                   </Table.ColumnHeader>
                   <Table.ColumnHeader
-                    minW="180px"
-                    py={4}
-                    px={4}
-                    borderBottom="1px solid"
-                    borderColor="blackAlpha.100"
-                    color="foreground"
-                    fontWeight="medium"
-                  >
-                    No Night This Period
-                  </Table.ColumnHeader>
-                  <Table.ColumnHeader
                     minW="240px"
                     py={4}
                     px={4}
@@ -894,13 +736,13 @@ function WardStaffDirectoryPage() {
               <Table.Body>
                 {!selectedWard ? (
                   <Table.Row>
-                    <Table.Cell colSpan={8} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={7} textAlign="center" py={12} color="foreground">
                       Select a ward to view staff.
                     </Table.Cell>
                   </Table.Row>
                 ) : filteredRows.length === 0 ? (
                   <Table.Row>
-                    <Table.Cell colSpan={8} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={7} textAlign="center" py={12} color="foreground">
                       {rows.length === 0
                         ? "No nurses were found for this ward."
                         : "No staff match the selected filters."}
@@ -908,9 +750,7 @@ function WardStaffDirectoryPage() {
                   </Table.Row>
                 ) : (
                   filteredRows.map((row) => {
-                    const noNightConstraint = noNightConstraintByNurse.get(row.nurseId);
                     const isSavingPattern = savingPatternNurseId === row.nurseId;
-                    const isSavingNoNight = savingNoNightNurseId === row.nurseId;
 
                     return (
                       <Table.Row key={row.nurseId} bg="white" _hover={{ bg: "gray.50" }}>
@@ -956,25 +796,6 @@ function WardStaffDirectoryPage() {
                               </Select.Positioner>
                             </Portal>
                           </Select.Root>
-                        </Table.Cell>
-                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                          <VStack align="start" gap={1}>
-                            <Checkbox
-                              checked={!!noNightConstraint}
-                              disabled={!selectedPeriod || isSavingNoNight}
-                              onCheckedChange={(details) =>
-                                handleNoNightToggle(row, Boolean(details.checked))
-                              }
-                              colorPalette="cyan"
-                            >
-                              Temporary no-night
-                            </Checkbox>
-                            <Text fontSize="xs" color="gray.500">
-                              {selectedPeriod
-                                ? noNightConstraint?.reason || "Applies only to the selected period."
-                                : "Select a period to manage this rule."}
-                            </Text>
-                          </VStack>
                         </Table.Cell>
                         <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
                           <Text fontSize="sm" color="black">
