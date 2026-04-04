@@ -620,35 +620,41 @@ export function RosterGrid({
         w="160px"
         minW="160px"
       >
-        <HStack gap={2}>
-          <Text
-            fontSize="sm"
-            fontWeight="medium"
-            color={isHighlighted ? "#b45309" : undefined}
-            textDecoration={isHighlighted ? "underline" : undefined}
-            cursor={onNurseNameClick ? "pointer" : "default"}
-            onClick={() => onNurseNameClick?.(row)}
-          >
-            {displayName}
-          </Text>
-          {isHighlighted && (
-            <Box
-              px={2}
-              py={0.5}
-              borderRadius="full"
-              bg="#fef3c7"
-              color="#92400e"
-              fontSize="10px"
-              fontWeight="semibold"
+        <Box
+          as={onNurseNameClick ? "button" : "div"}
+          w="full"
+          textAlign="left"
+          cursor={onNurseNameClick ? "pointer" : "default"}
+          onClick={() => onNurseNameClick?.(row)}
+          _hover={onNurseNameClick ? { bg: "#f8fafc" } : undefined}
+          borderRadius="md"
+          px={1}
+          py={1}
+        >
+          <HStack gap={2} align="center">
+            <Text
+              fontSize="sm"
+              fontWeight="medium"
+              color={isHighlighted ? "#b45309" : undefined}
+              textDecoration={isHighlighted ? "underline" : undefined}
             >
-              No night
-            </Box>
-          )}
-          {/* {row.hasWarning && (
-            <Icon as={AlertCircle} boxSize={4} color="danger" />
-          )} */}
-          
-        </HStack>
+              {displayName}
+            </Text>
+            {isHighlighted && (
+              <Box
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                bg="#fef3c7"
+                color="#92400e"
+                fontSize="10px"
+                fontWeight="semibold"
+              >
+                No night
+              </Box>
+            )}
+          </HStack>
+        </Box>
       </Table.Cell>
 
       {/* Shift Cells */}
