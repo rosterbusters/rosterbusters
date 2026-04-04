@@ -62,8 +62,8 @@ interface RosterPlanningHeaderProps {
   isGenerating?: boolean;
   isPublishing?: boolean;
   generationProgress?: number;
-  algorithmType?: "MILP" | "GA" | "AB-RATIO" | "V2" | null;
-  onAlgorithmTypeChange?: (type: "MILP" | "GA" | "AB-RATIO" | "V2" | null) => void;
+  algorithmType?: "MILP" | "GA" | "AB-RATIO" | null;
+  onAlgorithmTypeChange?: (type: "MILP" | "GA" | "AB-RATIO" | null) => void;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
@@ -591,20 +591,6 @@ export function RosterPlanningHeader({
                     disabled={isGenerating}
                   >
                     AB-RATIO
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={"outlinegrey" as any}
-                    fontWeight="normal"
-                    onClick={() => onAlgorithmTypeChange?.("V2")}
-                    bg={algorithmType === "V2" ? "#4B8798" : "transparent"}
-                    color={algorithmType === "V2" ? "white" : "foreground"}
-                    _hover={{ bg: algorithmType === "V2" ? "#4B8798" : "#F8FAFC" }}
-                    borderRadius={0}
-                    px={4}
-                    disabled={isGenerating}
-                  >
-                    V2
                   </Button>
                 </HStack>
 

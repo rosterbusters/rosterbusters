@@ -365,6 +365,11 @@ def parse_ab_ratio_inputs(
         if str(shift_name).strip().upper() == "NIGHT":
             post_night_off.add(nurse_idx)
 
+    for nurse_idx in post_night_off:
+        forced_day_zero = hard_assignments[nurse_idx].get(0)
+        if forced_day_zero is not None and forced_day_zero != OFF and 0 not in al_day_req[nurse_idx]:
+            del hard_assignments[nurse_idx][0]
+
     cfg = dict(milp_config or {})
     ratio_weights = dict(_DEFAULT_WEIGHTS)
     ratio_weights.update(cfg.get("ab_ratio_weights") or {})
@@ -497,8 +502,9 @@ def parse_ab_ratio_inputs(
                 free_days = max(0, week_len - leave_days)
                 shift_pattern = shift_pattern_by_nurse.get(nurse_idx)
                 if shift_pattern in {"AM_ONLY", "PM_ONLY"}:
-                    preferred_target = min(4, free_days)
-                    target_do = max(len(fixed_off_days), free_days - preferred_target)
+                    min_off_days = min(len(fixed_off_days), free_days)
+                    preferred_target = min(4, max(0, free_days - min_off_days))
+                    target_do = free_days - preferred_target
                     expected_work_slots += preferred_target
                 else:
                     target_do = max(_weekly_do_target(week_len), len(fixed_off_days))
@@ -542,6 +548,10 @@ def parse_ab_ratio_inputs(
     expected_c_work_slots = 0
     if ratio_working_rank_c:
         c_weekly_do_targets, expected_c_work_slots = _build_weekly_do_targets_for_group(ratio_working_rank_c)
+
+    pattern_weekly_do_targets: dict[int, list[int]] = {}
+    if pattern_nurses:
+        pattern_weekly_do_targets, _ = _build_weekly_do_targets_for_group(sorted(pattern_nurses))
     c_target_totals, c_target_ratios = _build_ab_targets(expected_c_work_slots, c_shift_ratio)
     c_daily_targets = {
         shift_code: _distribute_targets(c_target_totals[shift_code], num_days)
@@ -639,6 +649,7 @@ def parse_ab_ratio_inputs(
         "a_daily_targets": a_daily_targets,
         "b_daily_targets": b_daily_targets,
         "c_weekly_do_targets": c_weekly_do_targets,
+        "pattern_weekly_do_targets": pattern_weekly_do_targets,
         "c_shift_ratio": c_shift_ratio,
         "expected_c_work_slots": expected_c_work_slots,
         "c_target_totals": c_target_totals,
@@ -781,6 +792,7 @@ def run_ab_ratio_pipeline(
     ratio_working_rank_b = parsed["ratio_working_rank_b"]
     ab_weekly_do_targets = parsed["ab_weekly_do_targets"]
     c_weekly_do_targets = parsed["c_weekly_do_targets"]
+    pattern_weekly_do_targets = parsed["pattern_weekly_do_targets"]
     ab_daily_targets = parsed["ab_daily_targets"]
     a_daily_targets = parsed["a_daily_targets"]
     b_daily_targets = parsed["b_daily_targets"]
@@ -950,8 +962,8 @@ def run_ab_ratio_pipeline(
                 1 for day_idx in range(week_start, week_end) if day_idx in al_day_req[nurse_idx]
             )
             free_days = max(0, week_len - leave_days)
-            preferred_target = min(4, free_days)
-            off_target = free_days - preferred_target
+            off_target = pattern_weekly_do_targets[nurse_idx][week_index]
+            preferred_target = free_days - off_target
             model.Add(
                 sum(x[nurse_idx, day_idx, preferred_shift] for day_idx in range(week_start, week_end))
                 == preferred_target

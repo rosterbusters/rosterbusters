@@ -102,8 +102,6 @@ def generate_roster(
         forced = "CP-SAT"
     elif forced in {"AB_RATIO", "ABRATIO"}:
         forced = "AB-RATIO"
-    elif forced in {"V2", "CP-SAT-V2", "CPSAT-V2", "CPSATV2"}:
-        forced = "CP-SAT"
 
     if forced == "AB-RATIO":
         roster = _run_ab_ratio_pipeline(
