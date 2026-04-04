@@ -24,7 +24,9 @@ PERIOD_LENGTH_DAYS = 14
 PERIODS_PER_ROSTER_YEAR = 26
 ROSTER_YEAR_LENGTH_DAYS = PERIOD_LENGTH_DAYS * PERIODS_PER_ROSTER_YEAR
 ROSTER_YEARS_TO_KEEP = 2
-PLANNING_LOCK_OFFSET_DAYS = 3
+# TODO: Replace this temporary bypass with the real roster planning lock cutoff
+# once the implementation date/policy is finalized.
+PLANNING_LOCK_OFFSET_DAYS = -365
 logger = logging.getLogger(__name__)
 
 
