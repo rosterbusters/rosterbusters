@@ -194,6 +194,8 @@ def _get_managed_ward_ids(session: Session, user_id: int | None) -> set[int]:
 
 
 def _can_manage_ward(session: Session, current_user: CurrentUser, ward: Ward) -> bool:
+    if current_user.email and user_has_role(session, current_user.email, "NurseManager"):
+        return True
     if current_user.managerid == ward.managerid:
         return True
     if ward.wardid in _get_managed_ward_ids(session, current_user.userid):
