@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 try:
@@ -75,6 +76,8 @@ _DEFAULT_RN_NIGHT_ALLOWED_EXCESS = 1
 _DEFAULT_DAILY_TOTAL_SHIFT_GAP_TARGET = 2
 _DEFAULT_DAILY_TOTAL_SHIFT_BALANCE_ENABLED = True
 _DEFAULT_AB_RATIO_COVERAGE_MODE = "night_caps_only"
+
+logger = logging.getLogger(__name__)
 
 
 def _coerce_int(value, default: int) -> int:
@@ -245,6 +248,142 @@ def _normalize_c_shift_ratio(config_ratio) -> dict[int, int]:
             elif key in {"NIGHT", "N"}:
                 normalized[NIGHT] = max(_coerce_int(value, normalized[NIGHT]), 0)
     return normalized
+
+
+def _emit_infeasibility_diagnostics(parsed: dict) -> None:
+    nurse_names = parsed["nurse_names"]
+    nurse_ranks = parsed["nurse_ranks"]
+    num_days = parsed["num_days"]
+    demand = parsed["demand"]
+    hard_assignments = parsed["hard_assignments"]
+    al_day_req = parsed["al_day_req"]
+    post_night_off = parsed["post_night_off"]
+    no_night_ids = parsed["no_night_ids"]
+    shift_pattern_by_nurse = parsed["shift_pattern_by_nurse"]
+    pattern_weekly_do_targets = parsed["pattern_weekly_do_targets"]
+
+    def nurse_label(nurse_idx: int) -> str:
+        return f"{nurse_names[nurse_idx]} (#{nurse_idx}, rank {nurse_ranks[nurse_idx]})"
+
+    if no_night_ids:
+        logger.warning(
+            "[AB-DEBUG] no-night nurses: %s",
+            ", ".join(nurse_label(nurse_idx) for nurse_idx in sorted(no_night_ids)),
+        )
+    pattern_lines = []
+    for nurse_idx, shift_pattern in shift_pattern_by_nurse.items():
+        if shift_pattern:
+            pattern_lines.append(f"{nurse_label(nurse_idx)}={shift_pattern}")
+    if pattern_lines:
+        logger.warning("[AB-DEBUG] permanent-pattern nurses: %s", ", ".join(pattern_lines))
+    if post_night_off:
+        logger.warning(
+            "[AB-DEBUG] day-0 forced off from previous night: %s",
+            ", ".join(nurse_label(nurse_idx) for nurse_idx in sorted(post_night_off)),
+        )
+
+    for nurse_idx, assignments in enumerate(hard_assignments):
+        hard_night_days = sorted(day_idx for day_idx, shift_code in assignments.items() if shift_code == NIGHT)
+        if len(hard_night_days) > 4:
+            logger.warning(
+                "[AB-DEBUG] nurse has >4 hard night assignments: %s days=%s",
+                nurse_label(nurse_idx),
+                hard_night_days,
+            )
+        for start in range(len(hard_night_days) - 2):
+            run = hard_night_days[start : start + 3]
+            if run[0] + 1 == run[1] and run[1] + 1 == run[2]:
+                logger.warning(
+                    "[AB-DEBUG] nurse has 3 consecutive hard night assignments: %s days=%s",
+                    nurse_label(nurse_idx),
+                    run,
+                )
+
+    for nurse_idx, shift_pattern in shift_pattern_by_nurse.items():
+        if not shift_pattern:
+            continue
+        preferred_shift = AM if shift_pattern == "AM_ONLY" else PM
+        disallowed_shift = PM if shift_pattern == "AM_ONLY" else AM
+        for week_index, week_start in enumerate(range(0, num_days, 7)):
+            week_end = min(week_start + 7, num_days)
+            leave_days = sum(1 for day_idx in range(week_start, week_end) if day_idx in al_day_req[nurse_idx])
+            free_days = max(0, (week_end - week_start) - leave_days)
+            off_target = pattern_weekly_do_targets.get(nurse_idx, [])[week_index]
+            preferred_target = free_days - off_target
+            hard_preferred_days = sorted(
+                day_idx
+                for day_idx, shift_code in hard_assignments[nurse_idx].items()
+                if week_start <= day_idx < week_end and shift_code == preferred_shift
+            )
+            hard_off_days = sorted(
+                day_idx
+                for day_idx, shift_code in hard_assignments[nurse_idx].items()
+                if week_start <= day_idx < week_end and shift_code == OFF
+            )
+            hard_disallowed_days = sorted(
+                day_idx
+                for day_idx, shift_code in hard_assignments[nurse_idx].items()
+                if week_start <= day_idx < week_end and shift_code in {disallowed_shift, NIGHT}
+            )
+            if len(hard_preferred_days) > preferred_target:
+                logger.warning(
+                    "[AB-DEBUG] pattern nurse exceeds weekly preferred target: %s week=%s preferred_target=%s hard_days=%s",
+                    nurse_label(nurse_idx),
+                    week_index + 1,
+                    preferred_target,
+                    hard_preferred_days,
+                )
+            if len(hard_off_days) > off_target:
+                logger.warning(
+                    "[AB-DEBUG] pattern nurse exceeds weekly off target: %s week=%s off_target=%s hard_off_days=%s",
+                    nurse_label(nurse_idx),
+                    week_index + 1,
+                    off_target,
+                    hard_off_days,
+                )
+            if hard_disallowed_days:
+                logger.warning(
+                    "[AB-DEBUG] pattern nurse has disallowed hard shifts: %s week=%s days=%s",
+                    nurse_label(nurse_idx),
+                    week_index + 1,
+                    hard_disallowed_days,
+                )
+
+    for day_idx in range(num_days):
+        required_a = demand[day_idx][NIGHT]["A"]
+        required_b = demand[day_idx][NIGHT]["B"]
+        eligible_a = []
+        eligible_b = []
+        for nurse_idx, rank in enumerate(nurse_ranks):
+            if day_idx in al_day_req[nurse_idx]:
+                continue
+            if nurse_idx in no_night_ids:
+                continue
+            if shift_pattern_by_nurse.get(nurse_idx):
+                continue
+            forced_shift = hard_assignments[nurse_idx].get(day_idx)
+            if forced_shift not in {None, NIGHT}:
+                continue
+            if rank == "A":
+                eligible_a.append(nurse_idx)
+            elif rank == "B":
+                eligible_b.append(nurse_idx)
+        if len(eligible_a) < required_a:
+            logger.warning(
+                "[AB-DEBUG] insufficient rank A night candidates on day %s: required=%s eligible=%s candidates=%s",
+                day_idx,
+                required_a,
+                len(eligible_a),
+                [nurse_names[nurse_idx] for nurse_idx in eligible_a],
+            )
+        if len(eligible_b) < required_b:
+            logger.warning(
+                "[AB-DEBUG] insufficient rank B night candidates on day %s: required=%s eligible=%s candidates=%s",
+                day_idx,
+                required_b,
+                len(eligible_b),
+                [nurse_names[nurse_idx] for nurse_idx in eligible_b],
+            )
 
 
 def parse_ab_ratio_inputs(
@@ -762,6 +901,7 @@ def run_ab_ratio_pipeline(
         non_working_shift_codes=non_working_shift_codes,
         milp_config=milp_config,
     )
+    _emit_infeasibility_diagnostics(parsed)
 
     if progress_callback:
         progress_callback(1, 4, float("inf"))
