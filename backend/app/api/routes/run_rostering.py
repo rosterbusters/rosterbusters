@@ -370,17 +370,17 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
         "ward": {"wardId": ward.wardid, "wardName": ward.wardname},
         "nurses": [
             {
-                "nurseId": n["nurseid"],
-                "name": n["name"],
-                "designation": n["designation"],
-                "email": n["email"],
-                "contactNumber": n.get("contactnumber", ""),
-                "wardId": n["wardid"],
-                "employmentType": n["employmenttype"],
-                "shiftPattern": n.get("shiftpattern"),
-                "isActive": n["isactive"],
-                "staffing_role": classify_designation_with_rank_map(rank_map, n["designation"] or "").staffing_role,
-                "roster_rank": classify_designation_with_rank_map(rank_map, n["designation"] or "").roster_rank,
+                "nurseId": n.nurseid,
+                "name": n.name,
+                "designation": n.designation,
+                "email": n.email,
+                "contactNumber": n.contactnumber or "",
+                "wardId": n.wardid,
+                "employmentType": n.employmenttype,
+                "shiftPattern": n.shiftpattern,
+                "isActive": n.isactive,
+                "staffing_role": classify_designation_with_rank_map(rank_map, n.designation or "").staffing_role,
+                "roster_rank": classify_designation_with_rank_map(rank_map, n.designation or "").roster_rank,
             }
             for n in nurses
         ],
