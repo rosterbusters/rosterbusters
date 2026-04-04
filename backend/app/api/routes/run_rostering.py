@@ -23,6 +23,8 @@ from app.designation_mapping import classify_designation, staffing_role_to_roste
 from app.models.enums import NotificationType
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import (
+    NursePeriodConstraint,
+    NursePeriodConstraintPublic,
     NotificationQueue,
     Roster,
     RosterChangeLog,
@@ -106,6 +108,15 @@ class RosterUpsertRequest(BaseModel):
 
 class BulkRosterUpsertRequest(BaseModel):
     entries: list[RosterUpsertRequest]
+
+
+class NursePeriodConstraintCreateRequest(BaseModel):
+    ward_id: int
+    nurse_id: int
+    period_id: int
+    constraint_type: str
+    value: str = "true"
+    reason: Optional[str] = None
 
 
 router = APIRouter()
@@ -289,7 +300,12 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 "nurseId": n.nurseid,
                 "name": n.name,
                 "designation": n.designation,
+                "email": n.email,
+                "contactNumber": n.contactnumber,
+                "wardId": n.wardid,
                 "employmentType": n.employmenttype,
+                "shiftPattern": n.shiftpattern,
+                "isActive": n.isactive,
                 "staffing_role": classify_designation(n.designation).staffing_role,
                 "roster_rank": classify_designation(n.designation).roster_rank,
             }
@@ -337,6 +353,113 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
             for e in entries
         ],
     }
+
+
+@router.get("/constraints", response_model=list[NursePeriodConstraintPublic])
+def get_period_constraints(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    nurse_ids = list(
+        session.exec(select(Nurse.nurseid).where(Nurse.wardid == ward_id)).all()
+    )
+    if not nurse_ids:
+        return []
+
+    return list(
+        session.exec(
+            select(NursePeriodConstraint).where(
+                NursePeriodConstraint.periodid == period_id,
+                NursePeriodConstraint.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
+            )
+        ).all()
+    )
+
+
+@router.post("/constraints", response_model=NursePeriodConstraintPublic, status_code=201)
+def create_or_update_period_constraint(
+    body: NursePeriodConstraintCreateRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    ward = session.get(Ward, body.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    nurse = session.get(Nurse, body.nurse_id)
+    if not nurse or nurse.wardid != body.ward_id:
+        raise HTTPException(status_code=400, detail="Nurse does not belong to the selected ward")
+
+    period = session.get(RosterPeriod, body.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    constraint_type = body.constraint_type.strip().upper()
+    if constraint_type != "NO_NIGHT":
+        raise HTTPException(status_code=400, detail="Only NO_NIGHT constraints are currently supported")
+
+    existing = session.exec(
+        select(NursePeriodConstraint).where(
+            NursePeriodConstraint.nurseid == body.nurse_id,
+            NursePeriodConstraint.periodid == body.period_id,
+            NursePeriodConstraint.constrainttype == constraint_type,
+        )
+    ).first()
+
+    if existing:
+        existing.value = body.value
+        existing.reason = body.reason
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
+
+    constraint = NursePeriodConstraint(
+        nurseid=body.nurse_id,
+        periodid=body.period_id,
+        constrainttype=constraint_type,
+        value=body.value,
+        reason=body.reason,
+    )
+    session.add(constraint)
+    session.commit()
+    session.refresh(constraint)
+    return constraint
+
+
+@router.delete("/constraints/{constraint_id}")
+def delete_period_constraint(
+    constraint_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    constraint = session.get(NursePeriodConstraint, constraint_id)
+    if not constraint:
+        raise HTTPException(status_code=404, detail="Constraint not found")
+
+    nurse = session.get(Nurse, constraint.nurseid)
+    if not nurse or nurse.wardid is None:
+        raise HTTPException(status_code=400, detail="Constraint nurse is not linked to a ward")
+
+    ward = session.get(Ward, nurse.wardid)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    session.delete(constraint)
+    session.commit()
+    return {"deleted": True, "constraint_id": constraint_id}
 
 
 @router.post("/create")
@@ -1249,8 +1372,24 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     nurses_db = db.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
+    period_constraints = _load_nurse_period_constraints(
+        db,
+        ward_id,
+        period_id,
+        [n.nurseid for n in nurses_db if n.nurseid is not None],
+    )
     nurses_data = [
-        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
+        {
+            "id": n.nurseid,
+            "name": n.name,
+            "rank": _map_rank(n.designation),
+            "shift_pattern": n.shiftpattern,
+            "constraints": period_constraints.get(n.nurseid or -1, []),
+            "no_night": any(
+                constraint.get("type") == "NO_NIGHT"
+                for constraint in period_constraints.get(n.nurseid or -1, [])
+            ),
+        }
         for n in nurses_db
     ]
     rank_counts = {
@@ -1270,6 +1409,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         if nurse_id in soft_requests:
             soft_requests[nurse_id] = [(d, s) for d, s in soft_requests[nurse_id] if d not in leave_days]
     prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
+    _filter_requests_for_nurse_constraints(nurses_data, hard_requests, soft_requests)
 
     logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
     logger.warning(f"[DEBUG] nurses={len(nurses_data)} hard_requests={sum(len(v) for v in hard_requests.values())} soft_requests={sum(len(v) for v in soft_requests.values())}")
@@ -1318,6 +1458,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         "prev_last_shift": prev_last_shift,
         "shift_hours": _load_shift_hours(db),
         "non_working_shift_codes": _load_non_working_shift_codes(db),
+        "period_constraints": period_constraints,
     }
 
 
@@ -1405,6 +1546,70 @@ def _load_shift_requests(
             soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
 
     return hard_requests, soft_requests
+
+
+def _load_nurse_period_constraints(
+    db: Session,
+    ward_id: int,
+    period_id: int,
+    nurse_ids: list[int],
+) -> dict[int, list[dict[str, str | int | None]]]:
+    if not nurse_ids:
+        return {}
+
+    rows = db.exec(
+        select(NursePeriodConstraint)
+        .join(Nurse, Nurse.nurseid == NursePeriodConstraint.nurseid)
+        .where(Nurse.wardid == ward_id)
+        .where(NursePeriodConstraint.periodid == period_id)
+        .where(NursePeriodConstraint.nurseid.in_(nurse_ids))  # type: ignore[attr-defined]
+    ).all()
+
+    result: dict[int, list[dict[str, str | int | None]]] = {}
+    for row in rows:
+        result.setdefault(row.nurseid, []).append(
+            {
+                "id": row.constraintid,
+                "type": row.constrainttype,
+                "value": row.value,
+                "reason": row.reason,
+            }
+        )
+    return result
+
+
+def _filter_requests_for_nurse_constraints(
+    nurses: list[dict[str, Any]],
+    hard_requests: dict[int, list[tuple[int, str]]],
+    soft_requests: dict[int, list[tuple[int, str]]],
+) -> None:
+    allowed_by_pattern = {
+        "AM_ONLY": {"AM", "A", "OFF", "DO", "RD", "AL"},
+        "PM_ONLY": {"PM", "P", "OFF", "DO", "RD", "AL"},
+    }
+    night_codes = {"NIGHT", "N"}
+
+    for nurse in nurses:
+        nurse_id = nurse.get("id")
+        if nurse_id is None:
+            continue
+        shift_pattern = str(nurse.get("shift_pattern") or "").upper() or None
+        no_night = bool(nurse.get("no_night"))
+        allowed = allowed_by_pattern.get(shift_pattern)
+
+        def _keep(item: tuple[int, str]) -> bool:
+            _, raw_shift = item
+            normalized = str(raw_shift).strip().upper()
+            if no_night and normalized in night_codes:
+                return False
+            if allowed is not None and normalized not in allowed:
+                return False
+            return True
+
+        if nurse_id in hard_requests:
+            hard_requests[nurse_id] = [item for item in hard_requests[nurse_id] if _keep(item)]
+        if nurse_id in soft_requests:
+            soft_requests[nurse_id] = [item for item in soft_requests[nurse_id] if _keep(item)]
 
 
 def _load_leave_requests(

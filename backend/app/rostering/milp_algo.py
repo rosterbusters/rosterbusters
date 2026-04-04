@@ -71,6 +71,41 @@ def _classify(raw, non_working_shift_codes=None):
 
 
 # ---------------------------------------------------------------------------
+# Extra nurse-constraint helpers
+# ---------------------------------------------------------------------------
+def _get_shift_pattern(nurse):
+    raw = nurse.get("shift_pattern")
+    if raw is None:
+        return None
+    normalized = str(raw).strip().upper()
+    if normalized in {"AM_ONLY", "PM_ONLY"}:
+        return normalized
+    return None
+
+
+def _has_no_night_constraint(nurse):
+    if nurse.get("no_night"):
+        return True
+    for constraint in nurse.get("constraints") or []:
+        constraint_type = str(
+            constraint.get("constraint_type", constraint.get("type", ""))
+        ).strip().upper()
+        if constraint_type == "NO_NIGHT":
+            return True
+    return False
+
+
+def _is_disallowed_milp_shift(milp_code, shift_pattern=None, no_night=False):
+    if no_night and milp_code == "N":
+        return True
+    if shift_pattern == "AM_ONLY" and milp_code in {"P", "N"}:
+        return True
+    if shift_pattern == "PM_ONLY" and milp_code in {"A", "N"}:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Prev-week carry-over helpers
 # ---------------------------------------------------------------------------
 def _normalize_last2(entry):
@@ -111,7 +146,13 @@ def _carry_state_from_last2(entry):
 # ---------------------------------------------------------------------------
 # Input parser
 # ---------------------------------------------------------------------------
-def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None):
+def _parse_request_dict(
+    nurses,
+    num_days,
+    requests,
+    non_working_shift_codes=None,
+    nurse_constraints_by_name=None,
+):
     requests = requests or {}
 
     # Rank → class
@@ -143,6 +184,9 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
             continue
 
         target.setdefault(name, {})
+        nurse_constraints = (nurse_constraints_by_name or {}).get(name, {})
+        shift_pattern = nurse_constraints.get("shift_pattern")
+        no_night = bool(nurse_constraints.get("no_night"))
         for day_idx, shift_name in req_list:
             if 0 <= day_idx < num_days:
                 normalized_shift = str(shift_name).upper()
@@ -154,6 +198,8 @@ def _parse_request_dict(nurses, num_days, requests, non_working_shift_codes=None
                     milp_code = normalized_shift
                 else:
                     milp_code = _sched_to_milp.get(normalized_shift, normalized_shift)
+                if _is_disallowed_milp_shift(milp_code, shift_pattern, no_night):
+                    continue
                 target[name][f"Day {day_idx + 1}"] = milp_code
 
     return hard_rn, hard_en, hard_hca
@@ -243,6 +289,7 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
     _rank_class = {"A": "RN", "B": "EN", "C": "HCA"}
 
     rn_list, en_list, hca_list = [], [], []
+    nurse_constraints_by_class = {"RN": {}, "EN": {}, "HCA": {}}
     for n in nurses:
         cls = _rank_class.get(n["rank"])
         if cls == "RN":
@@ -251,9 +298,34 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
             en_list.append(n["name"])
         elif cls == "HCA":
             hca_list.append(n["name"])
+        if cls is not None:
+            nurse_constraints_by_class[cls][n["name"]] = {
+                "shift_pattern": _get_shift_pattern(n),
+                "no_night": _has_no_night_constraint(n),
+            }
 
-    hard_rn, hard_en, hard_hca = _parse_request_dict(nurses, num_days, hard_requests, non_working_shift_codes)
-    soft_rn, soft_en, soft_hca = _parse_request_dict(nurses, num_days, soft_requests, non_working_shift_codes)
+    hard_rn, hard_en, hard_hca = _parse_request_dict(
+        nurses,
+        num_days,
+        hard_requests,
+        non_working_shift_codes,
+        {
+            **nurse_constraints_by_class["RN"],
+            **nurse_constraints_by_class["EN"],
+            **nurse_constraints_by_class["HCA"],
+        },
+    )
+    soft_rn, soft_en, soft_hca = _parse_request_dict(
+        nurses,
+        num_days,
+        soft_requests,
+        non_working_shift_codes,
+        {
+            **nurse_constraints_by_class["RN"],
+            **nurse_constraints_by_class["EN"],
+            **nurse_constraints_by_class["HCA"],
+        },
+    )
     prev_roster = _parse_prev_last_shift(nurses, prev_last_shift)
 
     return {
@@ -272,6 +344,9 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
         "prev_week_last2_rn":  prev_roster["RN"],
         "prev_week_last2_en":  prev_roster["EN"],
         "prev_week_last2_hca": prev_roster["HCA"],
+        "nurse_constraints_rn": nurse_constraints_by_class["RN"],
+        "nurse_constraints_en": nurse_constraints_by_class["EN"],
+        "nurse_constraints_hca": nurse_constraints_by_class["HCA"],
         "shift_requirements": _parse_shift_requirements(shifts),
         "num_days": num_days,
     }
@@ -533,10 +608,13 @@ def _solve(
     shift_requirements=None,
     hard_requests_rn=None,  soft_requests_rn=None,
     annual_leave_rn=None,   prev_week_last2_rn=None,
+    nurse_constraints_rn=None,
     hard_requests_en=None,  soft_requests_en=None,
     annual_leave_en=None,   prev_week_last2_en=None,
+    nurse_constraints_en=None,
     hard_requests_hca=None, soft_requests_hca=None,
     annual_leave_hca=None,  prev_week_last2_hca=None,
+    nurse_constraints_hca=None,
     non_working_shift_codes=None,
     solver_name="gurobi",
     weights=None,
@@ -583,16 +661,19 @@ def _solve(
     soft_requests_rn     = soft_requests_rn     or {}
     annual_leave_rn      = annual_leave_rn      or {}
     prev_week_last2_rn   = prev_week_last2_rn   or {}
+    nurse_constraints_rn = nurse_constraints_rn or {}
 
     hard_requests_en     = hard_requests_en     or {}
     soft_requests_en     = soft_requests_en     or {}
     annual_leave_en      = annual_leave_en      or {}
     prev_week_last2_en   = prev_week_last2_en   or {}
+    nurse_constraints_en = nurse_constraints_en or {}
 
     hard_requests_hca    = hard_requests_hca    or {}
     soft_requests_hca    = soft_requests_hca    or {}
     annual_leave_hca     = annual_leave_hca     or {}
     prev_week_last2_hca  = prev_week_last2_hca  or {}
+    nurse_constraints_hca = nurse_constraints_hca or {}
     non_working_shift_codes = {
         str(code).upper() for code in (non_working_shift_codes or set())
     }
@@ -718,11 +799,16 @@ def _solve(
     # ---- Nurse rules ----
     def add_nurse_rules(class_nurses, x_var, off_var, startN_var,
                         al_dict, hard_dict, prev_week_last2_dict,
+                        nurse_constraints_dict,
                         eq_under, eq_over):
         for n in class_nurses:
             al_days            = set(al_dict.get(n, []))
             other_nonwork_days = set()
             carry_state = _carry_state_from_last2(prev_week_last2_dict.get(n))
+            nurse_constraints = nurse_constraints_dict.get(n, {})
+            shift_pattern = nurse_constraints.get("shift_pattern")
+            no_night = bool(nurse_constraints.get("no_night"))
+            preferred_shift = "A" if shift_pattern == "AM_ONLY" else "P" if shift_pattern == "PM_ONLY" else None
 
             # Scan hard requests to collect AL / INHT/BL days
             for d in DAYS:
@@ -732,6 +818,7 @@ def _solve(
                     al_days.add(d)
                 elif kind == "EQUIV_WORK":
                     other_nonwork_days.add(d)
+            nurse_constraints["nonwork_days"] = set(al_days) | set(other_nonwork_days)
 
             # Carry-in obligations from previous horizon
             if carry_state == "NEED_DO":
@@ -761,6 +848,15 @@ def _solve(
                 raw = hard_dict.get(n, {}).get(f"Day {d}", "")
                 kind, val = _classify(raw, non_working_shift_codes)
 
+                if no_night:
+                    m.cons.add(x_var[n, d, "N"] == 0)
+                if shift_pattern == "AM_ONLY":
+                    m.cons.add(x_var[n, d, "P"] == 0)
+                    m.cons.add(x_var[n, d, "N"] == 0)
+                elif shift_pattern == "PM_ONLY":
+                    m.cons.add(x_var[n, d, "A"] == 0)
+                    m.cons.add(x_var[n, d, "N"] == 0)
+
                 if kind == "WORK_SHIFT":
                     m.cons.add(off_var[n, d] == 0)
                     for s in SHIFTS:
@@ -786,22 +882,39 @@ def _solve(
                 sum(x_var[n, d, s] for d in DAYS for s in SHIFTS)
                 + fixed_equivalent_days
             )
-            if soften_equivalent_target:
-                m.cons.add(
-                    equivalent_days
-                    + eq_under[n] - eq_over[n]
-                    == equivalent_shift_target
-                )
+            if preferred_shift is None:
+                if soften_equivalent_target:
+                    m.cons.add(
+                        equivalent_days
+                        + eq_under[n] - eq_over[n]
+                        == equivalent_shift_target
+                    )
+                else:
+                    m.cons.add(equivalent_days == equivalent_shift_target)
             else:
-                m.cons.add(equivalent_days == equivalent_shift_target)
+                m.cons.add(eq_under[n] == 0)
+                m.cons.add(eq_over[n] == 0)
 
-            # Weekly caps
-            if WEEK1:
-                m.cons.add(sum(x_var[n, d, "N"] for d in WEEK1) <= weekly_night_cap)
-                m.cons.add(sum(x_var[n, d, s] for d in WEEK1 for s in SHIFTS) <= weekly_work_cap)
-            if WEEK2:
-                m.cons.add(sum(x_var[n, d, "N"] for d in WEEK2) <= weekly_night_cap)
-                m.cons.add(sum(x_var[n, d, s] for d in WEEK2 for s in SHIFTS) <= weekly_work_cap)
+            # Weekly caps / permanent shift pattern
+            if preferred_shift is None:
+                if WEEK1:
+                    m.cons.add(sum(x_var[n, d, "N"] for d in WEEK1) <= weekly_night_cap)
+                    m.cons.add(sum(x_var[n, d, s] for d in WEEK1 for s in SHIFTS) <= weekly_work_cap)
+                if WEEK2:
+                    m.cons.add(sum(x_var[n, d, "N"] for d in WEEK2) <= weekly_night_cap)
+                    m.cons.add(sum(x_var[n, d, s] for d in WEEK2 for s in SHIFTS) <= weekly_work_cap)
+            else:
+                for week_days in (WEEK1, WEEK2):
+                    if not week_days:
+                        continue
+                    week_other_nonwork = sum(
+                        1 for d in week_days if d in al_days or d in other_nonwork_days
+                    )
+                    free_days = max(0, len(week_days) - week_other_nonwork)
+                    preferred_target = min(4, free_days)
+                    off_target = free_days - preferred_target
+                    m.cons.add(sum(x_var[n, d, preferred_shift] for d in week_days) == preferred_target)
+                    m.cons.add(sum(off_var[n, d] for d in week_days) == off_target)
 
             if weekly_do_cap is not None:
                 if WEEK1 and not any(d in WEEK1 for d in al_days | other_nonwork_days):
@@ -816,6 +929,11 @@ def _solve(
                     m.cons.add(sum(off_var[n, d] for d in WEEK2) >= min_do_with_other_nonwork)
 
             # ---- N-N-DO block rules ----
+            if no_night or preferred_shift is not None:
+                for d in DAYS:
+                    m.cons.add(startN_var[n, d] == 0)
+                continue
+
             # No two block starts on consecutive days
             for d in range(1, num_days):
                 m.cons.add(startN_var[n, d] + startN_var[n, d + 1] <= 1)
@@ -848,12 +966,15 @@ def _solve(
 
     add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,
                     annual_leave_rn,  hard_requests_rn,  prev_week_last2_rn,
+                    nurse_constraints_rn,
                     m.eq_under_rn, m.eq_over_rn)
     add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,
                     annual_leave_en,  hard_requests_en,  prev_week_last2_en,
+                    nurse_constraints_en,
                     m.eq_under_en, m.eq_over_en)
     add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca,
                     annual_leave_hca, hard_requests_hca, prev_week_last2_hca,
+                    nurse_constraints_hca,
                     m.eq_under_hca, m.eq_over_hca)
 
     # ---- Coverage constraints (strict by class only, notebook v14) ----
@@ -928,7 +1049,17 @@ def _solve(
                 m.cons.add(cov_map[(d, "N")] <= int(max_night_per_day))
 
     # ---- Shift-balance deviations (soft) ----
-    def add_shift_balance(class_nurses, x_var, dev_A, dev_P, dev_N, min_night_shortfall, class_cfg, class_name):
+    def add_shift_balance(
+        class_nurses,
+        x_var,
+        dev_A,
+        dev_P,
+        dev_N,
+        min_night_shortfall,
+        class_cfg,
+        class_name,
+        nurse_constraints_dict,
+    ):
         st = class_cfg.get("shift_target", {
             "A": round(sum(_req_for_day(class_name, class_cfg, d, "A") for d in DAYS) / max(len(class_nurses), 1)),
             "P": round(sum(_req_for_day(class_name, class_cfg, d, "P") for d in DAYS) / max(len(class_nurses), 1)),
@@ -936,17 +1067,70 @@ def _solve(
         })
         tA, tP, tN = st["A"], st["P"], st["N"]
         for n in class_nurses:
+            nurse_constraints = nurse_constraints_dict.get(n, {})
+            shift_pattern = nurse_constraints.get("shift_pattern")
+            no_night = bool(nurse_constraints.get("no_night"))
+            nonwork_days = set(nurse_constraints.get("nonwork_days", set()))
             tA_ = sum(x_var[n, d, "A"] for d in DAYS)
             tP_ = sum(x_var[n, d, "P"] for d in DAYS)
             tN_ = sum(x_var[n, d, "N"] for d in DAYS)
+            if shift_pattern == "AM_ONLY":
+                fixed_target = sum(
+                    min(
+                        4,
+                        max(
+                            0,
+                            len(week_days)
+                            - sum(
+                                1
+                                for d in week_days
+                                if d in nonwork_days
+                            ),
+                        ),
+                    )
+                    for week_days in (WEEK1, WEEK2)
+                    if week_days
+                )
+                m.cons.add(tA_ == fixed_target)
+                m.cons.add(dev_A[n] == 0)
+                m.cons.add(dev_P[n] == 0)
+                m.cons.add(dev_N[n] == 0)
+                m.cons.add(min_night_shortfall[n] == 0)
+                continue
+            if shift_pattern == "PM_ONLY":
+                fixed_target = sum(
+                    min(
+                        4,
+                        max(
+                            0,
+                            len(week_days)
+                            - sum(
+                                1
+                                for d in week_days
+                                if d in nonwork_days
+                            ),
+                        ),
+                    )
+                    for week_days in (WEEK1, WEEK2)
+                    if week_days
+                )
+                m.cons.add(tP_ == fixed_target)
+                m.cons.add(dev_A[n] == 0)
+                m.cons.add(dev_P[n] == 0)
+                m.cons.add(dev_N[n] == 0)
+                m.cons.add(min_night_shortfall[n] == 0)
+                continue
             m.cons.add(tA_ - tA <= dev_A[n]); m.cons.add(-(tA_ - tA) <= dev_A[n])
             m.cons.add(tP_ - tP <= dev_P[n]); m.cons.add(-(tP_ - tP) <= dev_P[n])
             m.cons.add(tN_ - tN <= dev_N[n]); m.cons.add(-(tN_ - tN) <= dev_N[n])
-            m.cons.add(2 - tN_ <= min_night_shortfall[n])
+            if no_night:
+                m.cons.add(min_night_shortfall[n] == 0)
+            else:
+                m.cons.add(2 - tN_ <= min_night_shortfall[n])
 
-    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  m.min_night_shortfall_rn,  rn_cfg,  "RN")
-    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  m.min_night_shortfall_en,  en_cfg,  "EN")
-    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, m.min_night_shortfall_hca, hca_cfg, "HCA")
+    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  m.min_night_shortfall_rn,  rn_cfg,  "RN", nurse_constraints_rn)
+    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  m.min_night_shortfall_en,  en_cfg,  "EN", nurse_constraints_en)
+    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, m.min_night_shortfall_hca, hca_cfg, "HCA", nurse_constraints_hca)
 
     # ---- Daily smoothing + A–P balance (soft) ----
     dt_rn  = rn_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "RN", s) for s in SHIFTS})
@@ -1272,14 +1456,17 @@ def run_milp_pipeline(
             soft_requests_rn=parsed["soft_requests_rn"],
             annual_leave_rn=parsed["annual_leave_rn"],
             prev_week_last2_rn=parsed["prev_week_last2_rn"],
+            nurse_constraints_rn=parsed["nurse_constraints_rn"],
             hard_requests_en=parsed["hard_requests_en"],
             soft_requests_en=parsed["soft_requests_en"],
             annual_leave_en=parsed["annual_leave_en"],
             prev_week_last2_en=parsed["prev_week_last2_en"],
+            nurse_constraints_en=parsed["nurse_constraints_en"],
             hard_requests_hca=parsed["hard_requests_hca"],
             soft_requests_hca=parsed["soft_requests_hca"],
             annual_leave_hca=parsed["annual_leave_hca"],
             prev_week_last2_hca=parsed["prev_week_last2_hca"],
+            nurse_constraints_hca=parsed["nurse_constraints_hca"],
             non_working_shift_codes=non_working_shift_codes,
             seed=seed,
             time_limit=time_limit,
@@ -1306,14 +1493,17 @@ def run_milp_pipeline(
                     soft_requests_rn=parsed["soft_requests_rn"],
                     annual_leave_rn=parsed["annual_leave_rn"],
                     prev_week_last2_rn=parsed["prev_week_last2_rn"],
+                    nurse_constraints_rn=parsed["nurse_constraints_rn"],
                     hard_requests_en=parsed["hard_requests_en"],
                     soft_requests_en=parsed["soft_requests_en"],
                     annual_leave_en=parsed["annual_leave_en"],
                     prev_week_last2_en=parsed["prev_week_last2_en"],
+                    nurse_constraints_en=parsed["nurse_constraints_en"],
                     hard_requests_hca=parsed["hard_requests_hca"],
                     soft_requests_hca=parsed["soft_requests_hca"],
                     annual_leave_hca=parsed["annual_leave_hca"],
                     prev_week_last2_hca=parsed["prev_week_last2_hca"],
+                    nurse_constraints_hca=parsed["nurse_constraints_hca"],
                     non_working_shift_codes=non_working_shift_codes,
                     seed=seed,
                     time_limit=time_limit,

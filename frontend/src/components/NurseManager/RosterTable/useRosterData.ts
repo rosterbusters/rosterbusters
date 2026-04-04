@@ -10,6 +10,8 @@ import type {
   WardRosterResponse,
   WardStatisticsResponse,
   ShiftAssignment,
+  NursePeriodConstraint,
+  ShiftPattern,
 } from "./types";
 import { SHIFT_CODE_MAP } from "./types";
 
@@ -106,6 +108,23 @@ export function useWardStatistics(wardId: number | null) {
     },
     enabled: !!wardId,
     staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+}
+
+export function usePeriodConstraints(
+  wardId: number | null,
+  periodId: number | null,
+) {
+  return useQuery<NursePeriodConstraint[]>({
+    queryKey: ["roster", "constraints", wardId, periodId],
+    queryFn: async () => {
+      if (!wardId || !periodId) throw new Error("Ward ID and Period ID required");
+      return fetchWithAuth(
+        `/api/v1/roster/constraints?ward_id=${wardId}&period_id=${periodId}`,
+      );
+    },
+    enabled: !!wardId && !!periodId,
+    staleTime: 30 * 1000,
   });
 }
 
@@ -398,6 +417,95 @@ export function useClearRoster() {
   });
 }
 
+export function useUpdateNurseShiftPattern() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      nurseId,
+      shiftPattern,
+    }: {
+      nurseId: number;
+      shiftPattern: ShiftPattern;
+    }) => {
+      return fetchWithAuth(`/api/v1/shift-requests/nurses/${nurseId}/shift-pattern`, {
+        method: "PATCH",
+        body: JSON.stringify({ shift_pattern: shiftPattern }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "statistics"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "generation-inputs"],
+      });
+    },
+  });
+}
+
+export function useUpsertPeriodConstraint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      nurseId,
+      periodId,
+      constraintType,
+      value,
+      reason,
+    }: {
+      wardId: number;
+      nurseId: number;
+      periodId: number;
+      constraintType: string;
+      value?: string;
+      reason?: string | null;
+    }) => {
+      return fetchWithAuth("/api/v1/roster/constraints", {
+        method: "POST",
+        body: JSON.stringify({
+          ward_id: wardId,
+          nurse_id: nurseId,
+          period_id: periodId,
+          constraint_type: constraintType,
+          value: value ?? "true",
+          reason: reason ?? null,
+        }),
+      });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "constraints", variables.wardId, variables.periodId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "generation-inputs", variables.wardId, variables.periodId],
+      });
+    },
+  });
+}
+
+export function useDeletePeriodConstraint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ constraintId }: { constraintId: number }) => {
+      return fetchWithAuth(`/api/v1/roster/constraints/${constraintId}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "constraints"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "generation-inputs"],
+      });
+    },
+  });
+}
+
 // Algorithm roster generation response type
 export interface AlgorithmRosterResponse {
   wardId: number;
@@ -407,11 +515,30 @@ export interface AlgorithmRosterResponse {
 }
 
 export interface AlgorithmInputsResponse {
-  nurses: Array<{ id: number; name: string; rank: string }>;
+  nurses: Array<{
+    id: number;
+    name: string;
+    rank: string;
+    shift_pattern?: ShiftPattern;
+    no_night?: boolean;
+    constraints?: Array<{
+      constraint_type: string;
+      value: string;
+      reason?: string | null;
+    }>;
+  }>;
   shifts: Array<Record<string, Record<string, number>>>;
   hard_requests: Record<string, Array<[number, string]>>;
   soft_requests: Record<string, Array<[number, string]>>;
   prev_last_shift: Record<string, string>;
+  period_constraints?: Record<
+    string,
+    Array<{
+      constraint_type: string;
+      value: string;
+      reason?: string | null;
+    }>
+  >;
   shift_hours: Record<string, number>;
   non_working_shift_codes: string[];
   milp_config: Record<string, any> | null;

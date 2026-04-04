@@ -41,6 +41,7 @@ class AdminUserPublic(SQLModel):
     email: Optional[str] = None
     employee_id: Optional[str] = None
     designation: Optional[str] = None
+    shift_pattern: Optional[str] = None
     isactive: bool
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
@@ -66,6 +67,7 @@ class AdminUserCreate(SQLModel):
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
     designation: Optional[str] = Field(default=None, max_length=100)
+    shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: bool = True
     role: str = Field(default="Nurse", description="Nurse | NurseManager | Admin")
@@ -78,6 +80,7 @@ class AdminUserUpdate(SQLModel):
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
     designation: Optional[str] = Field(default=None, max_length=100)
+    shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
     ward_ids: Optional[list[int]] = None
@@ -93,6 +96,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     ward_list: list[WardInfo] = []
     employee_id: Optional[str] = None
     designation: Optional[str] = None
+    shift_pattern: Optional[str] = None
     name: Optional[str] = None
 
     # Resolve ward for nurses (single primary ward via nurse.wardid)
@@ -102,6 +106,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
             name = nurse.name
             employee_id = nurse.employeeid
             designation = nurse.designation
+            shift_pattern = nurse.shiftpattern
             if nurse.wardid:
                 ward = session.get(Ward, nurse.wardid)
                 if ward:
@@ -126,6 +131,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         email=user.email,
         employee_id=employee_id,
         designation=designation,
+        shift_pattern=shift_pattern,
         isactive=user.isactive,
         nurseid=user.nurseid,
         managerid=user.managerid,
@@ -179,6 +185,9 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = body.name.strip() if body.name else None
     designation = body.designation.strip() if body.designation else None
+    shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
+    if shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
+        raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
 
     # Check duplicate email (only if email provided)
     if body.email:
@@ -260,6 +269,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
             contactnumber="",
             wardid=body.ward_ids[0] if body.ward_ids else None,
             employmenttype="Full-time",
+            shiftpattern=shift_pattern,
             isactive=True,
         )
         session.add(nurse)
@@ -322,6 +332,9 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = body.name.strip() if body.name else None
     designation = body.designation.strip() if body.designation else None
+    shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
+    if body.shift_pattern is not None and shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
+        raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
 
     if body.email is not None and body.email != user.email:
         dup = session.exec(
@@ -403,6 +416,8 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
             nurse.employeeid = employee_id
             if body.designation is not None:
                 nurse.designation = designation or "RN"
+            if body.shift_pattern is not None:
+                nurse.shiftpattern = shift_pattern
             if body.name is not None:
                 nurse.name = name or user.username
             if body.email is not None:
@@ -419,10 +434,12 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
             session.add(manager)
             session.commit()
 
-    elif body.username is not None or body.name is not None or body.email is not None or body.designation is not None:
+    elif body.username is not None or body.name is not None or body.email is not None or body.designation is not None or body.shift_pattern is not None:
         if nurse:
             if body.designation is not None:
                 nurse.designation = designation or "RN"
+            if body.shift_pattern is not None:
+                nurse.shiftpattern = shift_pattern
             if body.name is not None:
                 nurse.name = name or user.username
             if body.email is not None:

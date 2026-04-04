@@ -92,6 +92,17 @@ def _normalize_prev_last_shift(prev_last_shift):
     }
 
 
+def _has_advanced_constraints(nurses):
+    for nurse in nurses:
+        if nurse.get("shift_pattern"):
+            return True
+        if nurse.get("no_night"):
+            return True
+        if nurse.get("constraints"):
+            return True
+    return False
+
+
 def generate_roster(
     nurses,
     shifts,
@@ -187,6 +198,7 @@ def generate_roster(
     hard_requests = _normalize_request_groups(hard_requests)
     soft_requests = _normalize_request_groups(soft_requests)
     prev_last_shift = _normalize_prev_last_shift(prev_last_shift)
+    advanced_constraints_present = _has_advanced_constraints(nurses)
 
     validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes)
 
@@ -199,6 +211,19 @@ def generate_roster(
         forced = "V2"
 
     if forced == "AB-RATIO":
+        if advanced_constraints_present:
+            roster = _run_cp_sat_v2_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                shift_hours=shift_hours,
+                milp_config=milp_config,
+            )
+            return {"method": "CP-SAT-V2", "roster": roster}
         roster = _run_ab_ratio_pipeline(
             nurses,
             shifts,
@@ -228,6 +253,19 @@ def generate_roster(
 
     # ── CP-SAT-only path ───────────────────────────────────────────────────
     if forced in {"CP-SAT", "CPSAT"}:
+        if advanced_constraints_present:
+            roster = _run_cp_sat_v2_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                shift_hours=shift_hours,
+                milp_config=milp_config,
+            )
+            return {"method": "CP-SAT-V2", "roster": roster}
         print("[SCHEDULER] Running CP-SAT (forced by caller)")
         roster = _run_cp_sat_pipeline(
             nurses,
@@ -245,6 +283,19 @@ def generate_roster(
 
     # ── MILP-only path ─────────────────────────────────────────────────────
     if forced == "MILP":
+        if advanced_constraints_present:
+            roster = _run_cp_sat_v2_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                shift_hours=shift_hours,
+                milp_config=milp_config,
+            )
+            return {"method": "CP-SAT-V2", "roster": roster}
         print("[SCHEDULER] Running MILP (forced by caller)")
         roster = run_milp_pipeline(
             nurses,
@@ -261,6 +312,20 @@ def generate_roster(
         return {"method": "MILP", "roster": roster}
 
     # ── Auto: MILP primary, CP-SAT fallback ────────────────────────────────
+    if advanced_constraints_present:
+        roster = _run_cp_sat_v2_pipeline(
+            nurses,
+            shifts,
+            hard_requests=hard_requests,
+            soft_requests=soft_requests,
+            prev_last_shift=prev_last_shift,
+            non_working_shift_codes=non_working_shift_codes,
+            progress_callback=progress_callback,
+            shift_hours=shift_hours,
+            milp_config=milp_config,
+        )
+        return {"method": "CP-SAT-V2", "roster": roster}
+
     print("[SCHEDULER] Running MILP (primary algorithm)")
     try:
         roster = run_milp_pipeline(
