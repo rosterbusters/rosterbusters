@@ -1,5 +1,5 @@
-#this is the algorithm scheduler
-from app.rostering.milp_algo import MILPError, run_milp_pipeline
+# this is the algorithm scheduler
+from app.rostering.milp_algo import run_milp_pipeline
 
 
 def _run_cp_sat_pipeline(*args, **kwargs):
@@ -35,23 +35,6 @@ def _run_ab_ratio_pipeline(*args, **kwargs):
             ) from exc
         raise
     return run_ab_ratio_pipeline(*args, **kwargs)
-
-
-def _run_cp_sat_v2_pipeline(*args, **kwargs):
-    """
-    Import the CP-SAT V2 pipeline lazily so the backend can start even when
-    optional solver dependencies are not installed.
-    """
-    try:
-        from app.rostering.cp_sat_algo_v2 import run_v2_pipeline
-    except ModuleNotFoundError as exc:
-        if exc.name == "ortools":
-            raise RuntimeError(
-                "CP-SAT-V2 requires the optional 'ortools' dependency, "
-                "but it is not installed in this environment."
-            ) from exc
-        raise
-    return run_v2_pipeline(*args, **kwargs)
 
 
 def _normalize_shift_name(shift_name):
@@ -92,17 +75,6 @@ def _normalize_prev_last_shift(prev_last_shift):
     }
 
 
-def _has_advanced_constraints(nurses):
-    for nurse in nurses:
-        if nurse.get("shift_pattern"):
-            return True
-        if nurse.get("no_night"):
-            return True
-        if nurse.get("constraints"):
-            return True
-    return False
-
-
 def generate_roster(
     nurses,
     shifts,
@@ -117,88 +89,11 @@ def generate_roster(
     algorithm=None,
 ):
     """
-    Generate a nurse roster using MILP (primary), CP-SAT, or AB-RATIO.
-
-    Parameters
-    ----------
-    nurses : list of nurse dicts
-        [{"id": int|str, "name": str, "rank": "A"|"B"|"C"}, ...]
-        rank "A" = RN, "B" = EN, "C" = HCA
-
-    shifts : list of 14 daily shift-requirement dicts
-        [
-            {
-                "AM":    {"A": int, "B": int, "C": int},
-                "PM":    {"A": int, "B": int, "C": int},
-                "NIGHT": {"A": int, "B": int, "C": int},
-            },
-            ...  (one entry per day, must be exactly 14 entries)
-        ]
-
-    hard_requests : dict, optional
-        Approved requests keyed by nurse_id.
-
-    soft_requests : dict, optional
-        Pending requests keyed by nurse_id.
-
-    prev_last_shift : dict, optional
-        Previous-period final shift keyed by nurse_id.
-
-    shift_hours : dict, optional
-        DB-derived shift durations keyed by AM/PM/NIGHT/OFF.
-
-    non_working_shift_codes : collection[str], optional
-        Shift codes that should be treated as non-working by CP-SAT.
-
-    ward_name : str, optional
-        Key into WARD_CONFIG (e.g. "WARD 04", "WARD 08").
-        Defaults to "DEFAULT" if omitted or unrecognised.
-
-    milp_config : dict, optional
-        WARD_CONFIG-compatible override dict derived from staffing_json.
-        When provided, the MILP solver uses this instead of WARD_CONFIG[ward_name].
-
-    Returns
-    -------
-    {
-        "method": "MILP" | "CP-SAT",
-        "roster": {
-            "nurses": [
-                {
-                    "id": ...,
-                    "name": ...,
-                    "rank": ...,
-                    "schedule": ["AM", "OFF", "NIGHT", ...],   # 14 entries
-                    "stats": {
-                        "total_shifts": int,
-                        "am_shifts": int,
-                        "pm_shifts": int,
-                        "night_shifts": int,
-                        "days_off": int,
-                    }
-                },
-                ...
-            ],
-            "metadata": {
-                "num_days":    int,
-                "num_nurses":  int,
-                "algorithm":   "MILP" | "CP-SAT",
-                "solver_status": str   # MILP only
-                # OR
-                "penalty_score": float # CP-SAT only
-            }
-        }
-    }
-
-    Raises
-    ------
-    ValueError
-        If input validation fails.
+    Generate a nurse roster using MILP, CP-SAT, or AB-RATIO.
     """
     hard_requests = _normalize_request_groups(hard_requests)
     soft_requests = _normalize_request_groups(soft_requests)
     prev_last_shift = _normalize_prev_last_shift(prev_last_shift)
-    advanced_constraints_present = _has_advanced_constraints(nurses)
 
     validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes)
 
@@ -208,22 +103,9 @@ def generate_roster(
     elif forced in {"AB_RATIO", "ABRATIO"}:
         forced = "AB-RATIO"
     elif forced in {"V2", "CP-SAT-V2", "CPSAT-V2", "CPSATV2"}:
-        forced = "V2"
+        forced = "CP-SAT"
 
     if forced == "AB-RATIO":
-        if advanced_constraints_present:
-            roster = _run_cp_sat_v2_pipeline(
-                nurses,
-                shifts,
-                hard_requests=hard_requests,
-                soft_requests=soft_requests,
-                prev_last_shift=prev_last_shift,
-                non_working_shift_codes=non_working_shift_codes,
-                progress_callback=progress_callback,
-                shift_hours=shift_hours,
-                milp_config=milp_config,
-            )
-            return {"method": "CP-SAT-V2", "roster": roster}
         roster = _run_ab_ratio_pipeline(
             nurses,
             shifts,
@@ -237,35 +119,7 @@ def generate_roster(
         )
         return {"method": "AB-RATIO", "roster": roster}
 
-    if forced == "V2":
-        roster = _run_cp_sat_v2_pipeline(
-            nurses,
-            shifts,
-            hard_requests=hard_requests,
-            soft_requests=soft_requests,
-            prev_last_shift=prev_last_shift,
-            non_working_shift_codes=non_working_shift_codes,
-            progress_callback=progress_callback,
-            shift_hours=shift_hours,
-            milp_config=milp_config,
-        )
-        return {"method": "CP-SAT-V2", "roster": roster}
-
-    # ── CP-SAT-only path ───────────────────────────────────────────────────
     if forced in {"CP-SAT", "CPSAT"}:
-        if advanced_constraints_present:
-            roster = _run_cp_sat_v2_pipeline(
-                nurses,
-                shifts,
-                hard_requests=hard_requests,
-                soft_requests=soft_requests,
-                prev_last_shift=prev_last_shift,
-                non_working_shift_codes=non_working_shift_codes,
-                progress_callback=progress_callback,
-                shift_hours=shift_hours,
-                milp_config=milp_config,
-            )
-            return {"method": "CP-SAT-V2", "roster": roster}
         print("[SCHEDULER] Running CP-SAT (forced by caller)")
         roster = _run_cp_sat_pipeline(
             nurses,
@@ -278,24 +132,10 @@ def generate_roster(
             shift_hours=shift_hours,
             milp_config=milp_config,
         )
-        print("[SCHEDULER] CP-SAT succeeded — returning result")
+        print("[SCHEDULER] CP-SAT succeeded - returning result")
         return {"method": "CP-SAT", "roster": roster}
 
-    # ── MILP-only path ─────────────────────────────────────────────────────
     if forced == "MILP":
-        if advanced_constraints_present:
-            roster = _run_cp_sat_v2_pipeline(
-                nurses,
-                shifts,
-                hard_requests=hard_requests,
-                soft_requests=soft_requests,
-                prev_last_shift=prev_last_shift,
-                non_working_shift_codes=non_working_shift_codes,
-                progress_callback=progress_callback,
-                shift_hours=shift_hours,
-                milp_config=milp_config,
-            )
-            return {"method": "CP-SAT-V2", "roster": roster}
         print("[SCHEDULER] Running MILP (forced by caller)")
         roster = run_milp_pipeline(
             nurses,
@@ -308,60 +148,23 @@ def generate_roster(
             milp_config=milp_config,
             progress_callback=progress_callback,
         )
-        print("[SCHEDULER] MILP succeeded — returning result")
+        print("[SCHEDULER] MILP succeeded - returning result")
         return {"method": "MILP", "roster": roster}
 
-    # ── Auto: MILP primary, CP-SAT fallback ────────────────────────────────
-    if advanced_constraints_present:
-        roster = _run_cp_sat_v2_pipeline(
-            nurses,
-            shifts,
-            hard_requests=hard_requests,
-            soft_requests=soft_requests,
-            prev_last_shift=prev_last_shift,
-            non_working_shift_codes=non_working_shift_codes,
-            progress_callback=progress_callback,
-            shift_hours=shift_hours,
-            milp_config=milp_config,
-        )
-        return {"method": "CP-SAT-V2", "roster": roster}
-
-    print("[SCHEDULER] Running MILP (primary algorithm)")
-    try:
-        roster = run_milp_pipeline(
-            nurses,
-            shifts,
-            hard_requests=hard_requests,
-            soft_requests=soft_requests,
-            prev_last_shift=prev_last_shift,
-            non_working_shift_codes=non_working_shift_codes,
-            ward_name=ward_name,
-            milp_config=milp_config,
-            progress_callback=progress_callback,
-        )
-        print("[SCHEDULER] MILP succeeded — returning result")
-        return {"method": "MILP", "roster": roster}
-
-    except MILPError as e:
-        print(f"[SCHEDULER] MILP failed: {e} — falling back to CP-SAT")
-    except Exception as e:
-        print(f"[SCHEDULER] MILP failed with unexpected error: {e} — falling back to CP-SAT")
-
-    # ── Fallback: CP-SAT ───────────────────────────────────────────────────
-    print("[SCHEDULER] Running CP-SAT (fallback algorithm)")
-    roster = _run_cp_sat_pipeline(
+    print("[SCHEDULER] Running MILP (default algorithm)")
+    roster = run_milp_pipeline(
         nurses,
         shifts,
         hard_requests=hard_requests,
         soft_requests=soft_requests,
         prev_last_shift=prev_last_shift,
         non_working_shift_codes=non_working_shift_codes,
-        progress_callback=progress_callback,
-        shift_hours=shift_hours,
+        ward_name=ward_name,
         milp_config=milp_config,
+        progress_callback=progress_callback,
     )
-    print("[SCHEDULER] CP-SAT succeeded — returning result")
-    return {"method": "CP-SAT", "roster": roster}
+    print("[SCHEDULER] MILP succeeded - returning result")
+    return {"method": "MILP", "roster": roster}
 
 
 def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes=None):
@@ -370,13 +173,12 @@ def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_sh
 
     Raises ValueError on any problem.
     """
-    # ---- nurses ----
     if not isinstance(nurses, list) or not nurses:
         raise ValueError("nurses must be a non-empty list")
 
     required_keys = {"id", "name", "rank"}
-    valid_ranks   = {"A", "B", "C"}
-    nurse_ids     = set()
+    valid_ranks = {"A", "B", "C"}
+    nurse_ids = set()
 
     for nurse in nurses:
         if not isinstance(nurse, dict):
@@ -395,7 +197,6 @@ def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_sh
             raise ValueError(f"Duplicate nurse ID: {nurse['id']}")
         nurse_ids.add(nurse["id"])
 
-    # ---- shifts ----
     if not isinstance(shifts, list) or not shifts:
         raise ValueError("shifts must be a non-empty list")
 
@@ -422,7 +223,6 @@ def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_sh
                         "Shift requirement count must be a non-negative integer"
                     )
 
-    # ---- requests (optional) ----
     num_days = len(shifts)
     valid_request_shifts = {"AM", "PM", "NIGHT", "OFF", "AL"}
     non_working_shift_codes = {
@@ -452,10 +252,13 @@ def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_sh
                 if not (0 <= day_idx < num_days):
                     raise ValueError(
                         f"Invalid day index {day_idx} for nurse {nurse_id} "
-                        f"(must be 0–{num_days - 1})"
+                        f"(must be 0-{num_days - 1})"
                     )
                 normalized_shift = _normalize_shift_name(shift_name)
-                if normalized_shift not in valid_request_shifts and normalized_shift not in non_working_shift_codes:
+                if (
+                    normalized_shift not in valid_request_shifts
+                    and normalized_shift not in non_working_shift_codes
+                ):
                     raise ValueError(
                         f"Invalid shift name '{shift_name}' in request for nurse {nurse_id}. "
                         f"Must be one of {valid_request_shifts} or a configured non-working shift code"
