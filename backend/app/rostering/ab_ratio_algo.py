@@ -1067,8 +1067,8 @@ def run_ab_ratio_pipeline(
 
         if not relax_post_night_rest:
             if num_days >= 2:
-                model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
-                model.Add(x[nurse_idx, num_days - 1, NIGHT] <= x[nurse_idx, num_days - 2, NIGHT])
+                if nurse_idx not in post_night_off:
+                    model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
             for day_idx in range(1, num_days - 1):
                 model.Add(
                     x[nurse_idx, day_idx, NIGHT]
@@ -1109,8 +1109,8 @@ def run_ab_ratio_pipeline(
 
         if not relax_post_night_rest:
             if num_days >= 2:
-                model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
-                model.Add(x[nurse_idx, num_days - 1, NIGHT] <= x[nurse_idx, num_days - 2, NIGHT])
+                if nurse_idx not in post_night_off:
+                    model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
             for day_idx in range(1, num_days - 1):
                 model.Add(
                     x[nurse_idx, day_idx, NIGHT]
