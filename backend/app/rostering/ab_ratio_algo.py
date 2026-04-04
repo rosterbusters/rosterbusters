@@ -903,6 +903,15 @@ def run_ab_ratio_pipeline(
     )
     _emit_infeasibility_diagnostics(parsed)
 
+    debug_cfg = dict(milp_config or {})
+    relax_min_nights = _coerce_bool(debug_cfg.get("_ab_ratio_relax_min_nights"), False)
+    relax_min_non_working = _coerce_bool(debug_cfg.get("_ab_ratio_relax_min_non_working"), False)
+    relax_weekly_off = _coerce_bool(debug_cfg.get("_ab_ratio_relax_weekly_off"), False)
+    relax_post_night_rest = _coerce_bool(debug_cfg.get("_ab_ratio_relax_post_night_rest"), False)
+    relax_no_three_nights = _coerce_bool(debug_cfg.get("_ab_ratio_relax_no_three_nights"), False)
+    relax_pattern_exact = _coerce_bool(debug_cfg.get("_ab_ratio_relax_pattern_exact"), False)
+    diagnostic_retry_active = _coerce_bool(debug_cfg.get("_ab_ratio_diag_active"), False)
+
     if progress_callback:
         progress_callback(1, 4, float("inf"))
 
@@ -973,7 +982,7 @@ def run_ab_ratio_pipeline(
             model.Add(x[nurse_idx, day_idx, AL] == 1)
 
     for nurse_idx in post_night_off:
-        if 0 not in al_day_req[nurse_idx]:
+        if not relax_post_night_rest and 0 not in al_day_req[nurse_idx]:
             model.Add(x[nurse_idx, 0, OFF] == 1)
 
     for nurse_idx in working_nurses:
@@ -1022,75 +1031,87 @@ def run_ab_ratio_pipeline(
 
     for nurse_idx in ratio_working_ab:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
-        model.Add(total_nights >= 2)
+        if not relax_min_nights:
+            model.Add(total_nights >= 2)
         model.Add(total_nights <= 4)
 
         total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
         total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
-        model.Add(total_non_working >= 4)
+        if not relax_min_non_working:
+            model.Add(total_non_working >= 4)
         for week_index, week_start in enumerate(range(0, num_days, 7)):
             week_end = min(week_start + 7, num_days)
             week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
-            model.Add(week_do == ab_weekly_do_targets[nurse_idx][week_index])
+            if not relax_weekly_off:
+                model.Add(week_do == ab_weekly_do_targets[nurse_idx][week_index])
 
-        for day_idx in range(num_days - 2):
-            model.Add(
-                x[nurse_idx, day_idx, NIGHT]
-                + x[nurse_idx, day_idx + 1, NIGHT]
-                + x[nurse_idx, day_idx + 2, NIGHT]
-                <= 2
-            )
+        if not relax_no_three_nights:
+            for day_idx in range(num_days - 2):
+                model.Add(
+                    x[nurse_idx, day_idx, NIGHT]
+                    + x[nurse_idx, day_idx + 1, NIGHT]
+                    + x[nurse_idx, day_idx + 2, NIGHT]
+                    <= 2
+                )
 
-        for day_idx in range(num_days - 1):
-            next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
-            model.Add(
-                x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
-            )
+        if not relax_post_night_rest:
+            for day_idx in range(num_days - 1):
+                next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
+                model.Add(
+                    x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
+                )
 
-        if num_days >= 2:
-            model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
-            model.Add(x[nurse_idx, num_days - 1, NIGHT] <= x[nurse_idx, num_days - 2, NIGHT])
-        for day_idx in range(1, num_days - 1):
-            model.Add(
-                x[nurse_idx, day_idx, NIGHT]
-                <= x[nurse_idx, day_idx - 1, NIGHT] + x[nurse_idx, day_idx + 1, NIGHT]
-            )
+        if not relax_post_night_rest:
+            if num_days >= 2:
+                model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
+                model.Add(x[nurse_idx, num_days - 1, NIGHT] <= x[nurse_idx, num_days - 2, NIGHT])
+            for day_idx in range(1, num_days - 1):
+                model.Add(
+                    x[nurse_idx, day_idx, NIGHT]
+                    <= x[nurse_idx, day_idx - 1, NIGHT] + x[nurse_idx, day_idx + 1, NIGHT]
+                )
 
     for nurse_idx in ratio_working_rank_c:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
-        model.Add(total_nights >= 2)
+        if not relax_min_nights:
+            model.Add(total_nights >= 2)
         model.Add(total_nights <= 4)
 
         total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
         total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
-        model.Add(total_non_working >= 4)
+        if not relax_min_non_working:
+            model.Add(total_non_working >= 4)
         for week_index, week_start in enumerate(range(0, num_days, 7)):
             week_end = min(week_start + 7, num_days)
             week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
-            model.Add(week_do == c_weekly_do_targets[nurse_idx][week_index])
+            if not relax_weekly_off:
+                model.Add(week_do == c_weekly_do_targets[nurse_idx][week_index])
 
-        for day_idx in range(num_days - 2):
-            model.Add(
-                x[nurse_idx, day_idx, NIGHT]
-                + x[nurse_idx, day_idx + 1, NIGHT]
-                + x[nurse_idx, day_idx + 2, NIGHT]
-                <= 2
-            )
+        if not relax_no_three_nights:
+            for day_idx in range(num_days - 2):
+                model.Add(
+                    x[nurse_idx, day_idx, NIGHT]
+                    + x[nurse_idx, day_idx + 1, NIGHT]
+                    + x[nurse_idx, day_idx + 2, NIGHT]
+                    <= 2
+                )
 
-        for day_idx in range(num_days - 1):
-            next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
-            model.Add(
-                x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
-            )
+        if not relax_post_night_rest:
+            for day_idx in range(num_days - 1):
+                next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
+                model.Add(
+                    x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
+                )
 
-        if num_days >= 2:
-            model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
-            model.Add(x[nurse_idx, num_days - 1, NIGHT] <= x[nurse_idx, num_days - 2, NIGHT])
-        for day_idx in range(1, num_days - 1):
-            model.Add(
-                x[nurse_idx, day_idx, NIGHT]
-                <= x[nurse_idx, day_idx - 1, NIGHT] + x[nurse_idx, day_idx + 1, NIGHT]
-            )
+        if not relax_post_night_rest:
+            if num_days >= 2:
+                model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
+                model.Add(x[nurse_idx, num_days - 1, NIGHT] <= x[nurse_idx, num_days - 2, NIGHT])
+            for day_idx in range(1, num_days - 1):
+                model.Add(
+                    x[nurse_idx, day_idx, NIGHT]
+                    <= x[nurse_idx, day_idx - 1, NIGHT] + x[nurse_idx, day_idx + 1, NIGHT]
+                )
 
     for nurse_idx in pattern_nurses:
         shift_pattern = shift_pattern_by_nurse.get(nurse_idx)
@@ -1104,14 +1125,15 @@ def run_ab_ratio_pipeline(
             free_days = max(0, week_len - leave_days)
             off_target = pattern_weekly_do_targets[nurse_idx][week_index]
             preferred_target = free_days - off_target
-            model.Add(
-                sum(x[nurse_idx, day_idx, preferred_shift] for day_idx in range(week_start, week_end))
-                == preferred_target
-            )
-            model.Add(
-                sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
-                == off_target
-            )
+            if not relax_pattern_exact:
+                model.Add(
+                    sum(x[nurse_idx, day_idx, preferred_shift] for day_idx in range(week_start, week_end))
+                    == preferred_target
+                )
+                model.Add(
+                    sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
+                    == off_target
+                )
 
     ab_target_totals = parsed["ab_target_totals"]
     for shift_code, weight_key in ((AM, "ratio_am"), (PM, "ratio_pm"), (NIGHT, "ratio_night")):
@@ -1370,6 +1392,41 @@ def run_ab_ratio_pipeline(
 
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        if not diagnostic_retry_active:
+            diagnostic_profiles = [
+                ("post_night_rest", {"_ab_ratio_relax_post_night_rest": True}),
+                ("min_nights", {"_ab_ratio_relax_min_nights": True}),
+                ("min_non_working", {"_ab_ratio_relax_min_non_working": True}),
+                ("weekly_off", {"_ab_ratio_relax_weekly_off": True}),
+                ("no_three_nights", {"_ab_ratio_relax_no_three_nights": True}),
+                ("pattern_exact", {"_ab_ratio_relax_pattern_exact": True}),
+            ]
+            for label, overrides in diagnostic_profiles:
+                diag_config = dict(debug_cfg)
+                diag_config.update(overrides)
+                diag_config["_ab_ratio_diag_active"] = True
+                try:
+                    run_ab_ratio_pipeline(
+                        nurses,
+                        shifts,
+                        hard_requests=hard_requests,
+                        soft_requests=soft_requests,
+                        prev_last_shift=prev_last_shift,
+                        shift_hours=shift_hours,
+                        non_working_shift_codes=non_working_shift_codes,
+                        progress_callback=None,
+                        milp_config=diag_config,
+                    )
+                except RuntimeError:
+                    logger.warning(
+                        "[AB-DEBUG] diagnostic relaxation still infeasible: %s",
+                        label,
+                    )
+                else:
+                    logger.warning(
+                        "[AB-DEBUG] diagnostic relaxation became feasible: %s",
+                        label,
+                    )
         raise RuntimeError(
             f"AB-RATIO solver returned '{solver.StatusName(status)}' - no feasible solution found."
         )
