@@ -1544,6 +1544,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     shifts_data, milp_config = _staffing_to_algo_inputs(ward)
 
     nurses_db = _fetch_active_ward_nurses(db, ward_id)
+    rank_map = load_designation_rank_map(db)
     period_constraints = _load_nurse_period_constraints(
         db,
         ward_id,
@@ -1554,7 +1555,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         {
             "id": n["nurseid"],
             "name": n["name"],
-            "rank": roster_rank_for_designation_with_rank_map(rank_map, n.designation),
+            "rank": roster_rank_for_designation_with_rank_map(rank_map, n.get("designation") or ""),
             "shift_pattern": n.get("shiftpattern"),
             "constraints": period_constraints.get(n["nurseid"] or -1, []),
             "no_night": any(
