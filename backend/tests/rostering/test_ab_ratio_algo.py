@@ -31,3 +31,38 @@ def test_ab_ratio_rejects_unmet_rank_b_daily_night_minimum() -> None:
             shifts,
             milp_config={"ab_ratio_time_limit_s": 5},
         )
+
+
+def test_ab_ratio_no_night_nurse_can_still_receive_day_shifts() -> None:
+    nurses = [
+        {"id": 1, "name": "SN NoNight", "rank": "A", "no_night": True},
+        {"id": 2, "name": "SN Flex1", "rank": "A"},
+        {"id": 3, "name": "SN Flex2", "rank": "A"},
+        {"id": 4, "name": "SN Flex3", "rank": "A"},
+        {"id": 5, "name": "SN Flex4", "rank": "A"},
+        {"id": 6, "name": "EN One", "rank": "B"},
+        {"id": 7, "name": "EN Two", "rank": "B"},
+        {"id": 8, "name": "EN Three", "rank": "B"},
+        {"id": 9, "name": "HCA One", "rank": "C"},
+        {"id": 10, "name": "HCA Two", "rank": "C"},
+        {"id": 11, "name": "HCA Three", "rank": "C"},
+    ]
+    shifts = [
+        {
+            "AM": {"A": 1, "B": 1, "C": 0},
+            "PM": {"A": 1, "B": 0, "C": 1},
+            "NIGHT": {"A": 1, "B": 0, "C": 0},
+        }
+        for _ in range(14)
+    ]
+
+    result = run_ab_ratio_pipeline(
+        nurses,
+        shifts,
+        milp_config={"ab_ratio_time_limit_s": 5},
+    )
+
+    nurse_rows = {nurse["name"]: nurse["schedule"] for nurse in result["nurses"]}
+    no_night_schedule = nurse_rows["SN NoNight"]
+    assert "N" not in no_night_schedule
+    assert any(shift in {"A", "P"} for shift in no_night_schedule)
