@@ -44,6 +44,8 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
     "daily_ratio_night": 4_000,
+    "daily_ratio_night_overflow": 90_000,
+    "daily_total_night_overflow": 140_000,
     "rn_night": 100_000,
     "rn_night_over": 18_000,
     "rank_b_night": 100_000,
@@ -522,6 +524,14 @@ def parse_ab_ratio_inputs(
     ratio_weights.update(cfg.get("ab_ratio_weights") or {})
     ratio_weights["ratio_night"] = _coerce_int(
         cfg.get("night_ratio_weight"), ratio_weights["ratio_night"]
+    )
+    ratio_weights["daily_ratio_night_overflow"] = _coerce_int(
+        cfg.get("daily_ratio_night_overflow_weight"),
+        ratio_weights["daily_ratio_night_overflow"],
+    )
+    ratio_weights["daily_total_night_overflow"] = _coerce_int(
+        cfg.get("daily_total_night_overflow_weight"),
+        ratio_weights["daily_total_night_overflow"],
     )
     ratio_weights["soft_request"] = _coerce_int(
         cfg.get("soft_request_weight"), ratio_weights["soft_request"]
@@ -1214,6 +1224,14 @@ def run_ab_ratio_pipeline(
                 )
                 model.AddAbsEquality(day_dev, day_diff)
                 add_penalty(day_dev, weights[weight_key])
+                if shift_code == NIGHT:
+                    overflow = model.NewIntVar(
+                        0,
+                        len(group_nurses),
+                        f"{group_name}_day_night_overflow_{day_idx}",
+                    )
+                    model.Add(overflow >= actual_day_total - group_targets[shift_code][day_idx])
+                    add_penalty(overflow, weights["daily_ratio_night_overflow"])
 
     for shift_code, weight_key in ((AM, "c_ratio_am"), (PM, "c_ratio_pm"), (NIGHT, "c_ratio_night")):
         actual_total = model.NewIntVar(0, len(ratio_working_rank_c) * max(num_days, 1), f"c_actual_{shift_code}")
@@ -1255,6 +1273,32 @@ def run_ab_ratio_pipeline(
             day_dev = model.NewIntVar(0, len(ratio_working_rank_c), f"c_day_dev_{shift_code}_{day_idx}")
             model.AddAbsEquality(day_dev, day_diff)
             add_penalty(day_dev, weights[weight_key])
+            if shift_code == NIGHT:
+                overflow = model.NewIntVar(
+                    0,
+                    len(ratio_working_rank_c),
+                    f"c_day_night_overflow_{day_idx}",
+                )
+                model.Add(overflow >= actual_day_total - c_daily_targets[shift_code][day_idx])
+                add_penalty(overflow, weights["daily_ratio_night_overflow"])
+
+    total_ratio_night_targets = [
+        a_daily_targets[NIGHT][day_idx]
+        + b_daily_targets[NIGHT][day_idx]
+        + c_daily_targets[NIGHT][day_idx]
+        for day_idx in range(num_days)
+    ]
+    night_pool = ratio_working_rank_a + ratio_working_rank_b + ratio_working_rank_c
+    if night_pool:
+        for day_idx, target in enumerate(total_ratio_night_targets):
+            actual_total_night = model.NewIntVar(0, len(night_pool), f"total_day_night_{day_idx}")
+            model.Add(
+                actual_total_night
+                == sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in night_pool)
+            )
+            overflow = model.NewIntVar(0, len(night_pool), f"total_day_night_overflow_{day_idx}")
+            model.Add(overflow >= actual_total_night - target)
+            add_penalty(overflow, weights["daily_total_night_overflow"])
 
     if daily_total_shift_balance_enabled:
         for day_idx in range(num_days):
