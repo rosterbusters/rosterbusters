@@ -994,6 +994,7 @@ def run_ab_ratio_pipeline(
     b_daily_targets = parsed["b_daily_targets"]
     c_target_totals = parsed["c_target_totals"]
     c_daily_targets = parsed["c_daily_targets"]
+    rn_night_targets = parsed["rn_night_targets"]
     rn_night_allowed_excess = parsed["rn_night_allowed_excess"]
     rank_a_night_allowed_excess = parsed["rank_a_night_allowed_excess"]
     rank_b_night_allowed_excess = parsed["rank_b_night_allowed_excess"]
@@ -1236,7 +1237,10 @@ def run_ab_ratio_pipeline(
                     len(group_nurses),
                     f"{group_name}_day_diff_{shift_code}_{day_idx}",
                 )
-                model.Add(day_diff == actual_day_total - group_targets[shift_code][day_idx])
+                target = group_targets[shift_code][day_idx]
+                if group_name == "a" and shift_code == NIGHT:
+                    target = rn_night_targets[day_idx]
+                model.Add(day_diff == actual_day_total - target)
                 day_dev = model.NewIntVar(
                     0,
                     len(group_nurses),
@@ -1260,7 +1264,6 @@ def run_ab_ratio_pipeline(
                         len(group_nurses),
                         f"{group_name}_day_night_overflow_tier3_{day_idx}",
                     )
-                    target = group_targets[shift_code][day_idx]
                     model.Add(overflow_tier1 >= actual_day_total - target)
                     model.Add(overflow_tier2 >= actual_day_total - (target + 1))
                     model.Add(overflow_tier3 >= actual_day_total - (target + 2))
