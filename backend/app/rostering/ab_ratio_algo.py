@@ -44,9 +44,9 @@ _DEFAULT_WEIGHTS = {
     "daily_ratio_am": 3_000,
     "daily_ratio_pm": 3_000,
     "daily_ratio_night": 4_000,
-    "rn_night": 30_000,
+    "rn_night": 100_000,
     "rn_night_over": 18_000,
-    "rank_b_night": 30_000,
+    "rank_b_night": 100_000,
     "rank_b_night_over": 18_000,
     "rank_c_night": 9_000,
     "rank_c_night_over": 14_000,
@@ -922,6 +922,7 @@ def run_ab_ratio_pipeline(
     relax_post_night_rest = _coerce_bool(debug_cfg.get("_ab_ratio_relax_post_night_rest"), False)
     relax_no_three_nights = _coerce_bool(debug_cfg.get("_ab_ratio_relax_no_three_nights"), False)
     relax_pattern_exact = _coerce_bool(debug_cfg.get("_ab_ratio_relax_pattern_exact"), False)
+    relax_rank_night_mins = _coerce_bool(debug_cfg.get("_ab_ratio_relax_rank_night_mins"), False)
     diagnostic_retry_active = _coerce_bool(debug_cfg.get("_ab_ratio_diag_active"), False)
 
     if progress_callback:
@@ -1321,6 +1322,8 @@ def run_ab_ratio_pipeline(
         if target <= 0 or not rank_a:
             continue
         count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
+        if not relax_rank_night_mins:
+            model.Add(count_a_night >= target)
         shortage = model.NewIntVar(0, target, f"rn_night_short_{day_idx}")
         model.Add(shortage >= target - count_a_night)
         add_penalty(shortage, weights["rn_night"])
@@ -1338,6 +1341,8 @@ def run_ab_ratio_pipeline(
         if target <= 0 or not rank_b:
             continue
         count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
+        if not relax_rank_night_mins:
+            model.Add(count_b_night >= target)
         shortage = model.NewIntVar(0, target, f"rank_b_night_short_{day_idx}")
         model.Add(shortage >= target - count_b_night)
         add_penalty(shortage, weights["rank_b_night"])
@@ -1413,6 +1418,7 @@ def run_ab_ratio_pipeline(
                 ("weekly_off", {"_ab_ratio_relax_weekly_off": True}),
                 ("no_three_nights", {"_ab_ratio_relax_no_three_nights": True}),
                 ("pattern_exact", {"_ab_ratio_relax_pattern_exact": True}),
+                ("rank_night_mins", {"_ab_ratio_relax_rank_night_mins": True}),
             ]
             for label, overrides in diagnostic_profiles:
                 diag_config = dict(debug_cfg)
@@ -1445,6 +1451,11 @@ def run_ab_ratio_pipeline(
             raise ABRatioInfeasibilityError(
                 "AB-RATIO infeasible: the hard minimum 2-night requirement conflicts with the current "
                 "no-night, leave, and hard-request constraints for this roster period."
+            )
+        if feasible_relaxations == ["rank_night_mins"]:
+            raise ABRatioInfeasibilityError(
+                "AB-RATIO infeasible: the hard rank A/B daily night minimums cannot be met with the current "
+                "night-eligible staffing, leave, and hard-request constraints for this roster period."
             )
         raise ABRatioInfeasibilityError(
             f"AB-RATIO solver returned '{solver.StatusName(status)}' - no feasible solution found."
