@@ -3,7 +3,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useQuery } from "@tanstack/react-query"
 import { useForm, type SubmitHandler } from "react-hook-form"
-import { FiLock, FiMail, FiEye, FiEyeOff } from "react-icons/fi"
+import { FiLock, FiMail, FiEye, FiEyeOff, FiCheck } from "react-icons/fi"
 import {
   Box,
   Container,
@@ -14,6 +14,7 @@ import {
   Input,
   Text,
   VStack,
+  Spinner,
 } from "@chakra-ui/react"
 import { Button } from "@chakra-ui/react"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
@@ -46,6 +47,12 @@ function FirstLoginSetup() {
   const queryClient = useQueryClient()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [emailVerificationStep, setEmailVerificationStep] = useState<"idle" | "code-sent" | "verified">("idle")
+  const [verificationCode, setVerificationCode] = useState("")
+  const [isLoadingSendCode, setIsLoadingSendCode] = useState(false)
+  const [isLoadingVerifyCode, setIsLoadingVerifyCode] = useState(false)
+  const [codeError, setCodeError] = useState("")
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   const { data: currentUser } = useQuery<CurrentUser>({
     queryKey: ["currentUser"],
@@ -69,6 +76,17 @@ function FirstLoginSetup() {
     },
   })
 
+  // Cooldown timer for resend button
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    
+    const timer = setTimeout(() => {
+      setResendCooldown(resendCooldown - 1)
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [resendCooldown])
+
   useEffect(() => {
     const existingEmail = currentUser?.email?.trim()
     if (!existingEmail) return
@@ -87,6 +105,74 @@ function FirstLoginSetup() {
       setValue("employee_id", existingEmployeeId)
     }
   }, [currentUser?.employee_id, getValues, setValue])
+
+  const sendVerificationCode = async () => {
+    const email = getValues("email")?.trim()
+    
+    if (!email) {
+      showErrorToast("Please enter an email address first")
+      return
+    }
+
+    // Email format validation regex
+    const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i
+    
+    if (!emailRegex.test(email)) {
+      showErrorToast("Invalid email format")
+      return
+    }
+
+    setIsLoadingSendCode(true)
+    setCodeError("")
+    
+    try {
+      await UsersService.sendEmailVerificationCode({
+        requestBody: {
+          email: email,
+        },
+      })
+      showSuccessToast("Verification code sent to your email!")
+      setEmailVerificationStep("code-sent")
+      setVerificationCode("")
+      setResendCooldown(60) // 60 second cooldown
+    } catch (err: any) {
+      const errorMsg = err?.body?.detail ?? err?.message ?? "Failed to send verification code"
+      showErrorToast(errorMsg)
+      setCodeError(errorMsg)
+    } finally {
+      setIsLoadingSendCode(false)
+    }
+  }
+
+  const confirmVerificationCode = async () => {
+    const email = getValues("email")?.trim()
+    const code = verificationCode.trim()
+    
+    if (!code || code.length !== 6) {
+      setCodeError("Please enter a 6-digit code")
+      return
+    }
+
+    setIsLoadingVerifyCode(true)
+    setCodeError("")
+    
+    try {
+      await UsersService.verifyEmailCode({
+        requestBody: {
+          email: email,
+          code: code,
+        },
+      })
+      showSuccessToast("Email verified successfully!")
+      setEmailVerificationStep("verified")
+    } catch (err: any) {
+      const errorMsg = err?.body?.detail ?? err?.message ?? "Invalid verification code"
+      showErrorToast(errorMsg)
+      setCodeError(errorMsg)
+    } finally {
+      setIsLoadingVerifyCode(false)
+    }
+  }
 
   const mutation = useMutation({
     mutationFn: (data: { new_password: string; email?: string; employee_id?: string }) =>
@@ -191,26 +277,136 @@ function FirstLoginSetup() {
                 {/* Email */}
                 <Field
                   label="Email"
-                  invalid={!!errors.email}
-                  errorText={errors.email?.message}
+                  invalid={!!errors.email || codeError.length > 0}
+                  errorText={errors.email?.message || codeError}
                   required
                 >
-                  <InputGroup startElement={<FiMail color="gray" />} w="100%">
-                    <Input
-                      {...register("email", {
-                        required: "Email is required",
-                        pattern: {
-                          value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                          message: "Invalid email address",
-                        },
-                      })}
-                      placeholder="your.email@example.com"
-                      type="email"
-                      size="md"
-                      variant="subtle"
-                      bg="gray.50"
-                    />
-                  </InputGroup>
+                  <Flex gap={2} w="100%" flexDirection={{ base: "column", sm: "row" }} align={{ base: "stretch", sm: "flex-start" }}>
+                    <InputGroup startElement={<FiMail color="gray" />} w="100%">
+                      <Input
+                        {...register("email", {
+                          required: "Email is required",
+                          pattern: {
+                            value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                            message: "Invalid email address",
+                          },
+                        })}
+                        placeholder="your.email@example.com"
+                        type="email"
+                        size="md"
+                        variant="subtle"
+                        bg="gray.50"
+                        disabled={emailVerificationStep === "verified"}
+                      />
+                    </InputGroup>
+                    {emailVerificationStep !== "verified" && (
+                      <Button
+                        onClick={sendVerificationCode}
+                        variant="outline"
+                        size="md"
+                        loading={isLoadingSendCode}
+                        colorScheme="gray"
+                        whiteSpace="nowrap"
+                        disabled={isLoadingSendCode || emailVerificationStep === "code-sent"}
+                        minW="fit-content"
+                      >
+                        <Flex align="center" gap={2}>
+                          {isLoadingSendCode ? (
+                            <Spinner size="sm" />
+                          ) : emailVerificationStep === "code-sent" ? (
+                            <FiCheck />
+                          ) : null}
+                          {isLoadingSendCode
+                            ? "Sending..."
+                            : emailVerificationStep === "code-sent"
+                              ? "Code Sent"
+                              : "Send Code"}
+                        </Flex>
+                      </Button>
+                    )}
+                    {emailVerificationStep === "verified" && (
+                      <Button
+                        variant="solid"
+                        size="md"
+                        colorScheme="green"
+                        whiteSpace="nowrap"
+                        disabled
+                      >
+                        <Flex align="center" gap={2}>
+                          <FiCheck />
+                          Verified
+                        </Flex>
+                      </Button>
+                    )}
+                  </Flex>
+
+                  {emailVerificationStep === "code-sent" && (
+                    <VStack align="stretch" mt={3} gap={2}>
+                      <Text fontSize="sm" color="blue.600" fontWeight="500">
+                        Enter the verification code sent to your email
+                      </Text>
+                      <Input
+                        type="password"
+                        placeholder="Enter 6-digit code"
+                        value={verificationCode}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "").slice(0, 6)
+                          setVerificationCode(val)
+                          setCodeError("")
+                        }}
+                        maxLength={6}
+                        size="md"
+                        variant="subtle"
+                        bg="gray.50"
+                        textAlign="center"
+                        fontSize="lg"
+                        letter-spacing="2px"
+                      />
+                      <Flex gap={2} flexDirection={{ base: "column", sm: "row" }}>
+                        <Button
+                          onClick={confirmVerificationCode}
+                          variant="solid"
+                          size="sm"
+                          loading={isLoadingVerifyCode}
+                          colorScheme="blue"
+                          flex={1}
+                        >
+                          Confirm Code
+                        </Button>
+                        <Button
+                          onClick={sendVerificationCode}
+                          variant="outline"
+                          size="sm"
+                          colorScheme="gray"
+                          loading={isLoadingSendCode}
+                          disabled={resendCooldown > 0 || isLoadingSendCode}
+                          flex={1}
+                        >
+                          {resendCooldown > 0
+                            ? `Resend (${resendCooldown}s)`
+                            : "Resend Code"}
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setEmailVerificationStep("idle")
+                            setVerificationCode("")
+                            setCodeError("")
+                          }}
+                          variant="outline"
+                          size="sm"
+                          flex={1}
+                        >
+                          Cancel
+                        </Button>
+                      </Flex>
+                    </VStack>
+                  )}
+
+                  {emailVerificationStep === "verified" && (
+                    <Text fontSize="sm" color="green.600" mt={2}>
+                      ✓ Email verified successfully
+                    </Text>
+                  )}
                 </Field>
 
                 {requiresEmployeeId && (

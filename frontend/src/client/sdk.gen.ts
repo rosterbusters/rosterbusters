@@ -553,6 +553,46 @@ export class UsersService {
             }
         });
     }
+
+    /**
+     * Send Email Verification Code
+     * Send an email verification code to the provided email address.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static sendEmailVerificationCode(data: { requestBody: { email: string } }): CancelablePromise<{ message: string }> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/users/me/send-email-verification-code',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Verify Email Code
+     * Verify the email verification code and confirm the email.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static verifyEmailCode(data: { requestBody: { email: string; code: string } }): CancelablePromise<{ message: string }> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/users/me/verify-email-code',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
     
     /**
      * Register User

@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+import random
+import string
 
 import emails  # type: ignore
 import jwt
@@ -160,6 +162,85 @@ def generate_password_changed_email(email_to: str, username: str) -> EmailData:
             "username": username,
             "email": email_to,
             "link": settings.FRONTEND_HOST,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+# ============================================================================
+# Email Verification Code Management
+# ============================================================================
+
+# Simple in-memory store for email verification codes (can be upgraded to Redis)
+_email_verification_codes: dict[str, dict[str, Any]] = {}
+
+
+def generate_email_verification_code() -> str:
+    """Generate a 6-digit verification code."""
+    return "".join(random.choices(string.digits, k=6))
+
+
+def store_email_verification_code(email: str, user_id: int) -> str:
+    """
+    Generate and store a verification code for an email.
+    Returns the code that was generated.
+    """
+    code = generate_email_verification_code()
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=10)  # 10 minute expiry
+    
+    _email_verification_codes[email] = {
+        "code": code,
+        "user_id": user_id,
+        "expiry": expiry,
+    }
+    
+    logger.info(f"Generated verification code for email: {email} (expires at {expiry})")
+    return code
+
+
+def verify_email_code(email: str, code: str, user_id: int) -> bool:
+    """
+    Verify if the provided code matches the stored code for the email.
+    Checks expiry and cleans up on success or expiry.
+    """
+    if email not in _email_verification_codes:
+        return False
+    
+    stored_data = _email_verification_codes[email]
+    
+    # Check if code has expired
+    if datetime.now(timezone.utc) > stored_data["expiry"]:
+        del _email_verification_codes[email]
+        logger.warning(f"Verification code for {email} has expired")
+        return False
+    
+    # Check if user_id matches
+    if stored_data["user_id"] != user_id:
+        logger.warning(f"User ID mismatch for email verification: {email}")
+        return False
+    
+    # Check if code matches
+    if stored_data["code"] != code:
+        logger.warning(f"Invalid verification code for {email}")
+        return False
+    
+    # Code is valid, clean up
+    del _email_verification_codes[email]
+    logger.info(f"Email verification successful for: {email}")
+    return True
+
+
+def generate_email_verification_email(email_to: str, code: str) -> EmailData:
+    """Generate an email with the verification code."""
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Verify your email address"
+    html_content = render_email_template(
+        template_name="email_verification.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "verification_code": code,
+            "code_expiry_minutes": 10,
         },
     )
     return EmailData(html_content=html_content, subject=subject)
