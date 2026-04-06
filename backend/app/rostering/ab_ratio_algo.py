@@ -56,6 +56,7 @@ _DEFAULT_WEIGHTS = {
     "rank_b_night_over": 18_000,
     "rank_c_night": 9_000,
     "rank_c_night_over": 14_000,
+    "isolated_night": 12_000,
     "daily_total_shift_balance": 8_000,
     "daily_total_shift_balance_c": 3_500,
     "daily_ap_balance": 6_000,
@@ -595,6 +596,10 @@ def parse_ab_ratio_inputs(
         cfg.get("rank_c_night_over_weight"),
         ratio_weights["rank_c_night_over"],
     )
+    ratio_weights["isolated_night"] = _coerce_int(
+        cfg.get("isolated_night_weight"),
+        ratio_weights["isolated_night"],
+    )
     ratio_weights["rank_c_night"] = _coerce_int(
         cfg.get("rank_c_night_weight"),
         ratio_weights["rank_c_night"],
@@ -1085,6 +1090,11 @@ def run_ab_ratio_pipeline(
             model.Add(total_nights == 0)
         else:
             model.Add(total_nights <= 4)
+            for week_start in range(0, num_days, 7):
+                week_end = min(week_start + 7, num_days)
+                model.Add(
+                    sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(week_start, week_end)) <= 2
+                )
 
         total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
         total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
@@ -1112,15 +1122,30 @@ def run_ab_ratio_pipeline(
                     x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
                 )
 
-        if nurse_idx not in no_night_ids and not relax_post_night_rest:
-            if num_days >= 2:
-                if nurse_idx not in post_night_off:
-                    model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
-            for day_idx in range(1, num_days - 1):
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT]
-                    <= x[nurse_idx, day_idx - 1, NIGHT] + x[nurse_idx, day_idx + 1, NIGHT]
-                )
+        if nurse_idx not in no_night_ids:
+            for day_idx in range(num_days):
+                isolated_night = model.NewBoolVar(f"isolated_night_ab_{nurse_idx}_{day_idx}")
+                if day_idx == 0:
+                    if num_days == 1:
+                        model.Add(isolated_night >= x[nurse_idx, day_idx, NIGHT])
+                    else:
+                        model.Add(
+                            isolated_night
+                            >= x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT]
+                        )
+                elif day_idx == num_days - 1:
+                    model.Add(
+                        isolated_night
+                        >= x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx - 1, NIGHT]
+                    )
+                else:
+                    model.Add(
+                        isolated_night
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        - x[nurse_idx, day_idx - 1, NIGHT]
+                        - x[nurse_idx, day_idx + 1, NIGHT]
+                    )
+                add_penalty(isolated_night, weights["isolated_night"])
 
     for nurse_idx in managed_working_rank_c:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
@@ -1130,6 +1155,11 @@ def run_ab_ratio_pipeline(
             model.Add(total_nights == 0)
         else:
             model.Add(total_nights <= 4)
+            for week_start in range(0, num_days, 7):
+                week_end = min(week_start + 7, num_days)
+                model.Add(
+                    sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(week_start, week_end)) <= 2
+                )
 
         total_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(num_days))
         total_non_working = total_do + sum(x[nurse_idx, day_idx, AL] for day_idx in range(num_days))
@@ -1157,15 +1187,30 @@ def run_ab_ratio_pipeline(
                     x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
                 )
 
-        if nurse_idx not in no_night_ids and not relax_post_night_rest:
-            if num_days >= 2:
-                if nurse_idx not in post_night_off:
-                    model.Add(x[nurse_idx, 0, NIGHT] <= x[nurse_idx, 1, NIGHT])
-            for day_idx in range(1, num_days - 1):
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT]
-                    <= x[nurse_idx, day_idx - 1, NIGHT] + x[nurse_idx, day_idx + 1, NIGHT]
-                )
+        if nurse_idx not in no_night_ids:
+            for day_idx in range(num_days):
+                isolated_night = model.NewBoolVar(f"isolated_night_c_{nurse_idx}_{day_idx}")
+                if day_idx == 0:
+                    if num_days == 1:
+                        model.Add(isolated_night >= x[nurse_idx, day_idx, NIGHT])
+                    else:
+                        model.Add(
+                            isolated_night
+                            >= x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT]
+                        )
+                elif day_idx == num_days - 1:
+                    model.Add(
+                        isolated_night
+                        >= x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx - 1, NIGHT]
+                    )
+                else:
+                    model.Add(
+                        isolated_night
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        - x[nurse_idx, day_idx - 1, NIGHT]
+                        - x[nurse_idx, day_idx + 1, NIGHT]
+                    )
+                add_penalty(isolated_night, weights["isolated_night"])
 
     for nurse_idx in pattern_nurses:
         shift_pattern = shift_pattern_by_nurse.get(nurse_idx)

@@ -7,8 +7,8 @@
 #   1. Coverage is strict by class: RN covers RN only, EN covers EN only,
 #      HCA covers HCA only.
 #   2. "RD" is treated as a true off-day (alongside DO and OFF).
-#   3. Any night shift must belong to an N-N-DO block with carry-over
-#      handling across horizons.
+#   3. Double-night blocks are preferred. Single-night blocks are allowed
+#      when needed, with carry-over handling preserved for double blocks.
 #   4. Weekly caps remain notebook v14 defaults: <=2 night shifts and <=5
 #      total worked shifts per week.
 #   5. Objective defaults follow the notebook unless explicitly overridden.
@@ -718,6 +718,7 @@ def _solve(
         "pref": 100.0,
         "weekend": 3.0,
         "rest": 25.0,
+        "single_night": 20.0,
         "balance": 20.0,
         "day_smooth": 30.0,
         "day_smooth_hca": 15.0,
@@ -758,10 +759,13 @@ def _solve(
     m.off_en  = Var(m.N_EN,  m.D, within=Binary)
     m.off_hca = Var(m.N_HCA, m.D, within=Binary)
 
-    # Night-block start variables (N-N-DO block enforcement)
+    # Night-block start variables.
     m.startN_rn  = Var(m.N_RN,  m.D, within=Binary)
     m.startN_en  = Var(m.N_EN,  m.D, within=Binary)
     m.startN_hca = Var(m.N_HCA, m.D, within=Binary)
+    m.singleN_rn  = Var(m.N_RN,  m.D, within=Binary)
+    m.singleN_en  = Var(m.N_EN,  m.D, within=Binary)
+    m.singleN_hca = Var(m.N_HCA, m.D, within=Binary)
 
     # Deviation variables for soft objectives
     for grp, nurses in (("rn", rn_nurses), ("en", en_nurses), ("hca", hca_nurses)):
@@ -797,7 +801,7 @@ def _solve(
     m.cons = ConstraintList()
 
     # ---- Nurse rules ----
-    def add_nurse_rules(class_nurses, x_var, off_var, startN_var,
+    def add_nurse_rules(class_nurses, x_var, off_var, startN_var, singleN_var,
                         al_dict, hard_dict, prev_week_last2_dict,
                         nurse_constraints_dict,
                         eq_under, eq_over):
@@ -932,11 +936,19 @@ def _solve(
             if no_night or preferred_shift is not None:
                 for d in DAYS:
                     m.cons.add(startN_var[n, d] == 0)
+                    m.cons.add(singleN_var[n, d] == 0)
                 continue
 
             # No two block starts on consecutive days
             for d in range(1, num_days):
                 m.cons.add(startN_var[n, d] + startN_var[n, d + 1] <= 1)
+                m.cons.add(startN_var[n, d] + singleN_var[n, d + 1] <= 1)
+
+            for d in range(2, num_days + 1):
+                m.cons.add(singleN_var[n, d] + startN_var[n, d - 1] <= 1)
+
+            for d in DAYS:
+                m.cons.add(startN_var[n, d] + singleN_var[n, d] <= 1)
 
             # If a block starts on day d → d and d+1 are N, d+2 is DO
             for d in range(1, max(num_days - 1, 1)):
@@ -944,6 +956,14 @@ def _solve(
                 m.cons.add(x_var[n, d + 1, "N"] >= startN_var[n, d])
                 if d + 2 <= num_days:
                     m.cons.add(off_var[n, d + 2]    >= startN_var[n, d])
+
+            # Single-night start on day d → day d is N and day d+1 is DO.
+            for d in range(1, num_days):
+                m.cons.add(x_var[n, d, "N"] >= singleN_var[n, d])
+                m.cons.add(off_var[n, d + 1] >= singleN_var[n, d])
+
+            # Avoid single-night carry ambiguity at the horizon boundary.
+            m.cons.add(singleN_var[n, num_days] == 0)
 
             # Penultimate-day start → last two days are N (next horizon handles the DO)
             if num_days >= 2:
@@ -958,21 +978,24 @@ def _solve(
                 # Day 1 is the second N from the previous horizon's block
                 m.cons.add(x_var[n, 1, "N"] == 1)
                 m.cons.add(startN_var[n, 1] == 0)
+                m.cons.add(singleN_var[n, 1] == 0)
             else:
-                m.cons.add(x_var[n, 1, "N"] == startN_var[n, 1])
+                m.cons.add(x_var[n, 1, "N"] == startN_var[n, 1] + singleN_var[n, 1])
 
             for d in range(2, num_days + 1):
-                m.cons.add(x_var[n, d, "N"] == startN_var[n, d] + startN_var[n, d - 1])
+                m.cons.add(
+                    x_var[n, d, "N"] == startN_var[n, d] + singleN_var[n, d] + startN_var[n, d - 1]
+                )
 
-    add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,
+    add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,  m.singleN_rn,
                     annual_leave_rn,  hard_requests_rn,  prev_week_last2_rn,
                     nurse_constraints_rn,
                     m.eq_under_rn, m.eq_over_rn)
-    add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,
+    add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,  m.singleN_en,
                     annual_leave_en,  hard_requests_en,  prev_week_last2_en,
                     nurse_constraints_en,
                     m.eq_under_en, m.eq_over_en)
-    add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca,
+    add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca, m.singleN_hca,
                     annual_leave_hca, hard_requests_hca, prev_week_last2_hca,
                     nurse_constraints_hca,
                     m.eq_under_hca, m.eq_over_hca)
@@ -1260,12 +1283,14 @@ def _solve(
           + lw["pref"]      * sum(m.pref_violate_rn[n, d] for n in rn_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_rn[n] for n in rn_nurses)
           + lw["rest"]      * sum(m.rest_violation_rn[n] for n in rn_nurses)
+          + lw["single_night"] * sum(m.singleN_rn[n, d] for n in rn_nurses for d in DAYS)
 
             + lw["dev_shift"] * sum(m.dev_A_en[n] + m.dev_P_en[n] + 2*m.dev_N_en[n] for n in en_nurses)
           # Notebook v14 leaves EN daily target/AP deviation terms disabled.
           + lw["pref"]      * sum(m.pref_violate_en[n, d] for n in en_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_en[n] for n in en_nurses)
           + lw["rest"]      * sum(m.rest_violation_en[n] for n in en_nurses)
+          + lw["single_night"] * sum(m.singleN_en[n, d] for n in en_nurses for d in DAYS)
 
           + lw["dev_shift"] * sum(m.dev_A_hca[n] + m.dev_P_hca[n] + 2*m.dev_N_hca[n] for n in hca_nurses)
           + lw["dev_day"]   * sum(m.dev_day_hca[d, s] for d in DAYS for s in SHIFTS)
@@ -1273,6 +1298,7 @@ def _solve(
           + lw["pref"]      * sum(m.pref_violate_hca[n, d] for n in hca_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_hca[n] for n in hca_nurses)
           + lw["rest"]      * sum(m.rest_violation_hca[n] for n in hca_nurses)
+          + lw["single_night"] * sum(m.singleN_hca[n, d] for n in hca_nurses for d in DAYS)
 
           + lw["eq"]        * (
                 sum(m.eq_under_rn[n] + m.eq_over_rn[n] for n in rn_nurses)
