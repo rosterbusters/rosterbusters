@@ -79,6 +79,10 @@ _DEFAULT_C_SHIFT_RATIO = {
     PM: 1,
     NIGHT: 1,
 }
+_DEFAULT_REQUEST_PRIORITY_WEIGHTS = {
+    "pending": 1,
+    "approved": 5,
+}
 _DEFAULT_RN_NIGHT_ALLOWED_EXCESS = 1
 _DEFAULT_DAILY_TOTAL_SHIFT_GAP_TARGET = 2
 _DEFAULT_DAILY_TOTAL_SHIFT_BALANCE_ENABLED = True
@@ -160,6 +164,11 @@ def _is_disallowed_work_shift(shift_code: int, shift_pattern: str | None, no_nig
     if shift_pattern == "PM_ONLY" and shift_code in {AM, NIGHT}:
         return True
     return False
+
+
+def _priority_weight(raw_priority, default_weights: dict[str, int]) -> int:
+    priority = str(raw_priority).strip().lower() if raw_priority is not None else "pending"
+    return max(_coerce_int(default_weights.get(priority, 1), 1), 1)
 
 
 def _build_ab_targets(
@@ -443,14 +452,17 @@ def parse_ab_ratio_inputs(
     al_nurses_set: set[int] = set()
     al_day_req: list[set[int]] = [set() for _ in range(num_nurses)]
     hard_assignments: list[dict[int, int]] = [{} for _ in range(num_nurses)]
-    soft_assignments: list[dict[int, int]] = [{} for _ in range(num_nurses)]
+    soft_assignments: list[dict[int, tuple[int, int]]] = [{} for _ in range(num_nurses)]
     leave_overlay: dict[str, dict[int, str]] = {}
 
     for nurse_id, req_list in hard_requests.items():
         nurse_idx = id_to_idx.get(nurse_id)
         if nurse_idx is None:
             continue
-        for day_idx, raw_shift in req_list:
+        for item in req_list:
+            if not isinstance(item, (list, tuple)) or len(item) < 2:
+                continue
+            day_idx, raw_shift = item[0], item[1]
             if not 0 <= day_idx < num_days:
                 continue
             shift_code = _to_internal_code(raw_shift, leave_codes, non_working_codes)
@@ -472,7 +484,11 @@ def parse_ab_ratio_inputs(
         nurse_idx = id_to_idx.get(nurse_id)
         if nurse_idx is None:
             continue
-        for day_idx, raw_shift in req_list:
+        for item in req_list:
+            if not isinstance(item, (list, tuple)) or len(item) < 2:
+                continue
+            day_idx, raw_shift = item[0], item[1]
+            priority = item[2] if len(item) >= 3 else "pending"
             if not 0 <= day_idx < num_days:
                 continue
             shift_code = _to_internal_code(raw_shift, leave_codes, non_working_codes)
@@ -484,7 +500,7 @@ def parse_ab_ratio_inputs(
                 nurse_idx in no_night_ids,
             ):
                 continue
-            soft_assignments[nurse_idx][day_idx] = shift_code
+            soft_assignments[nurse_idx][day_idx] = (shift_code, _priority_weight(priority, _DEFAULT_REQUEST_PRIORITY_WEIGHTS))
 
     for nurse_idx, days in enumerate(al_day_req):
         if len(days) >= num_days:
@@ -1526,13 +1542,14 @@ def run_ab_ratio_pipeline(
 
     for nurse_idx in working_nurses:
         hard_days = set(hard_assignments[nurse_idx])
-        for day_idx, shift_code in soft_assignments[nurse_idx].items():
+        for day_idx, soft_request in soft_assignments[nurse_idx].items():
             if day_idx in hard_days:
                 continue
+            shift_code, request_weight = soft_request
             violation = model.NewBoolVar(f"soft_req_{nurse_idx}_{day_idx}_{shift_code}")
             model.Add(violation + x[nurse_idx, day_idx, shift_code] >= 1)
             model.Add(violation <= 1 - x[nurse_idx, day_idx, shift_code])
-            add_penalty(violation, weights["soft_request"])
+            add_penalty(violation, weights["soft_request"] * request_weight)
 
     if progress_callback:
         progress_callback(2, 4, float("inf"))

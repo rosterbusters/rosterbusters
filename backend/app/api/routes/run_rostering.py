@@ -1580,7 +1580,9 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         existing[:] = [(d, s) for d, s in existing if d not in leave_days]
         existing.extend(days)
         if nurse_id in soft_requests:
-            soft_requests[nurse_id] = [(d, s) for d, s in soft_requests[nurse_id] if d not in leave_days]
+            soft_requests[nurse_id] = [
+                item for item in soft_requests[nurse_id] if item[0] not in leave_days
+            ]
     prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
     _filter_requests_for_nurse_constraints(nurses_data, hard_requests, soft_requests)
 
@@ -1671,7 +1673,7 @@ def _load_shift_requests(
     nurse_ids: list[int],
     num_days: int,
     shift_label_map: dict[str, str] | None = None,
-) -> tuple[dict[int, list[tuple[int, str]]], dict[int, list[tuple[int, str]]]]:
+) -> tuple[dict[int, list[tuple[int, str]]], dict[int, list[tuple[int, str, str]]]]:
     if not nurse_ids:
         return {}, {}
 
@@ -1701,7 +1703,7 @@ def _load_shift_requests(
             latest_by_bucket[key] = req
 
     hard_requests: dict[int, list[tuple[int, str]]] = {}
-    soft_requests: dict[int, list[tuple[int, str]]] = {}
+    soft_requests: dict[int, list[tuple[int, str, str]]] = {}
 
     approved_keys = {
         (nurse_id, day_idx)
@@ -1714,9 +1716,9 @@ def _load_shift_requests(
         # Use DB-driven map if available; fall back to OFF for unknown codes
         shift_name = (shift_label_map or {}).get(raw, "OFF")
         if status == "Approved":
-            hard_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
+            soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name, "approved"))
         elif (nurse_id, day_idx) not in approved_keys:
-            soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name))
+            soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name, "pending"))
 
     return hard_requests, soft_requests
 
@@ -1769,7 +1771,7 @@ def _load_nurse_period_constraints(
 def _filter_requests_for_nurse_constraints(
     nurses: list[dict[str, Any]],
     hard_requests: dict[int, list[tuple[int, str]]],
-    soft_requests: dict[int, list[tuple[int, str]]],
+    soft_requests: dict[int, list[tuple[int, str] | tuple[int, str, str]]],
 ) -> None:
     allowed_by_pattern = {
         "AM_ONLY": {"AM", "A", "OFF", "DO", "RD", "AL"},
@@ -1785,8 +1787,8 @@ def _filter_requests_for_nurse_constraints(
         no_night = bool(nurse.get("no_night"))
         allowed = allowed_by_pattern.get(shift_pattern)
 
-        def _keep(item: tuple[int, str]) -> bool:
-            _, raw_shift = item
+        def _keep(item: tuple[int, str] | tuple[int, str, str]) -> bool:
+            raw_shift = item[1]
             normalized = str(raw_shift).strip().upper()
             if no_night and normalized in night_codes:
                 return False

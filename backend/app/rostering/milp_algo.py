@@ -152,6 +152,7 @@ def _parse_request_dict(
     requests,
     non_working_shift_codes=None,
     nurse_constraints_by_name=None,
+    request_priority_weights=None,
 ):
     requests = requests or {}
 
@@ -171,6 +172,7 @@ def _parse_request_dict(
 
     id_to_nurse = {n["id"]: n for n in nurses}
     hard_rn, hard_en, hard_hca = {}, {}, {}
+    request_priority_weights = request_priority_weights or {}
 
     for nurse_id, req_list in requests.items():
         nurse = id_to_nurse.get(nurse_id)
@@ -187,7 +189,11 @@ def _parse_request_dict(
         nurse_constraints = (nurse_constraints_by_name or {}).get(name, {})
         shift_pattern = nurse_constraints.get("shift_pattern")
         no_night = bool(nurse_constraints.get("no_night"))
-        for day_idx, shift_name in req_list:
+        for item in req_list:
+            if not isinstance(item, (list, tuple)) or len(item) < 2:
+                continue
+            day_idx, shift_name = item[0], item[1]
+            priority = str(item[2]).strip().lower() if len(item) >= 3 else None
             if 0 <= day_idx < num_days:
                 normalized_shift = str(shift_name).upper()
                 if normalized_shift in _OFF_CODES:
@@ -200,9 +206,31 @@ def _parse_request_dict(
                     milp_code = _sched_to_milp.get(normalized_shift, normalized_shift)
                 if _is_disallowed_milp_shift(milp_code, shift_pattern, no_night):
                     continue
-                target[name][f"Day {day_idx + 1}"] = milp_code
+                if priority is None:
+                    target[name][f"Day {day_idx + 1}"] = milp_code
+                else:
+                    target[name][f"Day {day_idx + 1}"] = {
+                        "code": milp_code,
+                        "weight": float(request_priority_weights.get(priority, 1.0)),
+                        "priority": priority,
+                    }
 
     return hard_rn, hard_en, hard_hca
+
+
+def _get_request_code(request_entry):
+    if isinstance(request_entry, dict):
+        return request_entry.get("code", "")
+    return request_entry
+
+
+def _get_request_weight(request_entry):
+    if isinstance(request_entry, dict):
+        try:
+            return float(request_entry.get("weight", 1.0))
+        except (TypeError, ValueError):
+            return 1.0
+    return 1.0
 
 
 def _parse_prev_last_shift(nurses, prev_last_shift):
@@ -304,6 +332,11 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
                 "no_night": _has_no_night_constraint(n),
             }
 
+    request_priority_weights = {
+        "pending": 1.0,
+        "approved": 5.0,
+    }
+
     hard_rn, hard_en, hard_hca = _parse_request_dict(
         nurses,
         num_days,
@@ -325,6 +358,7 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
             **nurse_constraints_by_class["EN"],
             **nurse_constraints_by_class["HCA"],
         },
+        request_priority_weights=request_priority_weights,
     )
     prev_roster = _parse_prev_last_shift(nurses, prev_last_shift)
 
@@ -816,7 +850,7 @@ def _solve(
 
             # Scan hard requests to collect AL / INHT/BL days
             for d in DAYS:
-                raw = hard_dict.get(n, {}).get(f"Day {d}", "")
+                raw = _get_request_code(hard_dict.get(n, {}).get(f"Day {d}", ""))
                 kind, _ = _classify(raw, non_working_shift_codes)
                 if kind == "EQUIV_LEAVE":
                     al_days.add(d)
@@ -849,7 +883,7 @@ def _solve(
                 if carry_state == "NEED_N_DO" and d in {1, 2}:
                     continue
 
-                raw = hard_dict.get(n, {}).get(f"Day {d}", "")
+                raw = _get_request_code(hard_dict.get(n, {}).get(f"Day {d}", ""))
                 kind, val = _classify(raw, non_working_shift_codes)
 
                 if no_night:
@@ -1234,10 +1268,10 @@ def _solve(
     def add_soft_prefs(class_nurses, x_var, hard_dict, soft_dict, pref_viol):
         for n in class_nurses:
             for d in DAYS:
-                hard_raw = hard_dict.get(n, {}).get(f"Day {d}", "")
+                hard_raw = _get_request_code(hard_dict.get(n, {}).get(f"Day {d}", ""))
                 if _classify(hard_raw, non_working_shift_codes)[0] != "NONE":
                     continue  # hard request already pinned this day
-                soft_raw = soft_dict.get(n, {}).get(f"Day {d}", "")
+                soft_raw = _get_request_code(soft_dict.get(n, {}).get(f"Day {d}", ""))
                 kind, val = _classify(soft_raw, non_working_shift_codes)
                 if kind == "WORK_SHIFT":
                     m.cons.add(x_var[n, d, val] >= 1 - pref_viol[n, d])
@@ -1275,19 +1309,31 @@ def _solve(
     add_prev_week_constraints(hca_nurses, m.x_hca, prev_week_last2_hca, m.rest_violation_hca)
 
     # ---- Objective ----
+    pref_weight_rn = {
+        (n, d): _get_request_weight(soft_requests_rn.get(n, {}).get(f"Day {d}", ""))
+        for n in rn_nurses for d in DAYS
+    }
+    pref_weight_en = {
+        (n, d): _get_request_weight(soft_requests_en.get(n, {}).get(f"Day {d}", ""))
+        for n in en_nurses for d in DAYS
+    }
+    pref_weight_hca = {
+        (n, d): _get_request_weight(soft_requests_hca.get(n, {}).get(f"Day {d}", ""))
+        for n in hca_nurses for d in DAYS
+    }
     lw = weights
     m.obj = Objective(
         expr=(
             lw["dev_shift"] * sum(m.dev_A_rn[n] + m.dev_P_rn[n] + 2*m.dev_N_rn[n] for n in rn_nurses)
           # Notebook v14 leaves RN daily target/AP deviation terms disabled.
-          + lw["pref"]      * sum(m.pref_violate_rn[n, d] for n in rn_nurses for d in DAYS)
+          + lw["pref"]      * sum(pref_weight_rn[n, d] * m.pref_violate_rn[n, d] for n in rn_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_rn[n] for n in rn_nurses)
           + lw["rest"]      * sum(m.rest_violation_rn[n] for n in rn_nurses)
           + lw["single_night"] * sum(m.singleN_rn[n, d] for n in rn_nurses for d in DAYS)
 
             + lw["dev_shift"] * sum(m.dev_A_en[n] + m.dev_P_en[n] + 2*m.dev_N_en[n] for n in en_nurses)
           # Notebook v14 leaves EN daily target/AP deviation terms disabled.
-          + lw["pref"]      * sum(m.pref_violate_en[n, d] for n in en_nurses for d in DAYS)
+          + lw["pref"]      * sum(pref_weight_en[n, d] * m.pref_violate_en[n, d] for n in en_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_en[n] for n in en_nurses)
           + lw["rest"]      * sum(m.rest_violation_en[n] for n in en_nurses)
           + lw["single_night"] * sum(m.singleN_en[n, d] for n in en_nurses for d in DAYS)
@@ -1295,7 +1341,7 @@ def _solve(
           + lw["dev_shift"] * sum(m.dev_A_hca[n] + m.dev_P_hca[n] + 2*m.dev_N_hca[n] for n in hca_nurses)
           + lw["dev_day"]   * sum(m.dev_day_hca[d, s] for d in DAYS for s in SHIFTS)
           + lw["AP"]        * sum(m.dev_AP_hca[d] for d in DAYS)
-          + lw["pref"]      * sum(m.pref_violate_hca[n, d] for n in hca_nurses for d in DAYS)
+          + lw["pref"]      * sum(pref_weight_hca[n, d] * m.pref_violate_hca[n, d] for n in hca_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_hca[n] for n in hca_nurses)
           + lw["rest"]      * sum(m.rest_violation_hca[n] for n in hca_nurses)
           + lw["single_night"] * sum(m.singleN_hca[n, d] for n in hca_nurses for d in DAYS)

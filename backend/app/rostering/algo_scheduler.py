@@ -58,10 +58,17 @@ def _normalize_request_groups(request_groups):
 
     normalized_groups = {}
     for nurse_id, req_list in request_groups.items():
-        normalized_groups[nurse_id] = [
-            (day_idx, _normalize_shift_name(shift_name))
-            for day_idx, shift_name in req_list
-        ]
+        normalized_items = []
+        for item in req_list:
+            if not isinstance(item, (list, tuple)) or len(item) < 2:
+                normalized_items.append(item)
+                continue
+            day_idx, shift_name = item[0], item[1]
+            if len(item) >= 3:
+                normalized_items.append((day_idx, _normalize_shift_name(shift_name), item[2]))
+            else:
+                normalized_items.append((day_idx, _normalize_shift_name(shift_name)))
+        normalized_groups[nurse_id] = normalized_items
     return normalized_groups
 
 
@@ -241,12 +248,13 @@ def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_sh
                 raise ValueError(f"Requests for nurse {nurse_id} must be a list")
 
             for item in req_list:
-                if not (isinstance(item, (list, tuple)) and len(item) == 2):
+                if not (isinstance(item, (list, tuple)) and len(item) in {2, 3}):
                     raise ValueError(
-                        f"Each request must be a (day_index, shift_name) pair; "
+                        f"Each request must be a (day_index, shift_name) pair "
+                        f"or (day_index, shift_name, priority); "
                         f"got {item!r} for nurse {nurse_id}"
                     )
-                day_idx, shift_name = item
+                day_idx, shift_name = item[0], item[1]
                 if not (0 <= day_idx < num_days):
                     raise ValueError(
                         f"Invalid day index {day_idx} for nurse {nurse_id} "
