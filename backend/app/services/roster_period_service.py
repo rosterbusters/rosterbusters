@@ -27,6 +27,8 @@ ROSTER_YEARS_TO_KEEP = 2
 # TODO: Replace this temporary bypass with the real roster planning lock cutoff
 # once the implementation date/policy is finalized.
 PLANNING_LOCK_OFFSET_DAYS = -365
+# TODO: Revert this temporary Apr 6, 2026 request-window bypass after roster testing finishes.
+TEMP_REQUEST_WINDOW_BYPASS_STARTDATE = date(2026, 4, 6)
 logger = logging.getLogger(__name__)
 
 
@@ -69,6 +71,9 @@ def build_roster_period_definitions(today: date | None = None) -> list[RosterPer
             # TODO: revert to original close date (startdate - 10 days) once request window timing is finalised
             # requestclosedate = startdate - timedelta(days=10)
             requestclosedate = startdate - timedelta(days=13)
+            if startdate == TEMP_REQUEST_WINDOW_BYPASS_STARTDATE:
+                # TODO: Remove this once Apr 6, 2026 roster testing is complete.
+                requestclosedate = enddate
 
             if today > enddate:
                 status = "Published"

@@ -81,6 +81,12 @@ W_NIGHT_A_TARGET =  25_000   # per-day excess of Rank A night nurses above the p
 _TIME_LIMIT_S = 100.0
 
 
+def _request_day_shift(item):
+    if not isinstance(item, (list, tuple)) or len(item) < 2:
+        return None, None
+    return item[0], item[1]
+
+
 # ─── Pre-solve helpers ────────────────────────────────────────────────────────
 
 def _check_demand_feasibility(
@@ -342,7 +348,13 @@ def run_ga_pipeline(
         ni = id_to_idx.get(nid)
         if ni is None:
             continue
-        al_days = {d for d, sc in req_list if _to_code(sc) == AL and 0 <= d < num_days}
+        al_days = set()
+        for item in req_list:
+            d, sc = _request_day_shift(item)
+            if d is None or sc is None:
+                continue
+            if _to_code(sc) == AL and 0 <= d < num_days:
+                al_days.add(d)
         if len(al_days) >= num_days:
             al_nurses_set.add(ni)
         else:
@@ -364,7 +376,10 @@ def run_ga_pipeline(
         ni = id_to_idx.get(nid)
         if ni is None or ni in al_nurses_set:
             continue
-        for d, sc_raw in req_list:
+        for item in req_list:
+            d, sc_raw = _request_day_shift(item)
+            if d is None or sc_raw is None:
+                continue
             sc = _to_code(sc_raw)
             if sc is not None and sc != AL and 0 <= d < num_days:
                 approved[ni].append((d, sc))
@@ -375,7 +390,10 @@ def run_ga_pipeline(
         ni = id_to_idx.get(nid)
         if ni is None or ni in al_nurses_set:
             continue
-        for d, sc_raw in req_list:
+        for item in req_list:
+            d, sc_raw = _request_day_shift(item)
+            if d is None or sc_raw is None:
+                continue
             sc = _to_code(sc_raw)
             if sc is not None and 0 <= d < num_days:
                 pending[ni].append((d, sc))
@@ -396,7 +414,10 @@ def run_ga_pipeline(
         name = id_to_name.get(nid)
         if name is None:
             continue
-        for d, code in req_list:
+        for item in req_list:
+            d, code = _request_day_shift(item)
+            if d is None or code is None:
+                continue
             if str(code).upper() in _LEAVE_ALL:
                 leave_overlay.setdefault(name, {})[d] = str(code).upper()
 
@@ -1086,7 +1107,10 @@ def parse_inputs(
         nurse_idx = id_to_idx.get(nurse_id)
         if nurse_idx is None:
             continue
-        for day_idx, raw_shift in req_list:
+        for item in req_list:
+            day_idx, raw_shift = _request_day_shift(item)
+            if day_idx is None or raw_shift is None:
+                continue
             if not 0 <= day_idx < num_days:
                 continue
             shift_code = _to_code(raw_shift)
@@ -1101,7 +1125,10 @@ def parse_inputs(
         nurse_idx = id_to_idx.get(nurse_id)
         if nurse_idx is None:
             continue
-        for day_idx, raw_shift in req_list:
+        for item in req_list:
+            day_idx, raw_shift = _request_day_shift(item)
+            if day_idx is None or raw_shift is None:
+                continue
             if not 0 <= day_idx < num_days:
                 continue
             shift_code = _to_code(raw_shift)
