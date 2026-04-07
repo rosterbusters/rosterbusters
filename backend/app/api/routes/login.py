@@ -1,30 +1,39 @@
 from datetime import timedelta, datetime, timezone
 from typing import Annotated
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.requests import Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from authlib.integrations.starlette_client import OAuth
+import jwt
 from sqlmodel import select
+from pydantic import ValidationError
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.core import security
 from app.core.config import settings
 from app.core.security import get_password_hash
-from app.models import Message
+from app.models import LoginAccessTokenResponse, LoginEmail2FAResend, LoginEmail2FAVerify, Message, TokenPayload
 from app.models import NewPassword
 from app.models.rbac import RBACUser, RBACUserPublic
 from app.utils import (
+    generate_login_2fa_challenge_id,
+    generate_login_2fa_email,
     generate_password_reset_token,
     generate_reset_password_email,
     generate_password_changed_email,
     verify_password_reset_token,
+    store_login_2fa_code,
+    verify_login_2fa_code,
     send_email,
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+oauth = OAuth()
 
 # oauth = OAuth()
 # oauth.register(
@@ -131,7 +140,7 @@ async def auth_google_callback(
 @router.post("/login/access-token")
 def login_access_token(
     session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
-) -> dict[str, str | bool]:
+) -> LoginAccessTokenResponse:
     """
     OAuth2 compatible token login, get an access token for future requests.
     Accepts email or username in the 'username' field.
@@ -141,13 +150,116 @@ def login_access_token(
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     elif not user.isactive:
         raise HTTPException(status_code=400, detail="Inactive user")
+
+    if user.email and not user.must_change_password and settings.emails_enabled:
+        challenge_id = generate_login_2fa_challenge_id()
+        two_factor_token = security.create_access_token(
+            user.userid,
+            expires_delta=timedelta(minutes=10),
+            token_use="login_2fa",
+            extra_claims={"jti": challenge_id},
+        )
+        code = store_login_2fa_code(challenge_id, user.userid)
+        email_data = generate_login_2fa_email(email_to=user.email, code=code)
+        send_email(
+            email_to=user.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+        return LoginAccessTokenResponse(
+            two_factor_required=True,
+            two_factor_token=two_factor_token,
+            must_change_password=user.must_change_password,
+        )
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(user.userid, expires_delta=access_token_expires)
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "must_change_password": user.must_change_password,
-    }
+    return LoginAccessTokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        must_change_password=user.must_change_password,
+    )
+
+
+@router.post("/login/email-2fa/verify")
+def verify_login_email_2fa(
+    session: SessionDep,
+    body: LoginEmail2FAVerify,
+) -> LoginAccessTokenResponse:
+    try:
+        payload = jwt.decode(
+            body.two_factor_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+        token_data = TokenPayload(**payload)
+    except (jwt.InvalidTokenError, ValidationError):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    if token_data.token_use != "login_2fa":
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    try:
+        user_id = int(token_data.sub)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    user = session.get(RBACUser, user_id)
+    if not user or not user.isactive or not user.email:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    challenge_id = payload.get("jti")
+    if not isinstance(challenge_id, str):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    if not verify_login_2fa_code(challenge_id, body.code, user.userid):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = security.create_access_token(user.userid, expires_delta=access_token_expires)
+    return LoginAccessTokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        must_change_password=user.must_change_password,
+    )
+
+
+@router.post("/login/email-2fa/resend")
+def resend_login_email_2fa(
+    session: SessionDep,
+    body: LoginEmail2FAResend,
+) -> Message:
+    try:
+        payload = jwt.decode(
+            body.two_factor_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+        token_data = TokenPayload(**payload)
+    except (jwt.InvalidTokenError, ValidationError):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    if token_data.token_use != "login_2fa":
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    try:
+        user_id = int(token_data.sub)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    user = session.get(RBACUser, user_id)
+    if not user or not user.isactive or not user.email:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    challenge_id = payload.get("jti")
+    if not isinstance(challenge_id, str):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+    code = store_login_2fa_code(challenge_id, user.userid)
+    email_data = generate_login_2fa_email(email_to=user.email, code=code)
+    send_email(
+        email_to=user.email,
+        subject=email_data.subject,
+        html_content=email_data.html_content,
+    )
+
+    return Message(message="Verification code resent.")
 
 
 @router.post("/login/test-token")

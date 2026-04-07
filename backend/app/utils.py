@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 import random
 import string
+from uuid import uuid4
 
 import emails  # type: ignore
 import jwt
@@ -167,6 +168,21 @@ def generate_password_changed_email(email_to: str, username: str) -> EmailData:
     return EmailData(html_content=html_content, subject=subject)
 
 
+def generate_login_2fa_email(email_to: str, code: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Login verification code"
+    html_content = render_email_template(
+        template_name="login_2fa.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "verification_code": code,
+            "code_expiry_minutes": 10,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
 # ============================================================================
 # Email Verification Code Management
 # ============================================================================
@@ -175,9 +191,16 @@ def generate_password_changed_email(email_to: str, username: str) -> EmailData:
 _email_verification_codes: dict[str, dict[str, Any]] = {}
 
 
+_login_2fa_codes: dict[str, dict[str, Any]] = {}
+
+
 def generate_email_verification_code() -> str:
     """Generate a 6-digit verification code."""
     return "".join(random.choices(string.digits, k=6))
+
+
+def generate_login_2fa_code() -> str:
+    return generate_email_verification_code()
 
 
 def store_email_verification_code(email: str, user_id: int) -> str:
@@ -227,6 +250,48 @@ def verify_email_code(email: str, code: str, user_id: int) -> bool:
     # Code is valid, clean up
     del _email_verification_codes[email]
     logger.info(f"Email verification successful for: {email}")
+    return True
+
+
+def generate_login_2fa_challenge_id() -> str:
+    return uuid4().hex
+
+
+def store_login_2fa_code(challenge_id: str, user_id: int) -> str:
+    code = generate_login_2fa_code()
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    _login_2fa_codes[challenge_id] = {
+        "code": code,
+        "user_id": user_id,
+        "expiry": expiry,
+    }
+
+    logger.info("Generated login 2FA code for user %s (expires at %s)", user_id, expiry)
+    return code
+
+
+def verify_login_2fa_code(challenge_id: str, code: str, user_id: int) -> bool:
+    if challenge_id not in _login_2fa_codes:
+        return False
+
+    stored_data = _login_2fa_codes[challenge_id]
+
+    if datetime.now(timezone.utc) > stored_data["expiry"]:
+        del _login_2fa_codes[challenge_id]
+        logger.warning("Login 2FA code for challenge %s has expired", challenge_id)
+        return False
+
+    if stored_data["user_id"] != user_id:
+        logger.warning("User ID mismatch for login 2FA challenge %s", challenge_id)
+        return False
+
+    if stored_data["code"] != code:
+        logger.warning("Invalid login 2FA code for challenge %s", challenge_id)
+        return False
+
+    del _login_2fa_codes[challenge_id]
+    logger.info("Login 2FA successful for challenge %s", challenge_id)
     return True
 
 

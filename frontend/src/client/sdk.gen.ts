@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsGetAllNursesResponse, ShiftRequestsReviewShiftRequestData, ShiftRequestsReviewShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse, Ward } from './types.gen';
+import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, LoginEmail2FAVerifyData, LoginEmail2FAResendData, Message, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsGetAllNursesResponse, ShiftRequestsReviewShiftRequestData, ShiftRequestsReviewShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse, Ward } from './types.gen';
 
 export class DefaultService {
     /**
@@ -46,6 +46,46 @@ export class DefaultService {
             url: '/api/v1/login/access-token',
             formData: data.formData,
             mediaType: 'application/x-www-form-urlencoded',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Login Email 2Fa Verify
+     * Verify the login code sent to the user's email address.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static loginEmail2faVerify(data: LoginEmail2FAVerifyData): CancelablePromise<LoginAccessTokenResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/login/email-2fa/verify',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Login Email 2Fa Resend
+     * Resend the login code to the user's email address.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static loginEmail2faResend(data: LoginEmail2FAResendData): CancelablePromise<Message> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/login/email-2fa/resend',
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }
