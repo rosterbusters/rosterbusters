@@ -95,6 +95,8 @@ function FirstLoginSetup() {
     if (!getValues("email")) {
       setValue("email", existingEmail)
     }
+
+    setEmailVerificationStep("verified")
   }, [currentUser?.email, getValues, setValue])
 
   useEffect(() => {
@@ -198,6 +200,16 @@ function FirstLoginSetup() {
   })
 
   const onSubmit: SubmitHandler<SetupFormData> = (data) => {
+    const submittedEmail = data.email.trim().toLowerCase()
+    const verifiedAccountEmail = (currentUser?.email ?? "").trim().toLowerCase()
+    const isUsingAlreadyVerifiedEmail =
+      submittedEmail.length > 0 && submittedEmail === verifiedAccountEmail
+
+    if (!isUsingAlreadyVerifiedEmail && emailVerificationStep !== "verified") {
+      showErrorToast("Please verify your email before completing setup.")
+      return
+    }
+
     mutation.mutate({
       new_password: data.new_password,
       email: data.email,
@@ -289,6 +301,18 @@ function FirstLoginSetup() {
                           pattern: {
                             value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
                             message: "Invalid email address",
+                          },
+                          onChange: (e) => {
+                            const typedEmail = String(e.target.value ?? "").trim().toLowerCase()
+                            const verifiedAccountEmail = (currentUser?.email ?? "").trim().toLowerCase()
+
+                            if (typedEmail && verifiedAccountEmail && typedEmail === verifiedAccountEmail) {
+                              setEmailVerificationStep("verified")
+                            } else {
+                              setEmailVerificationStep("idle")
+                              setVerificationCode("")
+                            }
+                            setCodeError("")
                           },
                         })}
                         placeholder="your.email@example.com"

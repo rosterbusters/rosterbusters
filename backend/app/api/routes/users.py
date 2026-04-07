@@ -156,27 +156,33 @@ def first_login_setup(
     current_user.must_change_password = False
     current_user.default_password_encrypted = None
 
-    # Optionally set email
-    if body.email:
-        # Check duplicate
-        existing = session.exec(
-            select(RBACUser).where(
-                RBACUser.email == body.email, RBACUser.userid != current_user.userid
-            )
-        ).first()
-        if existing:
+    # Require email to be verified first via /users/me/verify-email-code.
+    submitted_email = body.email.strip() if body.email else ""
+    current_email = current_user.email.strip() if current_user.email else ""
+    if submitted_email:
+        if not current_email:
             raise HTTPException(
-                status_code=400, detail="A user with this email already exists."
+                status_code=400,
+                detail="Email is not verified. Please verify your email before completing setup.",
             )
-        current_user.email = body.email
+        if submitted_email.lower() != current_email.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Submitted email does not match verified email. Please verify this email first.",
+            )
+    elif not current_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Email verification is required before completing setup.",
+        )
 
-        # Also update the linked nurse/manager email
-        if nurse:
-            nurse.email = body.email
-            session.add(nurse)
-        if manager:
-            manager.email = body.email
-            session.add(manager)
+    # Keep linked nurse/manager email in sync with the verified account email.
+    if nurse and current_email and nurse.email != current_email:
+        nurse.email = current_email
+        session.add(nurse)
+    if manager and current_email and manager.email != current_email:
+        manager.email = current_email
+        session.add(manager)
 
     session.add(current_user)
     session.commit()
