@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import { loginForE2E } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const MAILCATCHER_HOST =
@@ -17,17 +18,13 @@ async function getAdminToken(request: APIRequestContext) {
     )
   }
 
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  return loginForE2E({
+    request,
+    username: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    recipientEmail: ADMIN_EMAIL,
+    apiBaseUrl: API_BASE_URL,
   })
-
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login as admin: ${res.status()} ${body}`)
-  }
-
-  const json = await res.json()
-  return json.access_token as string
 }
 
 async function getAnyWard(request: APIRequestContext, token: string) {

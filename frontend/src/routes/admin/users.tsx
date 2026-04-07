@@ -327,7 +327,6 @@ const parseExactStaffWorkbook = (
       const name = textValue(row.Name)
       const position = textValue(row.Position)
       const department = textValue(row.Department)
-      const remarks = textValue(row.Remarks)
       const role = parseWorkbookRole(position)
 
       if (!name) {
@@ -1125,23 +1124,10 @@ function AdminUsers() {
       return
     }
 
-    let existingUsernames = new Set<string>()
-    try {
-      const firstPage = await AdminService.listUsers(0, 200, "")
-      firstPage.data.forEach((user) => existingUsernames.add(user.username))
-      const total = firstPage.count
-      for (let skip = firstPage.data.length; skip < total; skip += 200) {
-        const nextPage = await AdminService.listUsers(skip, 200, "")
-        nextPage.data.forEach((user) => existingUsernames.add(user.username))
-      }
-    } catch (error: any) {
-      showErrorToast(error?.body?.detail ?? "Failed to validate usernames.")
-      return
-    }
-
+    const importedUsernames = new Set<string>()
     const rowsToImport = result.rows.map((row) => ({
       ...row,
-      username: ensureUniqueUsername(row.username, existingUsernames),
+      username: ensureUniqueUsername(row.username, importedUsernames),
     }))
 
     const failures: string[] = []
@@ -1188,10 +1174,47 @@ function AdminUsers() {
         }
         importedCount += 1
       } catch (error: any) {
+        const detail = String(error?.body?.detail ?? error?.message ?? "Import failed.")
+        const isDuplicateUsername =
+          detail.toLowerCase().includes("username already exists") ||
+          detail.toLowerCase().includes("this username already exists")
+
+        if (isDuplicateUsername) {
+          try {
+            const existingPage = await AdminService.listUsers(0, 20, row.username)
+            const existingUser = existingPage.data.find(
+              (user) => user.username === row.username,
+            )
+
+            if (!existingUser) {
+              throw new Error("Existing user not found for username collision.")
+            }
+
+            const updatePayload: AdminUserUpdate = {
+              is_active: row.is_active,
+              ward_ids: row.ward_ids,
+            }
+            if (row.name) updatePayload.name = row.name
+            if (row.email) updatePayload.email = row.email
+            if (row.employee_id) updatePayload.employee_id = row.employee_id
+            if (row.role === "Nurse" && row.designation) {
+              updatePayload.designation = row.designation
+            }
+
+            await AdminService.updateUser(existingUser.userid, updatePayload)
+            importedCount += 1
+            continue
+          } catch (updateError: any) {
+            failedCount += 1
+            failures.push(
+              `Row ${row.rowNumber}: ${updateError?.body?.detail ?? updateError?.message ?? detail}`,
+            )
+            continue
+          }
+        }
+
         failedCount += 1
-        failures.push(
-          `Row ${row.rowNumber}: ${error?.body?.detail ?? error?.message ?? "Import failed."}`,
-        )
+        failures.push(`Row ${row.rowNumber}: ${detail}`)
       }
 
       if (importCancelRequestedRef.current) {
@@ -1526,7 +1549,7 @@ function AdminUsers() {
             className="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             <Upload className="w-4 h-4" />
-            {isImporting ? "Importing..." : "Import Staff List"}
+            {isImporting ? "Importing Staff List" : "Import Staff List"}
           </button>
           <button
             onClick={() => {
@@ -1901,7 +1924,7 @@ function AdminUsers() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-2">
-              Importing Staff List
+              Import Progress
             </h2>
             <p className="text-sm text-gray-600 mb-4">
               Processing {importProgress.processed} of {importProgress.total} rows.

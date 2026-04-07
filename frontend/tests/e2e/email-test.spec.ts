@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import { loginForE2E } from "../utils/auth"
 
 const API_URL = process.env.VITE_API_URL || "http://127.0.0.1:8000"
 const MAILCATCHER_HOST = process.env.MAILCATCHER_HOST
@@ -22,19 +23,13 @@ test.describe("email sending", () => {
 
     const beforeMessages = await listMailcatcherMessages(request)
 
-    const tokenResponse = await request.post(
-      `${API_URL}/api/v1/login/access-token`,
-      {
-        form: {
-          username: ADMIN_EMAIL,
-          password: ADMIN_PASSWORD,
-        },
-      },
-    )
-    expect(tokenResponse.ok()).toBeTruthy()
-    const tokenPayload = await tokenResponse.json()
-    const token = tokenPayload?.access_token as string | undefined
-    expect(token).toBeTruthy()
+    const token = await loginForE2E({
+      request,
+      username: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+      recipientEmail: ADMIN_EMAIL,
+      apiBaseUrl: API_URL,
+    })
 
     const testEmail = `e2e.${Date.now()}@example.com`
     const sendResponse = await request.post(

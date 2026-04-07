@@ -2,6 +2,7 @@ import type { APIRequestContext } from "@playwright/test"
 import * as XLSX from "xlsx"
 import os from "os"
 import path from "path"
+import { loginForE2E, verifyEmailForCurrentUser } from "../utils/auth"
 
 export const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 export const ADMIN_EMAIL =
@@ -62,17 +63,13 @@ export async function getAdminToken(request: APIRequestContext) {
     )
   }
 
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  return loginForE2E({
+    request,
+    username: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    apiBaseUrl: API_BASE_URL,
+    recipientEmail: ADMIN_EMAIL,
   })
-
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login as admin: ${res.status()} ${body}`)
-  }
-
-  const json = await res.json()
-  return json.access_token as string
 }
 
 export async function getAnyWard(request: APIRequestContext, token: string) {
@@ -158,6 +155,13 @@ export async function completeFirstLoginSetup(
   token: string,
   payload: { new_password: string; email: string; employee_id: string },
 ) {
+  await verifyEmailForCurrentUser({
+    request,
+    token,
+    email: payload.email,
+    apiBaseUrl: API_BASE_URL,
+  })
+
   const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
     headers: {
       Authorization: `Bearer ${token}`,

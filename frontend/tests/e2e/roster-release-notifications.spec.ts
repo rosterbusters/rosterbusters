@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import { loginForE2E } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const MAILCATCHER_HOST = process.env.MAILCATCHER_HOST
@@ -12,16 +13,15 @@ async function loginToken(
   request: APIRequestContext,
   username: string,
   password: string,
+  recipientEmail?: string,
 ) {
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username, password },
+  return loginForE2E({
+    request,
+    username,
+    password,
+    recipientEmail,
+    apiBaseUrl: API_BASE_URL,
   })
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login: ${res.status()} ${body}`)
-  }
-  const json = await res.json()
-  return json.access_token as string
 }
 
 async function getActiveWard(request: APIRequestContext, token: string) {
@@ -272,7 +272,12 @@ test.describe("roster release notifications", () => {
       )
     }
 
-    const adminToken = await loginToken(request, ADMIN_EMAIL, ADMIN_PASSWORD)
+    const adminToken = await loginToken(
+      request,
+      ADMIN_EMAIL,
+      ADMIN_PASSWORD,
+      ADMIN_EMAIL,
+    )
     const ward = await getActiveWard(request, adminToken)
     const period = await getFuturePeriod(request, adminToken)
     const runId = `${testInfo.project.name.toLowerCase()}-${Date.now()}`
@@ -322,7 +327,12 @@ test.describe("roster release notifications", () => {
       expect(publishResponse.published_count).toBeGreaterThan(0)
       expect(publishResponse.status).toBe("Finalized")
 
-      const nurseToken = await loginToken(request, nurseUsername, nursePassword)
+      const nurseToken = await loginToken(
+        request,
+        nurseUsername,
+        nursePassword,
+        nurseEmail,
+      )
 
       await expect
         .poll(async () => {

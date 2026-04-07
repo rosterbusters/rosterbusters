@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
 import {
   API_BASE_URL,
@@ -8,6 +8,7 @@ import {
   getAnyWard,
   getUserByUsername,
 } from "./admin-helpers"
+import { loginForE2E } from "../utils/auth"
 
 const MAILCATCHER_HOST = process.env.MAILCATCHER_HOST
 const DB_CONTAINER_ENV =
@@ -61,17 +62,19 @@ const countRows = (sql: string) => {
   return Number.parseInt(value || "0", 10)
 }
 
-async function loginToken(username: string, password: string) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/login/access-token`, {
-    method: "POST",
-    body: new URLSearchParams({ username, password }),
+async function loginToken(
+  request: APIRequestContext,
+  username: string,
+  password: string,
+  recipientEmail?: string,
+) {
+  return loginForE2E({
+    request,
+    username,
+    password,
+    recipientEmail,
+    apiBaseUrl: API_BASE_URL,
   })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Failed to login: ${res.status} ${body}`)
-  }
-  const json = (await res.json()) as { access_token: string }
-  return json.access_token
 }
 
 async function getFuturePeriod(token: string) {
@@ -223,7 +226,12 @@ test.describe("shift updated notifications", () => {
         throw new Error("Expected nurse user to have a nurseid.")
       }
 
-      const nurseToken = await loginToken(nurseUsername, nursePassword)
+      const nurseToken = await loginToken(
+        request,
+        nurseUsername,
+        nursePassword,
+        nurseEmail,
+      )
 
       const createRes = await request.post(`${API_BASE_URL}/api/v1/roster/create`, {
         headers: {

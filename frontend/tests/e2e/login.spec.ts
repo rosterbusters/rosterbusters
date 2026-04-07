@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { completeLogin2faInUi } from "../utils/auth"
 
 const ADMIN_EMAIL =
   process.env.E2E_SUPERUSER || process.env.FIRST_SUPERUSER || ""
@@ -27,6 +28,7 @@ test("login successfully into admin account", async ({ page }) => {
   await page.getByTestId("login-password").fill(ADMIN_PASSWORD)
 
   await page.getByRole('button', { name: 'Log In' }).click()
+  await completeLogin2faInUi({ page, recipientEmail: ADMIN_EMAIL })
   await expect(page).toHaveURL("/admin/dashboard")
   await page.getByTestId("admin-navbar-user").click()
   await page.getByTestId("admin-navbar-signout").click()  
