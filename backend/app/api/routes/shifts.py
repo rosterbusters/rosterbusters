@@ -73,6 +73,10 @@ class UpcomingShiftResponse(BaseModel):
     ward_name: Optional[str] = None
 
 
+class NurseShiftPatternUpdate(BaseModel):
+    shift_pattern: Optional[str] = None
+
+
 def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
     ward_ids = session.exec(
         select(UserRole.wardid)
@@ -598,6 +602,40 @@ def get_ward_nurses(
     """Get all active nurses for a specific ward."""
     statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     return list(session.exec(statement).all())
+
+
+@router.patch("/nurses/{nurse_id}/shift-pattern", response_model=NursePublic)
+def update_nurse_shift_pattern(
+    nurse_id: int,
+    body: NurseShiftPatternUpdate,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Update a nurse's permanent AM/PM-only pattern."""
+    if not (
+        user_has_role(session, current_user.email, "NurseManager")
+        or user_has_role(session, current_user.email, "Admin")
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized to update nurse patterns")
+
+    nurse = session.get(Nurse, nurse_id)
+    if not nurse:
+        raise HTTPException(status_code=404, detail="Nurse not found")
+
+    shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
+    if shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
+        raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
+
+    if not user_has_role(session, current_user.email, "Admin"):
+        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
+        if nurse.wardid not in managed_ward_ids:
+            raise HTTPException(status_code=403, detail="Not authorized to manage this nurse")
+
+    nurse.shiftpattern = shift_pattern
+    session.add(nurse)
+    session.commit()
+    session.refresh(nurse)
+    return nurse
 
 
 @router.get("/nurses", response_model=list[NursePublic])

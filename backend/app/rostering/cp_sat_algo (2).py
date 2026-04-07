@@ -24,13 +24,9 @@ run_ga_pipeline(...)
 from __future__ import annotations
 
 import os
+from ortools.sat.python import cp_model
 import math
 import random
-
-try:
-    from ortools.sat.python import cp_model
-except ModuleNotFoundError:
-    cp_model = None
 
 # ─── Shift codes (must match ga_algo constants) ───────────────────────────────
 OFF, AM, PM, NIGHT, AL = 0, 1, 2, 3, 4
@@ -56,8 +52,8 @@ W_DAYOFF_OVER  =   144_000   # 1 more than required days-off (×0.9 like GA)
 W_HOUR_UNDER   =    0   # 1 unit (0.1 h) below per-nurse minimum
 W_HOUR_OVER    =    0   # 1 unit (0.1 h) above per-nurse maximum
 W_NDO          = 1_500_000   # missing post-night day-off on day 0
-W_NIGHT_LOW    =   400_000   # fewer than 2 nights across the roster; higher priority than RN daily night target
-W_NIGHT_HIGH   = 1_300_000   # more than 2 nights per week
+W_NIGHT_LOW    =    64_000   # fewer than 1 night per week (×0.8 like GA)
+W_NIGHT_HIGH   =    80_000   # more than 2 nights per week
 W_APPROVED_REQ =    35_000   # unmet approved (hard) shift request
 W_PENDING_REQ  =       550   # unmet pending (soft) shift request
 W_OFF_TO_AM    =       500   # OFF followed by AM on the next day
@@ -75,7 +71,6 @@ W_WARD_AB_BAL    = 200_000   # |rank_A_count - rank_B_count| > 1 in a shift
 W_WARD_C_ORDER   = 150_000   # rank-C nurse violating ordered-slot rule
 W_SINGLE_NIGHT   = 400_000   # isolated night block (no adjacent night)
 W_NIGHT_A_OVER_B = 500_000   # per-nurse excess of Rank A over Rank B on any night shift
-W_NIGHT_A_TARGET =  25_000   # per-day excess of Rank A night nurses above the preferred target of 2
 
 # increase for very large wards.
 _TIME_LIMIT_S = 100.0
@@ -246,7 +241,6 @@ def run_ga_pipeline(
     non_working_shift_codes=None,
     progress_callback=None,
     use_ward_demand: bool = True,
-    milp_config: dict | None = None,
 ):
     """
     Generate a nurse roster using OR-Tools CP-SAT.
@@ -269,15 +263,6 @@ def run_ga_pipeline(
                         • Single-night blocks are forbidden (hard constraint).
     """
     # ── Defaults ──────────────────────────────────────────────────────────────
-    if cp_model is None:
-        raise RuntimeError(
-            "CP-SAT requires the optional 'ortools' dependency, "
-            "but it is not installed in this environment."
-        )
-
-    if progress_callback:
-        progress_callback(0, 4, float("inf"))
-
     hard_requests   = hard_requests   or {}
     soft_requests   = soft_requests   or {}
     prev_last_shift = prev_last_shift or {}
@@ -321,9 +306,6 @@ def run_ga_pipeline(
             req = day_sh.get(s_name, {})
             d[s_code] = {r: int(req.get(r, 0)) for r in "ABC"}
         demand.append(d)
-
-    if progress_callback:
-        progress_callback(1, 4, float("inf"))
 
     # ── Helper: raw shift string → internal code ──────────────────────────────
     def _to_code(raw) -> int | None:
@@ -420,9 +402,6 @@ def run_ga_pipeline(
 
     # ── Pre-solve: warn on structurally unmet demand ──────────────────────────
     _check_demand_feasibility(demand, nurse_ranks, working_nurses, num_days)
-
-    if progress_callback:
-        progress_callback(2, 4, float("inf"))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Build the CP-SAT model
@@ -524,10 +503,8 @@ def run_ga_pipeline(
                 cnt_tot_expr = cnt_A_expr + cnt_B_expr + cnt_C_expr
 
                 # HARD: Rank A nurses may not exceed the number of Rank A slots
-                # (prevents A from filling B or C slots). NIGHT is exempt so
-                # Rank A can overstaff overnight when required to satisfy the
-                # per-nurse minimum night target.
-                if s != NIGHT and rank_A and req_A < len(rank_A):
+                # (prevents A from filling B or C slots)
+                if rank_A and req_A < len(rank_A):
                     model.Add(cnt_A_expr <= req_A)
 
                 _shortage(f"sh_tot_{d}_{s}", total_req, total_req, cnt_tot_expr, W_SHIFT_SHORT)
@@ -788,11 +765,6 @@ def run_ga_pipeline(
                 model.Add(
                     sum(x[n, d, NIGHT] for n in working_nurses) <= night_demand
                 )
-        if rank_A:
-            cnt_A_night = sum(x[n, d, NIGHT] for n in rank_A)
-            excess_A_target = model.NewIntVar(0, len(rank_A), f"nat_exc_{d}")
-            model.Add(excess_A_target >= cnt_A_night - 2)
-            _add_penalty(excess_A_target, W_NIGHT_A_TARGET)
 
     # ── 4d. Night Rank A > Rank B penalty ────────────────────────────────────
     # On every night shift, the number of Rank A (RN) nurses must not exceed
@@ -990,7 +962,7 @@ def run_ga_pipeline(
     print("[CP-SAT] Greedy warm-start hint injected")
 
     if progress_callback:
-        progress_callback(3, 4, float("inf"))
+        progress_callback(0, 1, float("inf"))
 
     status = solver.Solve(model)
     status_str = solver.StatusName(status)
@@ -1000,7 +972,7 @@ def run_ga_pipeline(
           f"  WallTime={solver.WallTime():.1f}s")
 
     if progress_callback:
-        progress_callback(4, 4, obj_val)
+        progress_callback(1, 1, obj_val)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         raise RuntimeError(
@@ -1027,104 +999,6 @@ def run_ga_pipeline(
         nurses_sorted, schedule, nurse_names, nurse_ranks,
         num_days, obj_val, leave_overlay,
     )
-
-
-def parse_inputs(
-    nurses,
-    shifts,
-    hard_requests=None,
-    soft_requests=None,
-    prev_last_shift=None,
-    shift_hours=None,
-    non_working_shift_codes=None,
-):
-    """
-    Compatibility helper that exposes the legacy parsed-input structure used by
-    older tests and tooling.
-    """
-    hard_requests = hard_requests or {}
-    soft_requests = soft_requests or {}
-    prev_last_shift = prev_last_shift or {}
-    shift_hours = shift_hours or {"AM": 8.0, "PM": 8.0, "NIGHT": 10.0, "OFF": 0.0}
-    nw_codes = {str(code).upper() for code in (non_working_shift_codes or set())}
-
-    nurses_sorted = sorted(nurses, key=lambda nurse: nurse["id"])
-    num_days = len(shifts)
-    num_nurses = len(nurses_sorted)
-    id_to_idx = {nurse["id"]: idx for idx, nurse in enumerate(nurses_sorted)}
-
-    shift_str_to_code = {
-        "AM": AM, "A": AM,
-        "PM": PM, "P": PM,
-        "NIGHT": NIGHT, "N": NIGHT,
-        "OFF": OFF, "DO": OFF, "RD": OFF,
-        "AL": AL,
-    }
-    leave_codes = _LEAVE_CODES | {"AL"}
-
-    def _to_code(raw):
-        normalized = str(raw).strip().upper()
-        if normalized in shift_str_to_code:
-            return shift_str_to_code[normalized]
-        if normalized in leave_codes or normalized in nw_codes:
-            return AL
-        return None
-
-    approved_requests: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
-    pending_requests: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
-    al_day_requests: list[set[int]] = [set() for _ in range(num_nurses)]
-    hard_constraints: list[list[tuple[int, int]]] = [[] for _ in range(num_nurses)]
-
-    for nurse_id, prev_shift in prev_last_shift.items():
-        nurse_idx = id_to_idx.get(nurse_id)
-        if nurse_idx is None:
-            continue
-        if str(prev_shift).strip().upper() == "NIGHT":
-            hard_constraints[nurse_idx].append((0, OFF))
-
-    for nurse_id, req_list in hard_requests.items():
-        nurse_idx = id_to_idx.get(nurse_id)
-        if nurse_idx is None:
-            continue
-        for day_idx, raw_shift in req_list:
-            if not 0 <= day_idx < num_days:
-                continue
-            shift_code = _to_code(raw_shift)
-            if shift_code is None:
-                continue
-            if shift_code == AL:
-                al_day_requests[nurse_idx].add(day_idx)
-                continue
-            approved_requests[nurse_idx].append((day_idx, shift_code))
-
-    for nurse_id, req_list in soft_requests.items():
-        nurse_idx = id_to_idx.get(nurse_id)
-        if nurse_idx is None:
-            continue
-        for day_idx, raw_shift in req_list:
-            if not 0 <= day_idx < num_days:
-                continue
-            shift_code = _to_code(raw_shift)
-            if shift_code is None:
-                continue
-            if shift_code == AL:
-                al_day_requests[nurse_idx].add(day_idx)
-                continue
-            pending_requests[nurse_idx].append((day_idx, shift_code))
-
-    full_al_nurses = frozenset(
-        nurse_idx for nurse_idx, al_days in enumerate(al_day_requests)
-        if len(al_days) >= num_days
-    )
-
-    return {
-        "approved_requests": approved_requests,
-        "pending_requests": pending_requests,
-        "al_day_requests": [frozenset(days) for days in al_day_requests],
-        "al_nurses": full_al_nurses,
-        "hard_requests": hard_constraints,
-        "shift_hours": shift_hours,
-    }
 
 
 # ─── Output formatter (mirrors ga_algo.format_output exactly) ─────────────────

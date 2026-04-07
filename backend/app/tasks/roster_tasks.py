@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import timedelta
 
 from sqlmodel import Session, delete, select
@@ -9,6 +10,7 @@ from app.core.config import settings
 from app.models.enums import NotificationType
 from app.models.rbac import NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
+from app.rostering.ab_ratio_algo import ABRatioInfeasibilityError
 from app.rostering.algo_scheduler import generate_roster
 from app.worker import celery_app
 
@@ -24,6 +26,12 @@ SHIFT_CODE_TO_DB = {
     "P": "P",
     "N": "N",
 }
+
+
+def _json_safe_number(value: float | int | None) -> float | int | None:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 def _save_roster_result(
     db: Session,
@@ -122,10 +130,28 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
     Results are stored in Redis and retrievable via task_id.
     """
     try:
+        logger.info(
+            "Starting roster generation task task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
+            self.request.id,
+            ward_id,
+            period_id,
+            algorithm,
+            self.request.retries,
+        )
         with Session(engine) as db:
             from app.api.routes.run_rostering import _load_generation_inputs
 
             generation_inputs = _load_generation_inputs(db, ward_id, period_id)
+            logger.info(
+                "Loaded generation inputs task_id=%s ward_id=%s period_id=%s nurses=%s shift_days=%s hard_request_nurses=%s soft_request_nurses=%s",
+                self.request.id,
+                ward_id,
+                period_id,
+                len(generation_inputs["nurses"]),
+                len(generation_inputs["shifts"]),
+                len(generation_inputs["hard_requests"]),
+                len(generation_inputs["soft_requests"]),
+            )
 
         def on_progress(gen: int, total_gens: int, best_score: float) -> None:
             self.update_state(
@@ -134,8 +160,17 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
                     "generation": gen,
                     "total": total_gens,
                     "percent": round(gen / total_gens * 100),
-                    "best_score": round(best_score, 2),
+                    "best_score": _json_safe_number(round(best_score, 2)),
                 },
+            )
+            logger.info(
+                "Roster generation progress task_id=%s ward_id=%s period_id=%s generation=%s total=%s best_score=%s",
+                self.request.id,
+                ward_id,
+                period_id,
+                gen,
+                total_gens,
+                best_score,
             )
 
         result = generate_roster(
@@ -149,6 +184,14 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             progress_callback=on_progress,
             milp_config=generation_inputs["milp_config"],
             algorithm=algorithm,
+        )
+        logger.info(
+            "Roster generation completed task_id=%s ward_id=%s period_id=%s method=%s nurse_count=%s",
+            self.request.id,
+            ward_id,
+            period_id,
+            result["method"],
+            len(result["roster"].get("nurses", [])),
         )
 
         with Session(engine) as db:
@@ -167,8 +210,26 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             "roster": result["roster"],
         }
 
+    except ABRatioInfeasibilityError as exc:
+        logger.exception(
+            "Roster generation task failed without retry task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
+            self.request.id,
+            ward_id,
+            period_id,
+            algorithm,
+            self.request.retries,
+        )
+        raise exc
+
     except Exception as exc:
-        logger.error(f"Roster generation task failed for ward {ward_id}: {exc}")
+        logger.exception(
+            "Roster generation task failed task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
+            self.request.id,
+            ward_id,
+            period_id,
+            algorithm,
+            self.request.retries,
+        )
         raise self.retry(exc=exc, countdown=60)
 
 

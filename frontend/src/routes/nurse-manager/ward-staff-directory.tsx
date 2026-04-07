@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Box,
@@ -18,8 +18,13 @@ import {
 import { Filter, X } from "lucide-react";
 
 import { WardsService, type Ward } from "@/client";
-import { useWardStatistics } from "@/components/NurseManager/RosterTable/useRosterData";
+import {
+  useWardStatistics,
+  useUpdateNurseShiftPattern,
+} from "@/components/NurseManager/RosterTable/useRosterData";
+import type { ShiftPattern } from "@/components/NurseManager/RosterTable/types";
 import { Checkbox } from "@/components/ui/checkbox";
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 export const Route = createFileRoute("/nurse-manager/ward-staff-directory")({
   component: WardStaffDirectoryPage,
@@ -32,6 +37,7 @@ type DirectoryRow = {
   email: string;
   contactNumber: string;
   employmentType: string;
+  shiftPattern: ShiftPattern;
   isActive: boolean;
 };
 
@@ -49,6 +55,18 @@ type FilterMenuProps = {
   onClear: () => void;
   anchorRef: RefObject<HTMLDivElement | null>;
 };
+
+const SHIFT_PATTERN_OPTIONS = [
+  { label: "No permanent pattern", value: "NONE" },
+  { label: "AM only (4 on / 3 off)", value: "AM_ONLY" },
+  { label: "PM only (4 on / 3 off)", value: "PM_ONLY" },
+];
+
+const shiftPatternCollection = createListCollection({
+  items: SHIFT_PATTERN_OPTIONS,
+  itemToString: (item) => item.label,
+  itemToValue: (item) => item.value,
+});
 
 function FilterMenu({
   title,
@@ -188,7 +206,7 @@ function FilterMenu({
                     size="sm"
                     checked={selectedValues.has(option)}
                     onCheckedChange={() => onToggle(option)}
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event: MouseEvent) => event.stopPropagation()}
                     colorPalette="cyan"
                   />
                   <Text fontSize="xs" color="gray.700" userSelect="none">
@@ -204,6 +222,13 @@ function FilterMenu({
   );
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "Please try again.";
+}
+
 function WardStaffDirectoryPage() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [nameFilterOpen, setNameFilterOpen] = useState(false);
@@ -214,6 +239,9 @@ function WardStaffDirectoryPage() {
   const [selectedDesignations, setSelectedDesignations] = useState<Set<string>>(
     new Set(),
   );
+  const [savingPatternNurseId, setSavingPatternNurseId] = useState<number | null>(
+    null,
+  );
   const nameFilterAnchorRef = useRef<HTMLDivElement>(null);
   const designationFilterAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -221,6 +249,13 @@ function WardStaffDirectoryPage() {
     queryKey: ["wards"],
     queryFn: WardsService.getWards,
   });
+
+  const {
+    data: statistics,
+    isLoading: isStatisticsLoading,
+    isError: isStatisticsError,
+  } = useWardStatistics(selectedWard?.wardid ?? null);
+  const updateShiftPattern = useUpdateNurseShiftPattern();
 
   useEffect(() => {
     if (wards.length === 0 || selectedWard) {
@@ -245,12 +280,6 @@ function WardStaffDirectoryPage() {
     [wards],
   );
 
-  const {
-    data: statistics,
-    isLoading: isStatisticsLoading,
-    isError: isStatisticsError,
-  } = useWardStatistics(selectedWard?.wardid ?? null);
-
   const rows = useMemo<DirectoryRow[]>(
     () =>
       (statistics?.nurses ?? []).map((nurse) => ({
@@ -260,6 +289,7 @@ function WardStaffDirectoryPage() {
         email: nurse.email,
         contactNumber: nurse.contactNumber,
         employmentType: nurse.employmentType,
+        shiftPattern: nurse.shiftPattern ?? null,
         isActive: nurse.isActive,
       })),
     [statistics],
@@ -348,6 +378,22 @@ function WardStaffDirectoryPage() {
     });
   };
 
+  const handleShiftPatternChange = async (
+    nurseId: number,
+    nextValue: string | undefined,
+  ) => {
+    const shiftPattern = (nextValue === "NONE" ? null : nextValue) as ShiftPattern;
+    setSavingPatternNurseId(nurseId);
+    try {
+      await updateShiftPattern.mutateAsync({ nurseId, shiftPattern });
+      showSuccessToast("Permanent shift pattern updated.");
+    } catch (error) {
+      showErrorToast(getErrorMessage(error));
+    } finally {
+      setSavingPatternNurseId(null);
+    }
+  };
+
   const isLoading = wardsLoading || isStatisticsLoading;
 
   return (
@@ -372,15 +418,15 @@ function WardStaffDirectoryPage() {
             Ward Staff Directory
           </Text>
           <Text color="foreground" fontWeight="light">
-            Review live nurse records by ward and filter the list by name or
-            designation.
+            Review live nurse records by ward and set permanent AM or PM-only
+            patterns for permanent staff.
           </Text>
         </VStack>
 
         <Flex
-          direction={{ base: "column", md: "row" }}
+          direction={{ base: "column", lg: "row" }}
           justify="space-between"
-          align={{ base: "stretch", md: "center" }}
+          align={{ base: "stretch", lg: "center" }}
           gap={4}
         >
           <HStack gap={3} flexWrap="wrap" color="foreground">
@@ -422,6 +468,7 @@ function WardStaffDirectoryPage() {
                 </Select.Positioner>
               </Portal>
             </Select.Root>
+
           </HStack>
 
           <HStack gap={3} color="foreground" flexWrap="wrap">
@@ -439,6 +486,21 @@ function WardStaffDirectoryPage() {
             </Text>
           </HStack>
         </Flex>
+
+        <Box
+          px={4}
+          py={3}
+          rounded="md"
+          bg="#f8fafc"
+          borderWidth="1px"
+          borderColor="blackAlpha.100"
+        >
+          <Text fontSize="sm" color="foreground">
+            Permanent AM-only and PM-only patterns are configured here. Temporary
+            no-night settings are now managed from roster planning for the selected
+            roster period.
+          </Text>
+        </Box>
 
         <Box
           w="full"
@@ -614,6 +676,17 @@ function WardStaffDirectoryPage() {
                   </Table.ColumnHeader>
 
                   <Table.ColumnHeader
+                    minW="220px"
+                    py={4}
+                    px={4}
+                    borderBottom="1px solid"
+                    borderColor="blackAlpha.100"
+                    color="foreground"
+                    fontWeight="medium"
+                  >
+                    Permanent Pattern
+                  </Table.ColumnHeader>
+                  <Table.ColumnHeader
                     minW="240px"
                     py={4}
                     px={4}
@@ -663,62 +736,99 @@ function WardStaffDirectoryPage() {
               <Table.Body>
                 {!selectedWard ? (
                   <Table.Row>
-                    <Table.Cell colSpan={6} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={7} textAlign="center" py={12} color="foreground">
                       Select a ward to view staff.
                     </Table.Cell>
                   </Table.Row>
                 ) : filteredRows.length === 0 ? (
                   <Table.Row>
-                    <Table.Cell colSpan={6} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={7} textAlign="center" py={12} color="foreground">
                       {rows.length === 0
                         ? "No nurses were found for this ward."
                         : "No staff match the selected filters."}
                     </Table.Cell>
                   </Table.Row>
                 ) : (
-                  filteredRows.map((row) => (
-                    <Table.Row key={row.nurseId} bg="white" _hover={{ bg: "gray.50" }}>
-                      <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                        <Text fontSize="sm" color="black" fontWeight="medium">
-                          {row.name}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                        <Text fontSize="sm" color="black">
-                          {row.designation}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                        <Text fontSize="sm" color="black">
-                          {row.email || "Not available"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                        <Text fontSize="sm" color="black">
-                          {row.contactNumber || "Not available"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                        <Text fontSize="sm" color="black">
-                          {row.employmentType || "Not available"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                        <Box
-                          display="inline-flex"
-                          px={2.5}
-                          py={1}
-                          borderRadius="full"
-                          bg={row.isActive ? "#dcfce7" : "#f3f4f6"}
-                          color={row.isActive ? "#166534" : "#6b7280"}
-                          fontSize="xs"
-                          fontWeight="semibold"
-                        >
-                          {row.isActive ? "Active" : "Inactive"}
-                        </Box>
-                      </Table.Cell>
-                    </Table.Row>
-                  ))
+                  filteredRows.map((row) => {
+                    const isSavingPattern = savingPatternNurseId === row.nurseId;
+
+                    return (
+                      <Table.Row key={row.nurseId} bg="white" _hover={{ bg: "gray.50" }}>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Text fontSize="sm" color="black" fontWeight="medium">
+                            {row.name}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Text fontSize="sm" color="black">
+                            {row.designation}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Select.Root
+                            collection={shiftPatternCollection}
+                            size="sm"
+                            width="220px"
+                            value={[row.shiftPattern ?? "NONE"]}
+                            disabled={isSavingPattern}
+                            onValueChange={(details) =>
+                              handleShiftPatternChange(row.nurseId, details.value[0])
+                            }
+                          >
+                            <Select.HiddenSelect />
+                            <Select.Control>
+                              <Select.Trigger>
+                                <Select.ValueText placeholder="Select pattern" />
+                              </Select.Trigger>
+                              <Select.IndicatorGroup>
+                                <Select.Indicator />
+                              </Select.IndicatorGroup>
+                            </Select.Control>
+                            <Portal>
+                              <Select.Positioner zIndex={1500}>
+                                <Select.Content>
+                                  {shiftPatternCollection.items.map((pattern) => (
+                                    <Select.Item key={pattern.value} item={pattern}>
+                                      {pattern.label}
+                                    </Select.Item>
+                                  ))}
+                                </Select.Content>
+                              </Select.Positioner>
+                            </Portal>
+                          </Select.Root>
+                        </Table.Cell>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Text fontSize="sm" color="black">
+                            {row.email || "Not available"}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Text fontSize="sm" color="black">
+                            {row.contactNumber || "Not available"}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Text fontSize="sm" color="black">
+                            {row.employmentType || "Not available"}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Box
+                            display="inline-flex"
+                            px={2.5}
+                            py={1}
+                            borderRadius="full"
+                            bg={row.isActive ? "#dcfce7" : "#f3f4f6"}
+                            color={row.isActive ? "#166534" : "#6b7280"}
+                            fontSize="xs"
+                            fontWeight="semibold"
+                          >
+                            {row.isActive ? "Active" : "Inactive"}
+                          </Box>
+                        </Table.Cell>
+                      </Table.Row>
+                    );
+                  })
                 )}
               </Table.Body>
             </Table.Root>

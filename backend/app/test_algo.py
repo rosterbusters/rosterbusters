@@ -366,7 +366,7 @@ WARD_6_REQUIREMENTS = {
     "am_rn": 2,
     "am_en_na_min": 4,
     "am_en_na_max": 5,
-    "am_hca_min": 0,
+    "am_hca_min": 1,
     "am_hca_max": 2,
     "pm_total": 7,
     "pm_rn": 2,

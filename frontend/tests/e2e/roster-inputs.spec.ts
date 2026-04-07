@@ -314,12 +314,11 @@ test("generation inputs classify shift requests", async ({ request }) => {
     const hardRequests = inputs.hard_requests?.[nurseKey] ?? []
     const softRequests = inputs.soft_requests?.[nurseKey] ?? []
 
-    // Approved shift => hard, pending shift => soft, rejected shift excluded.
-    // Approved shift => hard, pending shift => soft.
-    expect(hardRequests).toContainEqual([0, "AM"])
-    expect(softRequests).toContainEqual([1, "AM"])
-    expect(softRequests).not.toContainEqual([0, "AM"])
-    expect(hardRequests).not.toContainEqual([1, "AM"])
+    // Approved shift => soft, pending shift => soft (with status labels), rejected shift excluded.
+    expect(softRequests).toContainEqual([0, "AM", "approved"])
+    expect(softRequests).toContainEqual([1, "AM", "pending"])
+    expect(softRequests).not.toContainEqual([2, "AM", "rejected"])
+    expect(hardRequests).not.toContainEqual([0, "AM"])
 
     // Rejected shift should not appear.
     expect(hardRequests).not.toContainEqual([2, "AM"])
