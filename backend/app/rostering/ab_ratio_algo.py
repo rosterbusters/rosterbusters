@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 
 try:
@@ -8,18 +9,122 @@ try:
 except ModuleNotFoundError:
     cp_model = None
 
-from app.rostering.cp_sat_algo import (
-    _LEAVE_CODES,
-    AL,
-    ALL_SHIFTS,
-    AM,
-    NIGHT,
-    OFF,
-    PM,
-    SHIFT_LABEL,
-    WORK_SHIFTS,
-    _build_greedy_hint,
-)
+# ── Shift codes ───────────────────────────────────────────────────────────────
+OFF, AM, PM, NIGHT, AL = 0, 1, 2, 3, 4
+ALL_SHIFTS  = [OFF, AM, PM, NIGHT, AL]
+WORK_SHIFTS = [AM, PM, NIGHT]
+SHIFT_LABEL = {OFF: "OFF", AM: "AM", PM: "PM", NIGHT: "NIGHT", AL: "AL"}
+
+_LEAVE_CODES = {"HOL", "MC", "URG", "CL", "UPL", "PH", "BCL", "CCL", "ML", "EML"}
+
+
+def _build_greedy_hint(
+    num_nurses: int,
+    num_days: int,
+    working_nurses: list[int],
+    al_nurses_set: set[int],
+    al_day_req: list[set],
+    post_night_off: set[int],
+    demand: list[dict],
+) -> list[list[int]]:
+    """
+    Greedy O(N×D) schedule used to warm-start the CP-SAT solver.
+
+    Strategy:
+      1. Pin fixed slots (full-AL nurses, single-day AL requests, post-night OFF).
+      2. Assign night blocks round-robin, capped per fortnight.
+      3. Add mandatory OFF after every night block.
+      4. Reserve 2 voluntary OFFs per week (weekends preferred).
+      5. Balance AM vs PM to match daily demand.
+    """
+    night_constant = math.ceil(((num_nurses * 2) / 3) / 4)
+    sched = [[AM] * num_days for _ in range(num_nurses)]
+
+    # Step 1: pin fixed slots
+    for n in al_nurses_set:
+        for d in range(num_days):
+            sched[n][d] = AL
+
+    for n in working_nurses:
+        for d in al_day_req[n]:
+            if d < num_days:
+                sched[n][d] = AL
+
+    for n in post_night_off:
+        if 0 not in al_day_req[n]:
+            sched[n][0] = OFF
+
+    # Step 2: night blocks, round-robin
+    night_counts = [0] * num_nurses
+    wn = list(working_nurses)
+    cursor = 0
+
+    for d in range(num_days):
+        nights_needed = sum(demand[d][NIGHT].get(r, 0) for r in "ABC")
+        assigned = 0
+
+        for _ in range(len(wn) * 2):
+            if assigned >= nights_needed:
+                break
+            n = wn[cursor % len(wn)]
+            cursor += 1
+
+            if sched[n][d] in (AL, OFF):
+                continue
+            if d > 0 and sched[n][d - 1] == NIGHT:
+                continue
+            if night_counts[n] >= night_constant:
+                continue
+
+            sched[n][d] = NIGHT
+            night_counts[n] += 1
+            assigned += 1
+
+            if (
+                d + 1 < num_days
+                and sched[n][d + 1] not in (AL,)
+                and (d + 1) not in al_day_req[n]
+                and night_counts[n] < 4
+            ):
+                sched[n][d + 1] = NIGHT
+                night_counts[n] += 1
+
+    # Mandatory OFF after every night block end
+    for n in working_nurses:
+        for d in range(num_days - 1):
+            if sched[n][d] == NIGHT and sched[n][d + 1] != NIGHT:
+                if (d + 1) not in al_day_req[n]:
+                    sched[n][d + 1] = OFF
+
+    # Step 3: 2 voluntary OFFs per week (weekends preferred)
+    for n in working_nurses:
+        for w_start in range(0, num_days, 7):
+            w_end = min(w_start + 7, num_days)
+            existing_off = sum(1 for d in range(w_start, w_end) if sched[n][d] == OFF)
+            to_add = max(0, 2 - existing_off)
+            candidates = sorted(
+                [d for d in range(w_start, w_end) if sched[n][d] not in (OFF, NIGHT, AL)],
+                key=lambda d: (0 if d % 7 in (5, 6) else 1),
+            )
+            for d in candidates[:to_add]:
+                sched[n][d] = OFF
+
+    # Step 4: balance AM vs PM to match daily demand
+    for d in range(num_days):
+        am_count = sum(1 for n in range(num_nurses) if sched[n][d] == AM)
+        pm_count = sum(1 for n in range(num_nurses) if sched[n][d] == PM)
+        am_needed = sum(demand[d][AM].get(r, 0) for r in "ABC")
+        pm_needed = sum(demand[d][PM].get(r, 0) for r in "ABC")
+
+        for n in working_nurses:
+            if sched[n][d] != AM:
+                continue
+            if pm_count < pm_needed and am_count > am_needed:
+                sched[n][d] = PM
+                pm_count += 1
+                am_count -= 1
+
+    return sched
 
 _SHIFT_STR_TO_CODE = {
     "AM": AM,
