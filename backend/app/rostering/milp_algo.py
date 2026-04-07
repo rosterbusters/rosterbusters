@@ -336,6 +336,12 @@ def _parse_inputs(nurses, shifts, hard_requests, soft_requests, prev_last_shift,
         "pending": 1.0,
         "approved": 5.0,
     }
+    pending_weight = float(request_priority_weights.get("pending", 1.0))
+    approved_weight = float(request_priority_weights.get("approved", pending_weight + 1.0))
+    if approved_weight <= pending_weight:
+        approved_weight = pending_weight + 1.0
+    request_priority_weights["pending"] = pending_weight
+    request_priority_weights["approved"] = approved_weight
 
     hard_rn, hard_en, hard_hca = _parse_request_dict(
         nurses,

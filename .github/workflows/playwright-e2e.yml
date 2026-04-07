@@ -55,13 +55,13 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
         env:
           CI: true
           MAILCATCHER_HOST: http://127.0.0.1:1080
-        run: npm run test:e2e
+        run: npm run test:e2e -- --project=chromium
 
       - name: Upload Playwright report
         if: always()

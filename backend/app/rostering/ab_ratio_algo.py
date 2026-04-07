@@ -168,7 +168,14 @@ def _is_disallowed_work_shift(shift_code: int, shift_pattern: str | None, no_nig
 
 def _priority_weight(raw_priority, default_weights: dict[str, int]) -> int:
     priority = str(raw_priority).strip().lower() if raw_priority is not None else "pending"
-    return max(_coerce_int(default_weights.get(priority, 1), 1), 1)
+    pending_weight = _coerce_int(default_weights.get("pending", 1), 1)
+    approved_weight = _coerce_int(default_weights.get("approved", pending_weight + 1), pending_weight + 1)
+    if approved_weight <= pending_weight:
+        approved_weight = pending_weight + 1
+    effective_weights = dict(default_weights)
+    effective_weights["pending"] = pending_weight
+    effective_weights["approved"] = approved_weight
+    return max(_coerce_int(effective_weights.get(priority, 1), 1), 1)
 
 
 def _build_ab_targets(
