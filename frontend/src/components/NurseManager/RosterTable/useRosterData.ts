@@ -10,6 +10,8 @@ import type {
   WardRosterResponse,
   WardStatisticsResponse,
   ShiftAssignment,
+  NursePeriodConstraint,
+  ShiftPattern,
 } from "./types";
 import { SHIFT_CODE_MAP } from "./types";
 
@@ -107,6 +109,23 @@ export function useWardStatistics(wardId: number | null) {
     },
     enabled: !!wardId,
     staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+}
+
+export function usePeriodConstraints(
+  wardId: number | null,
+  periodId: number | null,
+) {
+  return useQuery<NursePeriodConstraint[]>({
+    queryKey: ["roster", "constraints", wardId, periodId],
+    queryFn: async () => {
+      if (!wardId || !periodId) throw new Error("Ward ID and Period ID required");
+      return fetchWithAuth(
+        `/api/v1/roster/constraints?ward_id=${wardId}&period_id=${periodId}`,
+      );
+    },
+    enabled: !!wardId && !!periodId,
+    staleTime: 30 * 1000,
   });
 }
 
@@ -408,6 +427,95 @@ export function useClearRoster() {
   });
 }
 
+export function useUpdateNurseShiftPattern() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      nurseId,
+      shiftPattern,
+    }: {
+      nurseId: number;
+      shiftPattern: ShiftPattern;
+    }) => {
+      return fetchWithAuth(`/api/v1/shift-requests/nurses/${nurseId}/shift-pattern`, {
+        method: "PATCH",
+        body: JSON.stringify({ shift_pattern: shiftPattern }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "statistics"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "generation-inputs"],
+      });
+    },
+  });
+}
+
+export function useUpsertPeriodConstraint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      nurseId,
+      periodId,
+      constraintType,
+      value,
+      reason,
+    }: {
+      wardId: number;
+      nurseId: number;
+      periodId: number;
+      constraintType: string;
+      value?: string;
+      reason?: string | null;
+    }) => {
+      return fetchWithAuth("/api/v1/roster/constraints", {
+        method: "POST",
+        body: JSON.stringify({
+          ward_id: wardId,
+          nurse_id: nurseId,
+          period_id: periodId,
+          constraint_type: constraintType,
+          value: value ?? "true",
+          reason: reason ?? null,
+        }),
+      });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "constraints", variables.wardId, variables.periodId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "generation-inputs", variables.wardId, variables.periodId],
+      });
+    },
+  });
+}
+
+export function useDeletePeriodConstraint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ constraintId }: { constraintId: number }) => {
+      return fetchWithAuth(`/api/v1/roster/constraints/${constraintId}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "constraints"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "generation-inputs"],
+      });
+    },
+  });
+}
+
 // Algorithm roster generation response type
 export interface AlgorithmRosterResponse {
   wardId: number;
@@ -417,11 +525,30 @@ export interface AlgorithmRosterResponse {
 }
 
 export interface AlgorithmInputsResponse {
-  nurses: Array<{ id: number; name: string; rank: string }>;
+  nurses: Array<{
+    id: number;
+    name: string;
+    rank: string;
+    shift_pattern?: ShiftPattern;
+    no_night?: boolean;
+    constraints?: Array<{
+      constraint_type: string;
+      value: string;
+      reason?: string | null;
+    }>;
+  }>;
   shifts: Array<Record<string, Record<string, number>>>;
   hard_requests: Record<string, Array<[number, string]>>;
   soft_requests: Record<string, Array<[number, string]>>;
   prev_last_shift: Record<string, string>;
+  period_constraints?: Record<
+    string,
+    Array<{
+      constraint_type: string;
+      value: string;
+      reason?: string | null;
+    }>
+  >;
   shift_hours: Record<string, number>;
   non_working_shift_codes: string[];
   milp_config: Record<string, any> | null;
@@ -460,6 +587,36 @@ export type AlgorithmTaskStorage = {
   taskId: string;
   startedAt: string;
 };
+
+type AlgorithmDebugContext = {
+  wardId?: number;
+  periodId?: number;
+  algorithm?: "MILP" | "GA" | "AB-RATIO" | "V2";
+  taskId?: string;
+  attempt?: number;
+};
+
+function logAlgorithmDebug(
+  message: string,
+  context: AlgorithmDebugContext = {},
+  extra?: unknown,
+) {
+  if (extra === undefined) {
+    console.info(`[Algorithm Debug] ${message}`, context);
+    return;
+  }
+  console.info(`[Algorithm Debug] ${message}`, context, extra);
+}
+
+function describeAlgorithmError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "Unknown algorithm error";
+}
 
 export function getAlgorithmTaskStorageKey(wardId: number, periodId: number) {
   return `${ALGO_TASK_STORAGE_PREFIX}:${wardId}:${periodId}`;
@@ -503,14 +660,25 @@ export function clearAlgorithmTask(wardId: number, periodId: number) {
 async function pollAlgorithmTask(
   taskId: string,
   startDate: Date,
+  debugContext: AlgorithmDebugContext = {},
   onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void,
 ) {
   let algorithmResult: Extract<AlgorithmTaskStatus, { status: "complete" }> | null = null;
+  let lastStatus: string | null = null;
 
   for (let attempt = 0; attempt < 360000; attempt += 1) {
     const taskStatus = await fetchWithAuth(
       `/api/v1/roster/task/${taskId}/status`,
     ) as AlgorithmTaskStatus;
+
+    if (taskStatus.status !== lastStatus || taskStatus.status === "failed") {
+      lastStatus = taskStatus.status;
+      logAlgorithmDebug(
+        "Polled task status",
+        { ...debugContext, taskId, attempt: attempt + 1 },
+        taskStatus,
+      );
+    }
 
     if (taskStatus.status === "in_progress") {
       onProgress?.(
@@ -527,7 +695,11 @@ async function pollAlgorithmTask(
       algorithmResult = taskStatus;
       break;
     } else if (taskStatus.status === "failed") {
-      throw new Error(taskStatus.error || "Algorithm generation failed.");
+      throw new Error(
+        taskStatus.error
+          ? `Algorithm task ${taskId} failed: ${taskStatus.error}`
+          : `Algorithm task ${taskId} failed.`,
+      );
     }
 
     await sleep(1000);
@@ -626,10 +798,15 @@ export function useGenerateAlgorithmRoster() {
       wardId: number;
       periodId: number;
       startDate: Date;
-      algorithm?: "MILP" | "GA";
+      algorithm?: "MILP" | "GA" | "AB-RATIO" | "V2";
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
       const startedAt = new Date();
+      logAlgorithmDebug("Queueing algorithm task", {
+        wardId,
+        periodId,
+        algorithm,
+      });
       const queuedTask: { task_id: string; status: string } = await fetchWithAuth(
         "/api/v1/roster/generate-algorithm-async",
         {
@@ -637,15 +814,32 @@ export function useGenerateAlgorithmRoster() {
           body: JSON.stringify({ ward_id: wardId, period_id: periodId, algorithm: algorithm ?? null }),
         },
       );
+      logAlgorithmDebug(
+        "Algorithm task queued",
+        { wardId, periodId, algorithm, taskId: queuedTask.task_id },
+        queuedTask,
+      );
       saveAlgorithmTask(wardId, periodId, queuedTask.task_id, startedAt);
       onProgress?.(5, 0, 0, 0);
 
       try {
-        return await pollAlgorithmTask(queuedTask.task_id, startDate, onProgress);
+        return await pollAlgorithmTask(
+          queuedTask.task_id,
+          startDate,
+          { wardId, periodId, algorithm, taskId: queuedTask.task_id },
+          onProgress,
+        );
       } catch (error) {
         if ((error as { code?: string }).code !== "ALGO_TIMEOUT") {
           clearAlgorithmTask(wardId, periodId);
         }
+        console.error("[Algorithm Debug] Generation request failed", {
+          wardId,
+          periodId,
+          algorithm,
+          taskId: queuedTask.task_id,
+          error: describeAlgorithmError(error),
+        });
         throw error;
       }
     },
@@ -689,11 +883,27 @@ export function useResumeAlgorithmTask() {
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
       try {
-        return await pollAlgorithmTask(taskId, startDate, onProgress);
+        logAlgorithmDebug("Resuming algorithm task", {
+          wardId,
+          periodId,
+          taskId,
+        });
+        return await pollAlgorithmTask(
+          taskId,
+          startDate,
+          { wardId, periodId, taskId },
+          onProgress,
+        );
       } catch (error) {
         if ((error as { code?: string }).code !== "ALGO_TIMEOUT") {
           clearAlgorithmTask(wardId, periodId);
         }
+        console.error("[Algorithm Debug] Resume request failed", {
+          wardId,
+          periodId,
+          taskId,
+          error: describeAlgorithmError(error),
+        });
         throw error;
       }
     },

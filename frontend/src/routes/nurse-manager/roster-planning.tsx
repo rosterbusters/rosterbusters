@@ -33,6 +33,7 @@ import {
   useRosterPeriods,
   useRosterPeriodWindow,
   useWardStatistics,
+  usePeriodConstraints,
   useWardRoster,
   transformRosterData,
   useBulkUpsertRoster,
@@ -43,6 +44,8 @@ import {
   useResumeAlgorithmTask,
   useGenerationInputs,
   useShiftCodes,
+  useUpsertPeriodConstraint,
+  useDeletePeriodConstraint,
   useRosterChangelog,
   useCreateChangelog,
   useAutoReviewShiftRequests,
@@ -55,6 +58,7 @@ import {
   type ShiftCode,
   type ShiftAssignment,
   type RosterRow,
+  type NurseInfo,
   type EditHistoryEntry,
   type DailyStaffingGuideline,
 } from "@/components/NurseManager/RosterTable";
@@ -69,6 +73,7 @@ import {
 } from "@/components/NurseManager/RosterPlanning/requestReview";
 
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+import { Checkbox } from "@/components/ui/checkbox";
 import { LockdownBanner } from "@/components/Common/LockdownBanner";
 import { useRosterPlanningLockStatus } from "@/hooks/useRosterPlanningLockStatus";
 import useAuth from "@/hooks/useAuth";
@@ -76,6 +81,8 @@ import useAuth from "@/hooks/useAuth";
 export const Route = createFileRoute("/nurse-manager/roster-planning")({
   component: RosterPlanningPage,
 });
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 // Generate empty roster data for manual editing mode (before algorithm generation)
 function generateEmptyRosterData(): RosterRow[] {
@@ -160,6 +167,9 @@ function RosterPlanningPage() {
   const [isAutoRegenerateDialogOpen, setIsAutoRegenerateDialogOpen] = useState(false);
   const [isEditHistoryOpen, setIsEditHistoryOpen] = useState(false);
   const [isInputsDialogOpen, setIsInputsDialogOpen] = useState(false);
+  const [isNurseSettingsDialogOpen, setIsNurseSettingsDialogOpen] = useState(false);
+  const [selectedNurseForSettings, setSelectedNurseForSettings] = useState<NurseInfo | null>(null);
+  const [pendingNoNightValue, setPendingNoNightValue] = useState(false);
   const [lastAlgorithmRunAt, setLastAlgorithmRunAt] = useState<Date | null>(null);
   const [lastAlgorithmRunMs, setLastAlgorithmRunMs] = useState<number | null>(null);
   const [isResumingAlgorithm, setIsResumingAlgorithm] = useState(false);
@@ -173,7 +183,7 @@ function RosterPlanningPage() {
   const [generatedAlgorithmMethod, setGeneratedAlgorithmMethod] = useState<
     string | null
   >(null);
-  const [algorithmType, setAlgorithmType] = useState<"MILP" | "GA" | null>(null);
+  const [algorithmType, setAlgorithmType] = useState<"MILP" | "GA" | "AB-RATIO" | null>(null);
   const [isSeedingRequests, setIsSeedingRequests] = useState(false);
 
   // Staffing guidelines — initialised from ward data, editable via the summary table
@@ -196,6 +206,10 @@ function RosterPlanningPage() {
   const { data: periods = [] } = useRosterPeriods();
   const { data: periodWindow } = useRosterPeriodWindow();
   const { data: wardStatistics } = useWardStatistics(selectedWard?.wardId ?? null);
+  const { data: periodConstraints = [] } = usePeriodConstraints(
+    selectedWard?.wardId ?? null,
+    selectedPeriod?.periodId ?? null,
+  );
   const { data: savedRoster } = useWardRoster(
     selectedWard?.wardId ?? null,
     selectedPeriod?.periodId ?? null,
@@ -216,6 +230,8 @@ function RosterPlanningPage() {
   );
   const { exportToXLSX } = useRosterExport();
   const bulkUpsertRoster = useBulkUpsertRoster();
+  const upsertPeriodConstraint = useUpsertPeriodConstraint();
+  const deletePeriodConstraint = useDeletePeriodConstraint();
   const publishRoster = usePublishRoster();
   const clearRoster = useClearRoster();
   const generateAlgorithmRoster = useGenerateAlgorithmRoster();
@@ -245,6 +261,19 @@ function RosterPlanningPage() {
   const shiftRequestOverlays = useMemo(
     () => buildShiftRequestOverlays(requestReview),
     [requestReview],
+  );
+  const noNightConstraintByNurseId = useMemo(() => {
+    const constraintMap = new Map<number, (typeof periodConstraints)[number]>();
+    for (const constraint of periodConstraints) {
+      if (constraint.constrainttype === "NO_NIGHT") {
+        constraintMap.set(constraint.nurseid, constraint);
+      }
+    }
+    return constraintMap;
+  }, [periodConstraints]);
+  const highlightedNoNightNurseIds = useMemo(
+    () => new Set(noNightConstraintByNurseId.keys()),
+    [noNightConstraintByNurseId],
   );
 
   const rosterEntries = savedRoster?.roster_entries ?? [];
@@ -504,7 +533,7 @@ function RosterPlanningPage() {
     setIsSeedingRequests(true);
     try {
       const token = localStorage.getItem("access_token");
-      const res = await fetch(`/api/v1/roster/ward/${selectedWard.wardId}/seed-requests`, {
+      const res = await fetch(`${API_BASE}/api/v1/roster/ward/${selectedWard.wardId}/seed-requests`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -575,6 +604,14 @@ function RosterPlanningPage() {
         });
       }
       setGenerationProgress(0);
+      console.info("[Algorithm Debug] Starting roster generation", {
+        wardId: selectedWard.wardId,
+        wardName: selectedWard.wardName,
+        periodId: selectedPeriod.periodId,
+        periodName: selectedPeriod.name,
+        startDate: currentStartDate.toISOString(),
+        algorithmType: algorithmType ?? "AUTO",
+      });
       const result = await generateAlgorithmRoster.mutateAsync({
         wardId: selectedWard.wardId, // CamelCase to match hook params
         periodId: selectedPeriod.periodId,
@@ -609,7 +646,11 @@ function RosterPlanningPage() {
     } catch (error) {
       console.error("Failed:", error);
       setGenerationProgress(0);
-      showErrorToast("Failed to generate roster.");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate roster.";
+      showErrorToast(message);
     }
   }, [
     selectedWard,
@@ -1016,7 +1057,11 @@ function RosterPlanningPage() {
       if (resumeCancelledRef.current) return;
       console.error("Failed:", error);
       setIsResumingAlgorithm(false);
-      showErrorToast("Failed to generate roster.");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate roster.";
+      showErrorToast(message);
     });
   }, [
     selectedWard,
@@ -1052,6 +1097,61 @@ function RosterPlanningPage() {
     );
     clearAlgorithmTask(selectedWard.wardId, selectedPeriod.periodId);
   }, [selectedWard, selectedPeriod, wardStatistics?.nurses]);
+
+  const handleOpenNurseSettings = useCallback(
+    (row: RosterRow) => {
+      const nurse = wardStatistics?.nurses.find((item) => item.nurseId === row.nurseId) ?? null;
+      if (!nurse) {
+        showErrorToast("Unable to load nurse settings.");
+        return;
+      }
+      setSelectedNurseForSettings(nurse);
+      setPendingNoNightValue(highlightedNoNightNurseIds.has(row.nurseId));
+      setIsNurseSettingsDialogOpen(true);
+    },
+    [highlightedNoNightNurseIds, wardStatistics?.nurses],
+  );
+
+  const handleSaveNurseSettings = useCallback(async () => {
+    if (!selectedWard || !selectedPeriod || !selectedNurseForSettings) {
+      showErrorToast("Select a ward, period, and nurse first.");
+      return;
+    }
+
+    const existingConstraint = noNightConstraintByNurseId.get(selectedNurseForSettings.nurseId);
+
+    try {
+      if (pendingNoNightValue && !existingConstraint) {
+        await upsertPeriodConstraint.mutateAsync({
+          wardId: selectedWard.wardId,
+          nurseId: selectedNurseForSettings.nurseId,
+          periodId: selectedPeriod.periodId,
+          constraintType: "NO_NIGHT",
+          value: "true",
+          reason: "Temporary special duty",
+        });
+      } else if (!pendingNoNightValue && existingConstraint) {
+        await deletePeriodConstraint.mutateAsync({
+          constraintId: existingConstraint.constraintid,
+        });
+      }
+
+      showSuccessToast("Roster-period nurse setting updated.");
+      setIsNurseSettingsDialogOpen(false);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update nurse setting.";
+      showErrorToast(message);
+    }
+  }, [
+    deletePeriodConstraint,
+    noNightConstraintByNurseId,
+    pendingNoNightValue,
+    selectedNurseForSettings,
+    selectedPeriod,
+    selectedWard,
+    upsertPeriodConstraint,
+  ]);
 
   return (
     <Flex
@@ -1194,6 +1294,8 @@ function RosterPlanningPage() {
             guidelines={guidelines}
             isRosterGenerated={isAlgorithmGenerated}
             shiftRequestOverlays={shiftRequestOverlays}
+            highlightedNurseIds={highlightedNoNightNurseIds}
+            onNurseNameClick={handleOpenNurseSettings}
           />
         </Box>
 
@@ -1563,6 +1665,98 @@ function RosterPlanningPage() {
         onClose={() => setIsEditHistoryOpen(false)}
         entries={editHistory}
       />
+
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        open={isNurseSettingsDialogOpen}
+        onOpenChange={(e) => setIsNurseSettingsDialogOpen(e.open)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content maxW="420px">
+              <Dialog.Header>
+                <Dialog.Title>Nurse Roster Settings</Dialog.Title>
+              </Dialog.Header>
+              <Dialog.CloseTrigger />
+              <Dialog.Body>
+                <VStack align="stretch" gap={4}>
+                  <Box>
+                    <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                      {selectedNurseForSettings?.name ?? "Selected nurse"}
+                    </Text>
+                    <Text fontSize="sm" color="gray.500">
+                      {selectedNurseForSettings?.designation ?? ""}
+                    </Text>
+                  </Box>
+
+                  <Box p={3} rounded="md" bg="gray.50">
+                    <Text fontSize="sm" color="gray.700">
+                      Roster period: {selectedPeriod?.name ?? "No period selected"}
+                    </Text>
+                  </Box>
+
+                  <Box>
+                    <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
+                      Permanent pattern
+                    </Text>
+                    <Text fontSize="sm" color="gray.600">
+                      {selectedNurseForSettings?.shiftPattern === "AM_ONLY"
+                        ? "AM only (4 on / 3 off)"
+                        : selectedNurseForSettings?.shiftPattern === "PM_ONLY"
+                          ? "PM only (4 on / 3 off)"
+                          : "No permanent pattern"}
+                    </Text>
+                  </Box>
+
+                  <Box>
+                    <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
+                      Temporary period setting
+                    </Text>
+                    <Checkbox
+                      checked={pendingNoNightValue}
+                      onCheckedChange={(details: { checked: boolean | "indeterminate" }) =>
+                        setPendingNoNightValue(Boolean(details.checked))
+                      }
+                      colorPalette="cyan"
+                    >
+                      No night shift for this roster period
+                    </Checkbox>
+                    <Text fontSize="xs" color="gray.500" mt={2}>
+                      When enabled, this nurse will be highlighted in the roster and excluded from all night assignments for the selected period.
+                    </Text>
+                  </Box>
+                </VStack>
+              </Dialog.Body>
+              <Dialog.Footer>
+                <HStack gap={3}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsNurseSettingsDialogOpen(false)}
+                    borderColor="#E6E6E6"
+                    color="#4A4A4A"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    bg="#4B8798"
+                    color="white"
+                    _hover={{ bg: "#3d6f7d" }}
+                    onClick={handleSaveNurseSettings}
+                    loading={
+                      upsertPeriodConstraint.isPending ||
+                      deletePeriodConstraint.isPending
+                    }
+                  >
+                    Save Settings
+                  </Button>
+                </HStack>
+              </Dialog.Footer>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
     </Flex>
   );
 }

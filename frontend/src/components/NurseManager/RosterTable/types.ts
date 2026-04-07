@@ -180,7 +180,19 @@ export interface NurseInfo {
   contactNumber: string;
   wardId: number;
   employmentType: string;
+  shiftPattern?: "AM_ONLY" | "PM_ONLY" | null;
   isActive: boolean;
+}
+
+export type ShiftPattern = "AM_ONLY" | "PM_ONLY" | null;
+
+export interface NursePeriodConstraint {
+  constraintid: number;
+  nurseid: number;
+  periodid: number;
+  constrainttype: string;
+  value: string;
+  reason?: string | null;
 }
 
 export interface WardStatisticsResponse {

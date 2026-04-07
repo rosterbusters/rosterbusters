@@ -37,6 +37,8 @@ from app.models.enums import NotificationType
 
 # Roster/scheduling models
 from app.models.roster import (
+    NursePeriodConstraint,
+    NursePeriodConstraintPublic,
     NotificationQueue,
     Roster,
     RosterChangeLog,
@@ -95,6 +97,7 @@ __all__ = [
     # Enums
     "NotificationType",
     # Roster
+    "NursePeriodConstraint", "NursePeriodConstraintPublic",
     "NotificationQueue", "Roster", "RosterChangeLog", "RosterChangeLogPublic",
     "RosterPeriod", "RosterPeriodPublic", "RosterPeriodWindowPublic", "Ward",
     # Leave

@@ -74,6 +74,10 @@ class Nurse(SQLModel, table=True):
     contactnumber: str
     wardid: int | None
     employmenttype: str
+    shiftpattern: str | None = Field(
+        default=None,
+        sa_column=Column("shiftpattern", String),
+    )
     isactive: bool
 
 
@@ -126,4 +130,5 @@ class NursePublic(SQLModel):
       email: str
       wardid: int | None = None
       employmenttype: str
+      shiftpattern: str | None = None
       isactive: bool
