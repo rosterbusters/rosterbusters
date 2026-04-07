@@ -35,9 +35,9 @@ _SHIFT_STR_TO_CODE = {
 }
 
 _DEFAULT_WEIGHTS = {
-    "coverage_c_am": 600_000,
-    "coverage_c_pm": 450_000,
-    "coverage_c_night": 300_000,
+    # "coverage_c_am": 600_000,
+    # "coverage_c_pm": 450_000,
+    # "coverage_c_night": 300_000,
     "ratio_am": 8_000,
     "ratio_pm": 8_000,
     "ratio_night": 9_000,
@@ -51,12 +51,13 @@ _DEFAULT_WEIGHTS = {
     "daily_total_night_overflow_tier2": 150_000,
     "daily_total_night_overflow_tier3": 320_000,
     "rn_night": 100_000,
-    "rn_night_over": 80_000,
+    "rn_night_over": 110_000,
     "rank_b_night": 100_000,
-    "rank_b_night_over": 80_000,
+    "rank_b_night_over": 110_000,
     "rank_c_night": 9_000,
     "rank_c_night_over": 14_000,
-    "isolated_night": 60_000,
+    "isolated_night": 100_000,
+    "double_night_pref": 120_000,
     "daily_total_shift_balance": 8_000,
     "daily_total_shift_balance_c": 3_500,
     "daily_ap_balance": 6_000,
@@ -79,6 +80,9 @@ _DEFAULT_C_SHIFT_RATIO = {
     PM: 1,
     NIGHT: 1,
 }
+# Soft-request weights: approved shift requests carry higher weight than pending
+# but both remain soft — the solver may override either when scheduling constraints demand it.
+# hard_requests (leave / non-working days) are always enforced as hard constraints and bypass this.
 _DEFAULT_REQUEST_PRIORITY_WEIGHTS = {
     "pending": 1,
     "approved": 5,
@@ -544,6 +548,10 @@ def parse_ab_ratio_inputs(
 
     for nurse_idx in post_night_off:
         forced_day_zero = hard_assignments[nurse_idx].get(0)
+        # AB non-pattern nurses use soft carry-N preference — keep their hard requests on day 0
+        # (NIGHT on day 0 is a valid carry completion). Other nurses still need the hard OFF.
+        if nurse_ranks[nurse_idx] in {"A", "B"} and shift_pattern_by_nurse.get(nurse_idx) is None:
+            continue
         if forced_day_zero is not None and forced_day_zero != OFF and 0 not in al_day_req[nurse_idx]:
             del hard_assignments[nurse_idx][0]
 
@@ -953,6 +961,19 @@ def run_ab_ratio_pipeline(
     progress_callback=None,
     milp_config: dict | None = None,
 ):
+    """
+    Main entry point for AB-RATIO nurse rostering.
+
+    Parameters
+    ----------
+    nurses      : list of {"id", "name", "rank"} dicts  (rank A/B/C)
+    shifts      : 14-element list of per-day shift-requirement dicts
+    hard_requests : leave / non-working day entries (AL, INHT, BL, …) — enforced as hard constraints
+    soft_requests : shift preferences with optional priority ("approved" or "pending").
+                    Approved requests carry weight 5; pending carry weight 1.
+                    Both are soft — the solver satisfies them where possible but may override.
+    prev_last_shift : optional previous-period final shift per nurse
+    """
     if cp_model is None:
         raise RuntimeError(
             "AB-RATIO requires the optional 'ortools' dependency, but it is not installed in this environment."
@@ -1058,6 +1079,9 @@ def run_ab_ratio_pipeline(
             model.Add(x[nurse_idx, day_idx, AL] == 1)
 
     for nurse_idx in post_night_off:
+        # AB non-pattern nurses use soft carry-N preference on day 0 (handled in AB loop)
+        if nurse_idx in managed_working_ab:
+            continue
         if not relax_post_night_rest and 0 not in al_day_req[nurse_idx]:
             model.Add(x[nurse_idx, 0, OFF] == 1)
 
@@ -1145,8 +1169,20 @@ def run_ab_ratio_pipeline(
                     x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
                 )
 
+        # Carry-N continuation: if prev roster ended on N, prefer starting this roster
+        # with N (completing the 2N block) rather than resting. Single-N carry is allowed
+        # but penalised at double_night_pref weight.
+        if nurse_idx in post_night_off and nurse_idx not in no_night_ids and 0 not in al_day_req[nurse_idx]:
+            carry_skip = model.NewBoolVar(f"carry_skip_ab_{nurse_idx}")
+            model.Add(carry_skip >= 1 - x[nurse_idx, 0, NIGHT])
+            add_penalty(carry_skip, weights["double_night_pref"])
+
         if nurse_idx not in no_night_ids:
             for day_idx in range(num_days):
+                # For carry-N nurses, day 0 = N is a valid completion of the previous
+                # roster's 2N block — do not penalise it as isolated.
+                if day_idx == 0 and nurse_idx in post_night_off:
+                    continue
                 isolated_night = model.NewBoolVar(f"isolated_night_ab_{nurse_idx}_{day_idx}")
                 if day_idx == 0:
                     if num_days == 1:
