@@ -203,7 +203,7 @@ def _parse_request_dict(
                 if normalized_shift in _OFF_CODES:
                     milp_code = "DO"
                 elif normalized_shift == "AL" or normalized_shift in _EQUIV_LEAVE:
-                    milp_code = "AL"
+                    milp_code = normalized_shift  # preserve original code (HOL, MC, etc.)
                 elif normalized_shift in non_working_shift_codes:
                     milp_code = normalized_shift
                 else:

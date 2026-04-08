@@ -140,9 +140,9 @@ _SHIFT_STR_TO_CODE = {
 }
 
 _DEFAULT_WEIGHTS = {
-    # "coverage_c_am": 600_000,
-    # "coverage_c_pm": 450_000,
-    # "coverage_c_night": 300_000,
+    "coverage_c_am": 600_000,
+    "coverage_c_pm": 450_000,
+    "coverage_c_night": 300_000,
     "ratio_am": 8_000,
     "ratio_pm": 8_000,
     "ratio_night": 9_000,
@@ -156,9 +156,9 @@ _DEFAULT_WEIGHTS = {
     "daily_total_night_overflow_tier2": 150_000,
     "daily_total_night_overflow_tier3": 320_000,
     "rn_night": 100_000,
-    "rn_night_over": 110_000,
+    "rn_night_over": 500_000,
     "rank_b_night": 100_000,
-    "rank_b_night_over": 110_000,
+    "rank_b_night_over": 500_000,
     "rank_c_night": 9_000,
     "rank_c_night_over": 14_000,
     "isolated_night": 100_000,
@@ -1641,40 +1641,40 @@ def run_ab_ratio_pipeline(
                 model.Add(c_gap_penalty >= c_day_spread - daily_total_shift_gap_target)
                 add_penalty(c_gap_penalty, weights["daily_total_shift_balance_c"])
 
-    for day_idx, target in enumerate(parsed["rn_night_targets"]):
-        if target <= 0 or not rank_a:
-            continue
-        count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
-        if not relax_rank_night_mins:
-            model.Add(count_a_night >= target)
-        shortage = model.NewIntVar(0, target, f"rn_night_short_{day_idx}")
-        model.Add(shortage >= target - count_a_night)
-        add_penalty(shortage, weights["rn_night"])
-
-    for day_idx, cap in enumerate(parsed["rank_a_night_caps"]):
+    for day_idx in range(num_days):
         if not rank_a:
-            continue
+            break
+        target = rn_night_targets[day_idx]
+        cap = parsed["rank_a_night_caps"][day_idx]
         count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
         allowed_max = cap + max(rank_a_night_allowed_excess, 0)
+        if target > 0:
+            if not relax_rank_night_mins:
+                model.Add(count_a_night >= target)
+            diff = model.NewIntVar(-len(rank_a), len(rank_a), f"rn_night_diff_{day_idx}")
+            model.Add(diff == count_a_night - target)
+            dev = model.NewIntVar(0, len(rank_a), f"rn_night_dev_{day_idx}")
+            model.AddAbsEquality(dev, diff)
+            add_penalty(dev, weights["rn_night"])
         over_cap = model.NewIntVar(0, len(rank_a), f"rn_night_over_{day_idx}")
         model.Add(over_cap >= count_a_night - allowed_max)
         add_penalty(over_cap, weights["rn_night_over"])
 
-    for day_idx, target in enumerate(parsed["rank_b_night_targets"]):
-        if target <= 0 or not rank_b:
-            continue
-        count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
-        if not relax_rank_night_mins:
-            model.Add(count_b_night >= target)
-        shortage = model.NewIntVar(0, target, f"rank_b_night_short_{day_idx}")
-        model.Add(shortage >= target - count_b_night)
-        add_penalty(shortage, weights["rank_b_night"])
-
-    for day_idx, cap in enumerate(parsed["rank_b_night_caps"]):
+    for day_idx in range(num_days):
         if not rank_b:
-            continue
+            break
+        target = parsed["rank_b_night_targets"][day_idx]
+        cap = parsed["rank_b_night_caps"][day_idx]
         count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
         allowed_max = cap + max(rank_b_night_allowed_excess, 0)
+        if target > 0:
+            if not relax_rank_night_mins:
+                model.Add(count_b_night >= target)
+            diff = model.NewIntVar(-len(rank_b), len(rank_b), f"rank_b_night_diff_{day_idx}")
+            model.Add(diff == count_b_night - target)
+            dev = model.NewIntVar(0, len(rank_b), f"rank_b_night_dev_{day_idx}")
+            model.AddAbsEquality(dev, diff)
+            add_penalty(dev, weights["rank_b_night"])
         over_cap = model.NewIntVar(0, len(rank_b), f"rank_b_night_over_{day_idx}")
         model.Add(over_cap >= count_b_night - allowed_max)
         add_penalty(over_cap, weights["rank_b_night_over"])
