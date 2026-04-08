@@ -591,7 +591,7 @@ export type AlgorithmTaskStorage = {
 type AlgorithmDebugContext = {
   wardId?: number;
   periodId?: number;
-  algorithm?: "MILP" | "GA" | "AB-RATIO" | "V2";
+  algorithm?: "MILP" | "AB-RATIO" | "V2";
   taskId?: string;
   attempt?: number;
 };
@@ -798,7 +798,7 @@ export function useGenerateAlgorithmRoster() {
       wardId: number;
       periodId: number;
       startDate: Date;
-      algorithm?: "MILP" | "GA" | "AB-RATIO" | "V2";
+      algorithm?: "MILP" | "AB-RATIO" | "V2";
       onProgress?: (percent: number, generation: number, total: number, bestScore: number) => void;
     }) => {
       const startedAt = new Date();
