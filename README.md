@@ -203,14 +203,21 @@ docker compose exec backend python app/test_algo.py --ward-id 1
 
 Options:
 - `--ward-id` — Ward ID to generate requests for (required)
-- `--mode` — `deterministic` (default), `hardcoded`, or `anonymized`
+- `--mode` � `deterministic` (default), `hardcoded`, `anonymized`, `anonymized-feasible`, or `anonymized-apr-2026`
 
 Other modes:
 
 ```bash
 docker compose exec backend python app/test_algo.py --ward-id 1 --mode hardcoded
 docker compose exec backend python app/test_algo.py --mode anonymized
+docker compose exec backend python app/test_algo.py --mode anonymized-feasible
+docker compose exec backend python app/test_algo.py --mode anonymized-apr-2026
 ```
+
+Mode notes:
+- `anonymized` seeds the original anonymized test ward and request set.
+- `anonymized-feasible` seeds a separate anonymized ward with extra EN/SEN manpower so MILP can produce a feasible roster under the current ward minima.
+- `anonymized-apr-2026` seeds a separate Apr 06 - Apr 19 2026 preview ward and request set.
 
 **What it seeds:**
 - The script targets the upcoming (or current) roster period for the ward.
