@@ -471,6 +471,20 @@ function RosterPlanningPage() {
     }
   }, [wardStatistics, isAlgorithmGenerated, savedRoster?.roster_entries?.length]);
 
+  const buildManualRosterRows = useCallback((nurses: NurseInfo[] | undefined): RosterRow[] => {
+    const entries = nurses ?? [];
+    return entries.map((nurse) => ({
+      nurseId: nurse.nurseId,
+      name: nurse.name,
+      designation: nurse.designation,
+      staffingRole: nurse.staffing_role ?? null,
+      hours: { worked: 0, contracted: 44 },
+      shifts: {},
+      hasOvertime: false,
+      hasWarning: false,
+    }));
+  }, []);
+
   // Load saved DB roster when available (e.g. after page refresh or ward/period switch)
   useEffect(() => {
     if (isAlgorithmGenerated) return;
@@ -684,11 +698,13 @@ function RosterPlanningPage() {
       showErrorToast("Please select a ward and period first");
       return;
     }
+    const resetRows = buildManualRosterRows(wardStatistics?.nurses);
     if (rosterEntries.length === 0) {
       setIsAlgorithmGenerated(false);
       setGeneratedAlgorithmMethod(null);
       setLastAlgorithmRunAt(null);
       setLastAlgorithmRunMs(null);
+      setRosterData(resetRows);
       showSuccessToast("Roster cleared successfully");
       return;
     }
@@ -701,19 +717,7 @@ function RosterPlanningPage() {
       setGeneratedAlgorithmMethod(null);
       setLastAlgorithmRunAt(null);
       setLastAlgorithmRunMs(null);
-      const nurses = wardStatistics?.nurses ?? [];
-      setRosterData(
-        nurses.map((nurse) => ({
-          nurseId: nurse.nurseId,
-          name: nurse.name,
-          designation: nurse.designation,
-          staffingRole: nurse.staffing_role ?? null,
-          hours: { worked: 0, contracted: 44 },
-          shifts: {},
-          hasOvertime: false,
-          hasWarning: false,
-        })),
-      );
+      setRosterData(resetRows);
       showSuccessToast("Roster cleared successfully");
     } catch (error) {
       console.error("Failed to clear roster:", error);
@@ -727,7 +731,9 @@ function RosterPlanningPage() {
     selectedWard,
     selectedPeriod,
     rosterEntries.length,
+    buildManualRosterRows,
     clearRoster,
+    wardStatistics?.nurses,
     showErrorToast,
     showSuccessToast,
   ]);
