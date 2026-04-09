@@ -65,6 +65,18 @@ class RosterPeriod(SQLModel, table=True):
     status: str = Field(default="RequestOpen", max_length=20)
 
 
+class NursePeriodConstraint(SQLModel, table=True):
+    __tablename__ = "nurseperiodconstraint"
+
+    constraintid: Optional[int] = Field(default=None, primary_key=True)
+    nurseid: int = Field(foreign_key="nurse.nurseid")
+    periodid: int = Field(foreign_key="rosterperiod.periodid")
+    constrainttype: str = Field(max_length=30)
+    value: str = Field(default="true", max_length=50)
+    reason: Optional[str] = Field(default=None)
+    createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class Roster(SQLModel, table=True):
     __tablename__ = "roster"
 
@@ -112,7 +124,25 @@ class RosterPeriodPublic(SQLModel):
     name: str
     startdate: date
     enddate: date
+    requestopendate: date
+    requestclosedate: date
+    planninglockdate: Optional[date] = None
     status: str
+
+
+class RosterPeriodWindowPublic(SQLModel):
+    current_period: Optional[RosterPeriodPublic] = None
+    upcoming_period: Optional[RosterPeriodPublic] = None
+    request_open_period: Optional[RosterPeriodPublic] = None
+
+
+class NursePeriodConstraintPublic(SQLModel):
+    constraintid: int
+    nurseid: int
+    periodid: int
+    constrainttype: str
+    value: str
+    reason: Optional[str] = None
 
 
 class RosterChangeLog(SQLModel, table=True):

@@ -42,6 +42,7 @@ export type Message = {
 export type NursePublic = {
     nurseid: number;
     name: string;
+    designation: string;
 };
 
 export type PrivateUserCreate = {
@@ -57,6 +58,8 @@ export type RosterPeriodPublic = {
     startdate: string;
     enddate: string;
     status: string;
+    requestopendate?: string;
+    requestclosedate?: string;
 };
 
 export type ShiftCodePublic = {
@@ -69,6 +72,7 @@ export type ShiftCodePublic = {
 };
 
 export type ShiftRequestCreate = {
+    nurseid?: (number | null);
     periodid: number;
     preferreddate: string;
     preferredshifttype: string;
@@ -291,6 +295,8 @@ export type ShiftRequestsGetWardNursesData = {
 };
 
 export type ShiftRequestsGetWardNursesResponse = (Array<NursePublic>);
+
+export type ShiftRequestsGetAllNursesResponse = (Array<NursePublic>);
 
 export type UsersReadUsersData = {
     limit?: number;

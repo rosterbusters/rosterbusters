@@ -1,11 +1,11 @@
-import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from 'react-big-calendar'
+import { Calendar, momentLocalizer, View } from 'react-big-calendar'
 import moment from 'moment'
-import { useState, useCallback, useMemo, useEffect, ComponentType } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import CustomWeekView from './CustomRequestView'
-import { Box, Grid, Span } from '@chakra-ui/react'
-import cx from "clsx"
+import { Box } from '@chakra-ui/react'
 import { ShiftRequestsService } from '@/client'
+import { useRosterPeriodWindow } from '@/components/NurseManager/RosterTable/useRosterData'
 import useAuth from '@/hooks/useAuth'
 
 const localizer = momentLocalizer(moment);
@@ -18,36 +18,9 @@ interface Event {
   resource?: any;
 }
 
-export const CustomToolbar: ComponentType<ToolbarProps> = ({
-  date,
-  label,
-  localizer,
-  onNavigate,
-}: ToolbarProps) => {
-  return (
-    <Grid
-      templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
-      className={cx("rbc-toolbar")}
-      gap={{ base: "2", md: "0" }}
-      position={{ base: "sticky", md: "relative" }}
-    >
-      <Span className={cx("rbc-btn-group")} justifySelf={{ base: "center", md: "start" }}>
-        <button onClick={() => onNavigate(Navigate.PREVIOUS)}>
-          {localizer.messages.previous}
-        </button>
-      </Span>
-      <Span className={cx("rbc-toolbar-label")}>{label}</Span>
-      <Span justifySelf={{ base: "center", md: "end" }} className={cx("rbc-btn-group")}>
-        <button onClick={() => onNavigate(Navigate.NEXT)}>
-          {localizer.messages.next}
-        </button>
-      </Span>
-    </Grid>
-  );
-};
-
 interface RequestCalendarProps {
   wardId: number | null | undefined;
+  isLocked?: boolean;
 }
 
 /**
@@ -59,18 +32,15 @@ interface RequestCalendarProps {
  * - Added staleTime: 0 on the shift-requests query so invalidation always
  *   triggers an immediate refetch rather than serving cache.
  * - The `enabled` guard now cleanly waits for both wardId AND periodId.
- * - Period selection logic is aligned with NewShiftRequest (today-first, then fallback).
+ * - Period selection logic is anchored to the upcoming roster period.
  */
-export default function RequestCalendar({ wardId }: RequestCalendarProps) {
+export default function RequestCalendar({ wardId, isLocked = false }: RequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
   // ─── Roster periods ───────────────────────────────────────────────────────
-  const { data: periods } = useQuery({
-    queryKey: ['roster-periods'],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: periodWindow } = useRosterPeriodWindow();
+  const activePeriod = periodWindow?.upcomingPeriod;
 
   /**
    * TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
@@ -95,14 +65,12 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   const [date, setDate] = useState(() => moment().startOf('isoWeek').toDate());
 
   useEffect(() => {
-    if (activePeriod?.startdate) {
-      setDate(moment(activePeriod.startdate).startOf('isoWeek').toDate());
+    if (activePeriod?.startDate) {
+      setDate(moment(activePeriod.startDate).toDate());
     }
-  }, [activePeriod?.startdate]);
+  }, [activePeriod?.startDate]);
 
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
-
-  const periodId = activePeriod?.periodid;
+  const periodId = activePeriod?.periodId;
 
   // ─── Shift requests for entire ward ──────────────────────────────────────
   const { data: shiftRequests } = useQuery({
@@ -152,8 +120,15 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {
+    const FortnightView = ((props) => (
+      <CustomWeekView {...props} isLocked={isLocked} />
+    )) as typeof CustomWeekView;
+    FortnightView.range = CustomWeekView.range;
+    FortnightView.navigate = CustomWeekView.navigate;
+    FortnightView.title = CustomWeekView.title;
+
     const customViews = {
-      fortnight: CustomWeekView,
+      fortnight: FortnightView,
       week: false,
       day: false,
     };
@@ -161,7 +136,9 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
       views: customViews,
       defaultView: "fortnight" as View,
     };
-  }, []);
+  }, [isLocked]);
+
+  const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
   return (
     <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>
@@ -170,9 +147,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         startAccessor="start"
         endAccessor="end"
         events={events}
-        components={{
-          toolbar: CustomToolbar,
-        }}
+        toolbar={false}
         view={defaultView}
         views={views}
         date={date}

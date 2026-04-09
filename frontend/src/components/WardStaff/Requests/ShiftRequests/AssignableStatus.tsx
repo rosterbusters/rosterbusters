@@ -2,6 +2,7 @@ import { Text, Badge, HStack } from "@chakra-ui/react";
 import { useQuery } from "@tanstack/react-query";
 import { ShiftRequestsService } from "@/client";
 import { useMemo } from "react";
+import { useRosterPeriodWindow } from "@/components/NurseManager/RosterTable/useRosterData";
 
 const MAX_REQUESTS = 3;
 
@@ -44,7 +45,7 @@ export function AssignableStatus() {
   const count = activePeriod && userRequests
     ? userRequests.filter(
         (r) =>
-          r.periodid === activePeriod.periodid &&
+          r.periodid === activePeriod.periodId &&
           workingCodeSet.has(r.preferredshifttype),
       ).length
     : 0;

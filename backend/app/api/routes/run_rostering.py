@@ -1,20 +1,66 @@
 import json
+import logging
+import math
+import os
 import queue
 import threading
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlalchemy import MetaData, Table, inspect as sa_inspect
+from sqlmodel import Session, select, delete
 
+from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
-from app.models.rbac import Nurse, NurseManager
-from app.models.roster import Roster, RosterChangeLog, RosterChangeLogPublic, RosterPeriod, Ward
-from app.models.shifts import ShiftRequest
+from app.core.config import settings
+from app.models.enums import NotificationType
+from app.designation_mapping import (
+    classify_designation_with_rank_map,
+    load_designation_rank_map,
+    roster_rank_for_designation_with_rank_map,
+    staffing_role_to_roster_rank,
+)
+from app.models.enums import NotificationType
+from app.models.rbac import Nurse, NurseManager, Role, UserRole
+from app.models.roster import (
+    NursePeriodConstraint,
+    NursePeriodConstraintPublic,
+    NotificationQueue,
+    Roster,
+    RosterChangeLog,
+    RosterChangeLogPublic,
+    RosterPeriod,
+    Ward,
+)
+from app.models.leave import LeaveRequest
+from app.models.shifts import ShiftCode, ShiftRequest
+from app.rbac import user_has_role
+from app.utils import generate_roster_release_email, generate_shift_updated_email, send_email
+import app.crud as crud
 from app.rostering.algo_scheduler import generate_roster
+
+
+
+import logging
+logger = logging.getLogger(__name__)
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe_value(inner) for key, inner in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(item) for item in value]
+    return value
 
 
 class ChangelogCreateRequest(BaseModel):
@@ -34,9 +80,278 @@ class RosterCommentUpdate(BaseModel):
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
+    algorithm: Optional[str] = None  # "MILP" | "AB-RATIO" | None (auto)
+
+
+class TriggeredItem(BaseModel):
+    ward_id: int
+    period_id: int
+    task_id: str
+
+
+class SkippedItem(BaseModel):
+    ward_id: int
+    period_id: int
+    reason: str
+
+
+class ScheduledGenerationResponse(BaseModel):
+    triggered: list[TriggeredItem]
+    skipped: list[SkippedItem]
+
+
+class AlgorithmNotificationRequest(BaseModel):
+    ward_id: int
+    period_id: int
+    notification_type: str
+
+
+class RosterUpsertRequest(BaseModel):
+    ward_id: int
+    nurse_id: int
+    period_id: int
+    shift_date: date
+    shift_code: str
+    comment: Optional[str] = None
+    status: str = "Pending"
+    assignment_method: str = "Manual"
+
+
+class BulkRosterUpsertRequest(BaseModel):
+    entries: list[RosterUpsertRequest]
+
+
+class NursePeriodConstraintCreateRequest(BaseModel):
+    ward_id: int
+    nurse_id: int
+    period_id: int
+    constraint_type: str
+    value: str = "true"
+    reason: Optional[str] = None
 
 
 router = APIRouter()
+
+
+def _list_table_columns(session: Session, table_name: str) -> set[str]:
+    return {
+        column["name"]
+        for column in sa_inspect(session.get_bind()).get_columns(table_name)
+    }
+
+
+def _table_exists(session: Session, table_name: str) -> bool:
+    return sa_inspect(session.get_bind()).has_table(table_name)
+
+
+def _fetch_active_ward_nurses(session: Session, ward_id: int) -> list[dict[str, Any]]:
+    """Read nurse rows using table reflection so the API tolerates lagging schemas."""
+    metadata = MetaData()
+    nurse_table = Table("nurse", metadata, autoload_with=session.get_bind())
+
+    required_columns = [
+        "nurseid",
+        "name",
+        "designation",
+        "email",
+        "wardid",
+        "employmenttype",
+        "isactive",
+    ]
+    selected_columns = [nurse_table.c[column_name] for column_name in required_columns]
+
+    for optional_column in ("contactnumber", "shiftpattern", "employeeid"):
+        if optional_column in nurse_table.c:
+            selected_columns.append(nurse_table.c[optional_column])
+
+    rows = session.execute(
+        select(*selected_columns).where(
+            nurse_table.c.wardid == ward_id,
+            nurse_table.c.isactive == True,  # noqa: E712
+        )
+    ).mappings()
+
+    return [dict(row) for row in rows]
+
+
+def _get_celery_app():
+    try:
+        from app.worker import celery_app
+    except ModuleNotFoundError as exc:
+        if exc.name != "celery":
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="Celery is not available in the backend service.",
+        ) from exc
+    return celery_app
+
+
+def _get_managed_ward_ids(session: Session, user_id: int | None) -> set[int]:
+    if not user_id:
+        return set()
+    ward_ids = session.exec(
+        select(UserRole.wardid)
+        .join(Role, UserRole.roleid == Role.roleid)
+        .where(
+            UserRole.userid == user_id,
+            UserRole.isactive == True,  # noqa: E712
+            UserRole.wardid.is_not(None),
+            Role.rolename == "NurseManager",
+        )
+    ).all()
+    return {ward_id for ward_id in ward_ids if ward_id is not None}
+
+
+def _can_manage_ward(session: Session, current_user: CurrentUser, ward: Ward) -> bool:
+    if current_user.email and user_has_role(session, current_user.email, "NurseManager"):
+        return True
+    if current_user.managerid == ward.managerid:
+        return True
+    if ward.wardid in _get_managed_ward_ids(session, current_user.userid):
+        return True
+    if current_user.email:
+        return user_has_role(session, current_user.email, "Admin")
+    return False
+
+
+def _can_generate_roster(session: Session, current_user: CurrentUser) -> bool:
+    if not current_user.email:
+        return False
+    return user_has_role(session, current_user.email, "NurseManager") or user_has_role(
+        session, current_user.email, "Admin"
+    )
+
+
+def _queue_algorithm_notification(
+    session: Session,
+    *,
+    manager_id: int | None,
+    ward_id: int,
+    period_id: int,
+    notification_type: NotificationType,
+) -> None:
+    """Queue an algorithm notification (and email) for the ward's nurse manager, if applicable."""
+    if not manager_id:
+        return
+
+    ward = session.get(Ward, ward_id)
+    if not ward or ward.managerid != manager_id:
+        return
+
+    period = session.get(RosterPeriod, period_id)
+    if not period:
+        return
+
+    crud.create_notification(
+        session,
+        recipient_type="NurseManager",
+        recipient_id=manager_id,
+        notification_type=notification_type,
+        related_entity_type="RosterPeriod",
+        related_entity_id=period.periodid,
+        roster_period=period.name,
+    )
+    session.commit()
+
+    if not settings.emails_enabled:
+        return
+
+    manager = session.get(NurseManager, manager_id)
+    if not manager or not manager.email:
+        return
+
+    try:
+        from app.utils import generate_algorithm_notification_email, send_email
+
+        email_data = generate_algorithm_notification_email(
+            email_to=manager.email,
+            roster_period=period.name,
+            message=notification_type.template.format(roster_period=period.name),
+            manager_name=manager.name,
+        )
+        send_email(
+            email_to=manager.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send roster planning email for ward %s period %s",
+            ward_id,
+            period_id,
+        )
+
+
+def _get_existing_roster_entry(
+    session: Session,
+    ward_id: int,
+    nurse_id: int,
+    period_id: int,
+    shift_date: date,
+) -> Roster | None:
+    return session.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.nurseid == nurse_id,
+            Roster.periodid == period_id,
+            Roster.shiftdate == shift_date,
+        )
+    ).first()
+
+
+def _upsert_roster_entry(
+    session: Session,
+    payload: RosterUpsertRequest,
+    current_user: CurrentUser,
+) -> Roster:
+    ward = session.get(Ward, payload.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = session.get(RosterPeriod, payload.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    nurse = session.get(Nurse, payload.nurse_id)
+    if not nurse:
+        raise HTTPException(status_code=404, detail="Nurse not found")
+    if nurse.wardid != payload.ward_id:
+        raise HTTPException(status_code=400, detail="Nurse does not belong to the selected ward")
+
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    entry = _get_existing_roster_entry(
+        session=session,
+        ward_id=payload.ward_id,
+        nurse_id=payload.nurse_id,
+        period_id=payload.period_id,
+        shift_date=payload.shift_date,
+    )
+
+    if entry:
+        entry.shiftcode = payload.shift_code
+        entry.comment = payload.comment
+        entry.status = payload.status
+        entry.assignmentmethod = payload.assignment_method
+        entry.assignedby = current_user.managerid
+    else:
+        entry = Roster(
+            nurseid=payload.nurse_id,
+            wardid=payload.ward_id,
+            periodid=payload.period_id,
+            shiftdate=payload.shift_date,
+            shiftcode=payload.shift_code,
+            status=payload.status,
+            assignmentmethod=payload.assignment_method,
+            assignedby=current_user.managerid,
+            comment=payload.comment,
+        )
+        session.add(entry)
+
+    session.flush()
+    return entry
 
 
 @router.get("/manager/statistics")
@@ -49,6 +364,7 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
     nurses = db.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
+    rank_map = load_designation_rank_map(db)
 
     return {
         "ward": {"wardId": ward.wardid, "wardName": ward.wardname},
@@ -57,7 +373,14 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 "nurseId": n.nurseid,
                 "name": n.name,
                 "designation": n.designation,
+                "email": n.email,
+                "contactNumber": n.contactnumber or "",
+                "wardId": n.wardid,
                 "employmentType": n.employmenttype,
+                "shiftPattern": n.shiftpattern,
+                "isActive": n.isactive,
+                "staffing_role": classify_designation_with_rank_map(rank_map, n.designation or "").staffing_role,
+                "roster_rank": classify_designation_with_rank_map(rank_map, n.designation or "").roster_rank,
             }
             for n in nurses
         ],
@@ -102,6 +425,358 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
             }
             for e in entries
         ],
+    }
+
+
+@router.get("/constraints", response_model=list[NursePeriodConstraintPublic])
+def get_period_constraints(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    nurse_ids = list(
+        session.exec(select(Nurse.nurseid).where(Nurse.wardid == ward_id)).all()
+    )
+    if not nurse_ids:
+        return []
+
+    return list(
+        session.exec(
+            select(NursePeriodConstraint).where(
+                NursePeriodConstraint.periodid == period_id,
+                NursePeriodConstraint.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
+            )
+        ).all()
+    )
+
+
+@router.post("/constraints", response_model=NursePeriodConstraintPublic, status_code=201)
+def create_or_update_period_constraint(
+    body: NursePeriodConstraintCreateRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    ward = session.get(Ward, body.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    nurse = session.get(Nurse, body.nurse_id)
+    if not nurse or nurse.wardid != body.ward_id:
+        raise HTTPException(status_code=400, detail="Nurse does not belong to the selected ward")
+
+    period = session.get(RosterPeriod, body.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    constraint_type = body.constraint_type.strip().upper()
+    if constraint_type != "NO_NIGHT":
+        raise HTTPException(status_code=400, detail="Only NO_NIGHT constraints are currently supported")
+
+    existing = session.exec(
+        select(NursePeriodConstraint).where(
+            NursePeriodConstraint.nurseid == body.nurse_id,
+            NursePeriodConstraint.periodid == body.period_id,
+            NursePeriodConstraint.constrainttype == constraint_type,
+        )
+    ).first()
+
+    if existing:
+        existing.value = body.value
+        existing.reason = body.reason
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
+
+    constraint = NursePeriodConstraint(
+        nurseid=body.nurse_id,
+        periodid=body.period_id,
+        constrainttype=constraint_type,
+        value=body.value,
+        reason=body.reason,
+    )
+    session.add(constraint)
+    session.commit()
+    session.refresh(constraint)
+    return constraint
+
+
+@router.delete("/constraints/{constraint_id}")
+def delete_period_constraint(
+    constraint_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    constraint = session.get(NursePeriodConstraint, constraint_id)
+    if not constraint:
+        raise HTTPException(status_code=404, detail="Constraint not found")
+
+    nurse = session.get(Nurse, constraint.nurseid)
+    if not nurse or nurse.wardid is None:
+        raise HTTPException(status_code=400, detail="Constraint nurse is not linked to a ward")
+
+    ward = session.get(Ward, nurse.wardid)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward roster")
+
+    session.delete(constraint)
+    session.commit()
+    return {"deleted": True, "constraint_id": constraint_id}
+
+
+@router.post("/create")
+def create_or_update_roster_entry(
+    body: RosterUpsertRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Create or update a single roster assignment."""
+    existing = _get_existing_roster_entry(
+        session=session,
+        ward_id=body.ward_id,
+        nurse_id=body.nurse_id,
+        period_id=body.period_id,
+        shift_date=body.shift_date,
+    )
+    old_shift_code = existing.shiftcode if existing else None
+    is_update = existing is not None
+
+    entry = _upsert_roster_entry(session, body, current_user)
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+
+    if (
+        is_update
+        and old_shift_code
+        and old_shift_code != body.shift_code
+        and existing
+        and existing.status != "Pending"
+    ):
+        nurse = session.get(Nurse, body.nurse_id)
+        if nurse:
+            crud.create_notification(
+                session,
+                recipient_type="Nurse",
+                recipient_id=body.nurse_id,
+                notification_type=NotificationType.SHIFT_UPDATED,
+                related_entity_type="Roster",
+                related_entity_id=entry.rosterid,
+                start_date=str(body.shift_date),
+            )
+            session.commit()
+
+            if settings.emails_enabled and nurse.email:
+                try:
+                    email_data = generate_shift_updated_email(
+                        email_to=nurse.email,
+                        nurse_name=nurse.name,
+                        shift_date=str(body.shift_date),
+                        new_shift_code=body.shift_code,
+                        old_shift_code=old_shift_code,
+                    )
+                    send_email(
+                        email_to=nurse.email,
+                        subject=email_data.subject,
+                        html_content=email_data.html_content,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to send shift updated email to nurse %s for date %s",
+                        body.nurse_id,
+                        body.shift_date,
+                    )
+
+    return {
+        "roster_id": entry.rosterid,
+        "nurse_id": entry.nurseid,
+        "ward_id": entry.wardid,
+        "period_id": entry.periodid,
+        "shift_date": entry.shiftdate,
+        "shift_code": entry.shiftcode,
+        "status": entry.status,
+        "comment": entry.comment,
+    }
+
+@router.post("/bulk-upsert")
+def bulk_upsert_roster_entries(
+    body: BulkRosterUpsertRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Create or update many roster assignments in one request."""
+    if not body.entries:
+        return {"entries": [], "count": 0}
+
+    saved_entries: list[dict[str, Any]] = []
+    for entry_payload in body.entries:
+        entry = _upsert_roster_entry(session, entry_payload, current_user)
+        session.add(entry)
+        session.flush()
+        saved_entries.append(
+            {
+                "roster_id": entry.rosterid,
+                "nurse_id": entry.nurseid,
+                "ward_id": entry.wardid,
+                "period_id": entry.periodid,
+                "shift_date": entry.shiftdate,
+                "shift_code": entry.shiftcode,
+                "status": entry.status,
+                "comment": entry.comment,
+            }
+        )
+
+    session.commit()
+    return {"entries": saved_entries, "count": len(saved_entries)}
+
+
+@router.post("/ward/{ward_id}/publish")
+def publish_ward_roster(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Finalize a ward roster for a given period by confirming all assignments."""
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = session.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to publish this ward roster")
+
+    entries = session.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).all()
+
+    if not entries:
+        raise HTTPException(status_code=400, detail="No roster assignments found to publish")
+
+    for entry in entries:
+        entry.status = "Confirmed"
+        session.add(entry)
+
+    period.status = "Finalized"
+    session.add(period)
+    session.commit()
+
+    roster_period_label = period.name or f"{period.startdate} to {period.enddate}"
+    nurses = session.exec(
+        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+    ).all()
+
+    for nurse in nurses:
+        if not nurse.nurseid:
+            continue
+        crud.create_notification(
+            session,
+            recipient_type="Nurse",
+            recipient_id=nurse.nurseid,
+            notification_type=NotificationType.ROSTER_RELEASE,
+            channel="Email",
+            related_entity_type="RosterPeriod",
+            related_entity_id=period.periodid,
+            roster_period=roster_period_label,
+        )
+    session.commit()
+
+    if settings.emails_enabled:
+        for nurse in nurses:
+            if not nurse.email:
+                continue
+            try:
+                email_data = generate_roster_release_email(
+                    email_to=nurse.email,
+                    roster_period=roster_period_label,
+                    ward_name=ward.wardname,
+                )
+                send_email(
+                    email_to=nurse.email,
+                    subject=email_data.subject,
+                    html_content=email_data.html_content,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to send roster release email to %s",
+                    nurse.email,
+                )
+    else:
+        logger.info("Email notifications skipped: email settings not configured.")
+
+    return {
+        "ward_id": ward_id,
+        "period_id": period_id,
+        "published_count": len(entries),
+        "status": period.status,
+    }
+
+
+@router.delete("/ward/{ward_id}/clear")
+def clear_ward_roster(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Clear all roster assignments for a ward + period when not yet published."""
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = session.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to clear this ward roster")
+
+    if period.status in {"Finalized", "Published"}:
+        raise HTTPException(status_code=400, detail="Roster period is already published")
+
+    entries = session.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).all()
+
+    if not entries:
+        raise HTTPException(status_code=400, detail="No roster assignments found to clear")
+
+    if any(entry.status == "Confirmed" for entry in entries):
+        raise HTTPException(status_code=400, detail="Roster entries are already published")
+
+    deleted = session.exec(
+        delete(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+        )
+    ).rowcount or 0
+    session.commit()
+
+    return {
+        "ward_id": ward_id,
+        "period_id": period_id,
+        "cleared_count": deleted,
+        "status": "cleared",
     }
 
 
@@ -298,25 +973,39 @@ def get_ward_requests(ward_id: int, period_id: int, db: Session = Depends(get_db
 @router.post("/generate-algorithm")
 def generate_roster_endpoint(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
     """Run the MILP/GA rostering algorithm for a ward and roster period."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     try:
-        ward = db.get(Ward, request_data.ward_id)
-        if not ward:
-            raise HTTPException(status_code=404, detail="Ward not found")
-
-        shifts_data, milp_config = _staffing_to_algo_inputs(ward)
-
-        nurses_db = db.exec(
-            select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
-        ).all()
-        nurses_data = [
-            {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-            for n in nurses_db
-        ]
-
-        result = generate_roster(nurses=nurses_data, shifts=shifts_data, requests=None, milp_config=milp_config)
+        generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
+        _queue_algorithm_notification(
+            db,
+            manager_id=current_user.managerid,
+            ward_id=request_data.ward_id,
+            period_id=request_data.period_id,
+            notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+        )
+        result = generate_roster(
+            nurses=generation_inputs["nurses"],
+            shifts=generation_inputs["shifts"],
+            hard_requests=generation_inputs["hard_requests"],
+            soft_requests=generation_inputs["soft_requests"],
+            prev_last_shift=generation_inputs["prev_last_shift"],
+            shift_hours=generation_inputs["shift_hours"],
+            non_working_shift_codes=generation_inputs["non_working_shift_codes"],
+            milp_config=generation_inputs["milp_config"],
+            algorithm=request_data.algorithm,
+        )
+        _queue_algorithm_notification(
+            db,
+            manager_id=current_user.managerid,
+            ward_id=request_data.ward_id,
+            period_id=request_data.period_id,
+            notification_type=NotificationType.ALGORITHM_GENERATION,
+        )
         return {"method": result["method"], "roster": result["roster"]}
 
     except HTTPException:
@@ -325,28 +1014,202 @@ def generate_roster_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/generate-algorithm-stream")
-def generate_roster_stream(
+@router.post("/generate-algorithm-async")
+def generate_roster_async(
     request_data: RosterGenerationRequest,
-    db: Session = Depends(get_db),
+    db: SessionDep,
+    current_user: CurrentUser,
 ):
-    """Run the MILP/GA rostering algorithm and stream SSE progress events."""
-    # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
+    """Queue roster generation as a Celery background task. Returns a task_id to poll."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
     ward = db.get(Ward, request_data.ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    shifts_data, milp_config = _staffing_to_algo_inputs(ward)
+    _queue_algorithm_notification(
+        db,
+        manager_id=current_user.managerid,
+        ward_id=request_data.ward_id,
+        period_id=request_data.period_id,
+        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+    )
 
-    nurses_db = db.exec(
-        select(Nurse).where(Nurse.wardid == request_data.ward_id, Nurse.isactive == True)  # noqa: E712
+    logger.info(
+        "Queueing async roster generation ward_id=%s period_id=%s algorithm=%s user_id=%s",
+        request_data.ward_id,
+        request_data.period_id,
+        request_data.algorithm,
+        getattr(current_user, "userid", None),
+    )
+
+    task = _get_celery_app().send_task(
+        "tasks.generate_roster",
+        args=[request_data.ward_id, request_data.period_id],
+        kwargs={"algorithm": request_data.algorithm},
+    )
+    logger.info(
+        "Queued async roster generation task_id=%s ward_id=%s period_id=%s algorithm=%s",
+        task.id,
+        request_data.ward_id,
+        request_data.period_id,
+        request_data.algorithm,
+    )
+    return {"task_id": task.id, "status": "queued"}
+
+
+@router.post("/trigger-scheduled-generation", response_model=ScheduledGenerationResponse)
+def trigger_scheduled_generation(
+    days_ahead: int = 8,
+    db: Session = Depends(get_db),
+):
+    """
+    Called by AWS Lambda on a schedule. No user auth required.
+    Finds RosterPeriods starting in `days_ahead` days, queues generate_and_save_roster_task
+    for every active ward. Existing rosters are overwritten by the task.
+    """
+    target_date = date.today() + timedelta(days=days_ahead)
+
+    periods = db.exec(
+        select(RosterPeriod).where(
+            RosterPeriod.startdate == target_date,
+            RosterPeriod.status == "RequestOpen",
+        )
     ).all()
-    nurses_data = [
-        {"id": n.nurseid, "name": n.name, "rank": _map_rank(n.designation)}
-        for n in nurses_db
-    ]
+
+    active_wards = db.exec(
+        select(Ward).where(Ward.isactive == True)  # noqa: E712
+    ).all()
+
+    triggered: list[dict] = []
+    skipped: list[dict] = []
+
+    for period in periods:
+        for ward in active_wards:
+            task = _get_celery_app().send_task(
+                "tasks.generate_and_save_roster",
+                args=[ward.wardid, period.periodid],
+            )
+            triggered.append({
+                "ward_id": ward.wardid,
+                "period_id": period.periodid,
+                "task_id": task.id,
+            })
+
+    return {"triggered": triggered, "skipped": skipped}
+
+
+@router.get("/task/{task_id}/status")
+def get_task_status(task_id: str):
+    """Poll the status of a queued roster generation task."""
+    result = _get_celery_app().AsyncResult(task_id)
+    safe_info = _json_safe_value(result.info)
+    safe_result = _json_safe_value(result.result)
+    logger.info(
+        "Polled roster task status task_id=%s state=%s info=%s",
+        task_id,
+        result.state,
+        safe_info,
+    )
+
+    if result.state == "PENDING":
+        return {"task_id": task_id, "status": "pending"}
+    if result.state == "STARTED":
+        return {"task_id": task_id, "status": "started"}
+    if result.state == "PROGRESS":
+        return {"task_id": task_id, "status": "in_progress", **(safe_info or {})}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "complete", **(safe_result or {})}
+    if result.state == "FAILURE":
+        logger.error(
+            "Roster task failed task_id=%s error=%s",
+            task_id,
+            safe_info,
+        )
+        return {"task_id": task_id, "status": "failed", "error": str(safe_info)}
+    return {"task_id": task_id, "status": result.state.lower()}
+
+
+@router.post("/task/{task_id}/cancel")
+def cancel_task(
+    task_id: str,
+    db: SessionDep,
+    current_user: CurrentUser,
+):
+    """Cancel a queued roster generation task."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+    _get_celery_app().control.revoke(task_id, terminate=True)
+    return {"task_id": task_id, "status": "cancelled"}
+
+
+@router.post("/algorithm-notification")
+def queue_algorithm_notification(
+    body: AlgorithmNotificationRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Queue an algorithm notification without running the algorithm (test helper)."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+    if body.notification_type not in {
+        "ALGORITHM_IN_PROGRESS",
+        "ALGORITHM_GENERATION",
+    }:
+        raise HTTPException(status_code=400, detail="Unsupported notification type.")
+
+    ward = session.get(Ward, body.ward_id)
+    if not ward or not ward.managerid:
+        raise HTTPException(status_code=404, detail="Ward not found or missing manager.")
+    period = session.get(RosterPeriod, body.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found.")
+
+    if body.notification_type == "ALGORITHM_IN_PROGRESS":
+        notification = NotificationType.ALGORITHM_IN_PROGRESS
+    else:
+        notification = NotificationType.ALGORITHM_GENERATION
+
+    message = notification.template.format(roster_period=period.name)
+
+    session.add(
+        NotificationQueue(
+            recipienttype="NurseManager",
+            recipientid=ward.managerid,
+            notificationtype=notification.value,
+            channel="Email",
+            priority="Normal",
+            subject=notification.value,
+            messagebody=message,
+            relatedentitytype="RosterPeriod",
+            relatedentityid=period.periodid,
+        )
+    )
+    session.commit()
+    return {"status": "ok", "notification_type": body.notification_type}
+
+
+@router.post("/generate-algorithm-stream")
+def generate_roster_stream(
+    request_data: RosterGenerationRequest,
+    db: SessionDep,
+    current_user: CurrentUser,
+):
+    """Run the MILP/GA rostering algorithm and stream SSE progress events."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+    # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
+    generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
+    _queue_algorithm_notification(
+        db,
+        manager_id=current_user.managerid,
+        ward_id=request_data.ward_id,
+        period_id=request_data.period_id,
+        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+    )
 
     q: queue.Queue = queue.Queue()
+    manager_id = current_user.managerid
 
     def _run():
         try:
@@ -360,13 +1223,34 @@ def generate_roster_stream(
                 })
 
             result = generate_roster(
-                nurses=nurses_data,
-                shifts=shifts_data,
-                requests=None,
+                nurses=generation_inputs["nurses"],
+                shifts=generation_inputs["shifts"],
+                hard_requests=generation_inputs["hard_requests"],
+                soft_requests=generation_inputs["soft_requests"],
+                prev_last_shift=generation_inputs["prev_last_shift"],
+                shift_hours=generation_inputs["shift_hours"],
+                non_working_shift_codes=generation_inputs["non_working_shift_codes"],
                 progress_callback=on_progress,
-                milp_config=milp_config,
+                milp_config=generation_inputs["milp_config"],
+                algorithm=request_data.algorithm,
             )
             q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
+            try:
+                from app.core.db import engine
+                with Session(engine) as session:
+                    _queue_algorithm_notification(
+                        session,
+                        manager_id=manager_id,
+                        ward_id=request_data.ward_id,
+                        period_id=request_data.period_id,
+                        notification_type=NotificationType.ALGORITHM_GENERATION,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to queue algorithm completion notification for ward %s period %s",
+                    request_data.ward_id,
+                    request_data.period_id,
+                )
         except Exception as exc:
             q.put({"type": "error", "message": str(exc)})
 
@@ -386,73 +1270,655 @@ def generate_roster_stream(
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
+@router.post("/ward/{ward_id}/seed-requests")
+def seed_ward_requests(
+    ward_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Seed deterministic test shift requests for a ward (dev/demo helper)."""
+    from app.test_algo import seed_requests as _seed_requests
+
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to manage this ward")
+
+    try:
+        _seed_requests(session, ward_id)
+    except SystemExit as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "ok", "ward_id": ward_id}
+
+
+@router.post("/seed-requests-anonymized")
+def seed_anonymized_requests(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Seed an anonymized test ward with requests via test_algo helpers."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    from app.test_algo import (
+        seed_test_ward_with_anonymized_requests,
+        TEST_MANAGER_EMAIL,
+        TEST_MANAGER_PASSWORD,
+        TEST_MANAGER_USERNAME,
+    )
+    from app.services.roster_period_service import ensure_roster_period_window, get_period_window
+
+    created = seed_test_ward_with_anonymized_requests(session)
+
+    ward = session.exec(
+        select(Ward).where(Ward.wardname == "Test Ward Requests").order_by(Ward.wardid.desc())
+    ).first()
+    if not ward:
+        raise HTTPException(status_code=500, detail="Seeded ward not found.")
+
+    periods = ensure_roster_period_window(session)
+    current_period, upcoming_period, request_open_period = get_period_window(periods)
+    period = request_open_period or upcoming_period or current_period
+    if not period:
+        raise HTTPException(status_code=500, detail="No roster period available.")
+
+    return {
+        "status": "ok",
+        "ward_id": ward.wardid,
+        "created": created,
+        "manager": {
+            "username": TEST_MANAGER_USERNAME,
+            "email": TEST_MANAGER_EMAIL,
+            "password": TEST_MANAGER_PASSWORD,
+        },
+        "period": {
+            "periodid": period.periodid,
+            "name": period.name,
+            "startdate": str(period.startdate),
+            "enddate": str(period.enddate),
+        },
+    }
+
+
+@router.post("/seed-requests-anonymized-apr-2026")
+def seed_anonymized_apr_2026_requests(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Seed the separate anonymized Apr 06 - Apr 19 2026 Ward 6 preview data."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    from app.test_algo import (
+        TEST_MANAGER_EMAIL,
+        TEST_MANAGER_PASSWORD,
+        TEST_MANAGER_USERNAME,
+        seed_apr_2026_ward_6_preview,
+    )
+
+    created = seed_apr_2026_ward_6_preview(session)
+
+    ward = session.exec(
+        select(Ward)
+        .where(Ward.wardname == "Test Ward Requests Apr 2026")
+        .order_by(Ward.wardid.desc())
+    ).first()
+    if not ward:
+        raise HTTPException(status_code=500, detail="Seeded ward not found.")
+
+    period = session.exec(
+        select(RosterPeriod).where(RosterPeriod.startdate == date(2026, 4, 6))
+    ).first()
+    if not period:
+        raise HTTPException(status_code=500, detail="No roster period available.")
+
+    return {
+        "status": "ok",
+        "ward_id": ward.wardid,
+        "created": created,
+        "manager": {
+            "username": TEST_MANAGER_USERNAME,
+            "email": TEST_MANAGER_EMAIL,
+            "password": TEST_MANAGER_PASSWORD,
+        },
+        "period": {
+            "periodid": period.periodid,
+            "name": period.name,
+            "startdate": str(period.startdate),
+            "enddate": str(period.enddate),
+        },
+    }
+
+
+def _shift_target_from_min(normal_min: dict) -> dict:
+    """Derive per-nurse shift-type target by normalising normal_min to 10 working shifts."""
+    total = normal_min.get("A", 0) + normal_min.get("P", 0) + normal_min.get("N", 0)
+    if total == 0:
+        return {"A": 5, "P": 3, "N": 2}
+    return {s: max(0, round(10 * normal_min.get(s, 0) / total)) for s in ("A", "P", "N")}
+
+
+def _apply_milp_policy_overrides(base_config: dict, policy: dict | None) -> dict:
+    if not isinstance(policy, dict):
+        return base_config
+
+    for key in (
+        "LOW_DAYS",
+        "weekend_days",
+        "equivalent_shift_target",
+        "weekly_night_cap",
+        "weekly_work_cap",
+        "weekly_do_cap",
+        "weekend_night_target",
+        "coverage_mode",
+        "soften_coverage",
+        "soften_equivalent_target",
+        "shift_priority",
+        "min_do_with_other_nonwork",
+        "weights",
+        "num_days",
+    ):
+        if key in policy:
+            base_config[key] = policy[key]
+
+    for class_name in ("RN", "EN", "HCA"):
+        class_policy = policy.get(class_name)
+        if not isinstance(class_policy, dict):
+            continue
+        base_config.setdefault(class_name, {}).update(class_policy)
+
+    return base_config
+
+
+def _build_milp_config(
+    rn_min: dict,
+    en_min: dict,
+    hca_min: dict,
+    rn_max_night_per_day: int | None = None,
+    hca_max_night_per_day: int | None = None,
+    policy: dict | None = None,
+) -> dict:
+    config = {
+        "LOW_DAYS": {6, 7, 13, 14},
+        "coverage_mode": "strict_by_class",
+        "soften_coverage": False,
+        "soften_equivalent_target": False,
+        "shift_priority": {"enabled": False},
+        "min_do_with_other_nonwork": 2,
+        "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": _shift_target_from_min(rn_min)},
+        "EN":  {"normal_min": en_min,  "low_exact": None, "day_target": en_min,  "shift_target": _shift_target_from_min(en_min)},
+        "HCA": {"normal_min": hca_min, "low_exact": None, "day_target": hca_min, "shift_target": _shift_target_from_min(hca_min)},
+        "TOTAL_MIN": {
+            "A": rn_min["A"] + en_min["A"] + hca_min["A"],
+            "P": rn_min["P"] + en_min["P"] + hca_min["P"],
+            "N": rn_min["N"] + en_min["N"] + hca_min["N"],
+        },
+    }
+    if rn_max_night_per_day is not None:
+        config["RN"]["max_night_per_day"] = int(rn_max_night_per_day)
+    if hca_max_night_per_day is not None:
+        config["HCA"]["max_night_per_day"] = int(hca_max_night_per_day)
+    return _apply_milp_policy_overrides(config, policy)
+
+
 def _staffing_to_algo_inputs(ward: Ward):
     """
     Build (shifts_data, milp_config) from ward.staffing_json when available,
     otherwise fall back to the legacy Ward scalar fields.
 
     shifts_data : 14-element list of {"AM": {"A":int,"B":int,"C":int}, "PM":..., "NIGHT":...}
-    milp_config : WARD_CONFIG-compatible dict, or None (MILP will use its built-in lookup)
+    milp_config : WARD_CONFIG-compatible dict derived from the ward's staffing data.
+                  LOW_DAYS is always {6,7,13,14}; shift_target is derived from normal_min.
     """
     if ward.staffing_json:
         try:
             g = json.loads(ward.staffing_json)
+            policy_root = g.get("policy")
+            milp_policy_from_policy = policy_root.get("milp") if isinstance(policy_root, dict) else None
+            milp_policy = (
+                g.get("milp_config")
+                or g.get("milp_policy")
+                or milp_policy_from_policy
+                or g.get("rostering_policy")
+            )
 
             def _min(role: str, shift: str) -> int:
                 return int(g.get(role, {}).get(shift, {}).get("minimum", 0))
 
-            # Rank A = RN, B = EN+NA, C = HCA12+HCA3
-            # DailyStaffingGuideline shift keys: A=AM, P=PM, N=NIGHT
+            rank_min = {
+                "A": {"A": 0, "P": 0, "N": 0},
+                "B": {"A": 0, "P": 0, "N": 0},
+                "C": {"A": 0, "P": 0, "N": 0},
+            }
+            for role in ("RN", "EN", "NA", "HCA12", "HCA3"):
+                rank = staffing_role_to_roster_rank(session, role)
+                if rank is None:
+                    continue
+                for shift in ("A", "P", "N"):
+                    rank_min[rank][shift] += _min(role, shift)
+
             daily_req = {
-                "AM":    {"A": _min("RN","A"), "B": _min("EN","A") + _min("NA","A"), "C": _min("HCA12","A") + _min("HCA3","A")},
-                "PM":    {"A": _min("RN","P"), "B": _min("EN","P") + _min("NA","P"), "C": _min("HCA12","P") + _min("HCA3","P")},
-                "NIGHT": {"A": _min("RN","N"), "B": _min("EN","N") + _min("NA","N"), "C": _min("HCA12","N") + _min("HCA3","N")},
+                "AM":    {"A": rank_min["A"]["A"], "B": rank_min["B"]["A"], "C": rank_min["C"]["A"]},
+                "PM":    {"A": rank_min["A"]["P"], "B": rank_min["B"]["P"], "C": rank_min["C"]["P"]},
+                "NIGHT": {"A": rank_min["A"]["N"], "B": rank_min["B"]["N"], "C": rank_min["C"]["N"]},
             }
-            shifts_data = [daily_req for _ in range(14)]
-
-            rn_min  = {"A": _min("RN","A"),                              "P": _min("RN","P"),  "N": _min("RN","N")}
-            en_min  = {"A": _min("EN","A") + _min("NA","A"),             "P": _min("EN","P") + _min("NA","P"),  "N": _min("EN","N") + _min("NA","N")}
-            hca_min = {"A": _min("HCA12","A") + _min("HCA3","A"),        "P": _min("HCA12","P") + _min("HCA3","P"), "N": _min("HCA12","N") + _min("HCA3","N")}
-
-            milp_config = {
-                "LOW_DAYS": set(),
-                "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": {"A": 5, "P": 3, "N": 2}},
-                "EN":  {"normal_min": en_min,  "low_exact": None, "day_target": en_min,  "shift_target": {"A": 5, "P": 3, "N": 2}},
-                "HCA": {"normal_min": hca_min, "low_exact": None, "day_target": hca_min, "shift_target": {"A": 5, "P": 3, "N": 2}},
-                "TOTAL_MIN": {
-                    "A": rn_min["A"] + en_min["A"] + hca_min["A"],
-                    "P": rn_min["P"] + en_min["P"] + hca_min["P"],
-                    "N": rn_min["N"] + en_min["N"] + hca_min["N"],
-                },
-            }
-            return shifts_data, milp_config
+            return [daily_req for _ in range(14)], _build_milp_config(
+                rank_min["A"],
+                rank_min["B"],
+                rank_min["C"],
+                rn_max_night_per_day=ward.nd_rn,
+                hca_max_night_per_day=ward.nd_hca_max,
+                policy=milp_policy,
+            )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             pass  # fall through to legacy fields
 
+    rn_min  = {"A": ward.am_rn or 0,       "P": ward.pm_rn or 0,        "N": ward.nd_rn or 0}
+    en_min  = {"A": ward.am_en_na_min or 0, "P": ward.pm_en_na_min or 0, "N": ward.nd_en_na_min or 0}
+    hca_min = {"A": ward.am_hca_min or 0,  "P": ward.pm_hca_min or 0,   "N": ward.nd_hca_min or 0}
     daily_req = {
-        "AM":    {"A": ward.am_rn or 0, "B": ward.am_en_na_min or 0, "C": ward.am_hca_min or 0},
-        "PM":    {"A": ward.pm_rn or 0, "B": ward.pm_en_na_min or 0, "C": ward.pm_hca_min or 0},
-        "NIGHT": {"A": ward.nd_rn or 0, "B": ward.nd_en_na_min or 0, "C": ward.nd_hca_min or 0},
+        "AM":    {"A": rn_min["A"], "B": en_min["A"], "C": hca_min["A"]},
+        "PM":    {"A": rn_min["P"], "B": en_min["P"], "C": hca_min["P"]},
+        "NIGHT": {"A": rn_min["N"], "B": en_min["N"], "C": hca_min["N"]},
     }
-    return [daily_req for _ in range(14)], None
+    return [daily_req for _ in range(14)], _build_milp_config(
+        rn_min,
+        en_min,
+        hca_min,
+        rn_max_night_per_day=ward.nd_rn,
+        hca_max_night_per_day=ward.nd_hca_max,
+    )
 
 
-def _map_rank(designation: str) -> str:
-    """Map nurse designation to scheduling rank A/B/C."""
-    RANK_A = {
-        "SNR STAFF NURSE I", "SNR STAFF NURSE II",
-        "STAFF NURSE I", "STAFF NURSE II",
-        "RN", "SSN",
+def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[str, Any]:
+    ward = db.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = db.get(RosterPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    shifts_data, milp_config = _staffing_to_algo_inputs(ward)
+
+    nurses_db = _fetch_active_ward_nurses(db, ward_id)
+    rank_map = load_designation_rank_map(db)
+    period_constraints = _load_nurse_period_constraints(
+        db,
+        ward_id,
+        period_id,
+        [n["nurseid"] for n in nurses_db if n.get("nurseid") is not None],
+    )
+    nurses_data = [
+        {
+            "id": n["nurseid"],
+            "name": n["name"],
+            "rank": roster_rank_for_designation_with_rank_map(rank_map, n.get("designation") or ""),
+            "shift_pattern": n.get("shiftpattern"),
+            "constraints": period_constraints.get(n["nurseid"] or -1, []),
+            "no_night": any(
+                constraint.get("type") == "NO_NIGHT"
+                for constraint in period_constraints.get(n["nurseid"] or -1, [])
+            ),
+        }
+        for n in nurses_db
+    ]
+    rank_counts = {
+        rank: sum(1 for nurse in nurses_data if nurse["rank"] == rank)
+        for rank in ("A", "B", "C")
     }
-    RANK_B = {
-        "SNR ENROLLED NURSE II", "ENROLLED NURSE I", "ENROLLED NURSE II",
-        "NURSING AIDE I", "NURSING AIDE II",
-        "SENIOR NURSING AIDE I", "SENIOR NURSING AIDE II",
-        "SNR PATIENT SERVICE ASST",
-        "EN", "NA",
+
+    nurse_ids = [n["id"] for n in nurses_data]
+    shift_label_map = _load_shift_label_map(db)
+    hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
+    leave_hard = _load_leave_requests(db, ward_id, period, set(nurse_ids), len(shifts_data))
+    for nurse_id, days in leave_hard.items():
+        existing = hard_requests.setdefault(nurse_id, [])
+        leave_days = {day_idx for day_idx, _ in days}
+        existing[:] = [(d, s) for d, s in existing if d not in leave_days]
+        existing.extend(days)
+        if nurse_id in soft_requests:
+            soft_requests[nurse_id] = [
+                item for item in soft_requests[nurse_id] if item[0] not in leave_days
+            ]
+    prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
+    _filter_requests_for_nurse_constraints(nurses_data, hard_requests, soft_requests)
+
+    logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
+    logger.warning(f"[DEBUG] nurses={len(nurses_data)} hard_requests={sum(len(v) for v in hard_requests.values())} soft_requests={sum(len(v) for v in soft_requests.values())}")
+    logger.warning(
+        "[DEBUG] rank_counts=%s staffing=%s",
+        rank_counts,
+        {
+            "AM": shifts_data[0]["AM"] if shifts_data else {},
+            "PM": shifts_data[0]["PM"] if shifts_data else {},
+            "NIGHT": shifts_data[0]["NIGHT"] if shifts_data else {},
+        },
+    )
+    logger.warning(
+        "[DEBUG] milp_config_summary=%s",
+        {
+            "coverage_mode": milp_config.get("coverage_mode"),
+            "soften_coverage": milp_config.get("soften_coverage"),
+            "TOTAL_MIN": milp_config.get("TOTAL_MIN"),
+            "RN": (milp_config.get("RN") or {}).get("normal_min"),
+            "EN": (milp_config.get("EN") or {}).get("normal_min"),
+            "HCA": (milp_config.get("HCA") or {}).get("normal_min"),
+        },
+    )
+    if soft_requests:
+        for nid, reqs in list(soft_requests.items())[:3]:
+            logger.warning(f"[DEBUG]   nurse {nid}: {reqs}")
+
+    for nurse_id, shift_name in prev_last_shift.items():
+        if str(shift_name).strip().upper() != "NIGHT":
+            continue
+        hard_requests[nurse_id] = [
+            item for item in hard_requests.get(nurse_id, [])
+            if item[0] != 0
+        ]
+        soft_requests[nurse_id] = [
+            item for item in soft_requests.get(nurse_id, [])
+            if item[0] != 0
+        ]
+
+    return {
+        "nurses": nurses_data,
+        "shifts": shifts_data,
+        "milp_config": milp_config,
+        "hard_requests": hard_requests,
+        "soft_requests": soft_requests,
+        "prev_last_shift": prev_last_shift,
+        "shift_hours": _load_shift_hours(db),
+        "non_working_shift_codes": _load_non_working_shift_codes(db),
+        "period_constraints": period_constraints,
     }
-    if designation in RANK_A:
-        return "A"
-    if designation in RANK_B:
-        return "B"
-    return "C"
+
+
+def _jsonify_algo_inputs(payload: Any) -> Any:
+    """Convert algorithm inputs to JSON-serializable types (e.g., sets -> lists)."""
+    if isinstance(payload, dict):
+        return {k: _jsonify_algo_inputs(v) for k, v in payload.items()}
+    if isinstance(payload, (list, tuple)):
+        return [_jsonify_algo_inputs(v) for v in payload]
+    if isinstance(payload, set):
+        return [_jsonify_algo_inputs(v) for v in sorted(payload)]
+    return payload
+
+
+@router.get("/generation-inputs")
+def get_generation_inputs(
+    ward_id: int,
+    period_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Return the exact inputs that will be fed into the rostering algorithm."""
+    if not _can_generate_roster(session, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    inputs = _load_generation_inputs(session, ward_id, period_id)
+    cpu_count = os.cpu_count() or 1
+    inputs["cpu_count"] = cpu_count
+    inputs["ga_worker_count"] = max(1, cpu_count - 1)
+    return _jsonify_algo_inputs(inputs)
+
+
+def _load_shift_requests(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: list[int],
+    num_days: int,
+    shift_label_map: dict[str, str] | None = None,
+) -> tuple[dict[int, list[tuple[int, str]]], dict[int, list[tuple[int, str, str]]]]:
+    if not nurse_ids:
+        return {}, {}
+
+    statement = (
+        select(ShiftRequest)
+        .join(Nurse, Nurse.nurseid == ShiftRequest.nurseid)
+        .where(Nurse.wardid == ward_id)
+        .where(ShiftRequest.periodid == period.periodid)
+    )
+    requests = db.exec(statement).all()
+
+    latest_by_bucket: dict[tuple[int, int, str], ShiftRequest] = {}
+    for req in requests:
+        if req.nurseid not in nurse_ids:
+            continue
+        status = str(req.status).strip()
+        if status not in {"Approved", "Pending"}:
+            continue
+
+        day_idx = (req.preferreddate - period.startdate).days
+        if day_idx < 0 or day_idx >= num_days:
+            continue
+
+        key = (req.nurseid, day_idx, status)
+        current = latest_by_bucket.get(key)
+        if current is None or req.timestamp > current.timestamp:
+            latest_by_bucket[key] = req
+
+    hard_requests: dict[int, list[tuple[int, str]]] = {}
+    soft_requests: dict[int, list[tuple[int, str, str]]] = {}
+
+    approved_keys = {
+        (nurse_id, day_idx)
+        for nurse_id, day_idx, status in latest_by_bucket.keys()
+        if status == "Approved"
+    }
+
+    for (nurse_id, day_idx, status), req in latest_by_bucket.items():
+        raw = str(req.preferredshifttype).upper()
+        # Use DB-driven map if available; fall back to OFF for unknown codes
+        shift_name = (shift_label_map or {}).get(raw, "OFF")
+        if status == "Approved":
+            soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name, "approved"))
+        elif (nurse_id, day_idx) not in approved_keys:
+            soft_requests.setdefault(nurse_id, []).append((day_idx, shift_name, "pending"))
+
+    return hard_requests, soft_requests
+
+
+def _load_nurse_period_constraints(
+    db: Session,
+    ward_id: int,
+    period_id: int,
+    nurse_ids: list[int],
+) -> dict[int, list[dict[str, str | int | None]]]:
+    if not nurse_ids:
+        return {}
+
+    if not _table_exists(db, "nurseperiodconstraint"):
+        logger.warning(
+            "Skipping period constraints load because nurseperiodconstraint table is missing"
+        )
+        return {}
+
+    expected_columns = {"constraintid", "nurseid", "periodid", "constrainttype", "value", "reason"}
+    existing_columns = _list_table_columns(db, "nurseperiodconstraint")
+    if not expected_columns.issubset(existing_columns):
+        logger.warning(
+            "Skipping period constraints load because nurseperiodconstraint columns are incomplete: %s",
+            sorted(existing_columns),
+        )
+        return {}
+
+    rows = db.exec(
+        select(NursePeriodConstraint)
+        .join(Nurse, Nurse.nurseid == NursePeriodConstraint.nurseid)
+        .where(Nurse.wardid == ward_id)
+        .where(NursePeriodConstraint.periodid == period_id)
+        .where(NursePeriodConstraint.nurseid.in_(nurse_ids))  # type: ignore[attr-defined]
+    ).all()
+
+    result: dict[int, list[dict[str, str | int | None]]] = {}
+    for row in rows:
+        result.setdefault(row.nurseid, []).append(
+            {
+                "id": row.constraintid,
+                "type": row.constrainttype,
+                "value": row.value,
+                "reason": row.reason,
+            }
+        )
+    return result
+
+
+def _filter_requests_for_nurse_constraints(
+    nurses: list[dict[str, Any]],
+    hard_requests: dict[int, list[tuple[int, str]]],
+    soft_requests: dict[int, list[tuple[int, str] | tuple[int, str, str]]],
+) -> None:
+    allowed_by_pattern = {
+        "AM_ONLY": {"AM", "A", "OFF", "DO", "RD", "AL"},
+        "PM_ONLY": {"PM", "P", "OFF", "DO", "RD", "AL"},
+    }
+    night_codes = {"NIGHT", "N"}
+
+    for nurse in nurses:
+        nurse_id = nurse.get("id")
+        if nurse_id is None:
+            continue
+        shift_pattern = str(nurse.get("shift_pattern") or "").upper() or None
+        no_night = bool(nurse.get("no_night"))
+        allowed = allowed_by_pattern.get(shift_pattern)
+
+        def _keep(item: tuple[int, str] | tuple[int, str, str]) -> bool:
+            raw_shift = item[1]
+            normalized = str(raw_shift).strip().upper()
+            if no_night and normalized in night_codes:
+                return False
+            if allowed is not None and normalized not in allowed:
+                return False
+            return True
+
+        if nurse_id in hard_requests:
+            hard_requests[nurse_id] = [item for item in hard_requests[nurse_id] if _keep(item)]
+        if nurse_id in soft_requests:
+            soft_requests[nurse_id] = [item for item in soft_requests[nurse_id] if _keep(item)]
+
+
+def _load_leave_requests(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: set[int],
+    num_days: int,
+) -> dict[int, list[tuple[int, str]]]:
+    """Return approved leave days as hard entries keyed by leave type.
+    Format: nurse_id -> [(day_idx, leavetype), ...]
+    """
+    statement = (
+        select(LeaveRequest)
+        .join(Nurse, Nurse.nurseid == LeaveRequest.nurseid)
+        .where(Nurse.wardid == ward_id)
+        .where(LeaveRequest.status == "Approved")
+        .where(LeaveRequest.enddate >= period.startdate)
+        .where(LeaveRequest.startdate <= period.enddate)
+    )
+    leaves = db.exec(statement).all()
+
+    result: dict[int, list[tuple[int, str]]] = {}
+    for leave in leaves:
+        if leave.nurseid not in nurse_ids:
+            continue
+        leave_code = str(leave.leavetype).upper()
+        current = max(leave.startdate, period.startdate)
+        end = min(leave.enddate, period.enddate)
+        while current <= end:
+            day_idx = (current - period.startdate).days
+            if 0 <= day_idx < num_days:
+                result.setdefault(leave.nurseid, []).append((day_idx, leave_code))
+            current += timedelta(days=1)
+    return result
+
+
+def _load_previous_last_shift(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: list[int],
+) -> dict[int, str]:
+    if not nurse_ids:
+        return {}
+
+    previous_period = db.exec(
+        select(RosterPeriod)
+        .where(RosterPeriod.enddate < period.startdate)
+        .order_by(RosterPeriod.enddate.desc())
+    ).first()
+    if not previous_period:
+        return {}
+
+    roster_rows = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == previous_period.periodid,
+            Roster.shiftdate == previous_period.enddate,
+            Roster.status == "Confirmed",
+            Roster.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
+        )
+    ).all()
+
+    latest_by_nurse: dict[int, Roster] = {}
+    for row in roster_rows:
+        if row.nurseid is None:
+            continue
+        current = latest_by_nurse.get(row.nurseid)
+        current_id = current.rosterid if current and current.rosterid is not None else -1
+        row_id = row.rosterid if row.rosterid is not None else -1
+        if current is None or row_id > current_id:
+            latest_by_nurse[row.nurseid] = row
+
+    return {
+        nurse_id: str(row.shiftcode).upper()
+        for nurse_id, row in latest_by_nurse.items()
+    }
+
+
+def _load_shift_label_map(db: Session) -> dict[str, str]:
+    """
+    Build a mapping from every DB shift code to an algorithm label.
+    Working shifts (A→AM, P→PM, N→NIGHT) keep their label; all non-working
+    codes (AL, MAR, FCL, HOL, CCL, DO, …) map to "OFF".
+    """
+    _WORKING = {"A": "AM", "P": "PM", "N": "NIGHT"}
+    rows = db.exec(select(ShiftCode)).all()
+    result: dict[str, str] = {}
+    for row in rows:
+        code = str(row.shiftcode).upper()
+        result[code] = _WORKING.get(code, "OFF") if row.isworking else "OFF"
+    # Ensure the three working codes are always present even if missing from DB
+    for code, label in _WORKING.items():
+        result.setdefault(code, label)
+    return result
+
+
+def _load_non_working_shift_codes(db: Session) -> set[str]:
+    rows = db.exec(select(ShiftCode).where(ShiftCode.isworking == False)).all()  # noqa: E712
+    return {str(row.shiftcode).upper() for row in rows}
+
+
+def _load_shift_hours(db: Session) -> dict[str, float]:
+    code_to_label = {"A": "AM", "P": "PM", "N": "NIGHT"}
+    rows = db.exec(
+        select(ShiftCode).where(ShiftCode.shiftcode.in_(list(code_to_label.keys())))  # type: ignore[attr-defined]
+    ).all()
+    row_map = {str(row.shiftcode).upper(): row for row in rows}
+
+    shift_hours = {"OFF": 0.0}
+    for code, label in code_to_label.items():
+        row = row_map.get(code)
+        if row is None:
+            raise HTTPException(status_code=500, detail=f"Missing shift code configuration for {code}")
+        if row.shiftdurationhours is None:
+            raise HTTPException(status_code=500, detail=f"Missing shiftdurationhours for shift code {code}")
+        shift_hours[label] = float(row.shiftdurationhours)
+
+    return shift_hours
+
+

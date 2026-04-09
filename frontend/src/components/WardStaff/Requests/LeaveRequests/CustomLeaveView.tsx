@@ -46,7 +46,9 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
   localizer,
   events,
+  isLocked,
 }: CustomMonthViewProps) {
+  const locked = Boolean(isLocked);
   const [selectedRequests, setSelectedRequests] = useState<LeaveRequestEntry[] | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
 
@@ -100,19 +102,22 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
               const eventsForDay = getEventsForDay(day, events);
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
+              const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
+              const dateKey = moment(day).format("YYYY-MM-DD");
 
               return (
                 <GridItem
                   key={di}
-                  bg={isToday ? "menuactive" : "white"}
+                  data-testid={`leave-request-calendar-cell-${dateKey}`}
+                  bg={isToday ? "menuactive" : isPastDate ? "gray.100" : "white"}
                   textAlign="start"
-                  color={isCurrentMonth ? "foreground" : "gray.400"}
+                  color={isPastDate ? "gray.500" : isCurrentMonth ? "foreground" : "gray.400"}
                   p={2}
                   minH="120px"
                   borderColor="border"
                   borderWidth="1px"
-                  cursor="pointer"
-                  onClick={() => setNewLeaveDate(day)}
+                  cursor={locked ? "default" : "pointer"}
+                  onClick={locked ? undefined : () => setNewLeaveDate(day)}
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
@@ -124,13 +129,23 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                             (a.resource?.isOwn ? 1 : 0),
                         )
                         .map((ev, idx) => (
-                          <Box key={idx} pb={2} maxW="100%" onClick={(e) => e.stopPropagation()}>
+                          <Box
+                            key={idx}
+                            pb={2}
+                            maxW="100%"
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid={
+                              ev.resource?.requestId
+                                ? `leave-request-${ev.resource.requestId}`
+                                : undefined
+                            }
+                          >
                             <CalendarRequestBlock
                               shift={ev.title}
                               nurseName={ev.resource?.nurseName}
                               owned={ev.resource?.isOwn}
                               onClick={
-                                ev.resource?.isOwn
+                                ev.resource?.isOwn && !locked
                                   ? () => {
                                       const ownedForDay = eventsForDay
                                         .filter((e) => e.resource?.isOwn)
@@ -156,7 +171,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         ))}
       </VStack>
 
-      {selectedRequests && (
+      {!locked && selectedRequests && (
         <EditLeaveRequest
           isOpen={!!selectedRequests}
           onClose={() => setSelectedRequests(null)}
@@ -164,11 +179,13 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         />
       )}
 
-      <NewLeaveRequest
-        isOpen={!!newLeaveDate}
-        onClose={() => setNewLeaveDate(null)}
-        selectedDate={newLeaveDate}
-      />
+      {!locked && (
+        <NewLeaveRequest
+          isOpen={!!newLeaveDate}
+          onClose={() => setNewLeaveDate(null)}
+          selectedDate={newLeaveDate}
+        />
+      )}
     </>
   );
 };

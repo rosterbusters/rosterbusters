@@ -1,0 +1,287 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST_PROD }} >> ~/.ssh/known_hosts
+          cat >> ~/.ssh/config << 'EOF'
+          Host *
+            ServerAliveInterval 30
+            ServerAliveCountMax 10
+            TCPKeepAlive yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Copy credentials to EC2
+        run: |
+          echo '${{ secrets.GOOGLEOAUTHCREDENTIALS }}' | ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "mkdir -p ~/rosterbusters/backend && cat > ~/rosterbusters/backend/google_oauth_credentials.json"
+
+      - name: Sync code to EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << EOF
+          set -e
+          mkdir -p ~/rosterbusters
+          cd ~/rosterbusters
+          if [ ! -d .git ]; then
+            git init
+            git remote add origin https://github.com/rosterbusters/rosterbusters.git
+          fi
+          git remote set-url origin https://oauth2:${{ secrets.GH_PAT }}@github.com/rosterbusters/rosterbusters.git
+          git fetch origin
+          git reset --hard origin/production
+          git remote set-url origin https://github.com/rosterbusters/rosterbusters.git
+          EOF
+
+      - name: Create .env file on EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "cat > ~/rosterbusters/.env" << 'EOF'
+          ENVIRONMENT=production
+          PROJECT_NAME=SACH Duby
+          FRONTEND_HOST=https://${{ secrets.DOMAIN_PROD }}
+          DOMAIN=${{ secrets.DOMAIN_PROD }}
+          STACK_NAME=${{ secrets.STACK_NAME_PROD }}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          POSTGRES_SERVER=${{ secrets.RDS_PROD_HOST }}
+          POSTGRES_USER=${{ secrets.RDS_PROD_USER }}
+          POSTGRES_PASSWORD=${{ secrets.RDS_PROD_PASSWORD }}
+          POSTGRES_DB=${{ secrets.RDS_PROD_DB }}
+          POSTGRES_PORT=5432
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_OAUTH_ALLOWED_DOMAINS=${{ secrets.GOOGLE_OAUTH_ALLOWED_DOMAINS }}
+          USERS_OPEN_REGISTRATION=True
+          FIRST_SUPERUSER=${{ secrets.FIRST_SUPERUSER }}
+          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          AWS_SES_SENDER_EMAIL=${{ secrets.AWS_SES_SENDER_EMAIL }}
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
+          SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          GOOGLE_APPLICATION_CREDENTIALS=backend/google_oauth_credentials.json
+          DOCKER_IMAGE_BACKEND=backend
+          DOCKER_IMAGE_FRONTEND=frontend
+          BACKEND_CORS_ORIGINS=__SET_BY_WORKFLOW__
+          ACCESS_TOKEN_EXPIRE_MINUTES=10080
+          ALGORITHM=HS256
+          EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
+          USERNAME=${{ secrets.USERNAME }}
+          HASHED_PASSWORD=${{ secrets.HASHED_PASSWORD }}
+          GRB_WLSACCESSID=${{ secrets.GRB_WLSACCESSID }}
+          GRB_WLSSECRET=${{ secrets.WLSSECRET }}
+          GRB_LICENSEID=${{ secrets.LICENSEID }}
+          EOF
+
+      - name: Ensure Traefik TLS config exists on EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
+          set -e
+          mkdir -p ~/rosterbusters/traefik/certs ~/rosterbusters/traefik/dynamic
+          cat > ~/rosterbusters/traefik/dynamic/tls.yml <<'YAML'
+          tls:
+            certificates:
+              - certFile: /certs/cloudflare-origin.crt
+                keyFile: /certs/cloudflare-origin.key
+            stores:
+              default:
+                defaultCertificate:
+                  certFile: /certs/cloudflare-origin.crt
+                  keyFile: /certs/cloudflare-origin.key
+          YAML
+          test -s ~/rosterbusters/traefik/certs/cloudflare-origin.crt
+          test -s ~/rosterbusters/traefik/certs/cloudflare-origin.key
+          chmod 600 ~/rosterbusters/traefik/certs/cloudflare-origin.key
+          EOF
+
+      - name: Strip whitespace from .env
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "sed -i 's/^[[:space:]]*//' ~/rosterbusters/.env"
+
+      - name: Normalize .env and escape dollar signs for Docker Compose
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
+          set -e
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          env_path = Path.home() / "rosterbusters" / ".env"
+          lines = env_path.read_text().splitlines()
+          values = {}
+          ordered_keys = []
+          for line in lines:
+              if not line or line.lstrip().startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              key = key.strip()
+              value = value.strip()
+              values[key] = value
+              ordered_keys.append(key)
+
+          domain = values.get("DOMAIN", "").strip()
+          if not domain:
+              raise SystemExit("DOMAIN is missing from .env")
+
+          values["DOMAIN"] = domain
+          values["FRONTEND_HOST"] = f"https://{domain}"
+          values["BACKEND_CORS_ORIGINS"] = json.dumps(
+              [
+                  f"https://{domain}",
+                  f"https://www.{domain}",
+                  f"https://api.{domain}",
+              ],
+              separators=(",", ":"),
+          )
+
+          normalized = []
+          seen = set()
+          for key in ordered_keys:
+              if key in seen:
+                  continue
+              seen.add(key)
+              normalized.append(f"{key}={values[key].replace('$', '$$')}")
+
+          env_path.write_text("\n".join(normalized) + "\n")
+          PY
+          EOF
+
+      - name: Build & run Docker on EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
+          set -Eeuo pipefail
+          cd ~/rosterbusters
+
+          APP_PROJECT=rosterbusters
+          TRAEFIK_PROJECT=traefik-public
+          app_compose() {
+            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"
+          }
+          app_override_compose() {
+            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml "$@"
+          }
+          traefik_compose() {
+            docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml -f docker-compose.traefik.prod.yml "$@"
+          }
+          debug_traefik_tls() {
+            echo "=== TRAEFIK COMPOSE CONFIG ==="
+            traefik_compose config || true
+
+            echo "=== EC2 TRAEFIK TLS FILES ==="
+            ls -l ~/rosterbusters/traefik/certs ~/rosterbusters/traefik/dynamic || true
+            echo "--- ~/rosterbusters/traefik/dynamic/tls.yml ---"
+            sed -n '1,120p' ~/rosterbusters/traefik/dynamic/tls.yml || true
+            echo "--- ~/rosterbusters/traefik/certs/cloudflare-origin.crt ---"
+            sed -n '1,10p' ~/rosterbusters/traefik/certs/cloudflare-origin.crt || true
+            echo "--- ~/rosterbusters/traefik/certs/cloudflare-origin.key metadata ---"
+            wc -c ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
+            grep -n -- 'BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
+
+            echo "=== TRAEFIK CONTAINER TLS FILES ==="
+            docker exec traefik-public-traefik-1 sh -lc '
+              echo "--- mounted dirs ---"
+              ls -l /certs /dynamic || true
+              echo "--- /dynamic/tls.yml ---"
+              sed -n "1,120p" /dynamic/tls.yml || true
+              echo "--- /certs/cloudflare-origin.crt ---"
+              sed -n "1,10p" /certs/cloudflare-origin.crt || true
+              echo "--- /certs/cloudflare-origin.key metadata ---"
+              wc -c /certs/cloudflare-origin.key || true
+              grep -n -- "BEGIN .*PRIVATE KEY" /certs/cloudflare-origin.key || true
+            ' || true
+
+            echo "=== TLS FILE METADATA ==="
+            wc -c ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key ~/rosterbusters/traefik/dynamic/tls.yml || true
+            grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
+          }
+          dump_logs() {
+            echo "=== TRAEFIK LOGS ==="
+            traefik_compose logs --tail=200 || true
+            debug_traefik_tls
+            echo "=== APP LOGS ==="
+            app_compose logs --tail=200 || true
+          }
+          trap dump_logs ERR
+
+          app_compose down -v --remove-orphans 2>/dev/null || true
+          app_override_compose down --remove-orphans 2>/dev/null || true
+
+          docker network create traefik-public 2>/dev/null || true
+
+          traefik_compose up -d
+
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
+          app_compose build
+
+          app_compose up -d --remove-orphans || {
+            echo "=== PRESTART LOGS ==="
+            app_compose logs prestart
+            exit 1
+          }
+
+          echo "=== WAIT FOR BACKEND HEALTH ==="
+          timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-backend-1 2>/dev/null)" = "healthy" ]; do sleep 2; done'
+
+          echo "=== TRAEFIK NETWORK ==="
+          docker network inspect traefik-public
+
+          echo "=== TRAEFIK STATUS ==="
+          traefik_compose ps
+
+          echo "=== TRAEFIK TLS DEBUG ==="
+          debug_traefik_tls
+
+          echo "=== APP STATUS ==="
+          app_compose ps
+
+          DOMAIN=$(grep '^DOMAIN=' .env | cut -d= -f2-)
+
+          echo "=== DEPLOYED ROUTER CONFIG ==="
+          grep -n "traefik.http.routers.frontend-http.rule" docker-compose.yml docker-compose.prod.yml || true
+          grep -n "traefik.http.routers.backend-http.rule" docker-compose.yml docker-compose.prod.yml || true
+          grep -n "traefik.http.routers.adminer-http.rule" docker-compose.yml docker-compose.prod.yml || true
+
+          echo "=== LIVE FRONTEND LABELS ==="
+          docker inspect rosterbusters-frontend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
+
+          echo "=== LIVE BACKEND LABELS ==="
+          docker inspect rosterbusters-backend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
+
+          echo "=== LIVE ADMINER LABELS ==="
+          docker inspect rosterbusters-adminer-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
+
+          echo "=== LOCAL FRONTEND CHECK ==="
+          curl -i -H "Host: $DOMAIN" http://127.0.0.1/ || true
+
+          echo "=== LOCAL API CHECK ==="
+          curl -i -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ || true
+
+          echo "=== PUBLIC FRONTEND CHECK ==="
+          curl -k -i https://$DOMAIN/ || true
+
+          echo "=== PUBLIC API CHECK ==="
+          curl -k -i https://api.$DOMAIN/api/v1/utils/health-check/ || true
+
+          echo "=== ENFORCED HEALTH CHECKS ==="
+          curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
+          curl -fSs -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ >/dev/null
+          curl -kfSs https://$DOMAIN/ >/dev/null
+          curl -kfSs https://api.$DOMAIN/api/v1/utils/health-check/ >/dev/null
+
+          echo "Production deploy checks passed."
+
+          EOF

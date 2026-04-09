@@ -18,6 +18,9 @@ export const Route = createFileRoute("/ward-staff")({
       })
       if (!res.ok) throw redirect({ to: "/login" })
       const user = await res.json()
+      if (user.must_change_password) {
+        throw redirect({ to: "/first-login-setup" })
+      }
       if (user.is_superuser) {
         throw redirect({ to: "/admin/dashboard" })
       }

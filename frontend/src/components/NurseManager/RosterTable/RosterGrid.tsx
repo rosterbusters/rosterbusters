@@ -12,7 +12,6 @@ import {
   Popover,
 } from "@chakra-ui/react";
 import {
-  AlertCircle,
   Filter,
   ChevronDown,
   ChevronRight,
@@ -24,7 +23,7 @@ import { ShiftBadge } from "./ShiftBadge";
 import { ShiftEditPopover } from "./ShiftEditPopover";
 import { ShiftCommentPopover } from "./ShiftCommentPopover";
 import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
-import { MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
+import { getRosterGroupKey, isPsaDesignation, MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
 import type {
   RosterRow,
   ShiftAssignment,
@@ -36,7 +35,6 @@ import type {
   StaffRole,
   ShiftRequestOverlay,
 } from "./types";
-import { Tooltip } from "@/components/ui/tooltip";
 
 const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
 const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
@@ -47,6 +45,10 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   HCA12: "HCA1&2",
   HCA3: "HCA3",
 };
+const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3", "Other"] as const;
+type RoleGroupKey = (typeof ROLE_GROUP_ORDER)[number];
+
+const isPSA = (designation?: string) => isPsaDesignation(designation ?? "");
 
 interface RosterGridProps {
   data: RosterRow[];
@@ -63,10 +65,13 @@ interface RosterGridProps {
     comment: string,
   ) => void;
   isLoading?: boolean;
+  loadingLabel?: string;
   guidelines?: DailyStaffingGuideline;
   isRosterGenerated?: boolean;
   showSummary?: boolean;
   shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>;
+  highlightedNurseIds?: Set<number>;
+  onNurseNameClick?: (row: RosterRow) => void;
 }
 
 // Generate day columns based on view mode and start date
@@ -87,18 +92,43 @@ function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
   return columns;
 }
 
-// Group data by designation (role)
-function groupByDesignation(data: RosterRow[]): Map<string, RosterRow[]> {
-  const groups = new Map<string, RosterRow[]>();
+function groupByRoleGroup(data: RosterRow[]): Map<RoleGroupKey, RosterRow[]> {
+  const groups = new Map<RoleGroupKey, RosterRow[]>();
+  ROLE_GROUP_ORDER.forEach((key) => groups.set(key, []));
 
   data.forEach((row) => {
-    const key = row.designation;
+    const key = getRosterGroupKey(row);
     const existing = groups.get(key) || [];
     existing.push(row);
     groups.set(key, existing);
   });
 
   return groups;
+}
+
+function getDisplayTitle(row: RosterRow): string {
+  return (row.designation ?? "").toString();
+}
+
+function getEnNaHcaSortRank(row: RosterRow): number {
+  const title = getDisplayTitle(row).toUpperCase();
+  if (title === "EN") return 1;
+  if (title === "NA") return 2;
+  if (title === "HCA1") return 3;
+  if (title === "HCA2") return 4;
+  if (title === "HCA3") return 5;
+  if (title === "HCA") return 6;
+  return 99;
+}
+
+function getDisplayName(row: RosterRow): string {
+  const title = getDisplayTitle(row).trim();
+  const name = (row.name ?? "").toString().trim();
+
+  if (!title) return name;
+  if (!name) return title;
+
+  return `${title} ${name}`;
 }
 
 export function RosterGrid({
@@ -108,10 +138,13 @@ export function RosterGrid({
   onShiftChange,
   onCommentChange,
   isLoading = false,
+  loadingLabel = "Loading roster data...",
   guidelines = MOCK_STAFFING_GUIDELINES,
   isRosterGenerated = false,
   showSummary = true,
   shiftRequestOverlays = {},
+  highlightedNurseIds,
+  onNurseNameClick,
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -158,10 +191,15 @@ export function RosterGrid({
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const filterAnchorRef = useRef<HTMLDivElement>(null);
 
+  const dataWithoutPSA = useMemo(
+    () => data.filter((row) => !isPSA(row.designation)),
+    [data],
+  );
+
   // All unique nurse names sorted
   const allNames = useMemo(
-    () => Array.from(new Set(data.map((r) => r.name))).sort(),
-    [data],
+    () => Array.from(new Set(dataWithoutPSA.map((r) => r.name))).sort(),
+    [dataWithoutPSA],
   );
 
   // Names matching the search query
@@ -203,14 +241,14 @@ export function RosterGrid({
   const filteredData = useMemo(
     () =>
       isFilterActive
-        ? data.filter((r) => selectedNames.has(r.name))
-        : data,
-    [data, isFilterActive, selectedNames],
+        ? dataWithoutPSA.filter((r) => selectedNames.has(r.name))
+        : dataWithoutPSA,
+    [dataWithoutPSA, isFilterActive, selectedNames],
   );
 
   // Group data by designation (role) - always grouped
   const groupedData = useMemo(() => {
-    return groupByDesignation(filteredData);
+    return groupByRoleGroup(filteredData);
   }, [filteredData]);
 
   // Handle shift badge click
@@ -339,7 +377,7 @@ export function RosterGrid({
 
     // Summary Header Row (A, P, N labels)
     summaryRows.push(
-      <Table.Row
+        <Table.Row
         key="summary-header"
         bg="white"
         borderTop="2px solid"
@@ -513,7 +551,16 @@ export function RosterGrid({
     const allRows: React.ReactNode[] = [];
 
     Array.from(groupedData.entries()).forEach(([groupKey, rows]) => {
+      if (!rows.length) return;
       const isCollapsed = collapsedGroups.has(groupKey);
+      const sortedRows =
+        groupKey === "EN/NA/HCA1/HCA2"
+          ? [...rows].sort((a, b) => {
+              const rankDelta = getEnNaHcaSortRank(a) - getEnNaHcaSortRank(b);
+              if (rankDelta !== 0) return rankDelta;
+              return (a.name ?? "").localeCompare(b.name ?? "");
+            })
+          : rows;
 
       // Group Header Row
       allRows.push(
@@ -541,7 +588,7 @@ export function RosterGrid({
 
       // Data Rows
       if (!isCollapsed) {
-        rows.forEach((row) => {
+        sortedRows.forEach((row) => {
           allRows.push(renderDataRow(row));
         });
       }
@@ -556,7 +603,11 @@ export function RosterGrid({
   };
 
   // Render a single data row
-  const renderDataRow = (row: RosterRow) => (
+  const renderDataRow = (row: RosterRow) => {
+    const displayName = getDisplayName(row);
+    const isHighlighted = highlightedNurseIds?.has(row.nurseId) ?? false;
+
+    return (
     <Table.Row
       key={row.nurseId}
       color="foreground"
@@ -574,21 +625,48 @@ export function RosterGrid({
         w="160px"
         minW="160px"
       >
-        <HStack gap={2}>
-          <Text fontSize="sm" fontWeight="medium">
-            {row.name}
-          </Text>
-          {/* {row.hasWarning && (
-            <Icon as={AlertCircle} boxSize={4} color="danger" />
-          )} */}
-          
-        </HStack>
+        <Box
+          as={onNurseNameClick ? "button" : "div"}
+          w="full"
+          textAlign="left"
+          cursor={onNurseNameClick ? "pointer" : "default"}
+          onClick={() => onNurseNameClick?.(row)}
+          _hover={onNurseNameClick ? { bg: "#f8fafc" } : undefined}
+          borderRadius="md"
+          px={1}
+          py={1}
+        >
+          <HStack gap={2} align="center">
+            <Text
+              fontSize="sm"
+              fontWeight="medium"
+              color={isHighlighted ? "#b45309" : undefined}
+              textDecoration={isHighlighted ? "underline" : undefined}
+            >
+              {displayName}
+            </Text>
+            {isHighlighted && (
+              <Box
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                bg="#fef3c7"
+                color="#92400e"
+                fontSize="10px"
+                fontWeight="semibold"
+              >
+                No night
+              </Box>
+            )}
+          </HStack>
+        </Box>
       </Table.Cell>
 
       {/* Shift Cells */}
       {dayColumns.map((col) => {
         const dateKey = moment(col.date).format("YYYY-MM-DD");
-        const shift = row.shifts[dateKey] || null;
+        const rawShift = row.shifts[dateKey] || null;
+        const shift = rawShift;
 
         return (
           <Table.Cell
@@ -601,7 +679,7 @@ export function RosterGrid({
             <Flex justify="center">
               <Box
                 onClick={(e) =>
-                  handleShiftClick(row.nurseId, row.name, dateKey, shift, e)
+                  handleShiftClick(row.nurseId, displayName, dateKey, shift, e)
                 }
               >
                 <ShiftBadge
@@ -610,7 +688,7 @@ export function RosterGrid({
                   viewMode={viewMode}
                   comment={shift?.comment}
                   onCommentIconClick={(e) =>
-                    handleCommentIconClick(row.nurseId, row.name, dateKey, shift, e)
+                    handleCommentIconClick(row.nurseId, displayName, dateKey, shift, e)
                   }
                   shiftRequestOverlay={shiftRequestOverlays[String(row.nurseId)]?.[dateKey]}
                 />
@@ -621,6 +699,7 @@ export function RosterGrid({
       })}
     </Table.Row>
   );
+  };
 
   return (
     <Box position="relative" w="100%">
@@ -906,7 +985,7 @@ export function RosterGrid({
           flexDir={"column"}
         >
           <Spinner color="primary" />
-          <Text color="gray.500">Loading roster data...</Text>
+          <Text color="gray.500">{loadingLabel}</Text>
         </Box>
       )}
     </Box>

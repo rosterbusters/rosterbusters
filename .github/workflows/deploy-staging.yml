@@ -50,7 +50,7 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ~/rosterbusters/.env" << 'EOF'
           ENVIRONMENT=staging
-          PROJECT_NAME=RosterBusters
+          PROJECT_NAME=SACH Duby
           FRONTEND_HOST=https://dashboard.${{ secrets.DOMAIN_STAGING }}
           DOMAIN=${{ secrets.DOMAIN_STAGING }}
           STACK_NAME=${{ secrets.STACK_NAME_STAGING }}
@@ -65,6 +65,8 @@ jobs:
           USERS_OPEN_REGISTRATION=True
           FIRST_SUPERUSER=${{ secrets.FIRST_SUPERUSER }}
           FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          AWS_SES_SENDER_EMAIL=${{ secrets.AWS_SES_SENDER_EMAIL }}
           SMTP_HOST=${{ secrets.SMTP_HOST }}
           SMTP_USER=${{ secrets.SMTP_USER }}
           SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
@@ -80,6 +82,9 @@ jobs:
           EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
           USERNAME=${{ secrets.TRAEFIK_USERNAME }}
           HASHED_PASSWORD=${{ secrets.TRAEFIK_HASHED_PASSWORD }}
+          GRB_WLSACCESSID=${{ secrets.GRB_WLSACCESSID }}
+          GRB_WLSSECRET=${{ secrets.GRB_WLSSECRET }}
+          GRB_LICENSEID=${{ secrets.GRB_LICENSEID }}
           EOF
 
       - name: Strip whitespace from .env
@@ -94,7 +99,7 @@ jobs:
 
           # Stop all containers including Traefik and any orphans
           docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans 2>/dev/null || true
-          docker compose -f docker-compose.traefik.yml down --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose.traefik.yml -f docker-compose.traefik.staging.yml down --remove-orphans 2>/dev/null || true
 
           # Clean up unused images and build cache to free disk space
           docker image prune -a -f
@@ -104,17 +109,12 @@ jobs:
           docker network create traefik-public 2>/dev/null || true
 
           # Start Traefik reverse proxy (handles SSL via Let's Encrypt)
-          docker compose -f docker-compose.traefik.yml up -d
+          docker compose -f docker-compose.traefik.yml -f docker-compose.traefik.staging.yml up -d
 
           # Build and start the app in production mode
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
           docker compose -f docker-compose.yml -f docker-compose.staging.yml build
           docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
-
-          # Seed database
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_admin.py
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_staff_list_wards.py
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec backend python app/seed_data.py
 
           EOF
       

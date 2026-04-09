@@ -18,6 +18,7 @@ from app.core.security import get_password_hash
 from app.models import RBACUser, Nurse, NurseManager, Role, UserRole
 from app.models import Ward, ShiftCode, WardShiftCode, RosterPeriod, Roster, ShiftRequest, LeaveRequest, NotificationQueue
 from app.models.enums import NotificationType
+from app.services.roster_period_service import ensure_roster_period_window, get_roster_year_start
 # from app.models.web import User
 
 
@@ -161,6 +162,19 @@ DESIGNATIONS = ["RN", "EN", "NA", "HCA", "SSN"]
 # ============================================================================
 # Static ward data (real wards)
 # ============================================================================
+CH_GUIDELINES = {
+    "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
+    "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
+    "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+}
+
+TCF_GUIDELINES = {
+    # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
+    "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
+    "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
+    "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+}
+
 WARDS_DATA = [
     # SACH Simei wards
     {
@@ -214,16 +228,36 @@ WARDS_DATA = [
     # SACH Bedok wards
     {
         "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
-        "am_total": 5, "am_rn": 2, "am_en_na_min": 1, "am_en_na_max": 3, "am_hca_min": 0, "am_hca_max": 2,
-        "pm_total": 5, "pm_rn": 2, "pm_en_na_min": 1, "pm_en_na_max": 3, "pm_hca_min": 0, "pm_hca_max": 2,
-        "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
+        **CH_GUIDELINES,
     },
     {
-        # TCF uses 12hr shifts: Day (mapped to AM) and Night (ND). No separate PM shift.
         "wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok",
-        "am_total": 7, "am_rn": 2, "am_en_na_min": 2, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
-        "pm_total": None, "pm_rn": None, "pm_en_na_min": None, "pm_en_na_max": None, "pm_hca_min": None, "pm_hca_max": None,
-        "nd_total": 7, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 5, "nd_hca_min": 0, "nd_hca_max": 2,
+        **TCF_GUIDELINES,
+    },
+]
+
+# Bedok branch staff-list wards (names only; guidelines assigned in seed_core)
+STAFF_LIST_WARDS = [
+    {
+        "wardname": "Acacia Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Angsana Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Banyan Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Casuarina Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Cedar Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Dahlia Ward", "location": "Bedok",
+    },
+    {
+        "wardname": "Daisy Ward", "location": "Bedok",
     },
 ]
 
@@ -250,84 +284,84 @@ MANAGERS_DATA = [
 # Designations cycle: RN, EN, NA, HCA, SSN, RN, EN
 NURSES_DATA = [
     # Ward 0 — Ward 4 (Dementia, Simei)
-    {"name": "Chan Mei Yin",      "designation": "RN",  "email": "chan.meiyin@sach.org.sg",       "contactnumber": "98001001", "ward_idx": 0},
+    {"name": "Chan Mei Yin",      "designation": "SN",  "email": "chan.meiyin@sach.org.sg",       "contactnumber": "98001001", "ward_idx": 0},
     {"name": "Teo Boon Kiat",     "designation": "EN",  "email": "teo.boonkiat@sach.org.sg",      "contactnumber": "98001002", "ward_idx": 0},
     {"name": "Siti Aminah",       "designation": "NA",  "email": "siti.aminah@sach.org.sg",       "contactnumber": "98001003", "ward_idx": 0},
-    {"name": "Raj Kumar",         "designation": "HCA", "email": "raj.kumar@sach.org.sg",         "contactnumber": "98001004", "ward_idx": 0},
+    {"name": "Raj Kumar",         "designation": "HCA1", "email": "raj.kumar@sach.org.sg",         "contactnumber": "98001004", "ward_idx": 0},
     {"name": "Loh Yee Mun",      "designation": "SSN", "email": "loh.yeemun@sach.org.sg",        "contactnumber": "98001005", "ward_idx": 0},
-    {"name": "Goh Sze Wei",      "designation": "RN",  "email": "goh.szewei@sach.org.sg",        "contactnumber": "98001006", "ward_idx": 0},
+    {"name": "Goh Sze Wei",      "designation": "SN",  "email": "goh.szewei@sach.org.sg",        "contactnumber": "98001006", "ward_idx": 0},
     {"name": "Nurul Huda",       "designation": "EN",  "email": "nurul.huda@sach.org.sg",        "contactnumber": "98001007", "ward_idx": 0},
     # Ward 1 — Ward 5 (Rehab, Simei)
-    {"name": "Yeo Jia Hui",      "designation": "RN",  "email": "yeo.jiahui@sach.org.sg",        "contactnumber": "98002001", "ward_idx": 1},
+    {"name": "Yeo Jia Hui",      "designation": "SN",  "email": "yeo.jiahui@sach.org.sg",        "contactnumber": "98002001", "ward_idx": 1},
     {"name": "Lim Chee Keong",   "designation": "EN",  "email": "lim.cheekeong@sach.org.sg",     "contactnumber": "98002002", "ward_idx": 1},
     {"name": "Fatimah Zahra",    "designation": "NA",  "email": "fatimah.zahra@sach.org.sg",     "contactnumber": "98002003", "ward_idx": 1},
-    {"name": "Deepa Pillai",     "designation": "HCA", "email": "deepa.pillai@sach.org.sg",      "contactnumber": "98002004", "ward_idx": 1},
+    {"name": "Deepa Pillai",     "designation": "HCA1", "email": "deepa.pillai@sach.org.sg",      "contactnumber": "98002004", "ward_idx": 1},
     {"name": "Ho Kok Wai",       "designation": "SSN", "email": "ho.kokwai@sach.org.sg",         "contactnumber": "98002005", "ward_idx": 1},
-    {"name": "Tan Li Wen",       "designation": "RN",  "email": "tan.liwen@sach.org.sg",         "contactnumber": "98002006", "ward_idx": 1},
+    {"name": "Tan Li Wen",       "designation": "SN",  "email": "tan.liwen@sach.org.sg",         "contactnumber": "98002006", "ward_idx": 1},
     {"name": "Aisha Begum",      "designation": "EN",  "email": "aisha.begum@sach.org.sg",       "contactnumber": "98002007", "ward_idx": 1},
     # Ward 2 — Ward 6 (Rehab, Simei)
-    {"name": "Pang Swee Lian",   "designation": "RN",  "email": "pang.sweelian@sach.org.sg",     "contactnumber": "98003001", "ward_idx": 2},
+    {"name": "Pang Swee Lian",   "designation": "SN",  "email": "pang.sweelian@sach.org.sg",     "contactnumber": "98003001", "ward_idx": 2},
     {"name": "Chia Beng Hock",   "designation": "EN",  "email": "chia.benghock@sach.org.sg",     "contactnumber": "98003002", "ward_idx": 2},
     {"name": "Noor Aisyah",      "designation": "NA",  "email": "noor.aisyah@sach.org.sg",       "contactnumber": "98003003", "ward_idx": 2},
-    {"name": "Suresh Menon",     "designation": "HCA", "email": "suresh.menon@sach.org.sg",      "contactnumber": "98003004", "ward_idx": 2},
+    {"name": "Suresh Menon",     "designation": "HCA1", "email": "suresh.menon@sach.org.sg",      "contactnumber": "98003004", "ward_idx": 2},
     {"name": "Sim Bee Hoon",     "designation": "SSN", "email": "sim.beehoon@sach.org.sg",       "contactnumber": "98003005", "ward_idx": 2},
-    {"name": "Wee Cheng Yang",   "designation": "RN",  "email": "wee.chengyang@sach.org.sg",     "contactnumber": "98003006", "ward_idx": 2},
+    {"name": "Wee Cheng Yang",   "designation": "SN",  "email": "wee.chengyang@sach.org.sg",     "contactnumber": "98003006", "ward_idx": 2},
     {"name": "Zurina Mohd",      "designation": "EN",  "email": "zurina.mohd@sach.org.sg",       "contactnumber": "98003007", "ward_idx": 2},
     # Ward 3 — Ward 7 (Rehab, Simei)
-    {"name": "Tay Sock Hwa",     "designation": "RN",  "email": "tay.sockhwa@sach.org.sg",       "contactnumber": "98004001", "ward_idx": 3},
+    {"name": "Tay Sock Hwa",     "designation": "SN",  "email": "tay.sockhwa@sach.org.sg",       "contactnumber": "98004001", "ward_idx": 3},
     {"name": "Kang Wei Ming",    "designation": "EN",  "email": "kang.weiming@sach.org.sg",      "contactnumber": "98004002", "ward_idx": 3},
     {"name": "Haslinda Yusof",   "designation": "NA",  "email": "haslinda.yusof@sach.org.sg",    "contactnumber": "98004003", "ward_idx": 3},
-    {"name": "Anand Rajan",      "designation": "HCA", "email": "anand.rajan@sach.org.sg",       "contactnumber": "98004004", "ward_idx": 3},
+    {"name": "Anand Rajan",      "designation": "HCA1", "email": "anand.rajan@sach.org.sg",       "contactnumber": "98004004", "ward_idx": 3},
     {"name": "Foo Siew Peng",    "designation": "SSN", "email": "foo.siewpeng@sach.org.sg",      "contactnumber": "98004005", "ward_idx": 3},
-    {"name": "Cheng Xiu Ying",   "designation": "RN",  "email": "cheng.xiuying@sach.org.sg",     "contactnumber": "98004006", "ward_idx": 3},
+    {"name": "Cheng Xiu Ying",   "designation": "SN",  "email": "cheng.xiuying@sach.org.sg",     "contactnumber": "98004006", "ward_idx": 3},
     {"name": "Rozita Ibrahim",   "designation": "EN",  "email": "rozita.ibrahim@sach.org.sg",    "contactnumber": "98004007", "ward_idx": 3},
     # Ward 4 — Ward 8 (Subacute, Simei)
-    {"name": "Yap Mei Lin",      "designation": "RN",  "email": "yap.meilin@sach.org.sg",        "contactnumber": "98005001", "ward_idx": 4},
+    {"name": "Yap Mei Lin",      "designation": "SN",  "email": "yap.meilin@sach.org.sg",        "contactnumber": "98005001", "ward_idx": 4},
     {"name": "Seah Kok Leong",   "designation": "EN",  "email": "seah.kokleong@sach.org.sg",     "contactnumber": "98005002", "ward_idx": 4},
     {"name": "Norhayati Ali",    "designation": "NA",  "email": "norhayati.ali@sach.org.sg",     "contactnumber": "98005003", "ward_idx": 4},
-    {"name": "Ganesh Sundaram",  "designation": "HCA", "email": "ganesh.sundaram@sach.org.sg",   "contactnumber": "98005004", "ward_idx": 4},
+    {"name": "Ganesh Sundaram",  "designation": "HCA1", "email": "ganesh.sundaram@sach.org.sg",   "contactnumber": "98005004", "ward_idx": 4},
     {"name": "Quek Hwee Ling",   "designation": "SSN", "email": "quek.hweeling@sach.org.sg",     "contactnumber": "98005005", "ward_idx": 4},
-    {"name": "Lau Chun Wai",     "designation": "RN",  "email": "lau.chunwai@sach.org.sg",       "contactnumber": "98005006", "ward_idx": 4},
+    {"name": "Lau Chun Wai",     "designation": "SN",  "email": "lau.chunwai@sach.org.sg",       "contactnumber": "98005006", "ward_idx": 4},
     {"name": "Mariam Hassan",    "designation": "EN",  "email": "mariam.hassan@sach.org.sg",     "contactnumber": "98005007", "ward_idx": 4},
     # Ward 5 — Ward 9 (Subacute, Simei)
-    {"name": "Phang Sok Yee",    "designation": "RN",  "email": "phang.sokyee@sach.org.sg",      "contactnumber": "98006001", "ward_idx": 5},
+    {"name": "Phang Sok Yee",    "designation": "SN",  "email": "phang.sokyee@sach.org.sg",      "contactnumber": "98006001", "ward_idx": 5},
     {"name": "Ong Boon Huat",    "designation": "EN",  "email": "ong.boonhuat@sach.org.sg",      "contactnumber": "98006002", "ward_idx": 5},
     {"name": "Rohani Wahab",     "designation": "NA",  "email": "rohani.wahab@sach.org.sg",      "contactnumber": "98006003", "ward_idx": 5},
-    {"name": "Vivek Sharma",     "designation": "HCA", "email": "vivek.sharma@sach.org.sg",      "contactnumber": "98006004", "ward_idx": 5},
+    {"name": "Vivek Sharma",     "designation": "HCA1", "email": "vivek.sharma@sach.org.sg",      "contactnumber": "98006004", "ward_idx": 5},
     {"name": "Soh Bee Kee",      "designation": "SSN", "email": "soh.beekee@sach.org.sg",        "contactnumber": "98006005", "ward_idx": 5},
-    {"name": "Chin Yen Nee",     "designation": "RN",  "email": "chin.yennee@sach.org.sg",       "contactnumber": "98006006", "ward_idx": 5},
+    {"name": "Chin Yen Nee",     "designation": "SN",  "email": "chin.yennee@sach.org.sg",       "contactnumber": "98006006", "ward_idx": 5},
     {"name": "Salma Osman",      "designation": "EN",  "email": "salma.osman@sach.org.sg",       "contactnumber": "98006007", "ward_idx": 5},
     # Ward 6 — Ward 10 (Paying Class, Simei)
-    {"name": "Khoo Mei Fen",     "designation": "RN",  "email": "khoo.meifen@sach.org.sg",       "contactnumber": "98007001", "ward_idx": 6},
+    {"name": "Khoo Mei Fen",     "designation": "SN",  "email": "khoo.meifen@sach.org.sg",       "contactnumber": "98007001", "ward_idx": 6},
     {"name": "Heng Chee Seng",   "designation": "EN",  "email": "heng.cheeseng@sach.org.sg",     "contactnumber": "98007002", "ward_idx": 6},
     {"name": "Zainab Kadir",     "designation": "NA",  "email": "zainab.kadir@sach.org.sg",      "contactnumber": "98007003", "ward_idx": 6},
-    {"name": "Lakshmi Devi",     "designation": "HCA", "email": "lakshmi.devi@sach.org.sg",      "contactnumber": "98007004", "ward_idx": 6},
+    {"name": "Lakshmi Devi",     "designation": "HCA1", "email": "lakshmi.devi@sach.org.sg",      "contactnumber": "98007004", "ward_idx": 6},
     {"name": "Neo Kim Huat",     "designation": "SSN", "email": "neo.kimhuat@sach.org.sg",       "contactnumber": "98007005", "ward_idx": 6},
-    {"name": "Fong Yoke Leng",   "designation": "RN",  "email": "fong.yokeleng@sach.org.sg",     "contactnumber": "98007006", "ward_idx": 6},
+    {"name": "Fong Yoke Leng",   "designation": "SN",  "email": "fong.yokeleng@sach.org.sg",     "contactnumber": "98007006", "ward_idx": 6},
     {"name": "Kartini Razak",    "designation": "EN",  "email": "kartini.razak@sach.org.sg",     "contactnumber": "98007007", "ward_idx": 6},
     # Ward 7 — Ward 11 (Palliative, Simei)
-    {"name": "Chew Soo Khim",    "designation": "RN",  "email": "chew.sookhim@sach.org.sg",      "contactnumber": "98008001", "ward_idx": 7},
+    {"name": "Chew Soo Khim",    "designation": "SN",  "email": "chew.sookhim@sach.org.sg",      "contactnumber": "98008001", "ward_idx": 7},
     {"name": "Leong Wai Kuan",   "designation": "EN",  "email": "leong.waikuan@sach.org.sg",     "contactnumber": "98008002", "ward_idx": 7},
     {"name": "Rahmah Yusoff",    "designation": "NA",  "email": "rahmah.yusoff@sach.org.sg",     "contactnumber": "98008003", "ward_idx": 7},
-    {"name": "Mohan Das",        "designation": "HCA", "email": "mohan.das@sach.org.sg",         "contactnumber": "98008004", "ward_idx": 7},
+    {"name": "Mohan Das",        "designation": "HCA1", "email": "mohan.das@sach.org.sg",         "contactnumber": "98008004", "ward_idx": 7},
     {"name": "Ang Bee Lian",     "designation": "SSN", "email": "ang.beelian@sach.org.sg",       "contactnumber": "98008005", "ward_idx": 7},
-    {"name": "Kwek Siew Hong",   "designation": "RN",  "email": "kwek.siewhong@sach.org.sg",     "contactnumber": "98008006", "ward_idx": 7},
+    {"name": "Kwek Siew Hong",   "designation": "SN",  "email": "kwek.siewhong@sach.org.sg",     "contactnumber": "98008006", "ward_idx": 7},
     {"name": "Hafizah Latif",    "designation": "EN",  "email": "hafizah.latif@sach.org.sg",     "contactnumber": "98008007", "ward_idx": 7},
     # Ward 8 — CH (Community Hospital, Bedok)
-    {"name": "Png Geok Tin",     "designation": "RN",  "email": "png.geoktin@sach.org.sg",       "contactnumber": "98009001", "ward_idx": 8},
+    {"name": "Png Geok Tin",     "designation": "SN",  "email": "png.geoktin@sach.org.sg",       "contactnumber": "98009001", "ward_idx": 8},
     {"name": "Toh Choon Heng",   "designation": "EN",  "email": "toh.choonheng@sach.org.sg",     "contactnumber": "98009002", "ward_idx": 8},
     {"name": "Salmah Johari",    "designation": "NA",  "email": "salmah.johari@sach.org.sg",     "contactnumber": "98009003", "ward_idx": 8},
-    {"name": "Kavitha Raju",     "designation": "HCA", "email": "kavitha.raju@sach.org.sg",      "contactnumber": "98009004", "ward_idx": 8},
+    {"name": "Kavitha Raju",     "designation": "HCA1", "email": "kavitha.raju@sach.org.sg",      "contactnumber": "98009004", "ward_idx": 8},
     {"name": "Low Kah Seng",     "designation": "SSN", "email": "low.kahseng@sach.org.sg",       "contactnumber": "98009005", "ward_idx": 8},
-    {"name": "Yeoh Li Ping",     "designation": "RN",  "email": "yeoh.liping@sach.org.sg",       "contactnumber": "98009006", "ward_idx": 8},
+    {"name": "Yeoh Li Ping",     "designation": "SN",  "email": "yeoh.liping@sach.org.sg",       "contactnumber": "98009006", "ward_idx": 8},
     {"name": "Faridah Omar",     "designation": "EN",  "email": "faridah.omar@sach.org.sg",      "contactnumber": "98009007", "ward_idx": 8},
     # Ward 9 — TCF (Transitional Care, Bedok)
-    {"name": "Sia Geok Choo",    "designation": "RN",  "email": "sia.geokchoo@sach.org.sg",      "contactnumber": "98010001", "ward_idx": 9},
+    {"name": "Sia Geok Choo",    "designation": "SN",  "email": "sia.geokchoo@sach.org.sg",      "contactnumber": "98010001", "ward_idx": 9},
     {"name": "Beh Teck Soon",    "designation": "EN",  "email": "beh.tecksoon@sach.org.sg",      "contactnumber": "98010002", "ward_idx": 9},
     {"name": "Norma Samad",      "designation": "NA",  "email": "norma.samad@sach.org.sg",       "contactnumber": "98010003", "ward_idx": 9},
-    {"name": "Srinivas Rao",     "designation": "HCA", "email": "srinivas.rao@sach.org.sg",      "contactnumber": "98010004", "ward_idx": 9},
+    {"name": "Srinivas Rao",     "designation": "HCA1", "email": "srinivas.rao@sach.org.sg",      "contactnumber": "98010004", "ward_idx": 9},
     {"name": "Tan Geok Bee",     "designation": "SSN", "email": "tan.geokbee@sach.org.sg",       "contactnumber": "98010005", "ward_idx": 9},
-    {"name": "Koh Li Hua",       "designation": "RN",  "email": "koh.lihua@sach.org.sg",         "contactnumber": "98010006", "ward_idx": 9},
+    {"name": "Koh Li Hua",       "designation": "SN",  "email": "koh.lihua@sach.org.sg",         "contactnumber": "98010006", "ward_idx": 9},
     {"name": "Azizah Hamid",     "designation": "EN",  "email": "azizah.hamid@sach.org.sg",      "contactnumber": "98010007", "ward_idx": 9},
 ]
 
@@ -515,17 +549,18 @@ def seed_nurses(session: Session, wards: list[Ward]) -> list[Nurse]:
 def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
     """Seed admin user."""
     logger.info("Seeding admin user...")
+    admin_username = settings.FIRST_SUPERUSER.split("@")[0]
 
     existing = session.exec(
         select(RBACUser).where(
             (RBACUser.email == settings.FIRST_SUPERUSER)
-            | (RBACUser.username == settings.FIRST_SUPERUSER.split("@")[0])
+            | (RBACUser.username == admin_username)
         )
     ).first()
 
     if existing:
-        logger.info("  Admin user already exists, updating credentials to seed values")
-        existing.username = settings.FIRST_SUPERUSER.split("@")[0]
+        logger.info("  Admin user already exists, syncing credentials from env")
+        existing.username = admin_username
         existing.email = settings.FIRST_SUPERUSER
         existing.passwordhash = get_password_hash(settings.FIRST_SUPERUSER_PASSWORD)
         existing.isactive = True
@@ -534,7 +569,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         return existing
 
     admin = RBACUser(
-        username=settings.FIRST_SUPERUSER.split("@")[0],
+        username=admin_username,
         email=settings.FIRST_SUPERUSER,
         passwordhash=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD),
         isactive=True,
@@ -556,10 +591,7 @@ def seed_admin_user(session: Session, roles: dict[str, Role]) -> RBACUser:
         session.add(user_role)
         session.commit()
 
-    logger.info(
-        f"  Created admin user: {settings.FIRST_SUPERUSER} / "
-        f"{settings.FIRST_SUPERUSER_PASSWORD}"
-    )
+    logger.info("  Created admin user: %s (password sourced from env)", settings.FIRST_SUPERUSER)
     return admin
 
 
@@ -712,80 +744,41 @@ def seed_nurse_users(
 
 
 def seed_roster_periods(session: Session) -> list[RosterPeriod]:
-    """Seed roster periods covering the previous calendar month and upcoming 2 weeks.
-
-    Periods are 2-week Mon–Sun blocks aligned to the current week's Monday.
-    Blocks step backward until the previous calendar month is fully covered,
-    then forward for the next 2-week block.
-
-    Returns the list with the current period at index 0 and the next period at
-    index 1 (preserving backward-compat for callers that use periods[0/1]),
-    followed by past periods in reverse-chronological order.
-    """
+    """Seed the maintained roster-period window and return current-first ordering."""
     logger.info("Seeding roster periods...")
-
     today = date.today()
-    current_monday = today - timedelta(days=today.weekday())
-    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    maintained_periods = ensure_roster_period_window(session, today=today)
+    current_roster_year_start = get_roster_year_start(today)
+    next_roster_year_start = current_roster_year_start + timedelta(days=364)
 
-    # Collect all period start dates needed
-    period_starts: set[date] = set()
+    current_periods: list[RosterPeriod] = []
+    next_year_periods: list[RosterPeriod] = []
 
-    # Current + next
-    period_starts.add(current_monday)
-    period_starts.add(current_monday + timedelta(weeks=2))
-
-    # Step backward in 2-week blocks until the block's end date reaches
-    # before the first day of the previous month
-    p = current_monday - timedelta(weeks=2)
-    while True:
-        period_starts.add(p)
-        if p <= first_of_prev_month:
-            break
-        p -= timedelta(weeks=2)
-
-    all_periods: dict[date, RosterPeriod] = {}
-    for start in sorted(period_starts):
-        end = start + timedelta(days=13)
-        request_open = start - timedelta(days=10)
-        request_close = start - timedelta(days=3)
-
-        if start == current_monday:
-            label, status = "Current", "RequestOpen"
-        elif start > current_monday:
-            label, status = "Next", "RequestOpen"
+    for period in maintained_periods:
+        if period.startdate <= today <= period.enddate:
+            current_periods.append(period)
+        elif current_roster_year_start <= period.startdate < next_roster_year_start:
+            current_periods.append(period)
         else:
-            label, status = "Past", "Published"
+            next_year_periods.append(period)
 
-        period_name = f"{label} Period {start.strftime('%b %d')}-{end.strftime('%b %d %Y')}"
+    ordered_periods = sorted(
+        current_periods,
+        key=lambda period: (
+            0 if period.startdate <= today <= period.enddate else 1,
+            period.startdate,
+        ),
+    ) + sorted(next_year_periods, key=lambda period: period.startdate)
 
-        existing = session.exec(
-            select(RosterPeriod).where(RosterPeriod.startdate == start)
-        ).first()
+    for period in ordered_periods:
+        logger.info(
+            "  Maintained roster period: %s (%s - %s)",
+            period.name,
+            period.startdate,
+            period.enddate,
+        )
 
-        if existing:
-            logger.info(f"  Roster period {start} already exists, skipping")
-            all_periods[start] = existing
-        else:
-            period = RosterPeriod(
-                name=period_name,
-                startdate=start,
-                enddate=end,
-                requestopendate=request_open,
-                requestclosedate=request_close,
-                status=status,
-            )
-            session.add(period)
-            session.commit()
-            session.refresh(period)
-            all_periods[start] = period
-            logger.info(f"  Created roster period: {period_name} (ID: {period.periodid})")
-
-    sorted_starts = sorted(all_periods.keys())
-    # current + future first (index 0 = current), then past in reverse-chron order
-    current_and_future = [all_periods[s] for s in sorted_starts if s >= current_monday]
-    past = [all_periods[s] for s in reversed(sorted_starts) if s < current_monday]
-    return current_and_future + past
+    return ordered_periods
 
 
 def seed_roster_entries(
@@ -1098,10 +1091,15 @@ def seed_leave_requests(
         "MC":  ("MedicalCertificate",   4),
         "CL":  ("Urgent",               2),
         "CCL": ("PreApproved",          2),
+        "ML":  ("PreApproved",          1),
+        "EML": ("PreApproved",          1),
+        "Mar": ("PreApproved",          1),
         "FCL": ("PreApproved",          1),
+        "SPL": ("PreApproved",          1),
         "BDL": ("PreApproved",          1),
-        "URG": ("Urgent",               1),
-        "UPL": ("PreApproved",          1),
+        "HOL": ("PreApproved",          1),
+        "SD":  ("PreApproved",          1),
+        "FD":  ("PreApproved",          1),
     }
     leave_types_weighted = [lt for lt, (_, w) in leave_type_meta.items() for _ in range(w)]
 
@@ -1110,10 +1108,15 @@ def seed_leave_requests(
         "MC":  ["Fever and flu", "Medical appointment", "Doctor's visit", None],
         "CL":  ["Bereavement", "Family emergency", None],
         "CCL": ["Child's school event", "Childcare arrangement", None],
+        "ML":  ["Maternity leave", None],
+        "EML": ["Extended maternity leave", None],
+        "Mar": ["Marriage leave", None],
         "FCL": ["Caring for elderly parent", "Family care needed", None],
+        "SPL": ["Shared parental leave", None],
         "BDL": ["Birthday leave", None],
-        "URG": ["Family emergency", "Urgent personal matter", None],
-        "UPL": ["Personal matter", None],
+        "HOL": ["Public holiday", None],
+        "SD":  ["Sleeping day", None],
+        "FD":  ["Family day", None],
     }
 
     rejection_reasons = [
@@ -1379,18 +1382,18 @@ def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     logger.info("Seeding ward shift code mappings...")
     DEFAULT_BASE_WORKING = {"A", "P", "N"}
     SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
-    SPECIAL_WARD_IDS = {9, 10} #CH and TCF
+    SPECIAL_WARD_NAMES = {"CH", "TCF"}
     leave_codes = {
         sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
     }
 
     for ward in wards:
-        if ward.wardid in SPECIAL_WARD_IDS:
-            base_working=SPECIAL_BASE_WORKING
+        if ward.wardname in SPECIAL_WARD_NAMES:
+            base_working = SPECIAL_BASE_WORKING
         else:
-            base_working=DEFAULT_BASE_WORKING
+            base_working = DEFAULT_BASE_WORKING
         
-        ward_codes=base_working | leave_codes
+        ward_codes = base_working | leave_codes
         for shiftcode in sorted(ward_codes):
             existing = session.exec(
                 select(WardShiftCode).where(
@@ -1447,7 +1450,7 @@ def seed_all() -> None:
     logger.info("=" * 60)
     logger.info("")
     logger.info("Test Credentials:")
-    logger.info("  admin@sach.org.sg / changethis (Admin)")
+    logger.info("  %s / [FIRST_SUPERUSER_PASSWORD from env] (Admin)", settings.FIRST_SUPERUSER)
     for mgr in MANAGERS_DATA:
         logger.info(f"  {mgr['email']} / manager123 (NurseManager)")
     for nurse in NURSES_DATA[:NUM_NURSE_USERS]:

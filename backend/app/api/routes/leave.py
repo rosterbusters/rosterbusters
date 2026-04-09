@@ -8,8 +8,19 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.models.enums import NotificationType
 from app.models.leave import LeaveRequest, LeaveRequestCreate, LeaveRequestPublic, LeaveRequestUpdate
-from app.models.rbac import Nurse, RBACUser, Role, UserRole
+from app.models.rbac import Nurse, NurseManager, RBACUser, Role, UserRole
+from app.models.roster import Ward
 from app.models.shifts import ShiftCode, ShiftCodePublic
+from app.utils import (
+    generate_leave_request_manager_email,
+    generate_leave_review_nurse_email,
+    send_email,
+)
+from app.core.config import settings
+from app.rbac import get_rbac_user_by_email, user_has_role
+
+import logging
+logger = logging.getLogger(__name__)
 
 # tag "leave-requests" generates LeaveRequestsService in the client
 router = APIRouter(prefix="/leave", tags=["leave-requests"])
@@ -62,29 +73,38 @@ def create_leave_request(
     current_user: CurrentUser,
     leave_in: LeaveRequestCreate,
 ) -> Any:
-    """Submit a new leave request.
+    """Submit a new leave request for the logged-in nurse or a ward nurse (manager only)."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
 
-    Nurses can submit for themselves. Nurse managers can submit on behalf of
-    nurses in wards they manage by passing `nurseid`.
-    """
     target_nurse_id = current_user.nurseid
-
-    if leave_in.nurseid is not None and leave_in.nurseid != current_user.nurseid:
-        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
-        if not managed_ward_ids:
-            raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
-
+    is_nurse_manager = user_has_role(session, current_user.email, "NurseManager")
+    if leave_in.nurseid is not None:
+        if not is_nurse_manager:
+            raise HTTPException(
+                status_code=403,
+                detail="Only nurse managers can create a leave request for another nurse",
+            )
+        if not rbac_user.managerid:
+            raise HTTPException(
+                status_code=400,
+                detail="User is not linked to a nurse manager record",
+            )
         target_nurse = session.get(Nurse, leave_in.nurseid)
         if not target_nurse:
-            raise HTTPException(status_code=404, detail="Nurse profile not found")
-        if target_nurse.wardid not in managed_ward_ids:
-            raise HTTPException(status_code=403, detail="Not authorized to create request for this nurse")
-
+            raise HTTPException(status_code=404, detail="Nurse not found")
         target_nurse_id = leave_in.nurseid
 
     if not target_nurse_id:
+        if is_nurse_manager:
+            raise HTTPException(
+                status_code=400,
+                detail="Please select a nurse for this leave request",
+            )
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
+    nurse = session.get(Nurse, target_nurse_id)
     nurse = session.get(Nurse, target_nurse_id)
     if not nurse:
         raise HTTPException(status_code=404, detail="Nurse profile not found")
@@ -92,6 +112,7 @@ def create_leave_request(
     leave = LeaveRequest(
         **leave_in.model_dump(exclude={"nurseid"}),
         nurseid=target_nurse_id,
+        status="Approved",
     )
     session.add(leave)
     session.commit()
@@ -123,6 +144,29 @@ def create_leave_request(
             request_date=str(leave.startdate),
         )
         session.commit()
+
+        if settings.emails_enabled:
+            manager = session.get(NurseManager, manager_rbac.managerid)
+            if manager and manager.email:
+                try:
+                    email_data = generate_leave_request_manager_email(
+                        email_to=manager.email,
+                        nurse_name=nurse.name,
+                        leave_code=leave.leavetype,
+                        start_date=str(leave.startdate),
+                        end_date=str(leave.enddate),
+                        manager_name=manager.name,
+                    )
+                    send_email(
+                        email_to=manager.email,
+                        subject=email_data.subject,
+                        html_content=email_data.html_content,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to send leave request manager email for leave %s",
+                        leave.leaveid,
+                    )
 
     return leave
 
@@ -168,6 +212,51 @@ def review_leave_request(
 
     leave_request.status = status
     session.add(leave_request)
+
+    nurse = session.get(Nurse, leave_request.nurseid)
+    if nurse:
+        ntype = (
+            NotificationType.LEAVE_APPROVED
+            if status == "Approved"
+            else NotificationType.LEAVE_REJECTED
+        )
+        leave_dates = (
+            str(leave_request.startdate)
+            if leave_request.startdate == leave_request.enddate
+            else f"{leave_request.startdate} – {leave_request.enddate}"
+        )
+        crud.create_notification(
+            session,
+            recipient_type="Nurse",
+            recipient_id=leave_request.nurseid,
+            notification_type=ntype,
+            related_entity_type="LeaveRequest",
+            related_entity_id=leave_id,
+            leave_dates=leave_dates,
+        )
+
+        if settings.emails_enabled and nurse.email:
+            try:
+                email_data = generate_leave_review_nurse_email(
+                    email_to=nurse.email,
+                    nurse_name=nurse.name,
+                    leave_code=leave_request.leavetype,
+                    start_date=str(leave_request.startdate),
+                    end_date=str(leave_request.enddate),
+                    status=status,
+                    rejection_reason=leave_request.rejectionreason,
+                )
+                send_email(
+                    email_to=nurse.email,
+                    subject=email_data.subject,
+                    html_content=email_data.html_content,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send leave review email to nurse %s",
+                    leave_request.nurseid,
+                )
+
     session.commit()
     session.refresh(leave_request)
     return leave_request
@@ -180,19 +269,25 @@ def update_leave_request(
     current_user: CurrentUser,
     update_in: LeaveRequestUpdate,
 ) -> Any:
-    """Update a leave request.
-
-    The owning nurse can update their own request, and nurse managers can
-    update leave requests for nurses in wards they manage.
-    """
+    """Update a leave request. The owning nurse or their nurse manager can update."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")
-    if current_user.nurseid != leave_request.nurseid:
-        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
-        nurse = session.get(Nurse, leave_request.nurseid)
-        if not nurse or nurse.wardid not in managed_ward_ids:
-            raise HTTPException(status_code=403, detail="Not authorized to update this request")
+
+    can_update = leave_request.nurseid == rbac_user.nurseid
+    if not can_update and user_has_role(session, current_user.email, "NurseManager"):
+        if not rbac_user.managerid:
+            raise HTTPException(
+                status_code=400,
+                detail="User is not linked to a nurse manager record",
+            )
+        can_update = True
+
+    if not can_update:
+        raise HTTPException(status_code=403, detail="Not authorized to update this request")
 
     if update_in.leavetype is not None:
         leave_request.leavetype = update_in.leavetype
@@ -213,19 +308,25 @@ def delete_leave_request(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> None:
-    """Delete a leave request.
-
-    The owning nurse can delete their own request, and nurse managers can
-    delete leave requests for nurses in wards they manage.
-    """
+    """Withdraw/delete a leave request. The owning nurse or their nurse manager can delete."""
+    rbac_user = get_rbac_user_by_email(session, current_user.email)
+    if not rbac_user:
+        raise HTTPException(status_code=400, detail="User is not linked to an RBAC record")
     leave_request = session.get(LeaveRequest, leave_id)
     if not leave_request:
         raise HTTPException(status_code=404, detail="Leave request not found")
-    if current_user.nurseid != leave_request.nurseid:
-        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
-        nurse = session.get(Nurse, leave_request.nurseid)
-        if not nurse or nurse.wardid not in managed_ward_ids:
-            raise HTTPException(status_code=403, detail="Not authorized to delete this request")
+
+    can_delete = leave_request.nurseid == rbac_user.nurseid
+    if not can_delete and user_has_role(session, current_user.email, "NurseManager"):
+        if not rbac_user.managerid:
+            raise HTTPException(
+                status_code=400,
+                detail="User is not linked to a nurse manager record",
+            )
+        can_delete = True
+
+    if not can_delete:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this request")
 
     session.delete(leave_request)
     session.commit()

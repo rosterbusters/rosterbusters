@@ -106,20 +106,27 @@ function AdminNavbar() {
           </span>
 
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer">
+            <DropdownMenuTrigger
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+              data-testid="admin-navbar-user"
+            >
               <div className="w-8 h-8 rounded-full bg-[#4B8798] flex items-center justify-center text-white text-sm font-bold">
                 {userName.charAt(0).toUpperCase()}
               </div>
               <span className="hidden lg:inline">{userName}</span>
               <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent
+              align="end"
+              className="w-44 border border-[#E6E6E6] bg-white p-1 shadow-md"
+            >
               <DropdownMenuItem
                 onClick={logout}
-                className="text-red-600 cursor-pointer"
+                className="cursor-pointer bg-white text-red-600 focus:bg-red-50 focus:text-red-600"
+                data-testid="admin-navbar-signout"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                Sign Out
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -182,10 +189,11 @@ function AdminNavbar() {
                 setMobileMenuOpen(false)
                 logout()
               }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 w-full"
+              className="flex w-full items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+              data-testid="admin-navbar-signout"
             >
-              <LogOut className="w-4 h-4" />
-              Sign Out
+              <LogOut className="h-4 w-4" />
+              Logout
             </button>
           </div>
         </div>

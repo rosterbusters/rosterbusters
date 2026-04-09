@@ -25,6 +25,15 @@ export interface LeaveRequestEntry {
   endDate: string;   // YYYY-MM-DD
 }
 
+function parseRequestDate(value: string) {
+  const normalized = value.split("–")[0]?.trim() ?? value;
+  const [day, month, year] = normalized.split("/");
+  if (day && month && year) {
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  return new Date(normalized);
+}
+
 interface EditLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
@@ -48,14 +57,14 @@ export const EditLeaveRequest = ({
 
   const [leaveType, setLeaveType] = useState<string[]>([active?.initialLeaveType ?? ""]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    active ? new Date(active.startDate) : undefined,
+    active ? parseRequestDate(active.startDate) : undefined,
   );
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (active) {
       setLeaveType([active.initialLeaveType]);
-      setRequestDate(new Date(active.startDate));
+      setRequestDate(parseRequestDate(active.startDate));
     }
   }, [active]);
 
@@ -68,11 +77,13 @@ export const EditLeaveRequest = ({
   const leaveCollection = useMemo(
     () =>
       createListCollection({
-        items: (leaveCodes ?? []).map((lc) => ({
-          value: lc.shiftcode,
-          label: lc.shiftcode,
-          description: lc.description,
-        })),
+        items: (leaveCodes ?? [])
+          .filter((lc) => lc.shiftcode !== "MC")
+          .map((lc) => ({
+            value: lc.shiftcode,
+            label: lc.shiftcode,
+            description: lc.description,
+          })),
       }),
     [leaveCodes],
   );

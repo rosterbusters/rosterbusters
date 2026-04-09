@@ -5,6 +5,7 @@ All endpoints require the Admin role.
 """
 
 from datetime import datetime, timezone
+import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,8 +13,17 @@ from pydantic import EmailStr
 from sqlmodel import Field, SQLModel, func, or_, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
-from app.core.security import generate_random_password, get_password_hash
-from app.models import Message, RBACUser, Role, UserRole
+from app.core.security import (
+    decrypt_default_password,
+    encrypt_default_password,
+    generate_random_password,
+    get_password_hash,
+)
+from app.designation_mapping import (
+    canonical_designation_from_value,
+    load_designation_rank_map,
+)
+from app.models import Designation, Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
 from app.rbac import get_user_roles, get_user_roles_by_userid
@@ -37,8 +47,11 @@ class WardInfo(SQLModel):
 class AdminUserPublic(SQLModel):
     userid: int
     username: str
+    name: Optional[str] = None
     email: Optional[str] = None
     employee_id: Optional[str] = None
+    designation: Optional[str] = None
+    shift_pattern: Optional[str] = None
     isactive: bool
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
@@ -59,9 +72,12 @@ class AdminPasswordResetResponse(SQLModel):
 
 
 class AdminUserCreate(SQLModel):
-    username: str = Field(min_length=1, max_length=255)
+    username: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    designation: Optional[str] = Field(default=None, max_length=100)
+    shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: bool = True
     role: str = Field(default="Nurse", description="Nurse | NurseManager | Admin")
@@ -70,28 +86,73 @@ class AdminUserCreate(SQLModel):
 
 class AdminUserUpdate(SQLModel):
     username: Optional[str] = Field(default=None, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    designation: Optional[str] = Field(default=None, max_length=100)
+    shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
     ward_ids: Optional[list[int]] = None
+
+
+class DesignationOption(SQLModel):
+    designation: str
+    rank: str
 
 
 # ---------------------------------------------------------------------------
 #  Helpers
 # ---------------------------------------------------------------------------
 
+def _slugify_username(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", ".", value.lower()).strip(".")
+    slug = re.sub(r"\.+", ".", slug)
+    return slug
+
+
+def _truncate_username(value: str, max_tokens: int = 2) -> str:
+    normalized = _slugify_username(value)
+    if not normalized:
+        return ""
+    return ".".join(normalized.split(".")[:max_tokens])
+
+
+def _truncate_name(value: str, max_words: int = 3) -> str:
+    words = value.split()
+    if not words:
+        return ""
+    return " ".join(words[:max_words])
+
+
+def _generate_unique_username(session, seed: str) -> str:
+    base = _slugify_username(seed) or "user"
+    candidate = base
+    suffix = 2
+    while session.exec(
+        select(RBACUser).where(RBACUser.username == candidate)
+    ).first():
+        candidate = f"{base}{suffix}"
+        suffix += 1
+    return candidate
+
 def _enrich(session, user: RBACUser) -> AdminUserPublic:
     """Convert an RBACUser row to the public response model."""
     roles = get_user_roles_by_userid(session, user.userid)
     ward_list: list[WardInfo] = []
     employee_id: Optional[str] = None
+    designation: Optional[str] = None
+    shift_pattern: Optional[str] = None
+    name: Optional[str] = None
 
     # Resolve ward for nurses (single primary ward via nurse.wardid)
     if user.nurseid:
         nurse = session.get(Nurse, user.nurseid)
         if nurse:
+            name = nurse.name
             employee_id = nurse.employeeid
+            designation = nurse.designation
+            shift_pattern = nurse.shiftpattern
             if nurse.wardid:
                 ward = session.get(Ward, nurse.wardid)
                 if ward:
@@ -101,6 +162,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     if user.managerid:
         manager = session.get(NurseManager, user.managerid)
         if manager:
+            name = manager.name
             employee_id = manager.employeeid
         managed_wards = session.exec(
             select(Ward).where(Ward.managerid == user.managerid)
@@ -108,17 +170,25 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         for w in managed_wards:
             ward_list.append(WardInfo(ward_id=w.wardid, ward_name=w.wardname))
 
+    generated_password = None
+    if user.must_change_password and user.default_password_encrypted:
+        generated_password = decrypt_default_password(user.default_password_encrypted)
+
     return AdminUserPublic(
         userid=user.userid,
         username=user.username,
+        name=name,
         email=user.email,
         employee_id=employee_id,
+        designation=designation,
+        shift_pattern=shift_pattern,
         isactive=user.isactive,
         nurseid=user.nurseid,
         managerid=user.managerid,
         must_change_password=user.must_change_password,
         roles=roles,
         wards=ward_list,
+        generated_password=generated_password,
     )
 
 
@@ -136,9 +206,13 @@ def list_users(
 
     if search:
         pattern = f"%{search}%"
+        matching_nurse_ids = select(Nurse.nurseid).where(Nurse.employeeid.ilike(pattern))  # type: ignore[union-attr]
+        matching_manager_ids = select(NurseManager.managerid).where(NurseManager.employeeid.ilike(pattern))  # type: ignore[union-attr]
         search_filter = or_(
             RBACUser.username.ilike(pattern),  # type: ignore[union-attr]
             RBACUser.email.ilike(pattern),  # type: ignore[union-attr]
+            RBACUser.nurseid.in_(matching_nurse_ids),  # type: ignore[union-attr]
+            RBACUser.managerid.in_(matching_manager_ids),  # type: ignore[union-attr]
         )
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
@@ -149,6 +223,18 @@ def list_users(
         data=[_enrich(session, u) for u in users],
         count=count,
     )
+
+
+@router.get("/designations", response_model=list[DesignationOption])
+def list_designations(session: SessionDep) -> Any:
+    """List designation options from reference table."""
+    rows = session.exec(
+        select(Designation).order_by(Designation.rank, Designation.designation)
+    ).all()
+    return [
+        DesignationOption(designation=row.designation, rank=row.rank)
+        for row in rows
+    ]
 
 
 @router.get("/users/{userid}", response_model=AdminUserPublic)
@@ -164,6 +250,24 @@ def get_user(session: SessionDep, userid: int) -> Any:
 def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     """Create a new RBACUser and assign a role."""
     employee_id = body.employee_id.strip() if body.employee_id else None
+    name = _truncate_name(body.name.strip()) if body.name else None
+    designation = body.designation.strip() if body.designation else None
+    rank_map = load_designation_rank_map(session)
+
+    def _normalize_designation(raw: str | None) -> str | None:
+        if raw is None:
+            return None
+        canonical = canonical_designation_from_value(raw)
+        if not canonical:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        if canonical.upper() not in rank_map:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        return canonical
+    # Preserve explicit usernames exactly (after trimming) so clients can log in with the same value.
+    requested_username = body.username.strip() if body.username else ""
+    shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
+    if shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
+        raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
 
     # Check duplicate email (only if email provided)
     if body.email:
@@ -176,15 +280,22 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
                 detail="A user with this email already exists.",
             )
 
-    # Check duplicate username
-    existing_username = session.exec(
-        select(RBACUser).where(RBACUser.username == body.username)
-    ).first()
-    if existing_username:
-        raise HTTPException(
-            status_code=400,
-            detail="A user with this username already exists.",
-        )
+    if requested_username:
+        # Check duplicate username only when one is explicitly provided
+        existing_username = session.exec(
+            select(RBACUser).where(RBACUser.username == requested_username)
+        ).first()
+        if existing_username:
+            raise HTTPException(
+                status_code=400,
+                detail="A user with this username already exists.",
+            )
+
+    # Generate username from name (fallback email prefix) when omitted
+    username = requested_username or _generate_unique_username(
+        session,
+        name or (body.email.split("@")[0] if body.email else ""),
+    )
 
     if employee_id:
         existing_nurse = session.exec(
@@ -224,11 +335,12 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     raw_password = body.password if body.password else generate_random_password()
 
     user = RBACUser(
-        username=body.username,
+        username=username,
         email=body.email,
         passwordhash=get_password_hash(raw_password),
         isactive=body.is_active,
         must_change_password=True,
+        default_password_encrypted=encrypt_default_password(raw_password),
         createdat=datetime.now(timezone.utc),
     )
     session.add(user)
@@ -237,14 +349,18 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
 
     # Create linked Nurse/NurseManager record and assign wards
     if body.role == "Nurse":
+        if body.designation is not None and designation is None:
+            raise HTTPException(status_code=400, detail="Designation cannot be empty.")
+        canonical_designation = _normalize_designation(designation or "SN")
         nurse = Nurse(
-            name=body.username,
+            name=name or username,
             employeeid=employee_id,
-            designation="RN",
+            designation=canonical_designation or "SN",
             email=body.email or "",
             contactnumber="",
             wardid=body.ward_ids[0] if body.ward_ids else None,
             employmenttype="Full-time",
+            shiftpattern=shift_pattern,
             isactive=True,
         )
         session.add(nurse)
@@ -257,7 +373,7 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
 
     elif body.role == "NurseManager":
         manager = NurseManager(
-            name=body.username,
+            name=name or username,
             employeeid=employee_id,
             email=body.email or "",
             contactnumber="",
@@ -305,8 +421,27 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
         raise HTTPException(status_code=404, detail="User not found")
 
     employee_id = body.employee_id.strip() if body.employee_id else None
+    name = body.name.strip() if body.name else None
+    designation = body.designation.strip() if body.designation else None
+    shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
+    if body.shift_pattern is not None and shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
+        raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
+    rank_map = load_designation_rank_map(session)
 
-    if body.email is not None and body.email != user.email:
+    def _normalize_designation(raw: str | None) -> str | None:
+        if raw is None:
+            return None
+        if not raw:
+            raise HTTPException(status_code=400, detail="Designation cannot be empty.")
+        canonical = canonical_designation_from_value(raw)
+        if not canonical:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        if canonical.upper() not in rank_map:
+            raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+        return canonical
+    email_provided = "email" in body.model_fields_set
+
+    if email_provided and body.email is not None and body.email != user.email:
         dup = session.exec(
             select(RBACUser).where(RBACUser.email == body.email)
         ).first()
@@ -322,6 +457,9 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
 
     nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
     manager = session.get(NurseManager, user.managerid) if user.managerid else None
+
+    if body.designation is not None and designation is None:
+        raise HTTPException(status_code=400, detail="Designation cannot be empty.")
 
     if body.employee_id is not None:
         if nurse:
@@ -370,10 +508,11 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
 
     if body.username is not None:
         user.username = body.username
-    if body.email is not None:
+    if email_provided:
         user.email = body.email
     if body.password is not None:
         user.passwordhash = get_password_hash(body.password)
+        user.default_password_encrypted = None
     if body.is_active is not None:
         user.isactive = body.is_active
 
@@ -384,35 +523,43 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     if body.employee_id is not None:
         if nurse:
             nurse.employeeid = employee_id
-            if body.username is not None:
-                nurse.name = body.username
-            if body.email is not None:
+            if body.designation is not None:
+                nurse.designation = _normalize_designation(designation)
+            if body.shift_pattern is not None:
+                nurse.shiftpattern = shift_pattern
+            if body.name is not None:
+                nurse.name = name or user.username
+            if email_provided:
                 nurse.email = body.email or ""
             session.add(nurse)
             session.commit()
 
         if manager:
             manager.employeeid = employee_id
-            if body.username is not None:
-                manager.name = body.username
-            if body.email is not None:
+            if body.name is not None:
+                manager.name = name or user.username
+            if email_provided:
                 manager.email = body.email or ""
             session.add(manager)
             session.commit()
 
-    elif body.username is not None or body.email is not None:
+    elif body.username is not None or body.name is not None or email_provided or body.designation is not None:
         if nurse:
-            if body.username is not None:
-                nurse.name = body.username
-            if body.email is not None:
+            if body.designation is not None:
+                nurse.designation = _normalize_designation(designation)
+            if body.shift_pattern is not None:
+                nurse.shiftpattern = shift_pattern
+            if body.name is not None:
+                nurse.name = name or user.username
+            if email_provided:
                 nurse.email = body.email or ""
             session.add(nurse)
             session.commit()
 
         if manager:
-            if body.username is not None:
-                manager.name = body.username
-            if body.email is not None:
+            if body.name is not None:
+                manager.name = name or user.username
+            if email_provided:
                 manager.email = body.email or ""
             session.add(manager)
             session.commit()
@@ -463,6 +610,7 @@ def reset_user_password(session: SessionDep, userid: int) -> Any:
     raw_password = generate_random_password()
     user.passwordhash = get_password_hash(raw_password)
     user.must_change_password = True
+    user.default_password_encrypted = encrypt_default_password(raw_password)
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -480,6 +628,16 @@ def delete_user(session: SessionDep, userid: int) -> Message:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
+    manager = session.get(NurseManager, user.managerid) if user.managerid else None
+
+    user_roles = get_user_roles_by_userid(session, userid)
+    if "Admin" in user_roles:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin accounts cannot be deleted.",
+        )
+
     # Remove role assignments first
     roles = session.exec(
         select(UserRole).where(UserRole.userid == userid)
@@ -487,6 +645,18 @@ def delete_user(session: SessionDep, userid: int) -> Message:
     for r in roles:
         session.delete(r)
 
+    if manager:
+        managed_wards = session.exec(
+            select(Ward).where(Ward.managerid == manager.managerid)
+        ).all()
+        for ward in managed_wards:
+            ward.managerid = None
+            session.add(ward)
+
     session.delete(user)
+    if nurse:
+        session.delete(nurse)
+    if manager:
+        session.delete(manager)
     session.commit()
     return Message(message="User deleted successfully")

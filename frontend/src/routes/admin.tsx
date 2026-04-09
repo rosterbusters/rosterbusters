@@ -19,6 +19,9 @@ export const Route = createFileRoute("/admin")({
       })
       if (!res.ok) throw redirect({ to: "/login" })
       const user = await res.json()
+      if (user.must_change_password) {
+        throw redirect({ to: "/first-login-setup" })
+      }
       if (!user.is_superuser) {
         // Send non-admin users to their appropriate home page
         throw redirect({

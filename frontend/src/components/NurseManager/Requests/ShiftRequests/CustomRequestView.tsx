@@ -3,14 +3,15 @@ import { Navigate, DateLocalizer } from "react-big-calendar";
 import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
 import { Event } from "@/models/Event";
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
-import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 import { ReviewShiftRequest } from "./ReviewShiftRequest";
+import { NewShiftRequest } from "./NewShiftRequest";
 import moment from "moment";
 
 interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
   events: Event[];
+  wardId?: number | null;
 
   [key: string]: unknown;
 }
@@ -42,21 +43,15 @@ export function getEventsForDay(day: Date, events: Event[]): Event[] {
   });
 }
 
-/** Group events in a day by shift type, returning one entry per distinct shift. */
 function groupByShift(events: Event[]): Map<string, Event[]> {
   const grouped = new Map<string, Event[]>();
-  events.forEach((ev) => {
-    const key: string = ev.resource?.shiftType ?? ev.title;
+  events.forEach((event) => {
+    const key = event.resource?.shiftType ?? event.title;
     const existing = grouped.get(key) ?? [];
-    existing.push(ev);
+    existing.push(event);
     grouped.set(key, existing);
   });
   return grouped;
-}
-
-interface ReviewRequestEntry extends ShiftRequestEntry {
-  status: string;
-  comment?: string | null;
 }
 
 const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
@@ -65,22 +60,29 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   events,
   wardId,
 }: CustomWeekViewProps) {
-  const [selectedRequest, setSelectedRequest] = useState<ShiftRequestEntry[] | null>(null);
-  const [selectedReviewRequest, setSelectedReviewRequest] = useState<ReviewRequestEntry[] | null>(null);
-  const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
+  const [selectedRequest, setSelectedRequest] = useState<{
+    requestId: number;
+    shiftCode: string;
+    date: string;
+    nurseName: string;
+    status: string;
+    comment?: string | null;
+    requests?: Array<{
+      requestId: number;
+      nurseName: string;
+      shiftCode: string;
+      date: string;
+      status: string;
+      comment?: string | null;
+    }>;
+  } | null>(null);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
   );
 
-  const handleReviewAction = (
-    requestId: number,
-    action: "Approved" | "Rejected",
-    _comment: string,
-  ) => {
-    setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
-  };
   return (
     <>
       <VStack overflowX={"auto"} gap={0} alignItems="stretch">
@@ -113,70 +115,77 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
         >
           {currRange.map((day, i) => {
             const eventsForDay = getEventsForDay(day, events);
-            const grouped = groupByShift(eventsForDay);
+            const groupedEvents = groupByShift(eventsForDay);
+            const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
 
             return (
               <GridItem
                 key={i}
-                bg="white"
+                bg={isPastDate ? "gray.100" : "white"}
                 textAlign={"start"}
-                color="foreground"
+                color={isPastDate ? "gray.500" : "foreground"}
                 p={2}
                 minH="250px"
                 borderColor="border"
                 borderWidth="1px"
                 bgColor={
-                  moment(day).isSame(moment(), "day") ? "menuactive" : "white"
+                  moment(day).isSame(moment(), "day") ? "menuactive" : isPastDate ? "gray.100" : "white"
                 }
+                onClick={() => {
+                  if (isPastDate) return;
+                  setSelectedDay(day);
+                }}
+                cursor={isPastDate ? "default" : "pointer"}
+                opacity={isPastDate ? 0.7 : 1}
               >
                 {localizer.format(day, "D")}
                 <Box mt={2}>
-                  {Array.from(grouped.entries())
+                  {Array.from(groupedEvents.entries())
                     .sort(([, a], [, b]) => {
-                      // Own requests first
-                      const aOwn = a.some((e) => e.resource?.isOwn);
-                      const bOwn = b.some((e) => e.resource?.isOwn);
+                      const aOwn = a.some((event) => event.resource?.isOwn);
+                      const bOwn = b.some((event) => event.resource?.isOwn);
                       return (bOwn ? 1 : 0) - (aOwn ? 1 : 0);
                     })
-                    .map(([shiftType, groupEvents]) => {
-                      const isOwn = groupEvents.some((e) => e.resource?.isOwn);
-                      const nurseNames = groupEvents
-                        .map((e) => e.resource?.nurseName ?? "")
+                    .map(([shiftCode, shiftEvents], idx) => {
+                      const primaryEvent = shiftEvents[0];
+                      const nurseNames = shiftEvents
+                        .map((event) => event.resource?.nurseName ?? "")
                         .filter(Boolean)
                         .join(", ");
-
-                      const requests: ShiftRequestEntry[] = groupEvents.map((e) => ({
-                        requestId: e.resource?.requestId,
-                        nurseName: e.resource?.nurseName ?? "",
-                        initialShiftType: e.resource?.shiftType ?? shiftType,
-                        initialDate: e.resource?.preferredDate ?? "",
-                      }));
-                      const reviewRequests: ReviewRequestEntry[] = groupEvents.map((e) => ({
-                        requestId: e.resource?.requestId,
-                        nurseName: e.resource?.nurseName ?? "",
-                        initialShiftType: e.resource?.shiftType ?? shiftType,
-                        initialDate: e.resource?.preferredDate ?? "",
-                        status: statusOverrides[e.resource?.requestId] ?? e.resource?.status ?? "",
-                        comment: e.resource?.reason ?? null,
-                      }));
+                      const isOwn = shiftEvents.some((event) => event.resource?.isOwn);
 
                       return (
-                        <Box key={`${localizer.format(day, "yyyy-MM-dd")}-${shiftType}`} pb={2} maxW="100%">
-                          <CalendarRequestBlock
-                            shift={shiftType}
-                            nurseName={nurseNames}
-                            owned={isOwn}
-                            onClick={() => {
-                              if (isOwn) {
-                                setSelectedRequest(requests);
-                                return;
-                              }
-
-                              setSelectedReviewRequest(reviewRequests);
-                            }}
-                          />
-                        </Box>
-                      );
+                      <Box
+                        key={`${shiftCode}-${idx}`}
+                        pb={2}
+                        maxW="100%"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <CalendarRequestBlock
+                          shift={shiftCode}
+                          nurseName={nurseNames}
+                          owned={isOwn}
+                          onClick={() =>
+                            setSelectedRequest({
+                              requestId: primaryEvent?.resource?.requestId,
+                              shiftCode,
+                              date: primaryEvent?.resource?.preferredDate ?? "",
+                              nurseName: nurseNames,
+                              status: primaryEvent?.resource?.status ?? "Pending",
+                              comment: primaryEvent?.resource?.reason ?? null,
+                              requests: shiftEvents.map((event) => ({
+                                requestId: event.resource?.requestId,
+                                nurseName: event.resource?.nurseName ?? "",
+                                shiftCode: event.resource?.shiftType ?? shiftCode,
+                                date: event.resource?.preferredDate ?? "",
+                                status: event.resource?.status ?? "Pending",
+                                comment: event.resource?.reason ?? null,
+                              })),
+                            })
+                          }
+                        />
+                      </Box>
+                    );
                     })}
                 </Box>
               </GridItem>
@@ -186,29 +195,26 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
       </VStack>
 
       {selectedRequest && (
-        <EditShiftRequest
+        <ReviewShiftRequest
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
-          requests={selectedRequest}
-          wardId={wardId as number | null | undefined}
+          requestId={selectedRequest.requestId}
+          shiftCode={selectedRequest.shiftCode}
+          date={selectedRequest.date}
+          nurseName={selectedRequest.nurseName}
+          status={selectedRequest.status}
+          comment={selectedRequest.comment}
+          wardId={wardId}
+          requests={selectedRequest.requests}
         />
       )}
 
-      {selectedReviewRequest && (
-        <ReviewShiftRequest
-          isOpen={!!selectedReviewRequest}
-          onClose={() => setSelectedReviewRequest(null)}
-          requestId={selectedReviewRequest[0].requestId}
-          nurseName={selectedReviewRequest[0].nurseName}
-          shiftCode={selectedReviewRequest[0].initialShiftType}
-          date={selectedReviewRequest[0].initialDate}
-          status={selectedReviewRequest[0].status}
-          comment={selectedReviewRequest[0].comment}
-          wardId={wardId as number | null | undefined}
-          requests={selectedReviewRequest}
-          onAction={handleReviewAction}
-        />
-      )}
+      <NewShiftRequest
+        isOpen={!!selectedDay}
+        onClose={() => setSelectedDay(null)}
+        selectedDate={selectedDay}
+        wardId={wardId}
+      />
     </>
   );
 };

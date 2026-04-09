@@ -11,7 +11,6 @@ import {
   Text,
   Textarea,
   VStack,
-  HStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
@@ -19,6 +18,24 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
 import { Trash2 } from "lucide-react";
+
+function parseRequestDate(value: string) {
+  const normalized = value.split("–")[0]?.trim() ?? value;
+  const [day, month, year] = normalized.split("/");
+  if (day && month && year) {
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  return new Date(normalized);
+}
+
+interface LeaveRequestOption {
+  requestId: number;
+  nurseName: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+}
 
 interface NMReviewLeaveRequestProps {
   isOpen: boolean;
@@ -29,14 +46,7 @@ interface NMReviewLeaveRequestProps {
   endDate: string;
   nurseName: string;
   currentStatus: string;
-  requests?: Array<{
-    requestId: number;
-    nurseName: string;
-    leaveType: string;
-    startDate: string;
-    endDate: string;
-    status: string;
-  }>;
+  requests?: LeaveRequestOption[];
 }
 
 export const NMReviewLeaveRequest = ({
@@ -66,13 +76,14 @@ export const NMReviewLeaveRequest = ({
           ],
     [currentStatus, endDate, leaveType, nurseName, requestId, requests, startDate],
   );
+
   const [selectedIdx, setSelectedIdx] = useState(0);
   const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0];
   const [selectedLeaveType, setSelectedLeaveType] = useState<string[]>([
     activeRequest?.leaveType ?? leaveType,
   ]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    new Date(activeRequest?.startDate ?? startDate),
+    parseRequestDate(activeRequest?.startDate ?? startDate),
   );
   const [localComment, setLocalComment] = useState("");
   const queryClient = useQueryClient();
@@ -91,7 +102,7 @@ export const NMReviewLeaveRequest = ({
           label: lc.shiftcode,
           description: lc.description,
         })),
-    }),
+      }),
     [leaveCodes],
   );
 
@@ -111,7 +122,7 @@ export const NMReviewLeaveRequest = ({
 
     setSelectedIdx(0);
     setSelectedLeaveType([requestOptions[0]?.leaveType ?? leaveType]);
-    setRequestDate(new Date(requestOptions[0]?.startDate ?? startDate));
+    setRequestDate(parseRequestDate(requestOptions[0]?.startDate ?? startDate));
     setLocalComment("");
   }, [isOpen, leaveType, requestOptions, startDate]);
 
@@ -119,7 +130,7 @@ export const NMReviewLeaveRequest = ({
     if (!activeRequest) return;
 
     setSelectedLeaveType([activeRequest.leaveType]);
-    setRequestDate(new Date(activeRequest.startDate));
+    setRequestDate(parseRequestDate(activeRequest.startDate));
     setLocalComment("");
   }, [activeRequest]);
 
@@ -140,7 +151,7 @@ export const NMReviewLeaveRequest = ({
       onClose();
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
+      const detail = (error as { body?: { detail?: string } })?.body?.detail;
       showErrorToast(detail || "Failed to update request");
     },
   });
@@ -154,7 +165,7 @@ export const NMReviewLeaveRequest = ({
       onClose();
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
+      const detail = (error as { body?: { detail?: string } })?.body?.detail;
       showErrorToast(detail || "Failed to withdraw request");
     },
   });
@@ -220,7 +231,6 @@ export const NMReviewLeaveRequest = ({
                   </Select.Root>
                 )}
 
-                
                 <Select.Root
                   collection={leaveCollection}
                   size="sm"
@@ -253,6 +263,7 @@ export const NMReviewLeaveRequest = ({
                     </Select.Positioner>
                   </Portal>
                 </Select.Root>
+
                 <VStack alignItems="start">
                   <Text fontWeight="medium">Date Requesting</Text>
                   <DatePickerDemo
@@ -260,6 +271,7 @@ export const NMReviewLeaveRequest = ({
                     onSelect={(date) => setRequestDate(date)}
                   />
                 </VStack>
+
                 <VStack align="stretch" gap={1} w="full">
                   <Text fontSize="xs" fontWeight="medium" color="gray.500">
                     Comment

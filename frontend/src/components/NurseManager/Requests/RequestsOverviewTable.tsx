@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Box,
@@ -13,9 +13,10 @@ import {
 } from "@chakra-ui/react";
 import { Check, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
+import { LeaveRequestsService } from "@/client/LeaveRequestsService";
 import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
 import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
-import { ReviewLeaveRequest } from "./LeaveRequests/ReviewLeaveRequest";
+import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
 
 // ─── Mock shift request data (used when no wardId / no API data) ─────────────
 const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
@@ -71,70 +72,6 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
   },
 ];
 
-// ─── Mock leave request data ──────────────────────────────────────────────────
-const MOCK_LEAVE_REQUESTS: UnifiedRequest[] = [
-  {
-    id: -1,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: "mom's birthday",
-    nurseName: "Fiona Koh",
-  },
-  {
-    id: -2,
-    type: "LeaveRequest",
-    requestTypeName: "Birthday Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "George Tan",
-  },
-  {
-    id: -3,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Hannah Lee",
-  },
-  {
-    id: -4,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Ivan Ong",
-  },
-  {
-    id: -5,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Julia Sim",
-  },
-  {
-    id: -6,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "1/10/2025 – 10/11/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Kevin Ho",
-  },
-];
-
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 type TabFilter = "all" | "shift" | "leave";
 
@@ -154,6 +91,14 @@ function formatDate(dateStr: string): string {
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
   return `${day}/${month < 10 ? "0" + month : month}/${year}`;
+}
+
+function normalizeLeaveDateRange(dateValue: string) {
+  const parts = dateValue.split("–").map((part) => part.trim());
+  return {
+    startDate: parts[0] ?? dateValue,
+    endDate: parts[1] ?? parts[0] ?? dateValue,
+  };
 }
 
 // ─── Status cell ─────────────────────────────────────────────────────────────
@@ -310,9 +255,13 @@ function SortIcon({ direction }: { direction: "asc" | "desc" | null }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 interface RequestsOverviewTableProps {
   wardId?: number | null;
+  wardSelector?: ReactNode;
 }
 
-export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
+export function RequestsOverviewTable({
+  wardId,
+  wardSelector,
+}: RequestsOverviewTableProps) {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
@@ -332,20 +281,18 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
     });
 
   // Local overrides for optimistic status updates
-  const [statusOverrides, setStatusOverrides] = useState<
-    Record<number, RequestStatus>
-  >({});
-
-  // Local overrides for comments written in the review modal
-  const [commentOverrides, setCommentOverrides] = useState<
-    Record<number, string>
-  >({});
-
   // ── Fetch shift requests ──────────────────────────────────────────────────
   const { data: shiftRequests = [], isLoading: shiftLoading } = useQuery({
     queryKey: ["shift-requests", "ward", wardId],
     queryFn: () =>
       ShiftRequestsService.getShiftRequestsByWard({ wardId: wardId! }),
+    enabled: !!wardId,
+    staleTime: 30_000,
+  });
+
+  const { data: leaveRequests = [], isLoading: leaveLoading } = useQuery({
+    queryKey: ["ward-leave-requests", wardId],
+    queryFn: () => LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 30_000,
   });
@@ -388,23 +335,34 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
             shiftCodeMap.get(sr.preferredshifttype) || sr.preferredshifttype,
           shiftCode: sr.preferredshifttype,
           requestedDates: formatDate(sr.preferreddate),
-          status: (statusOverrides[sr.requestid] ?? sr.status) as RequestStatus,
+          rawPreferredDate: sr.preferreddate,
+          status: sr.status as RequestStatus,
           applicationDate: formatDate(sr.preferreddate),
           comments: sr.reason,
           nurseName: nurseMap.get(sr.nurseid) ?? null,
         }))
-      : MOCK_SHIFT_REQUESTS.map((sr) => ({
-          ...sr,
-          status: (statusOverrides[sr.id] ?? sr.status) as RequestStatus,
-        }));
+      : MOCK_SHIFT_REQUESTS;
 
-    const fromLeave: UnifiedRequest[] = MOCK_LEAVE_REQUESTS.map((lr) => ({
-      ...lr,
-      status: (statusOverrides[lr.id] ?? lr.status) as RequestStatus,
-    }));
+    const fromLeave: UnifiedRequest[] = wardId
+      ? leaveRequests.map((lr) => ({
+          id: lr.leaveid,
+          type: "LeaveRequest" as const,
+          requestTypeName: lr.leavetype,
+          requestedDates:
+            lr.startdate === lr.enddate
+              ? formatDate(lr.startdate)
+              : `${formatDate(lr.startdate)} – ${formatDate(lr.enddate)}`,
+          rawStartDate: lr.startdate,
+          rawEndDate: lr.enddate,
+          status: lr.status as RequestStatus,
+          applicationDate: formatDate(lr.requestedat),
+          comments: lr.reason,
+          nurseName: nurseMap.get(lr.nurseid) ?? null,
+        }))
+      : [];
 
     return [...fromShift, ...fromLeave];
-  }, [wardId, shiftRequests, shiftCodeMap, nurseMap, statusOverrides]);
+  }, [wardId, shiftRequests, leaveRequests, shiftCodeMap, nurseMap]);
 
   // ── Filter by tab ─────────────────────────────────────────────────────────
   const filteredRequests = useMemo(() => {
@@ -466,18 +424,34 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
     }
   };
 
-  const handleAction = (
-    requestId: number,
-    action: "Approved" | "Rejected",
-    comment: string,
-  ) => {
-    setStatusOverrides((prev) => ({ ...prev, [requestId]: action }));
-    if (comment.trim()) {
-      setCommentOverrides((prev) => ({ ...prev, [requestId]: comment.trim() }));
-    }
-  };
+  const competingLeaveRequests = useMemo(() => {
+    if (!selectedLeaveRequest || !wardId) return [];
+    const selectedStart = selectedLeaveRequest.rawStartDate;
+    const selectedEnd =
+      selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate;
+    if (!selectedStart || !selectedEnd) return [];
 
-  const isLoading = shiftLoading;
+    const toDate = (value: string) => new Date(value);
+    const selStart = toDate(selectedStart);
+    const selEnd = toDate(selectedEnd);
+
+    return leaveRequests
+      .filter((lr) => {
+        const lrStart = toDate(lr.startdate);
+        const lrEnd = toDate(lr.enddate);
+        return lrStart <= selEnd && lrEnd >= selStart;
+      })
+      .map((lr) => ({
+        requestId: lr.leaveid,
+        nurseName: nurseMap.get(lr.nurseid) ?? "",
+        leaveType: lr.leavetype,
+        startDate: lr.startdate,
+        endDate: lr.enddate,
+        status: lr.status as RequestStatus,
+      }));
+  }, [leaveRequests, nurseMap, selectedLeaveRequest, wardId]);
+
+  const isLoading = shiftLoading || leaveLoading;
 
   return (
     <VStack align="stretch" gap={4} w="full" maxW="1200px" mx="auto">
@@ -492,13 +466,22 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
       </Text>
 
       {/* Tabs */}
-      <Flex justify="center">
+      <Flex
+        w="full"
+        align="center"
+        justify="space-between"
+        gap={4}
+        wrap={{ base: "wrap", md: "nowrap" }}
+      >
+        <Box minW={{ base: "0", md: "160px" }} flex={{ base: "1 1 auto", md: "0 0 160px" }} />
         <HStack
           gap={0}
           rounded="full"
           borderWidth="1px"
           borderColor="border"
           overflow="hidden"
+          justify="center"
+          flexShrink={0}
         >
           {TABS.map((tab, idx) => {
             const isFirst = idx === 0;
@@ -527,6 +510,14 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
             );
           })}
         </HStack>
+        <Box
+          minW={{ base: "100%", md: "160px" }}
+          display="flex"
+          justifyContent={{ base: "center", md: "flex-end" }}
+          flex={{ base: "1 1 100%", md: "0 0 160px" }}
+        >
+          {wardSelector ?? <Box />}
+        </Box>
       </Flex>
 
       {/* Table */}
@@ -702,7 +693,7 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
                     <Table.Cell py={2} px={4} maxW="160px">
                       {(() => {
                         const displayComment =
-                          commentOverrides[req.id] ?? req.comments ?? null;
+                          req.comments ?? null;
                         return displayComment ? (
                           <Text
                             fontSize="sm"
@@ -838,29 +829,26 @@ export function RequestsOverviewTable({ wardId }: RequestsOverviewTableProps) {
           onClose={() => setSelectedShiftRequest(null)}
           requestId={selectedShiftRequest.id}
           nurseName={selectedShiftRequest.nurseName ?? null}
-          shiftCode={
-            selectedShiftRequest.shiftCode ??
-            selectedShiftRequest.requestTypeName
-          }
-          date={selectedShiftRequest.requestedDates}
+          shiftCode={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
+          date={selectedShiftRequest.rawPreferredDate ?? selectedShiftRequest.requestedDates}
           status={selectedShiftRequest.status}
           comment={selectedShiftRequest.comments}
-          onAction={handleAction}
+          wardId={wardId}
         />
       )}
 
       {/* Leave review dialog */}
       {selectedLeaveRequest && (
-        <ReviewLeaveRequest
+        <NMReviewLeaveRequest
           isOpen={!!selectedLeaveRequest}
           onClose={() => setSelectedLeaveRequest(null)}
           requestId={selectedLeaveRequest.id}
-          nurseName={selectedLeaveRequest.nurseName ?? null}
+          nurseName={selectedLeaveRequest.nurseName ?? ""}
           leaveType={selectedLeaveRequest.requestTypeName}
-          date={selectedLeaveRequest.requestedDates}
-          status={selectedLeaveRequest.status}
-          comment={selectedLeaveRequest.comments}
-          onAction={handleAction}
+          startDate={selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
+          endDate={selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
+          currentStatus={selectedLeaveRequest.status}
+          requests={competingLeaveRequests}
         />
       )}
     </VStack>

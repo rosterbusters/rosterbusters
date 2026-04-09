@@ -32,11 +32,27 @@ interface EditShiftRequestProps {
   selectedRequestId?: number;
 }
 
+function parseRequestDate(value?: string | null): Date | undefined {
+  if (!value) return undefined;
+
+  const firstSegment = value.split("–")[0]?.trim() ?? value;
+  const normalizedValue = firstSegment.replace(/\s+/g, " ").trim();
+  const slashMatch = normalizedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  const parsed = new Date(normalizedValue);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 export const EditShiftRequest = ({
   isOpen,
   onClose,
   requests,
-  wardId,
   selectedRequestId,
 }: EditShiftRequestProps) => {
   const active = useMemo(
@@ -49,34 +65,33 @@ export const EditShiftRequest = ({
 
   const [shiftType, setShiftType] = useState<string[]>([active?.initialShiftType ?? ""]);
   const [requestDate, setRequestDate] = useState<Date | undefined>(
-    active ? new Date(active.initialDate) : undefined,
+    parseRequestDate(active?.initialDate),
   );
 
   useEffect(() => {
     if (active) {
       setShiftType([active.initialShiftType]);
-      setRequestDate(new Date(active.initialDate));
+      setRequestDate(parseRequestDate(active.initialDate));
     }
   }, [active]);
 
   const queryClient = useQueryClient();
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", wardId ?? "default"],
-    queryFn: () =>
-      wardId != null
-        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
-        : ShiftRequestsService.getWorkingShiftCodes(),
+    queryKey: ["shift-codes", "all"],
+    queryFn: () => ShiftRequestsService.getAllShiftCodes(),
   });
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: (shiftCodes ?? []).map((sc) => ({
-          value: sc.shiftcode,
-          label: sc.shiftcode,
-          description: sc.description,
-        })),
+        items: (shiftCodes ?? [])
+          .filter((sc) => sc.shiftcode !== "MC")
+          .map((sc) => ({
+            value: sc.shiftcode,
+            label: sc.shiftcode,
+            description: sc.description,
+          })),
       }),
     [shiftCodes],
   );

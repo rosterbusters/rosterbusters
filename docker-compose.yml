@@ -31,17 +31,16 @@ services:
     environment:
       - ADMINER_DESIGN=pepa-linha-dark
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-http.rule=Host(`adminer.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-http.entrypoints=http
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-http.middlewares=https-redirect
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.rule=Host(`adminer.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.entrypoints=https
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.tls=true
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.tls.certresolver=le
-      - traefik.http.services.${STACK_NAME?Variable not set}-adminer.loadbalancer.server.port=8080
+      traefik.enable: "true"
+      traefik.docker.network: traefik-public
+      traefik.constraint-label: traefik-public
+      traefik.http.routers.adminer-http.rule: Host(`adminer.${DOMAIN?Variable not set}`)
+      traefik.http.routers.adminer-http.entrypoints: http
+      traefik.http.routers.adminer-http.middlewares: https-redirect
+      traefik.http.routers.adminer-https.rule: Host(`adminer.${DOMAIN?Variable not set}`)
+      traefik.http.routers.adminer-https.entrypoints: https
+      traefik.http.routers.adminer-https.tls: "true"
+      traefik.http.services.adminer.loadbalancer.server.port: "8080"
 
   prestart:
     image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
@@ -126,26 +125,20 @@ services:
     volumes:
       - ./backend:/app
       - /app/.venv
-    command: uv run fastapi dev app/main.py --host 0.0.0.0
+    command: bash -c "uv run alembic upgrade head && uv run fastapi dev app/main.py --host 0.0.0.0"
     build:
       context: ./backend
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-
-      - traefik.http.services.${STACK_NAME?Variable not set}-backend.loadbalancer.server.port=8000
-
-      - traefik.http.routers.${STACK_NAME?Variable not set}-backend-http.rule=Host(`api.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-backend-http.entrypoints=http
-
-      - traefik.http.routers.${STACK_NAME?Variable not set}-backend-https.rule=Host(`api.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-backend-https.entrypoints=https
-      - traefik.http.routers.${STACK_NAME?Variable not set}-backend-https.tls=true
-      - traefik.http.routers.${STACK_NAME?Variable not set}-backend-https.tls.certresolver=le
-
-      # Enable redirection for HTTP and HTTPS
-      - traefik.http.routers.${STACK_NAME?Variable not set}-backend-http.middlewares=https-redirect
+      traefik.enable: "true"
+      traefik.docker.network: traefik-public
+      traefik.constraint-label: traefik-public
+      traefik.http.services.backend.loadbalancer.server.port: "8000"
+      traefik.http.routers.backend-http.rule: Host(`api.${DOMAIN?Variable not set}`)
+      traefik.http.routers.backend-http.entrypoints: http
+      traefik.http.routers.backend-http.middlewares: https-redirect
+      traefik.http.routers.backend-https.rule: Host(`api.${DOMAIN?Variable not set}`)
+      traefik.http.routers.backend-https.entrypoints: https
+      traefik.http.routers.backend-https.tls: "true"
 
   frontend:
     image: '${DOCKER_IMAGE_FRONTEND?Variable not set}:${TAG-latest}'
@@ -165,25 +158,53 @@ services:
         - VITE_API_URL=https://api.${DOMAIN?Variable not set}
         - NODE_ENV=development
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
+      traefik.enable: "true"
+      traefik.docker.network: traefik-public
+      traefik.constraint-label: traefik-public
+      traefik.http.services.frontend.loadbalancer.server.port: "5173"
+      traefik.http.routers.frontend-http.rule: Host(`dashboard.${DOMAIN?Variable not set}`)
+      traefik.http.routers.frontend-http.entrypoints: http
+      traefik.http.routers.frontend-http.middlewares: https-redirect
+      traefik.http.routers.frontend-https.rule: Host(`dashboard.${DOMAIN?Variable not set}`)
+      traefik.http.routers.frontend-https.entrypoints: https
+      traefik.http.routers.frontend-https.tls: "true"
 
-      - traefik.http.services.${STACK_NAME?Variable not set}-frontend.loadbalancer.server.port=5173
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis-data:/data
 
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.rule=Host(`dashboard.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.entrypoints=http
-
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.rule=Host(`dashboard.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.entrypoints=https
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls=true
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls.certresolver=le
-
-      # Enable redirection for HTTP and HTTPS
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares=https-redirect
+  celery_worker:
+    image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
+    build:
+      context: ./backend
+    restart: always
+    command: uv run celery -A app.worker worker --loglevel=info --pool=solo
+    depends_on:
+      - redis
+      - db
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_SERVER=db
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - GRB_WLSACCESSID=${GRB_WLSACCESSID}
+      - GRB_WLSSECRET=${GRB_WLSSECRET}
+      - GRB_LICENSEID=${GRB_LICENSEID}
+    volumes:
+      - ./gurobi.lic:/root/gurobi.lic:ro
+    networks:
+      - traefik-public
+      - default
 
 volumes:
   app-db-data:
+  redis-data:
 
 networks:
   traefik-public:

@@ -8,6 +8,7 @@ import {
   type AdminUser,
   type AdminUserCreate,
   type AdminUserUpdate,
+  type DesignationOption,
   type WardOption,
 } from "@/client/adminService"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
@@ -42,8 +43,10 @@ export const Route = createFileRoute("/admin/users")({
 
 interface UserFormData {
   username: string
+  name: string
   email: string
   employee_id: string
+  designation: string
   password: string
   confirm_password: string
   is_active: boolean
@@ -51,15 +54,19 @@ interface UserFormData {
 }
 
 interface CreatedUserInfo {
+  userid?: number
   username: string
+  name?: string | null
   generated_password?: string | null
 }
 
 interface ParsedImportRow {
   rowNumber: number
   username: string
+  name?: string
   email?: string
   employee_id?: string
+  designation?: string
   password?: string
   is_active: boolean
   role: string
@@ -115,19 +122,52 @@ const slugifyUsername = (value: string) =>
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "")
 
-const inferRole = (value: string): "Admin" | "NurseManager" | "Nurse" => {
+const takeFirstTwoWords = (value: string) =>
+  value.trim().split(/\s+/).filter(Boolean).slice(0, 2).join(" ")
+
+const buildUsernameFromName = (value: string) =>
+  slugifyUsername(takeFirstTwoWords(value))
+
+const NURSE_MANAGER_IMPORT_ROLE_MATCHERS = [
+  "nursingmanager",
+  "nursemanager",
+  "nurseclinician",
+]
+
+const isExcludedImportRole = (value: string) => {
   const normalized = normalizeHeader(value)
+  if (!normalized) return false
+  return (
+    normalized.includes("psa") ||
+    normalized.includes("patientserviceassistant") ||
+    normalized.includes("patientserviceasst")
+  )
+}
+
+const resolveImportedRole = (
+  value: string,
+): "Admin" | "NurseManager" | "Nurse" | null => {
+  const normalized = normalizeHeader(value)
+  if (!normalized) return null
+  if (isExcludedImportRole(value)) return null
+  if (
+    NURSE_MANAGER_IMPORT_ROLE_MATCHERS.some((matcher) =>
+      normalized.includes(matcher),
+    )
+  ) {
+    return "NurseManager"
+  }
   if (normalized.includes("admin")) return "Admin"
   if (normalized.includes("manager")) return "NurseManager"
   return "Nurse"
 }
 
+const inferRole = (value: string): "Admin" | "NurseManager" | "Nurse" => {
+  return resolveImportedRole(value) ?? "Nurse"
+}
+
 const parseActiveValue = (value: string) => {
-  const normalized = normalizeHeader(value)
-  if (!normalized) return true
-  if (["inactive", "false", "no", "0", "disabled"].includes(normalized)) {
-    return false
-  }
+  void value
   return true
 }
 
@@ -178,12 +218,9 @@ const STAFF_LIST_WARD_ALIASES: Record<string, string[]> = {
   "ward11": ["ward11"],
 }
 
-const parseWorkbookRole = (occupation: string): "Nurse" | "NurseManager" | null => {
-  const normalized = occupation.trim().toUpperCase()
-  if (!normalized) return null
-  if (normalized.includes("MANAGER")) return "NurseManager"
-  return "Nurse"
-}
+const parseWorkbookRole = (
+  occupation: string,
+): "Admin" | "Nurse" | "NurseManager" | null => resolveImportedRole(occupation)
 
 const parseWorkbookWardIds = (value: string, wards: WardOption[]) => {
   const wardMap = new Map<string, number>()
@@ -203,8 +240,19 @@ const parseWorkbookWardIds = (value: string, wards: WardOption[]) => {
 }
 
 const buildImportedUsername = (name: string, rowNumber: number) => {
-  const base = slugifyUsername(name) || `staff.${rowNumber}`
+  const base = buildUsernameFromName(name) || `staff.${rowNumber}`
   return base
+}
+
+const ensureUniqueUsername = (base: string, used: Set<string>) => {
+  let candidate = base
+  let suffix = 1
+  while (used.has(candidate)) {
+    suffix += 1
+    candidate = `${base}${suffix}`
+  }
+  used.add(candidate)
+  return candidate
 }
 
 const parseExactStaffWorkbook = (
@@ -233,6 +281,13 @@ const parseExactStaffWorkbook = (
         return
       }
 
+      if (isExcludedImportRole(occupation)) {
+        skipped.push(
+          `NUR row ${index + 2} skipped because "${occupation}" is a PSA role.`,
+        )
+        return
+      }
+
       if (!role) {
         skipped.push(`NUR row ${index + 2} skipped because "${occupation}" is not a Nurse or Nurse Manager role.`)
         return
@@ -243,8 +298,10 @@ const parseExactStaffWorkbook = (
         rows.push({
           rowNumber: index + 2,
           username: buildImportedUsername(name, index + 2),
+          name: name || undefined,
           email: undefined,
           employee_id: employeeId || undefined,
+          designation: occupation || undefined,
           is_active: true,
           role,
           ward_ids: wardIds,
@@ -278,6 +335,13 @@ const parseExactStaffWorkbook = (
         return
       }
 
+      if (isExcludedImportRole(position)) {
+        skipped.push(
+          `CEN Listing row ${index + 2} skipped because "${position}" is a PSA role.`,
+        )
+        return
+      }
+
       if (!role) {
         skipped.push(
           `CEN Listing row ${index + 2} skipped because "${position}" is not a Nurse or Nurse Manager role.`,
@@ -290,9 +354,11 @@ const parseExactStaffWorkbook = (
         rows.push({
           rowNumber: index + 2,
           username: buildImportedUsername(name, index + 2),
+          name: name || undefined,
           email: undefined,
           employee_id: undefined,
-          is_active: !remarks.toUpperCase().includes("INOP"),
+          designation: position || undefined,
+          is_active: true,
           role,
           ward_ids: wardIds,
         })
@@ -341,65 +407,89 @@ async function parseStaffWorkbook(
     throw new Error("The selected sheet is empty.")
   }
 
-  return {
-    rows: rows.map((row, index) => {
-      const employeeId = findCellValue(row, [
-        "employee id",
-        "employee_id",
-        "employeeid",
-        "staff id",
-        "staffid",
-      ])
-      const role = inferRole(
-        findCellValue(row, ["role", "designation", "position", "user role"]),
+  const parsedRows: ParsedImportRow[] = []
+  const skipped: string[] = []
+
+  rows.forEach((row, index) => {
+    const employeeId = findCellValue(row, [
+      "employee id",
+      "employee_id",
+      "employeeid",
+      "staff id",
+      "staffid",
+    ])
+    const designation = findCellValue(row, [
+      "designation",
+      "occupation",
+      "position",
+      "job title",
+    ])
+    const roleText = findCellValue(row, [
+      "role",
+      "designation",
+      "position",
+      "user role",
+    ])
+    if (isExcludedImportRole(roleText)) {
+      skipped.push(
+        `Row ${index + 2} skipped because "${roleText}" is a PSA role.`,
       )
+      return
+    }
+    const role = inferRole(roleText)
       const email = findCellValue(row, ["email", "email address", "e-mail"])
       const rawUsername = findCellValue(row, [
         "username",
         "user name",
         "name",
-        "staff name",
-        "employee name",
-        "full name",
-      ])
-      const username =
-        rawUsername || slugifyUsername(email.split("@")[0] || employeeId)
-      const wardText = findCellValue(row, [
-        "ward",
-        "ward name",
-        "assigned ward",
-        "wards",
-        "unit",
-      ])
-      const password = findCellValue(row, ["password", "temporary password"])
-      const isActive = parseActiveValue(
-        findCellValue(row, ["active", "is active", "status"]),
-      )
+      "staff name",
+      "employee name",
+      "full name",
+    ])
+      const username = rawUsername
+        ? (rawUsername.trim().includes(" ")
+            ? buildUsernameFromName(rawUsername)
+            : slugifyUsername(rawUsername))
+        : slugifyUsername(email.split("@")[0] || employeeId)
+    const name = rawUsername || username
+    const wardText = findCellValue(row, [
+      "ward",
+      "ward name",
+      "assigned ward",
+      "wards",
+      "unit",
+    ])
+    const password = findCellValue(row, ["password", "temporary password"])
+    const isActive = parseActiveValue(
+      findCellValue(row, ["active", "is active", "status"]),
+    )
 
-      if (!username) {
-        throw new Error(`Row ${index + 2}: missing username/name/email.`)
-      }
+    if (!username) {
+      throw new Error(`Row ${index + 2}: missing username/name/email.`)
+    }
 
-      if ((role === "Nurse" || role === "NurseManager") && !employeeId) {
-        throw new Error(`Row ${index + 2}: missing employee ID.`)
-      }
+    if ((role === "Nurse" || role === "NurseManager") && !employeeId) {
+      throw new Error(`Row ${index + 2}: missing employee ID.`)
+    }
 
-      return {
-        rowNumber: index + 2,
-        username,
-        email: email || undefined,
-        employee_id: employeeId || undefined,
-        password: password || undefined,
-        is_active: isActive,
-        role,
-        ward_ids:
-          role === "Nurse" || role === "NurseManager"
-            ? parseWardIds(wardText, wards)
-            : undefined,
-      }
-    }),
-    skipped: [],
-  }
+    parsedRows.push({
+      rowNumber: index + 2,
+      username,
+      name: name || undefined,
+      email: email || undefined,
+      employee_id: employeeId || undefined,
+      designation: designation || undefined,
+      password: password || undefined,
+      is_active: isActive,
+      role,
+      ward_ids:
+        role === "Nurse" || role === "NurseManager"
+          ? parseWardIds(wardText, wards)
+          : undefined,
+    })
+  })
+
+  return { rows: parsedRows, skipped }
 }
 
 function UserFormDialog({
@@ -422,6 +512,14 @@ function UserFormDialog({
     queryFn: () => AdminService.listWards(),
     staleTime: 60_000,
   })
+
+  const { data: designations = [] } = useQuery<DesignationOption[]>({
+    queryKey: ["admin-designations"],
+    queryFn: () => AdminService.listDesignations(),
+    staleTime: 60_000,
+  })
+
+  const designationOptions = designations.map((d) => d.designation)
 
   const currentRole = isEdit ? (editUser.roles[0] ?? "") : ""
 
@@ -450,8 +548,10 @@ function UserFormDialog({
     defaultValues: isEdit
       ? {
           username: editUser.username,
+          name: editUser.name ?? "",
           email: editUser.email ?? "",
           employee_id: editUser.employee_id ?? "",
+          designation: editUser.designation ?? "",
           password: "",
           confirm_password: "",
           is_active: editUser.isactive,
@@ -459,8 +559,10 @@ function UserFormDialog({
         }
       : {
           username: "",
+          name: "",
           email: "",
           employee_id: "",
+          designation: "",
           password: "",
           confirm_password: "",
           is_active: true,
@@ -476,6 +578,7 @@ function UserFormDialog({
       showSuccessToast("User created successfully.")
       if (result.generated_password) {
         onCreated?.({
+          userid: result.userid,
           username: result.username,
           generated_password: result.generated_password,
         })
@@ -509,11 +612,15 @@ function UserFormDialog({
     if (isEdit) {
       const payload: AdminUserUpdate = {
         username: data.username,
-        email: data.email || undefined,
+        name: data.name || undefined,
+        email: data.email.trim() ? data.email.trim() : null,
         is_active: data.is_active,
       }
       if (currentRole === "Nurse" || currentRole === "NurseManager") {
         payload.employee_id = data.employee_id.trim()
+      }
+      if (currentRole === "Nurse") {
+        payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
       // Only send ward_ids if this user is a nurse or manager
@@ -523,13 +630,16 @@ function UserFormDialog({
       updateMutation.mutate(payload)
     } else {
       const payload: AdminUserCreate = {
-        username: data.username,
+        name: data.name || undefined,
         is_active: data.is_active,
         role: data.role,
       }
       if (data.email) payload.email = data.email
       if (data.role === "Nurse" || data.role === "NurseManager") {
         payload.employee_id = data.employee_id.trim()
+      }
+      if (data.role === "Nurse") {
+        payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
       if (data.role === "Nurse" || data.role === "NurseManager") {
@@ -558,18 +668,47 @@ function UserFormDialog({
             {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username <span className="text-red-500">*</span>
+                Name
+                {!isEdit && <span className="text-red-500"> *</span>}
               </label>
               <input
-                {...register("username", { required: "Username is required" })}
+                {...register("name", {
+                  validate: (value) => {
+                    if (!isEdit && !value?.trim()) {
+                      return "Name is required"
+                    }
+                    return true
+                  },
+                })}
                 type="text"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="johndoe"
+                placeholder="LEE Chuen Shu"
               />
-              {errors.username && (
-                <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
+              {errors.name && (
+                <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>
               )}
             </div>
+
+            {isEdit ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Username <span className="text-red-500">*</span>
+                </label>
+                <input
+                  {...register("username", { required: "Username is required" })}
+                  type="text"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="johndoe"
+                />
+                {errors.username && (
+                  <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">
+                Username will be auto-generated from Name.
+              </p>
+            )}
 
             {/* Email */}
             <div>
@@ -592,6 +731,47 @@ function UserFormDialog({
               )}
             </div>
 
+            {/* Role (editable on create, read-only on edit) */}
+            {!isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register("role")}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Nurse">Nurse</option>
+                  <option value="NurseManager">Nurse Manager</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+            )}
+
+            {isEdit && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <div className="flex flex-wrap gap-1 py-2">
+                  {editUser!.roles.map((role) => (
+                    <span
+                      key={role}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        role === "Admin"
+                          ? "bg-orange-100 text-orange-700"
+                          : role === "NurseManager"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {role === "NurseManager" ? "Nurse Manager" : role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {(isEdit
               ? currentRole === "Nurse" || currentRole === "NurseManager"
               : selectedRole === "Nurse" || selectedRole === "NurseManager"
@@ -608,6 +788,42 @@ function UserFormDialog({
                 />
                 {errors.employee_id && (
                   <p className="text-red-500 text-xs mt-1">{errors.employee_id.message}</p>
+                )}
+              </div>
+            )}
+
+            {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Designation <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register("designation", {
+                    validate: (value) => {
+                      const isNurse = isEdit
+                        ? currentRole === "Nurse"
+                        : selectedRole === "Nurse"
+                      if (!isNurse) return true
+                      if (!value?.trim()) return "Designation is required for nurses"
+                      return true
+                    },
+                  })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select designation</option>
+                  {designationOptions.map((designation) => (
+                    <option key={designation} value={designation}>
+                      {designation}
+                    </option>
+                  ))}
+                  {isEdit &&
+                    editUser?.designation &&
+                    !designationOptions.includes(editUser.designation) && (
+                      <option value={editUser.designation}>{editUser.designation}</option>
+                    )}
+                </select>
+                {errors.designation && (
+                  <p className="text-red-500 text-xs mt-1">{errors.designation.message}</p>
                 )}
               </div>
             )}
@@ -656,48 +872,6 @@ function UserFormDialog({
                 <p className="text-red-500 text-xs mt-1">{errors.confirm_password.message}</p>
               )}
             </div>
-
-            {/* Role (only on create) */}
-            {!isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role <span className="text-red-500">*</span>
-                </label>
-                <select
-                  {...register("role")}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Nurse">Nurse</option>
-                  <option value="NurseManager">Nurse Manager</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-            )}
-
-            {/* Role display (read-only on edit) */}
-            {isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <div className="flex flex-wrap gap-1 py-2">
-                  {editUser!.roles.map((role) => (
-                    <span
-                      key={role}
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        role === "Admin"
-                          ? "bg-orange-100 text-orange-700"
-                          : role === "NurseManager"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {role === "NurseManager" ? "Nurse Manager" : role}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Ward assignment — show for Nurse / NurseManager */}
             {(isEdit
@@ -812,6 +986,8 @@ function DeleteDialog({
 
   if (!open || !user) return null
 
+  const isAdminUser = user.roles.includes("Admin")
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
@@ -829,13 +1005,64 @@ function DeleteDialog({
           </button>
           <button
             onClick={() => {
+              if (isAdminUser) {
+                showErrorToast("Admin accounts cannot be deleted.")
+                return
+              }
               setDeleting(true)
               mutation.mutate(user.userid)
             }}
-            disabled={deleting}
+            disabled={deleting || isAdminUser}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting ? "Deleting..." : "Delete"}
+            {deleting ? "Deleting..." : isAdminUser ? "Cannot Delete Admin" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ResetPasswordDialog({
+  open,
+  onClose,
+  user,
+  onConfirm,
+  loading,
+}: {
+  open: boolean
+  onClose: () => void
+  user: AdminUser | null
+  onConfirm: (user: AdminUser) => void
+  loading: boolean
+}) {
+  if (!open || !user) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">
+          Reset Password
+        </h2>
+        <p className="text-sm text-gray-600 mb-6">
+          Generate a new temporary password for{" "}
+          <strong>{user.username || user.email}</strong>? The current password
+          will stop working immediately.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(user)}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50"
+          >
+            {loading ? "Resetting..." : "Reset Password"}
           </button>
         </div>
       </div>
@@ -868,13 +1095,23 @@ function AdminUsers() {
   const [formOpen, setFormOpen] = useState(false)
   const [editUser, setEditUser] = useState<AdminUser | null>(null)
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
+  const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null)
   const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
+  const [passwordCopied, setPasswordCopied] = useState(false)
+  const [copiedDefaultPasswordUserId, setCopiedDefaultPasswordUserId] = useState<number | null>(null)
+  const [knownDefaultPasswords, setKnownDefaultPasswords] = useState<Record<number, string>>({})
   const [isImporting, setIsImporting] = useState(false)
   const [pendingImport, setPendingImport] = useState<PendingImportState | null>(null)
   const [importPassword, setImportPassword] = useState("")
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null)
+  const [importCancelRequested, setImportCancelRequested] = useState(false)
+  const [importFailures, setImportFailures] = useState<string[] | null>(null)
+  const importCancelRequestedRef = useRef(false)
 
   const importRows = async (file: File, password?: string) => {
+    importCancelRequestedRef.current = false
+    setImportCancelRequested(false)
+
     const result = await parseStaffWorkbook(
       file,
       wards.filter((ward) => ward.isactive),
@@ -888,36 +1125,67 @@ function AdminUsers() {
       return
     }
 
+    let existingUsernames = new Set<string>()
+    try {
+      const firstPage = await AdminService.listUsers(0, 200, "")
+      firstPage.data.forEach((user) => existingUsernames.add(user.username))
+      const total = firstPage.count
+      for (let skip = firstPage.data.length; skip < total; skip += 200) {
+        const nextPage = await AdminService.listUsers(skip, 200, "")
+        nextPage.data.forEach((user) => existingUsernames.add(user.username))
+      }
+    } catch (error: any) {
+      showErrorToast(error?.body?.detail ?? "Failed to validate usernames.")
+      return
+    }
+
+    const rowsToImport = result.rows.map((row) => ({
+      ...row,
+      username: ensureUniqueUsername(row.username, existingUsernames),
+    }))
+
     const failures: string[] = []
     let importedCount = 0
     let failedCount = 0
 
     setImportProgress({
-      total: result.rows.length,
+      total: rowsToImport.length,
       processed: 0,
       imported: 0,
       failed: 0,
       currentLabel: "",
     })
 
-    for (const [index, row] of result.rows.entries()) {
+    for (const [index, row] of rowsToImport.entries()) {
+      if (importCancelRequestedRef.current) {
+        break
+      }
+
       setImportProgress({
-        total: result.rows.length,
+        total: rowsToImport.length,
         processed: index,
         imported: importedCount,
         failed: failedCount,
         currentLabel: row.username,
       })
       try {
-        await AdminService.createUser({
+        const createdUser = await AdminService.createUser({
           username: row.username,
+          name: row.name,
           email: row.email,
           employee_id: row.employee_id,
+          designation: row.designation,
           password: row.password,
           is_active: row.is_active,
           role: row.role,
           ward_ids: row.ward_ids,
         })
+        if (createdUser.generated_password) {
+          setKnownDefaultPasswords((prev) => ({
+            ...prev,
+            [createdUser.userid]: createdUser.generated_password!,
+          }))
+        }
         importedCount += 1
       } catch (error: any) {
         failedCount += 1
@@ -926,8 +1194,19 @@ function AdminUsers() {
         )
       }
 
+      if (importCancelRequestedRef.current) {
+        setImportProgress({
+          total: rowsToImport.length,
+          processed: index + 1,
+          imported: importedCount,
+          failed: failedCount,
+          currentLabel: row.username,
+        })
+        break
+      }
+
       setImportProgress({
-        total: result.rows.length,
+        total: rowsToImport.length,
         processed: index + 1,
         imported: importedCount,
         failed: failedCount,
@@ -937,7 +1216,11 @@ function AdminUsers() {
 
     await queryClient.invalidateQueries({ queryKey: ["admin-users"] })
 
-    if (importedCount > 0) {
+    if (importCancelRequestedRef.current) {
+      showSuccessToast(
+        `Import canceled. ${importedCount} ${importedCount === 1 ? "record was" : "records were"} imported before cancellation.`,
+      )
+    } else if (importedCount > 0) {
       showSuccessToast(
         `Imported ${importedCount} staff ${importedCount === 1 ? "record" : "records"}.`,
       )
@@ -948,11 +1231,13 @@ function AdminUsers() {
     }
 
     if (failures.length > 0) {
+      setImportFailures(failures)
       showErrorToast(failures.slice(0, 3).join(" "))
     }
 
     setTimeout(() => {
       setImportProgress(null)
+      setImportCancelRequested(false)
     }, 800)
   }
 
@@ -981,9 +1266,30 @@ function AdminUsers() {
     staleTime: 60_000,
   })
 
+  const selectedWardName =
+    wardFilter === "all"
+      ? "all-wards"
+      : wards.find((ward) => String(ward.wardid) === wardFilter)?.wardname ??
+        `ward-${wardFilter}`
+
   const users = data?.data ?? []
   const count = data?.count ?? 0
   const totalPages = Math.ceil(count / PER_PAGE)
+
+  useEffect(() => {
+    if (users.length === 0) return
+    setKnownDefaultPasswords((prev) => {
+      const next = { ...prev }
+      let changed = false
+      users.forEach((user) => {
+        if (user.generated_password && !next[user.userid]) {
+          next[user.userid] = user.generated_password
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [users])
 
   const filteredUsers = users.filter((user) => {
     const matchesRole =
@@ -1009,7 +1315,15 @@ function AdminUsers() {
   const resetPasswordMutation = useMutation({
     mutationFn: (user: AdminUser) => AdminService.resetUserPassword(user.userid),
     onSuccess: (result) => {
+      if (resetPasswordUser?.userid) {
+        setKnownDefaultPasswords((prev) => ({
+          ...prev,
+          [resetPasswordUser.userid]: result.generated_password,
+        }))
+      }
+      setResetPasswordUser(null)
       setCreatedUserInfo({
+        userid: resetPasswordUser?.userid,
         username: result.username,
         generated_password: result.generated_password,
       })
@@ -1067,9 +1381,123 @@ function AdminUsers() {
     }
   }
 
+  const handleCancelImport = () => {
+    importCancelRequestedRef.current = true
+    setImportCancelRequested(true)
+  }
+
+  const handleCopyCreatedPassword = async () => {
+    const password = createdUserInfo?.generated_password
+    if (!password) {
+      showErrorToast("No password available to copy.")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(password)
+      setPasswordCopied(true)
+      showSuccessToast("Password copied to clipboard.")
+      setTimeout(() => setPasswordCopied(false), 1500)
+    } catch {
+      showErrorToast("Unable to copy password. Please copy it manually.")
+    }
+  }
+
+  const handleCopyDefaultPassword = async (userId: number) => {
+    const password = knownDefaultPasswords[userId]
+    if (!password) {
+      showErrorToast("No password available to copy.")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(password)
+      setCopiedDefaultPasswordUserId(userId)
+      showSuccessToast("Password copied to clipboard.")
+      setTimeout(() => setCopiedDefaultPasswordUserId((prev) => (prev === userId ? null : prev)), 1500)
+    } catch {
+      showErrorToast("Unable to copy password. Please copy it manually.")
+    }
+  }
+
   const progressPercent = importProgress
     ? Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)
     : 0
+
+  const handleExportDefaultPasswords = async () => {
+    if (wardFilter === "all") {
+      showErrorToast("Select a specific ward to export default passwords.")
+      return
+    }
+    const wardId = Number(wardFilter)
+    if (Number.isNaN(wardId)) {
+      showErrorToast("Invalid ward selection.")
+      return
+    }
+
+    let allUsers: AdminUser[] = []
+    try {
+      const firstPage = await AdminService.listUsers(0, 200, "")
+      allUsers = firstPage.data
+      const total = firstPage.count
+      for (let skip = allUsers.length; skip < total; skip += 200) {
+        const nextPage = await AdminService.listUsers(skip, 200, "")
+        allUsers = allUsers.concat(nextPage.data)
+      }
+    } catch (error: any) {
+      showErrorToast(error?.body?.detail ?? "Failed to fetch users for export.")
+      return
+    }
+
+    const rows = allUsers
+      .filter((user) =>
+        user.wards.some((ward) => ward.ward_id === wardId),
+      )
+      .filter(
+        (user) =>
+          user.must_change_password && knownDefaultPasswords[user.userid],
+      )
+      .map((user) => ({
+        name: user.name ?? "",
+        username: user.username,
+        ward: user.wards.map((w) => w.ward_name).join("; "),
+        password: knownDefaultPasswords[user.userid],
+      }))
+
+    if (rows.length === 0) {
+      showErrorToast("No default passwords found for the selected ward.")
+      return
+    }
+
+    const escapeCsv = (value: string) => {
+      const safe = value.replace(/"/g, '""')
+      return /[",\n]/.test(safe) ? `"${safe}"` : safe
+    }
+
+    const header = ["Name", "Username", "Ward", "Default Password"]
+    const lines = [
+      header.join(","),
+      ...rows.map((row) =>
+        [
+          escapeCsv(row.name),
+          escapeCsv(row.username),
+          escapeCsv(row.ward),
+          escapeCsv(row.password),
+        ].join(","),
+      ),
+    ]
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    const dateStamp = new Date().toISOString().slice(0, 10)
+    link.href = url
+    link.download = `default-passwords-${selectedWardName}-${dateStamp}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -1110,6 +1538,13 @@ function AdminUsers() {
             <Plus className="w-4 h-4" />
             Add User
           </button>
+          <button
+            onClick={handleExportDefaultPasswords}
+            disabled={wardFilter === "all"}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Export Default Passwords (CSV)
+          </button>
         </div>
       </div>
 
@@ -1118,9 +1553,10 @@ function AdminUsers() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           type="text"
-          placeholder="Search by name or email..."
+          placeholder="Search by name, email, or employee ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          data-testid="admin-users-search"
           className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -1180,19 +1616,24 @@ function AdminUsers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50">
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Username</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Employee ID</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Roles</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Ward</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Password</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Default Password</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredUsers.map((user) => (
                   <tr key={user.userid} className="border-b last:border-0 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-600">
+                      {user.name || <span className="text-gray-400">—</span>}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="font-medium text-gray-900">{user.username}</span>
                     </td>
@@ -1216,6 +1657,9 @@ function AdminUsers() {
                           : <span className="text-xs text-gray-400">No roles</span>}
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {user.designation || <span className="text-gray-400">—</span>}
+                    </td>
                     <td className="px-4 py-3">
                       {user.wards && user.wards.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
@@ -1223,6 +1667,7 @@ function AdminUsers() {
                             <span
                               key={w.ward_id}
                               className="text-xs px-2 py-0.5 rounded-full font-medium bg-teal-100 text-teal-700"
+                              data-testid={`admin-user-ward-${w.ward_id}`}
                             >
                               {w.ward_name}
                             </span>
@@ -1244,20 +1689,34 @@ function AdminUsers() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          user.must_change_password
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {user.must_change_password ? "Temporary Password" : "Updated"}
-                      </span>
+                      {user.must_change_password && knownDefaultPasswords[user.userid] ? (
+                        <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+                          <span className="font-mono text-xs text-gray-900">
+                            {knownDefaultPasswords[user.userid]}
+                          </span>
+                          <button
+                            onClick={() => handleCopyDefaultPassword(user.userid)}
+                            className="text-xs px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-white"
+                          >
+                            {copiedDefaultPasswordUserId === user.userid ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            user.must_change_password
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {user.must_change_password ? "Temporary Password" : "Updated"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button
-                          onClick={() => resetPasswordMutation.mutate(user)}
+                          onClick={() => setResetPasswordUser(user)}
                           className="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                           title="Generate temporary password"
                         >
@@ -1273,20 +1732,22 @@ function AdminUsers() {
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => setDeleteUser(user)}
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete user"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!user.roles.includes("Admin") && (
+                          <button
+                            onClick={() => setDeleteUser(user)}
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
                 ))}
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                    <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
                       No users found.
                     </td>
                   </tr>
@@ -1329,12 +1790,28 @@ function AdminUsers() {
           setEditUser(null)
         }}
         editUser={editUser}
-        onCreated={setCreatedUserInfo}
+        onCreated={(info) => {
+          setCreatedUserInfo(info)
+          const userId = info.userid
+          if (info.generated_password && typeof userId === "number") {
+            setKnownDefaultPasswords((prev) => ({
+              ...prev,
+              [userId]: info.generated_password!,
+            }))
+          }
+        }}
       />
       <DeleteDialog
         open={!!deleteUser}
         onClose={() => setDeleteUser(null)}
         user={deleteUser}
+      />
+      <ResetPasswordDialog
+        open={!!resetPasswordUser}
+        onClose={() => setResetPasswordUser(null)}
+        user={resetPasswordUser}
+        loading={resetPasswordMutation.isPending}
+        onConfirm={(user) => resetPasswordMutation.mutate(user)}
       />
 
       {/* Generated password dialog */}
@@ -1363,17 +1840,16 @@ function AdminUsers() {
             </div>
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    createdUserInfo.generated_password ?? "",
-                  )
-                }}
+                onClick={handleCopyCreatedPassword}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Copy Password
+                {passwordCopied ? "Copied!" : "Copy Password"}
               </button>
               <button
-                onClick={() => setCreatedUserInfo(null)}
+                onClick={() => {
+                  setPasswordCopied(false)
+                  setCreatedUserInfo(null)
+                }}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 Done
@@ -1441,11 +1917,21 @@ function AdminUsers() {
             <div className="grid grid-cols-3 gap-3 text-sm mb-4">
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="text-gray-500">Imported</p>
-                <p className="font-semibold text-gray-900">{importProgress.imported}</p>
+                <p
+                  className="font-semibold text-gray-900"
+                  data-testid="import-progress-imported"
+                >
+                  {importProgress.imported}
+                </p>
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="text-gray-500">Failed</p>
-                <p className="font-semibold text-gray-900">{importProgress.failed}</p>
+                <p
+                  className="font-semibold text-gray-900"
+                  data-testid="import-progress-failed"
+                >
+                  {importProgress.failed}
+                </p>
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="text-gray-500">Progress</p>
@@ -1458,6 +1944,46 @@ function AdminUsers() {
               <p className="text-sm font-medium text-gray-900 break-all">
                 {importProgress.currentLabel || "Preparing import..."}
               </p>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleCancelImport}
+                disabled={importCancelRequested}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                {importCancelRequested ? "Cancelling..." : "Cancel Import"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importFailures && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
+              Import Failures
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              {importFailures.length} row{importFailures.length !== 1 ? "s" : ""} failed to import.
+            </p>
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50">
+              <ul className="divide-y divide-gray-200">
+                {importFailures.map((failure, index) => (
+                  <li key={`${failure}-${index}`} className="px-4 py-2 text-sm text-gray-700">
+                    {failure}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setImportFailures(null)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

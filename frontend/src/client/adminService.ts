@@ -42,8 +42,10 @@ export interface WardInfo {
 export interface AdminUser {
   userid: number
   username: string
+  name: string | null
   email: string | null
   employee_id: string | null
+  designation: string | null
   isactive: boolean
   nurseid: number | null
   managerid: number | null
@@ -64,9 +66,11 @@ export interface AdminUsersResponse {
 }
 
 export interface AdminUserCreate {
-  username: string
+  username?: string
+  name?: string
   email?: string
   employee_id?: string
+  designation?: string
   password?: string
   is_active?: boolean
   role?: string
@@ -75,8 +79,10 @@ export interface AdminUserCreate {
 
 export interface AdminUserUpdate {
   username?: string
-  email?: string
+  name?: string
+  email?: string | null
   employee_id?: string
+  designation?: string
   password?: string
   is_active?: boolean
   ward_ids?: number[]
@@ -89,6 +95,11 @@ export interface WardOption {
   location: string | null
   isactive: boolean
   managerid: number | null
+}
+
+export interface DesignationOption {
+  designation: string
+  rank: string
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +150,11 @@ export const AdminService = {
     return request(`/api/v1/wards/`)
   },
 
-  firstLoginSetup(data: { new_password: string; email?: string }): Promise<{ message: string }> {
+  listDesignations(): Promise<DesignationOption[]> {
+    return request(`/api/v1/admin/designations`)
+  },
+
+  firstLoginSetup(data: { new_password: string; email?: string; employee_id?: string }): Promise<{ message: string }> {
     return request(`/api/v1/users/me/first-login-setup`, {
       method: "POST",
       body: JSON.stringify(data),

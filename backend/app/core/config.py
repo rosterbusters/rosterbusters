@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     )
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = secrets.token_urlsafe(32)
+    DEFAULT_PASSWORD_ENCRYPTION_KEY: str | None = None
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
@@ -80,6 +81,10 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = None
     EMAILS_FROM_EMAIL: EmailStr | None = None
     EMAILS_FROM_NAME: EmailStr | None = None
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
+    AWS_REGION: str | None = None
+    AWS_SES_SENDER_EMAIL: EmailStr | None = None
 
     @model_validator(mode="after")
     def _set_default_emails_from(self) -> Self:
@@ -92,9 +97,24 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def emails_enabled(self) -> bool:
+        return bool(
+            (self.AWS_REGION and self.AWS_SES_SENDER_EMAIL)
+            or (self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def aws_ses_enabled(self) -> bool:
+        return bool(self.AWS_REGION and self.AWS_SES_SENDER_EMAIL)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def smtp_enabled(self) -> bool:
         return bool(self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
 
     EMAIL_TEST_USER: EmailStr = "test@example.com"
+    REDIS_URL: str = "redis://redis:6379/0"
+
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
 

@@ -16,7 +16,7 @@ class NotificationType(str, Enum):
         return obj
 
     # ------------------------------------------------------------------ #
-    # Ward Staff notifications                                             #
+    # Ward Staff notifications
     # ------------------------------------------------------------------ #
 
     SHIFT_REQUEST_PERIOD_OPEN = (
@@ -43,6 +43,15 @@ class NotificationType(str, Enum):
     SHIFT_UPDATED = (
         "ShiftUpdated",
         "Your Shift for {start_date} has been changed.",
+    )
+
+    LEAVE_APPROVED = (
+        "LeaveApproved",
+        "Your Leave Request ({leave_dates}) has been Approved.",
+    )
+    LEAVE_REJECTED = (
+        "LeaveRejected",
+        "Your Leave Request ({leave_dates}) has been Rejected.",
     )
 
     # ------------------------------------------------------------------ #
@@ -72,4 +81,12 @@ class NotificationType(str, Enum):
     SHIFT_REQUEST_REVIEW_CLOSED = (
         "ShiftRequestReviewClosed",
         "Shift Requests Review for {roster_period} is Closed.",
+    )
+    ALGORITHM_GENERATION = (
+        "AlgorithmGeneration",
+        "Algorithm generated for {roster_period}.",
+    )
+    ALGORITHM_IN_PROGRESS = (
+        "AlgorithmInProgress",
+        "Algorithm generation in progress for {roster_period}.",
     )
