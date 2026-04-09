@@ -513,6 +513,13 @@ function RosterPlanningPage() {
     });
   }, [rosterData, currentStartDate, viewMode, shiftDurationMap]);
 
+  const hasAssignedRosterData = useMemo(
+    () =>
+      rosterData.some((row) => Object.keys(row.shifts ?? {}).length > 0),
+    [rosterData],
+  );
+  const showAlgorithmGeneratedState = isAlgorithmGenerated && hasAssignedRosterData;
+
   const editHistory = useMemo<EditHistoryEntry[]>(() => {
     return changelogEntries.map((entry) => ({
       id: entry.changeid,
@@ -1206,7 +1213,7 @@ function RosterPlanningPage() {
           selectedPeriod={selectedPeriod}
           wards={displayWards}
           periods={visiblePlanningPeriods}
-          isAlgorithmGenerated={isAlgorithmGenerated}
+          isAlgorithmGenerated={showAlgorithmGeneratedState}
           isGenerating={isAlgorithmRunning}
           isPublishing={
             bulkUpsertRoster.isPending || publishRoster.isPending
@@ -1222,7 +1229,7 @@ function RosterPlanningPage() {
           algorithmType={algorithmType}
           onAlgorithmTypeChange={(t) => setAlgorithmType(t)}
           onGenerateAlgorithm={handleGenerateAlgorithm}
-          showAutoRegenerate={canAutoRegenerate}
+          showAutoRegenerate={showAlgorithmGeneratedState && canAutoRegenerate}
           onAutoRegenerate={handleAutoRegenerateClick}
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
@@ -1297,7 +1304,7 @@ function RosterPlanningPage() {
             isLoading={isAlgorithmRunning}
             loadingLabel={algorithmOverlayLabel}
             guidelines={guidelines}
-            isRosterGenerated={isAlgorithmGenerated}
+            isRosterGenerated={showAlgorithmGeneratedState}
             shiftRequestOverlays={shiftRequestOverlays}
             highlightedNurseIds={highlightedNoNightNurseIds}
             onNurseNameClick={handleOpenNurseSettings}
@@ -1309,7 +1316,7 @@ function RosterPlanningPage() {
           data={displayRosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
-          isRosterGenerated={isAlgorithmGenerated}
+          isRosterGenerated={showAlgorithmGeneratedState}
           guidelines={guidelines}
           dateOverrides={dateOverrides}
           originalGuidelines={originalGuidelines}
