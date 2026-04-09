@@ -759,7 +759,12 @@ def clear_ward_roster(
     ).all()
 
     if not entries:
-        raise HTTPException(status_code=400, detail="No roster assignments found to clear")
+        return {
+            "ward_id": ward_id,
+            "period_id": period_id,
+            "deleted_count": 0,
+            "status": "already_empty",
+        }
 
     if any(entry.status == "Confirmed" for entry in entries):
         raise HTTPException(status_code=400, detail="Roster entries are already published")
@@ -1574,6 +1579,14 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     shift_label_map = _load_shift_label_map(db)
     hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
     leave_hard = _load_leave_requests(db, ward_id, period, set(nurse_ids), len(shifts_data))
+    logger.warning(
+        "[DEBUG] leave_hard_summary ward=%s period=%s total=%s codes=%s sample=%s",
+        ward_id,
+        period_id,
+        sum(len(v) for v in leave_hard.values()),
+        _summarize_request_codes(leave_hard),
+        _sample_requests(leave_hard),
+    )
     for nurse_id, days in leave_hard.items():
         existing = hard_requests.setdefault(nurse_id, [])
         leave_days = {day_idx for day_idx, _ in days}
@@ -1588,6 +1601,16 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
 
     logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
     logger.warning(f"[DEBUG] nurses={len(nurses_data)} hard_requests={sum(len(v) for v in hard_requests.values())} soft_requests={sum(len(v) for v in soft_requests.values())}")
+    logger.warning(
+        "[DEBUG] hard_request_codes=%s hard_request_sample=%s",
+        _summarize_request_codes(hard_requests),
+        _sample_requests(hard_requests),
+    )
+    logger.warning(
+        "[DEBUG] soft_request_codes=%s soft_request_sample=%s",
+        _summarize_request_codes(soft_requests),
+        _sample_requests(soft_requests),
+    )
     logger.warning(
         "[DEBUG] rank_counts=%s staffing=%s",
         rank_counts,
@@ -1646,6 +1669,29 @@ def _jsonify_algo_inputs(payload: Any) -> Any:
     if isinstance(payload, set):
         return [_jsonify_algo_inputs(v) for v in sorted(payload)]
     return payload
+
+
+def _summarize_request_codes(
+    requests: dict[int, list[tuple[int, str]] | list[tuple[int, str, str]]]
+) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for items in requests.values():
+        for item in items:
+            if len(item) < 2:
+                continue
+            code = str(item[1]).strip().upper()
+            summary[code] = summary.get(code, 0) + 1
+    return dict(sorted(summary.items()))
+
+
+def _sample_requests(
+    requests: dict[int, list[tuple[int, str]] | list[tuple[int, str, str]]],
+    limit_nurses: int = 5,
+) -> dict[int, list[tuple[Any, ...]]]:
+    sample: dict[int, list[tuple[Any, ...]]] = {}
+    for nurse_id in sorted(requests.keys())[:limit_nurses]:
+        sample[nurse_id] = list(requests[nurse_id][:10])
+    return sample
 
 
 @router.get("/generation-inputs")
@@ -1774,10 +1820,11 @@ def _filter_requests_for_nurse_constraints(
     soft_requests: dict[int, list[tuple[int, str] | tuple[int, str, str]]],
 ) -> None:
     allowed_by_pattern = {
-        "AM_ONLY": {"AM", "A", "OFF", "DO", "RD", "AL"},
-        "PM_ONLY": {"PM", "P", "OFF", "DO", "RD", "AL"},
+        "AM_ONLY": {"AM", "A"},
+        "PM_ONLY": {"PM", "P"},
     }
     night_codes = {"NIGHT", "N"}
+    non_working_codes = {"OFF", "DO", "RD"}
 
     for nurse in nurses:
         nurse_id = nurse.get("id")
@@ -1790,6 +1837,12 @@ def _filter_requests_for_nurse_constraints(
         def _keep(item: tuple[int, str] | tuple[int, str, str]) -> bool:
             raw_shift = item[1]
             normalized = str(raw_shift).strip().upper()
+            # Keep all leave / non-working codes; pattern restrictions should only
+            # remove disallowed working shifts.
+            if normalized not in {"AM", "A", "PM", "P", "NIGHT", "N"}:
+                return True
+            if normalized in non_working_codes:
+                return True
             if no_night and normalized in night_codes:
                 return False
             if allowed is not None and normalized not in allowed:

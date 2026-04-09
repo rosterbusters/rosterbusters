@@ -11,6 +11,7 @@ import {
 import { useGenerationInputs } from "@/components/NurseManager/RosterTable";
 import type { RosterRow } from "@/components/NurseManager/RosterTable";
 import { buildRequestReview } from "./requestReview";
+import moment from "moment";
 
 interface AlgorithmInputsDialogProps {
   isOpen: boolean;
@@ -112,6 +113,24 @@ export function AlgorithmInputsDialog({
     }
     return lines.join("\n");
   }, [requestReview]);
+
+  const hardRequestPreviewText = useMemo(() => {
+    const requests = generationInputsQuery.data?.hard_requests ?? {};
+    const lines: string[] = [];
+
+    for (const [nurseId, items] of Object.entries(requests)) {
+      for (const item of items) {
+        const [dayIdx, requestCode] = item;
+        const dateLabel =
+          periodStartDate != null
+            ? moment(periodStartDate).add(dayIdx, "days").format("YYYY-MM-DD")
+            : `Day ${dayIdx + 1}`;
+        lines.push(`Nurse ${nurseId} | ${dateLabel} | ${requestCode}`);
+      }
+    }
+
+    return lines.sort().join("\n");
+  }, [generationInputsQuery.data?.hard_requests, periodStartDate]);
 
   const formattedLastRun = useMemo(() => {
     if (!lastRunAt) return "—";
@@ -230,6 +249,24 @@ export function AlgorithmInputsDialog({
                           Run the algorithm to preview request matches.
                         </Text>
                       )}
+                    </Box>
+
+                    <Box>
+                      <Text fontSize="sm" color="gray.700" fontWeight="semibold" mb={1}>
+                        Hard Requests / Leave
+                      </Text>
+                      <Box
+                        as="pre"
+                        fontSize="12px"
+                        bg="gray.50"
+                        borderRadius="md"
+                        p={3}
+                        overflow="auto"
+                        maxH="220px"
+                        whiteSpace="pre-wrap"
+                      >
+                        {hardRequestPreviewText || "No hard requests found."}
+                      </Box>
                     </Box>
 
                     <Box>
