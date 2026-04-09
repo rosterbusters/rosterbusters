@@ -123,11 +123,29 @@ export function RosterPlanningHeader({
       ),
     [periods],
   );
+  const effectiveSelectedPeriod = useMemo(() => {
+    if (selectedPeriod) {
+      const matchingVisiblePeriod = sortedPeriods.find(
+        (period) => period.periodId === selectedPeriod.periodId,
+      );
+      if (matchingVisiblePeriod) {
+        return matchingVisiblePeriod;
+      }
+    }
+
+    const periodForCurrentDate = sortedPeriods.find((period) =>
+      moment(currentStartDate).isBetween(
+        moment(period.startDate),
+        moment(period.endDate),
+        "day",
+        "[]",
+      ),
+    );
+    return periodForCurrentDate ?? sortedPeriods[0] ?? null;
+  }, [currentStartDate, selectedPeriod, sortedPeriods]);
   const earliestVisibleStartDate = sortedPeriods[0]?.startDate ?? null;
   const latestVisibleEndDate = sortedPeriods[sortedPeriods.length - 1]?.endDate ?? null;
-  const dateRangeText = selectedPeriod
-    ? `${moment(selectedPeriod.startDate).format("MMMM DD")} - ${moment(selectedPeriod.endDate).format("MMMM DD")}`
-    : `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
+  const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
   const anchorUpcomingPeriodId = sortedPeriods[0]?.periodId ?? null;
 
   const getPeriodFlag = (period: RosterPeriod) => {
@@ -200,7 +218,7 @@ export function RosterPlanningHeader({
   });
 
   const periodCollection = createListCollection({
-    items: periods,
+    items: sortedPeriods,
     itemToString: (period: RosterPeriod) => {
       const flag = getPeriodFlag(period);
       return flag ? `${period.name} ${flag}` : period.name;
@@ -495,9 +513,9 @@ export function RosterPlanningHeader({
             size="sm"
             width="270px"
             color="foreground"
-            value={selectedPeriod ? [String(selectedPeriod.periodId)] : []}
+            value={effectiveSelectedPeriod ? [String(effectiveSelectedPeriod.periodId)] : []}
             onValueChange={(details) => {
-              const period = periods.find(
+              const period = sortedPeriods.find(
                 (p) => String(p.periodId) === details.value[0],
               );
               if (period) onPeriodChange(period);
@@ -506,8 +524,8 @@ export function RosterPlanningHeader({
             <Select.HiddenSelect />
             <Select.Control>
               <Select.Trigger>
-                {selectedPeriod ? (
-                  renderPeriodLabel(selectedPeriod)
+                {effectiveSelectedPeriod ? (
+                  renderPeriodLabel(effectiveSelectedPeriod)
                 ) : (
                   <Select.ValueText placeholder="Select period" />
                 )}
