@@ -2,7 +2,7 @@ import { Text, Badge, HStack } from "@chakra-ui/react";
 import { useQuery } from "@tanstack/react-query";
 import { ShiftRequestsService } from "@/client";
 import { useMemo } from "react";
-import { useRosterPeriodWindow } from "@/components/NurseManager/RosterTable/useRosterData";
+import { getActiveShiftRequestPeriod } from "./activePeriod";
 
 const MAX_REQUESTS = 3;
 
@@ -12,19 +12,7 @@ export function AssignableStatus() {
     queryFn: () => ShiftRequestsService.getRosterPeriods(),
   });
 
-  const activePeriod = useMemo(() => {
-    if (!periods) return undefined;
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    // TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
-    return (
-      periods.find(
-        (p) =>
-          p.startdate <= todayStr &&
-          p.enddate >= todayStr,
-      ) ?? periods[0]
-    );
-  }, [periods]);
+  const activePeriod = useMemo(() => getActiveShiftRequestPeriod(periods), [periods]);
 
   const { data: userRequests } = useQuery({
     queryKey: ["shift-requests", "user"],
@@ -45,7 +33,7 @@ export function AssignableStatus() {
   const count = activePeriod && userRequests
     ? userRequests.filter(
         (r) =>
-          r.periodid === activePeriod.periodId &&
+          r.periodid === activePeriod.periodid &&
           workingCodeSet.has(r.preferredshifttype),
       ).length
     : 0;

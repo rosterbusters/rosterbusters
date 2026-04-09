@@ -15,8 +15,8 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { AssignableStatus } from "./AssignableStatus";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { useRosterPeriodWindow } from "@/components/NurseManager/RosterTable/useRosterData";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
+import { getActiveShiftRequestPeriod } from "./activePeriod";
 
 interface NewShiftRequestProps {
   isOpen: boolean;
@@ -37,7 +37,10 @@ export const NewShiftRequest = ({
   );
   const queryClient = useQueryClient();
 
-  const { data: periodWindow } = useRosterPeriodWindow();
+  const { data: periods } = useQuery({
+    queryKey: ["roster-periods"],
+    queryFn: () => ShiftRequestsService.getRosterPeriods(),
+  });
 
   const { data: workingShiftCodes } = useQuery({
     queryKey: ["shift-codes", wardId ?? "default"],
@@ -98,12 +101,7 @@ export const NewShiftRequest = ({
   }, [isOpen]);
 
   const handleSubmit = () => {
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    // TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
-    const activePeriod =
-      periods?.find(p => p.startdate <= todayStr && p.enddate >= todayStr)
-      ?? periods?.[0];
+    const activePeriod = getActiveShiftRequestPeriod(periods);
     if (!activePeriod) {
       showErrorToast("There is no roster period available.");
       return;
@@ -118,7 +116,7 @@ export const NewShiftRequest = ({
     }
 
     mutation.mutate({
-      periodid: activePeriod.periodId,
+      periodid: activePeriod.periodid,
       preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
       preferredshifttype: shiftType[0],
     });

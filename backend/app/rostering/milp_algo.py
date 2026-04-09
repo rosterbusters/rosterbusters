@@ -7,8 +7,8 @@
 #   1. Coverage is strict by class: RN covers RN only, EN covers EN only,
 #      HCA covers HCA only.
 #   2. "RD" is treated as a true off-day (alongside DO and OFF).
-#   3. Double-night blocks are preferred. Single-night blocks are allowed
-#      when needed, with carry-over handling preserved for double blocks.
+#   3. Night shifts follow the scheduling notebook's strict N-N-DO model,
+#      including carry-over handling across roster horizons.
 #   4. Weekly caps remain notebook v14 defaults: <=2 night shifts and <=5
 #      total worked shifts per week.
 #   5. Objective defaults follow the notebook unless explicitly overridden.
@@ -137,13 +137,12 @@ def _carry_state_from_last2(entry):
       'NONE'      – no carry-in obligation
       'NEED_DO'   – previous horizon ended N,N → day 1 must be DO
       'NEED_N_DO' – previous horizon ended ?,N → day 1 must be N and day 2 must be DO
-      'MAYBE_SINGLE' – previous horizon ended ?,N and we allow either N,DO continuation or a single-N carry
     """
     d13, d14 = _normalize_last2(entry)
     if d13 == "N" and d14 == "N":
         return "NEED_DO"
     if d14 == "N":
-        return "MAYBE_SINGLE"
+        return "NEED_N_DO"
     return "NONE"
 
 
@@ -628,22 +627,6 @@ def _is_infeasibility_error(exc):
     return "infeasible" in message or "no feasible" in message
 
 
-def _build_relaxed_retry_config(milp_config):
-    relaxed_cfg = dict(milp_config or {})
-    relaxed_cfg["soften_coverage"] = True
-    relaxed_cfg["soften_equivalent_target"] = True
-
-    relaxed_weights = dict(relaxed_cfg.get("weights") or {})
-    # Keep these penalties high enough that the retry still prefers notebook-like
-    # coverage/equivalent-day behaviour whenever it is achievable.
-    if float(relaxed_weights.get("cov", 0.0) or 0.0) <= 0:
-        relaxed_weights["cov"] = 1000.0
-    if float(relaxed_weights.get("eq", 0.0) or 0.0) <= 0:
-        relaxed_weights["eq"] = 50.0
-    relaxed_cfg["weights"] = relaxed_weights
-    return relaxed_cfg
-
-
 # ---------------------------------------------------------------------------
 # Core Pyomo solver  (mirrors the notebook's generate_multi_roster_pyomo)
 # ---------------------------------------------------------------------------
@@ -689,8 +672,6 @@ def _solve(
     min_do_with_other_nonwork = int(cfg.get("min_do_with_other_nonwork", 2) or 2)
     weekend_night_target = float(cfg.get("weekend_night_target", 0.5) or 0.5)
     coverage_mode = str(cfg.get("coverage_mode", "strict_by_class")).strip().lower()
-    soften_equivalent_target = bool(cfg.get("soften_equivalent_target", False))
-    soften_coverage = bool(cfg.get("soften_coverage", False))
     total_min_cfg = cfg.get("TOTAL_MIN") or {}
     shift_priority_cfg = cfg.get("shift_priority", {}) or {}
     shift_priority_enabled = bool(shift_priority_cfg.get("enabled", False))
@@ -764,23 +745,10 @@ def _solve(
         "pref": 100.0,
         "weekend": 3.0,
         "rest": 25.0,
-        "single_night": 20.0,
         "balance": 20.0,
         "day_smooth": 30.0,
         "day_smooth_hca": 15.0,
         "hca_morning": 20.0,
-        # Extra production-only knobs stay opt-in so default behaviour
-        # matches the notebook.
-        "eq": 0.0,
-        "cov": 0.0,
-        "ward_day_balance": 0.0,
-        # Prefer hitting the ward-wide night target when one is provided.
-        "ward_night_balance": 30.0,
-        # Prefer keeping RN night coverage at or below 2, but allow overflow
-        # when required to satisfy the per-nurse night minimum.
-        "rn_night_target": 150.0,
-        # Each nurse should hit at least 2 NIGHT assignments across the roster.
-        "min_night": 600.0,
     }
     if weights is None:
         weights = cfg.get("weights")
@@ -809,12 +777,6 @@ def _solve(
     m.startN_rn  = Var(m.N_RN,  m.D, within=Binary)
     m.startN_en  = Var(m.N_EN,  m.D, within=Binary)
     m.startN_hca = Var(m.N_HCA, m.D, within=Binary)
-    m.singleN_rn  = Var(m.N_RN,  m.D, within=Binary)
-    m.singleN_en  = Var(m.N_EN,  m.D, within=Binary)
-    m.singleN_hca = Var(m.N_HCA, m.D, within=Binary)
-    m.carryN_rn  = Var(m.N_RN,  within=Binary)
-    m.carryN_en  = Var(m.N_EN,  within=Binary)
-    m.carryN_hca = Var(m.N_HCA, within=Binary)
 
     # Deviation variables for soft objectives
     for grp, nurses in (("rn", rn_nurses), ("en", en_nurses), ("hca", hca_nurses)):
@@ -825,9 +787,6 @@ def _solve(
         setattr(m, f"weekend_dev_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
         setattr(m, f"rest_violation_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=Binary))
         setattr(m, f"pref_violate_{grp}",   Var(getattr(m, f"N_{grp.upper()}"), m.D, within=Binary))
-        setattr(m, f"min_night_shortfall_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
-        setattr(m, f"eq_under_{grp}", Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
-        setattr(m, f"eq_over_{grp}",  Var(getattr(m, f"N_{grp.upper()}"), within=NonNegativeReals))
 
     # Extra v13 soft terms: RN/EN daily A-P-N balance and day-to-day smoothing.
     m.dev_rn_AP = Var(m.D, within=NonNegativeReals)
@@ -842,18 +801,13 @@ def _solve(
     m.dev_hca_A_ge_P = Var(m.D, within=NonNegativeReals)
     m.dev_hca_A_ge_N = Var(m.D, within=NonNegativeReals)
     m.dev_hca_P_ge_N = Var(m.D, within=NonNegativeReals)
-    m.dev_total_A = Var(m.D, within=NonNegativeReals)
-    m.dev_total_P = Var(m.D, within=NonNegativeReals)
-    m.dev_total_N = Var(m.D, within=NonNegativeReals)
-    m.dev_rn_night_target = Var(m.D, within=NonNegativeReals)
 
     m.cons = ConstraintList()
 
     # ---- Nurse rules ----
-    def add_nurse_rules(class_nurses, x_var, off_var, startN_var, singleN_var, carryN_var,
+    def add_nurse_rules(class_nurses, x_var, off_var, startN_var,
                         al_dict, hard_dict, prev_week_last2_dict,
-                        nurse_constraints_dict,
-                        eq_under, eq_over):
+                        nurse_constraints_dict):
         for n in class_nurses:
             al_days            = set(al_dict.get(n, []))
             other_nonwork_days = set()
@@ -876,14 +830,12 @@ def _solve(
             # Carry-in obligations from previous horizon
             if carry_state == "NEED_DO":
                 # Previous horizon ended N,N → day 1 must be DO
-                m.cons.add(carryN_var[n] == 0)
                 m.cons.add(off_var[n, 1] == 1)
                 for s in SHIFTS:
                     m.cons.add(x_var[n, 1, s] == 0)
 
             elif carry_state == "NEED_N_DO":
                 # Previous horizon ended ?,N → day 1 = N, day 2 = DO
-                m.cons.add(carryN_var[n] == 1)
                 m.cons.add(off_var[n, 1] == 0)
                 m.cons.add(x_var[n, 1, "N"] == 1)
                 m.cons.add(x_var[n, 1, "A"] == 0)
@@ -892,20 +844,6 @@ def _solve(
                 for s in SHIFTS:
                     m.cons.add(x_var[n, 2, s] == 0)
 
-            elif carry_state == "MAYBE_SINGLE":
-                # Previous horizon ended ?,N → allow either N,DO continuation (carryN=1)
-                # or single-night carry (carryN=0) with day 1 as DO.
-                m.cons.add(x_var[n, 1, "N"] == carryN_var[n])
-                m.cons.add(x_var[n, 1, "A"] == 0)
-                m.cons.add(x_var[n, 1, "P"] == 0)
-                m.cons.add(off_var[n, 1] == 1 - carryN_var[n])
-                if num_days >= 2:
-                    m.cons.add(off_var[n, 2] >= carryN_var[n])
-                    for s in SHIFTS:
-                        m.cons.add(x_var[n, 2, s] <= 1 - carryN_var[n])
-            else:
-                m.cons.add(carryN_var[n] == 0)
-
             # Daily linking
             for d in DAYS:
                 # Skip days already forced by carry-in
@@ -913,14 +851,9 @@ def _solve(
                     continue
                 if carry_state == "NEED_N_DO" and d in {1, 2}:
                     continue
-                if carry_state == "MAYBE_SINGLE" and d == 1:
-                    continue
 
                 raw = _get_request_code(hard_dict.get(n, {}).get(f"Day {d}", ""))
                 kind, val = _classify(raw, non_working_shift_codes)
-                apply_guard = 1
-                if carry_state == "MAYBE_SINGLE" and d == 2:
-                    apply_guard = 1 - carryN_var[n]
 
                 if no_night:
                     m.cons.add(x_var[n, d, "N"] == 0)
@@ -932,23 +865,20 @@ def _solve(
                     m.cons.add(x_var[n, d, "N"] == 0)
 
                 if kind == "WORK_SHIFT":
-                    m.cons.add(off_var[n, d] <= 1 - apply_guard)
+                    m.cons.add(off_var[n, d] == 0)
                     for s in SHIFTS:
-                        if s == val:
-                            m.cons.add(x_var[n, d, s] >= apply_guard)
-                        else:
-                            m.cons.add(x_var[n, d, s] <= 1 - apply_guard)
+                        m.cons.add(x_var[n, d, s] == (1 if s == val else 0))
 
                 elif kind == "OFF":
-                    m.cons.add(off_var[n, d] >= apply_guard)
+                    m.cons.add(off_var[n, d] == 1)
                     for s in SHIFTS:
-                        m.cons.add(x_var[n, d, s] <= 1 - apply_guard)
+                        m.cons.add(x_var[n, d, s] == 0)
 
                 elif kind in ("EQUIV_LEAVE", "EQUIV_WORK") or d in al_days or d in other_nonwork_days:
                     # AL / INHT / BL / … : non-working, NOT DO
-                    m.cons.add(off_var[n, d] <= 1 - apply_guard)
+                    m.cons.add(off_var[n, d] == 0)
                     for s in SHIFTS:
-                        m.cons.add(x_var[n, d, s] <= 1 - apply_guard)
+                        m.cons.add(x_var[n, d, s] == 0)
 
                 else:
                     # Free day: exactly one of work-shifts or DO
@@ -960,17 +890,7 @@ def _solve(
                 + fixed_equivalent_days
             )
             if preferred_shift is None:
-                if soften_equivalent_target:
-                    m.cons.add(
-                        equivalent_days
-                        + eq_under[n] - eq_over[n]
-                        == equivalent_shift_target
-                    )
-                else:
-                    m.cons.add(equivalent_days == equivalent_shift_target)
-            else:
-                m.cons.add(eq_under[n] == 0)
-                m.cons.add(eq_over[n] == 0)
+                m.cons.add(equivalent_days == equivalent_shift_target)
 
             # Weekly caps / permanent shift pattern
             if preferred_shift is None:
@@ -1009,12 +929,7 @@ def _solve(
             if no_night or preferred_shift is not None:
                 for d in DAYS:
                     m.cons.add(startN_var[n, d] == 0)
-                    m.cons.add(singleN_var[n, d] == 0)
                 continue
-
-            # Single-night blocks are forbidden — singleN must always be 0
-            for d in DAYS:
-                m.cons.add(singleN_var[n, d] == 0)
 
             # No two block starts on consecutive days
             for d in range(1, num_days):
@@ -1036,9 +951,9 @@ def _solve(
             m.cons.add(x_var[n, num_days, "N"] >= startN_var[n, num_days])
 
             # Every N must belong to exactly one valid block
-            if carry_state in {"NEED_N_DO", "MAYBE_SINGLE"}:
+            if carry_state == "NEED_N_DO":
                 # Day 1 may be the second N from the previous horizon's block.
-                m.cons.add(x_var[n, 1, "N"] == carryN_var[n])
+                m.cons.add(x_var[n, 1, "N"] == 1)
                 m.cons.add(startN_var[n, 1] == 0)
             else:
                 m.cons.add(x_var[n, 1, "N"] == startN_var[n, 1])
@@ -1048,26 +963,19 @@ def _solve(
                     x_var[n, d, "N"] == startN_var[n, d] + startN_var[n, d - 1]
                 )
 
-    add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,  m.singleN_rn,  m.carryN_rn,
+    add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,
                     annual_leave_rn,  hard_requests_rn,  prev_week_last2_rn,
-                    nurse_constraints_rn,
-                    m.eq_under_rn, m.eq_over_rn)
-    add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,  m.singleN_en,  m.carryN_en,
+                    nurse_constraints_rn)
+    add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,
                     annual_leave_en,  hard_requests_en,  prev_week_last2_en,
-                    nurse_constraints_en,
-                    m.eq_under_en, m.eq_over_en)
-    add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca, m.singleN_hca, m.carryN_hca,
+                    nurse_constraints_en)
+    add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca,
                     annual_leave_hca, hard_requests_hca, prev_week_last2_hca,
-                    nurse_constraints_hca,
-                    m.eq_under_hca, m.eq_over_hca)
+                    nurse_constraints_hca)
 
     # ---- Coverage constraints (strict by class only, notebook v14) ----
     def _req_for_day(class_name, class_cfg, d, s):
         return _resolve_requirement(class_cfg, shift_requirements, LOW_DAYS, class_name, d, s)
-
-    m.cov_slack_rn    = Var(m.D, m.S, within=NonNegativeReals)
-    m.cov_slack_en    = Var(m.D, m.S, within=NonNegativeReals)
-    m.cov_slack_total = Var(m.D, m.S, within=NonNegativeReals)
 
     # Pre-compute per-(day, shift) coverage sums once and reuse across all
     # constraint sections to avoid rebuilding identical Pyomo expressions.
@@ -1085,17 +993,9 @@ def _solve(
             c_en  = _cov_en[(d, s)]
             c_hca = _cov_hca[(d, s)]
 
-            if soften_coverage:
-                m.cons.add(c_rn + m.cov_slack_rn[d, s] >= r_req)
-                m.cons.add(c_en + m.cov_slack_en[d, s] >= e_req)
-                m.cons.add(c_hca + m.cov_slack_total[d, s] >= h_req)
-            else:
-                m.cons.add(m.cov_slack_rn[d, s] == 0)
-                m.cons.add(m.cov_slack_en[d, s] == 0)
-                m.cons.add(m.cov_slack_total[d, s] == 0)
-                m.cons.add(c_rn >= r_req)
-                m.cons.add(c_en >= e_req)
-                m.cons.add(c_hca >= h_req)
+            m.cons.add(c_rn >= r_req)
+            m.cons.add(c_en >= e_req)
+            m.cons.add(c_hca >= h_req)
 
     if total_min_cfg:
         for d in DAYS:
@@ -1123,19 +1023,10 @@ def _solve(
         m.cons.add(hca_total_today - hca_total_prev <= m.dev_hca_day_total[d])
         m.cons.add(hca_total_prev - hca_total_today <= m.dev_hca_day_total[d])
 
-    rn_night_target = 2
     for class_name, class_cfg, cov_map in (("RN", rn_cfg, _cov_rn), ("EN", en_cfg, _cov_en), ("HCA", hca_cfg, _cov_hca)):
         max_night_per_day = class_cfg.get("max_night_per_day")
         for d in DAYS:
-            if class_name == "RN":
-                # Hard cap: no more than rn_night_target RNs on nights per day
-                m.cons.add(cov_map[(d, "N")] <= rn_night_target)
-                m.cons.add(m.dev_rn_night_target[d] == 0)
-            elif class_name == "EN":
-                # Hard cap for EN: use configured max_night_per_day or fall back to rn_night_target
-                en_night_cap = int(max_night_per_day) if max_night_per_day is not None else rn_night_target
-                m.cons.add(cov_map[(d, "N")] <= en_night_cap)
-            elif max_night_per_day is not None:
+            if max_night_per_day is not None:
                 m.cons.add(cov_map[(d, "N")] <= int(max_night_per_day))
 
     # ---- Shift-balance deviations (soft) ----
@@ -1145,7 +1036,6 @@ def _solve(
         dev_A,
         dev_P,
         dev_N,
-        min_night_shortfall,
         class_cfg,
         class_name,
         nurse_constraints_dict,
@@ -1185,7 +1075,6 @@ def _solve(
                 m.cons.add(dev_A[n] == 0)
                 m.cons.add(dev_P[n] == 0)
                 m.cons.add(dev_N[n] == 0)
-                m.cons.add(min_night_shortfall[n] == 0)
                 continue
             if shift_pattern == "PM_ONLY":
                 fixed_target = sum(
@@ -1208,39 +1097,19 @@ def _solve(
                 m.cons.add(dev_A[n] == 0)
                 m.cons.add(dev_P[n] == 0)
                 m.cons.add(dev_N[n] == 0)
-                m.cons.add(min_night_shortfall[n] == 0)
                 continue
             m.cons.add(tA_ - tA <= dev_A[n]); m.cons.add(-(tA_ - tA) <= dev_A[n])
             m.cons.add(tP_ - tP <= dev_P[n]); m.cons.add(-(tP_ - tP) <= dev_P[n])
             m.cons.add(tN_ - tN <= dev_N[n]); m.cons.add(-(tN_ - tN) <= dev_N[n])
-            if no_night:
-                m.cons.add(min_night_shortfall[n] == 0)
-            elif class_name in ("RN", "EN"):
-                # Hard minimum for class A and B: at least 2 night shifts, no softening
-                m.cons.add(tN_ >= 2)
-                m.cons.add(min_night_shortfall[n] == 0)
-            else:
-                m.cons.add(2 - tN_ <= min_night_shortfall[n])
 
-    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  m.min_night_shortfall_rn,  rn_cfg,  "RN", nurse_constraints_rn)
-    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  m.min_night_shortfall_en,  en_cfg,  "EN", nurse_constraints_en)
-    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, m.min_night_shortfall_hca, hca_cfg, "HCA", nurse_constraints_hca)
+    add_shift_balance(rn_nurses,  m.x_rn,  m.dev_A_rn,  m.dev_P_rn,  m.dev_N_rn,  rn_cfg,  "RN", nurse_constraints_rn)
+    add_shift_balance(en_nurses,  m.x_en,  m.dev_A_en,  m.dev_P_en,  m.dev_N_en,  en_cfg,  "EN", nurse_constraints_en)
+    add_shift_balance(hca_nurses, m.x_hca, m.dev_A_hca, m.dev_P_hca, m.dev_N_hca, hca_cfg, "HCA", nurse_constraints_hca)
 
     # ---- Daily smoothing + A–P balance (soft) ----
     dt_rn  = rn_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "RN", s) for s in SHIFTS})
     dt_en  = en_cfg.get("day_target",  {s: _average_daily_requirement(shift_requirements, "EN", s) for s in SHIFTS})
     dt_hca = hca_cfg.get("day_target", {s: _average_daily_requirement(shift_requirements, "HCA", s) for s in SHIFTS})
-    total_A_target = _average_daily_total_requirement(shift_requirements, "A")
-    total_P_target = _average_daily_total_requirement(shift_requirements, "P")
-    raw_total_N_target = cfg.get("night_total_target")
-    if raw_total_N_target in (None, ""):
-        raw_total_N_target = cfg.get("total_night_target")
-    if raw_total_N_target in (None, ""):
-        total_N_target = _average_daily_total_requirement(shift_requirements, "N")
-        if total_N_target <= 0:
-            total_N_target = int(total_min_cfg.get("N", 0) or 0)
-    else:
-        total_N_target = int(raw_total_N_target or 0)
 
     for d in DAYS:
         for s in SHIFTS:
@@ -1267,16 +1136,6 @@ def _solve(
         A_en = _cov_en[(d, "A")]
         P_en = _cov_en[(d, "P")]
         m.cons.add(A_en - P_en <= m.dev_AP_en[d]); m.cons.add(-(A_en - P_en) <= m.dev_AP_en[d])
-
-        total_A = _cov_rn[(d, "A")] + _cov_en[(d, "A")] + _cov_hca[(d, "A")]
-        total_P = _cov_rn[(d, "P")] + _cov_en[(d, "P")] + _cov_hca[(d, "P")]
-        total_N = _cov_rn[(d, "N")] + _cov_en[(d, "N")] + _cov_hca[(d, "N")]
-        m.cons.add(total_A - total_A_target <= m.dev_total_A[d])
-        m.cons.add(-(total_A - total_A_target) <= m.dev_total_A[d])
-        m.cons.add(total_P - total_P_target <= m.dev_total_P[d])
-        m.cons.add(-(total_P - total_P_target) <= m.dev_total_P[d])
-        m.cons.add(total_N - total_N_target <= m.dev_total_N[d])
-        m.cons.add(-(total_N - total_N_target) <= m.dev_total_N[d])
 
         A_h = _cov_hca[(d, "A")]
         P_h = _cov_hca[(d, "P")]
@@ -1345,10 +1204,6 @@ def _solve(
     add_prev_week_constraints(en_nurses,  m.x_en,  prev_week_last2_en,  m.rest_violation_en)
     add_prev_week_constraints(hca_nurses, m.x_hca, prev_week_last2_hca, m.rest_violation_hca)
 
-    carry_maybe_rn = {n for n in rn_nurses if _carry_state_from_last2(prev_week_last2_rn.get(n)) == "MAYBE_SINGLE"}
-    carry_maybe_en = {n for n in en_nurses if _carry_state_from_last2(prev_week_last2_en.get(n)) == "MAYBE_SINGLE"}
-    carry_maybe_hca = {n for n in hca_nurses if _carry_state_from_last2(prev_week_last2_hca.get(n)) == "MAYBE_SINGLE"}
-
     # ---- Objective ----
     pref_weight_rn = {
         (n, d): _get_request_weight(soft_requests_rn.get(n, {}).get(f"Day {d}", ""))
@@ -1383,17 +1238,6 @@ def _solve(
           + lw["pref"]      * sum(pref_weight_hca[n, d] * m.pref_violate_hca[n, d] for n in hca_nurses for d in DAYS)
           + lw["weekend"]   * sum(m.weekend_dev_hca[n] for n in hca_nurses)
           + lw["rest"]      * sum(m.rest_violation_hca[n] for n in hca_nurses)
-
-          + lw["eq"]        * (
-                sum(m.eq_under_rn[n] + m.eq_over_rn[n] for n in rn_nurses)
-              + sum(m.eq_under_en[n] + m.eq_over_en[n] for n in en_nurses)
-              + sum(m.eq_under_hca[n] + m.eq_over_hca[n] for n in hca_nurses)
-            )
-          + lw["min_night"] * (
-                sum(m.min_night_shortfall_rn[n] for n in rn_nurses)
-              + sum(m.min_night_shortfall_en[n] for n in en_nurses)
-              + sum(m.min_night_shortfall_hca[n] for n in hca_nurses)
-            )
           + lw["balance"]   * (
                 sum(m.dev_rn_AP[d] + m.dev_rn_AN[d] + m.dev_rn_PN[d] for d in DAYS)
               + sum(m.dev_en_AP[d] + m.dev_en_AN[d] + m.dev_en_PN[d] for d in DAYS)
@@ -1406,16 +1250,6 @@ def _solve(
           + lw["hca_morning"] * sum(
                 m.dev_hca_A_ge_P[d] + m.dev_hca_A_ge_N[d] + m.dev_hca_P_ge_N[d]
                 for d in DAYS
-            )
-          + lw["ward_day_balance"] * (
-                sum(m.dev_total_A[d] for d in DAYS)
-              + sum(m.dev_total_P[d] for d in DAYS)
-            )
-          + lw["ward_night_balance"] * sum(m.dev_total_N[d] for d in DAYS)
-          + lw["cov"]       * (
-                sum(m.cov_slack_rn[d, s] for d in DAYS for s in SHIFTS)
-              + sum(m.cov_slack_en[d, s] for d in DAYS for s in SHIFTS)
-              + sum(m.cov_slack_total[d, s] for d in DAYS for s in SHIFTS)
             )
         ),
         sense=minimize,
@@ -1554,14 +1388,13 @@ def run_milp_pipeline(
     if progress_callback:
         progress_callback(2, 4, 0.0)
 
-    effective_config = milp_config
     try:
         roster_rn, roster_en, roster_hca, tc = _solve(
             rn_list=parsed["rn_list"],
             en_list=parsed["en_list"],
             hca_list=parsed["hca_list"],
             dept_name=ward_name,
-            milp_config=effective_config,
+            milp_config=milp_config,
             shift_requirements=parsed["shift_requirements"],
             hard_requests_rn=parsed["hard_requests_rn"],
             soft_requests_rn=parsed["soft_requests_rn"],
@@ -1583,48 +1416,8 @@ def run_milp_pipeline(
             time_limit=time_limit,
         )
     except RuntimeError as e:
-        already_softened = bool((milp_config or {}).get("soften_coverage")) and bool(
-            (milp_config or {}).get("soften_equivalent_target")
-        )
-        if _is_infeasibility_error(e) and not already_softened:
-            effective_config = _build_relaxed_retry_config(milp_config)
-            print(
-                "[MILP] Initial solve was infeasible; retrying with softened "
-                "coverage/equivalent-day constraints."
-            )
-            try:
-                roster_rn, roster_en, roster_hca, tc = _solve(
-                    rn_list=parsed["rn_list"],
-                    en_list=parsed["en_list"],
-                    hca_list=parsed["hca_list"],
-                    dept_name=ward_name,
-                    milp_config=effective_config,
-                    shift_requirements=parsed["shift_requirements"],
-                    hard_requests_rn=parsed["hard_requests_rn"],
-                    soft_requests_rn=parsed["soft_requests_rn"],
-                    annual_leave_rn=parsed["annual_leave_rn"],
-                    prev_week_last2_rn=parsed["prev_week_last2_rn"],
-                    nurse_constraints_rn=parsed["nurse_constraints_rn"],
-                    hard_requests_en=parsed["hard_requests_en"],
-                    soft_requests_en=parsed["soft_requests_en"],
-                    annual_leave_en=parsed["annual_leave_en"],
-                    prev_week_last2_en=parsed["prev_week_last2_en"],
-                    nurse_constraints_en=parsed["nurse_constraints_en"],
-                    hard_requests_hca=parsed["hard_requests_hca"],
-                    soft_requests_hca=parsed["soft_requests_hca"],
-                    annual_leave_hca=parsed["annual_leave_hca"],
-                    prev_week_last2_hca=parsed["prev_week_last2_hca"],
-                    nurse_constraints_hca=parsed["nurse_constraints_hca"],
-                    non_working_shift_codes=non_working_shift_codes,
-                    seed=seed,
-                    time_limit=time_limit,
-                )
-            except RuntimeError as retry_error:
-                print(f"[MILP] Relaxed retry failed: {retry_error}")
-                raise MILPError(f"MILP solver failed: {retry_error}") from retry_error
-        else:
-            print(f"[MILP] Solver failed: {e}")
-            raise MILPError(f"MILP solver failed: {e}") from e
+        print(f"[MILP] Solver failed: {e}")
+        raise MILPError(f"MILP solver failed: {e}") from e
 
     print("[MILP] Solver finished — formatting output")
     if progress_callback:
@@ -1632,5 +1425,5 @@ def run_milp_pipeline(
 
     return _format_output(
         nurses, roster_rn, roster_en, roster_hca, parsed["num_days"],
-        solver_status=str(tc) if effective_config is milp_config else f"{tc} (relaxed)",
+        solver_status=str(tc),
     )

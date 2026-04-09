@@ -24,7 +24,6 @@ PERIOD_LENGTH_DAYS = 14
 PERIODS_PER_ROSTER_YEAR = 26
 ROSTER_YEAR_LENGTH_DAYS = PERIOD_LENGTH_DAYS * PERIODS_PER_ROSTER_YEAR
 ROSTER_YEARS_TO_KEEP = 2
-PLANNING_LOCK_OFFSET_DAYS = -365
 logger = logging.getLogger(__name__)
 
 
@@ -46,8 +45,8 @@ def get_roster_year_start(for_date: date) -> date:
 
 
 def get_planning_lock_date(startdate: date) -> date | None:
-    # TODO: Re-enable roster period planning lock calculation once the cutoff policy is finalized.
-    # return startdate - timedelta(days=PLANNING_LOCK_OFFSET_DAYS)
+    # TODO: Re-enable planning lock dates after the lock-period policy is finalized.
+    # For now we return None so lock-dependent UI and backend behaviors stay inactive.
     return None
 
 
