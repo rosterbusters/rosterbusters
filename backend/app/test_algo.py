@@ -247,6 +247,26 @@ FEASIBLE_ANON_DESIGNATIONS: dict[str, str] = {
 }
 
 
+FEASIBLE_REQUESTS: list[RequestSeed] = [
+    # Keep a representative mix of shift preferences.
+    RequestSeed("Nurse 11", date(2026, 4, 1), "DO", "shift_request"),
+    RequestSeed("Nurse 12", date(2026, 3, 29), "P", "shift_request"),
+    RequestSeed("Nurse 27", date(2026, 4, 3), "DO", "shift_request"),
+    RequestSeed("Nurse 17", date(2026, 3, 25), "A", "shift_request"),
+    RequestSeed("Nurse 3", date(2026, 4, 2), "P", "shift_request"),
+    RequestSeed("Nurse 5", date(2026, 4, 2), "P", "shift_request"),
+    RequestSeed("Nurse 6", date(2026, 3, 26), "A", "shift_request"),
+    RequestSeed("Nurse 7", date(2026, 3, 27), "A", "shift_request"),
+    RequestSeed("Nurse 8", date(2026, 3, 28), "A", "shift_request"),
+    # Keep a small amount of approved leave so the solver still has real hard constraints.
+    RequestSeed("Nurse 1", date(2026, 3, 30), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 3, 31), "AL", "leave_request"),
+    RequestSeed("Nurse 2", date(2026, 3, 23), "AL", "leave_request"),
+    RequestSeed("Nurse 4", date(2026, 3, 25), "AL", "leave_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 3), "HOL", "leave_request"),
+]
+
+
 APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
     "Nurse 1": "SN",
     "Nurse 2": "SN",
@@ -817,7 +837,7 @@ def seed_test_ward_with_feasible_anonymized_requests(
     }
     codes = {
         _normalize_shift_request_code(req.code)
-        for req in HARDCODED_REQUESTS
+        for req in FEASIBLE_REQUESTS
         if req.request_type == "shift_request" or req.code not in allowed_leave_types
     } | {"A", "P", "N"}
     _ensure_shift_codes(db, codes)
@@ -829,7 +849,7 @@ def seed_test_ward_with_feasible_anonymized_requests(
     for code in sorted(codes - existing_wsc):
         db.add(WardShiftCode(wardid=ward.wardid, shiftcode=code))
 
-    base_start = min(req.date for req in HARDCODED_REQUESTS)
+    base_start = min(req.date for req in FEASIBLE_REQUESTS)
     nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
@@ -842,7 +862,7 @@ def seed_test_ward_with_feasible_anonymized_requests(
     )
 
     created = 0
-    for req in HARDCODED_REQUESTS:
+    for req in FEASIBLE_REQUESTS:
         shifted = _shift_to_upcoming_period(req, base_start, period)
         if not shifted:
             continue
