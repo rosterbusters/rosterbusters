@@ -36,9 +36,6 @@ import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge";
 
 const MOCK_DATA_OPTIONS = [
   { value: "", label: "Load mock data" },
-  { value: "ga_ward4", label: "CP-SAT Ward 4" },
-  { value: "ga_ward5", label: "CP-SAT Ward 5" },
-  { value: "ga_ward6", label: "CP-SAT Ward 6" },
   { value: "milp_ward4_run1", label: "MILP Ward 4 Run 1" },
   { value: "milp_ward4_run2", label: "MILP Ward 4 Run 2" },
   { value: "milp_ward5_run1", label: "MILP Ward 5 Run 1" },
@@ -62,8 +59,8 @@ interface RosterPlanningHeaderProps {
   isGenerating?: boolean;
   isPublishing?: boolean;
   generationProgress?: number;
-  algorithmType?: "MILP" | "GA" | "AB-RATIO" | null;
-  onAlgorithmTypeChange?: (type: "MILP" | "GA" | "AB-RATIO" | null) => void;
+  algorithmType?: "MILP" | "AB-RATIO" | null;
+  onAlgorithmTypeChange?: (type: "MILP" | "AB-RATIO" | null) => void;
   onDateChange: (date: Date) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onWardChange: (ward: Ward) => void;
@@ -602,20 +599,6 @@ export function RosterPlanningHeader({
                     disabled={isGenerating}
                   >
                     MILP
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={"outlinegrey" as any}
-                    fontWeight="normal"
-                    onClick={() => onAlgorithmTypeChange?.("GA")}
-                    bg={algorithmType === "GA" ? "#4B8798" : "transparent"}
-                    color={algorithmType === "GA" ? "white" : "foreground"}
-                    _hover={{ bg: algorithmType === "GA" ? "#4B8798" : "#F8FAFC" }}
-                    borderRadius={0}
-                    px={4}
-                    disabled={isGenerating}
-                  >
-                    CP-SAT
                   </Button>
                   <Button
                     size="sm"
