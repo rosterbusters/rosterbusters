@@ -44,6 +44,11 @@ class MILPError(Exception):
     pass
 
 
+class MILPInfeasibilityError(MILPError):
+    """Raised when roster inputs are deterministically infeasible."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Day-code classifier  (identical logic to the notebook)
 # ---------------------------------------------------------------------------
@@ -627,6 +632,35 @@ def _is_infeasibility_error(exc):
     return "infeasible" in message or "no feasible" in message
 
 
+def _validate_class_capacity(
+    class_name,
+    nurses,
+    class_cfg,
+    shift_requirements,
+    low_days,
+    num_days,
+    equivalent_shift_target,
+):
+    req_totals = {
+        s: sum(
+            _resolve_requirement(class_cfg, shift_requirements, low_days, class_name, d, s)
+            for d in range(1, num_days + 1)
+        )
+        for s in ("A", "P", "N")
+    }
+    req_total_all = sum(req_totals.values())
+    max_equiv_capacity = len(nurses) * equivalent_shift_target
+    if req_total_all <= max_equiv_capacity:
+        return
+
+    shortage = req_total_all - max_equiv_capacity
+    raise MILPInfeasibilityError(
+        f"{class_name} demand exceeds class capacity: required={req_total_all} "
+        f"capacity={max_equiv_capacity} shortage={shortage} req={req_totals} "
+        f"nurses={len(nurses)} eq_target={equivalent_shift_target}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Core Pyomo solver  (mirrors the notebook's generate_multi_roster_pyomo)
 # ---------------------------------------------------------------------------
@@ -737,6 +771,20 @@ def _solve(
         prev_week_last2_hca,
         non_working_shift_codes,
     )
+    for class_name, nurses, class_cfg in (
+        ("RN", rn_nurses, rn_cfg),
+        ("EN", en_nurses, en_cfg),
+        ("HCA", hca_nurses, hca_cfg),
+    ):
+        _validate_class_capacity(
+            class_name,
+            nurses,
+            class_cfg,
+            shift_requirements,
+            LOW_DAYS,
+            num_days,
+            equivalent_shift_target,
+        )
 
     _default_w = {
         "dev_shift": 1.0,
@@ -1417,6 +1465,8 @@ def run_milp_pipeline(
         )
     except RuntimeError as e:
         print(f"[MILP] Solver failed: {e}")
+        if _is_infeasibility_error(e):
+            raise MILPInfeasibilityError(f"MILP infeasible: {e}") from e
         raise MILPError(f"MILP solver failed: {e}") from e
 
     print("[MILP] Solver finished — formatting output")

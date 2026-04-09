@@ -4,6 +4,7 @@ import math
 import os
 import queue
 import threading
+from uuid import uuid4
 
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
@@ -41,6 +42,10 @@ from app.models.roster import (
 from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
+from app.services.algorithm_lock_service import (
+    acquire_ward_algorithm_lock,
+    release_ward_algorithm_lock,
+)
 from app.utils import generate_roster_release_email, generate_shift_updated_email, send_email
 import app.crud as crud
 from app.rostering.algo_scheduler import generate_roster
@@ -1032,14 +1037,6 @@ def generate_roster_async(
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    _queue_algorithm_notification(
-        db,
-        manager_id=current_user.managerid,
-        ward_id=request_data.ward_id,
-        period_id=request_data.period_id,
-        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
-    )
-
     logger.info(
         "Queueing async roster generation ward_id=%s period_id=%s algorithm=%s user_id=%s",
         request_data.ward_id,
@@ -1048,10 +1045,30 @@ def generate_roster_async(
         getattr(current_user, "userid", None),
     )
 
-    task = _get_celery_app().send_task(
-        "tasks.generate_roster",
-        args=[request_data.ward_id, request_data.period_id],
-        kwargs={"algorithm": request_data.algorithm},
+    task_id = str(uuid4())
+    if not acquire_ward_algorithm_lock(request_data.ward_id, task_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Another algorithm generation is already in progress for this ward.",
+        )
+
+    try:
+        task = _get_celery_app().send_task(
+            "tasks.generate_roster",
+            args=[request_data.ward_id, request_data.period_id],
+            kwargs={"algorithm": request_data.algorithm},
+            task_id=task_id,
+        )
+    except Exception:
+        release_ward_algorithm_lock(request_data.ward_id, task_id)
+        raise
+
+    _queue_algorithm_notification(
+        db,
+        manager_id=current_user.managerid,
+        ward_id=request_data.ward_id,
+        period_id=request_data.period_id,
+        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
     )
     logger.info(
         "Queued async roster generation task_id=%s ward_id=%s period_id=%s algorithm=%s",
@@ -1091,10 +1108,23 @@ def trigger_scheduled_generation(
 
     for period in periods:
         for ward in active_wards:
-            task = _get_celery_app().send_task(
-                "tasks.generate_and_save_roster",
-                args=[ward.wardid, period.periodid],
-            )
+            task_id = str(uuid4())
+            if not acquire_ward_algorithm_lock(ward.wardid, task_id):
+                skipped.append({
+                    "ward_id": ward.wardid,
+                    "period_id": period.periodid,
+                    "reason": "algorithm_generation_in_progress",
+                })
+                continue
+            try:
+                task = _get_celery_app().send_task(
+                    "tasks.generate_and_save_roster",
+                    args=[ward.wardid, period.periodid],
+                    task_id=task_id,
+                )
+            except Exception:
+                release_ward_algorithm_lock(ward.wardid, task_id)
+                raise
             triggered.append({
                 "ward_id": ward.wardid,
                 "period_id": period.periodid,
@@ -1144,7 +1174,12 @@ def cancel_task(
     """Cancel a queued roster generation task."""
     if not _can_generate_roster(db, current_user):
         raise HTTPException(status_code=403, detail="Nurse manager access required")
+    task_result = _get_celery_app().AsyncResult(task_id)
+    task_args = task_result.args or []
+    ward_id = task_args[0] if task_args else None
     _get_celery_app().control.revoke(task_id, terminate=True)
+    if isinstance(ward_id, int):
+        release_ward_algorithm_lock(ward_id, task_id)
     return {"task_id": task_id, "status": "cancelled"}
 
 

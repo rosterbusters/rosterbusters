@@ -2,6 +2,7 @@ import logging
 import math
 from datetime import timedelta
 
+from celery.exceptions import MaxRetriesExceededError
 from sqlmodel import Session, delete, select
 
 from app.core.db import engine
@@ -11,7 +12,12 @@ from app.models.enums import NotificationType
 from app.models.rbac import NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.rostering.ab_ratio_algo import ABRatioInfeasibilityError
+from app.rostering.milp_algo import MILPInfeasibilityError
 from app.rostering.algo_scheduler import generate_roster
+from app.services.algorithm_lock_service import (
+    refresh_ward_algorithm_lock,
+    release_ward_algorithm_lock,
+)
 from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
@@ -130,6 +136,7 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
     Results are stored in Redis and retrievable via task_id.
     """
     try:
+        refresh_ward_algorithm_lock(ward_id, self.request.id)
         logger.info(
             "Starting roster generation task task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
             self.request.id,
@@ -202,6 +209,7 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
                 period_id=period_id,
                 notification_type=NotificationType.ALGORITHM_GENERATION,
             )
+        release_ward_algorithm_lock(ward_id, self.request.id)
 
         return {
             "task_id": self.request.id,
@@ -210,7 +218,7 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             "roster": result["roster"],
         }
 
-    except ABRatioInfeasibilityError as exc:
+    except (ABRatioInfeasibilityError, MILPInfeasibilityError) as exc:
         logger.exception(
             "Roster generation task failed without retry task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
             self.request.id,
@@ -219,6 +227,7 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             algorithm,
             self.request.retries,
         )
+        release_ward_algorithm_lock(ward_id, self.request.id)
         raise exc
 
     except Exception as exc:
@@ -230,7 +239,11 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             algorithm,
             self.request.retries,
         )
-        raise self.retry(exc=exc, countdown=60)
+        try:
+            raise self.retry(exc=exc, countdown=60)
+        except MaxRetriesExceededError:
+            release_ward_algorithm_lock(ward_id, self.request.id)
+            raise
 
 
 @celery_app.task(bind=True, name="tasks.generate_and_save_roster", max_retries=2)
@@ -240,6 +253,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
     Deletes existing Roster entries for the ward+period before saving (overwrite).
     """
     try:
+        refresh_ward_algorithm_lock(ward_id, self.request.id)
         with Session(engine) as db:
             from app.api.routes.run_rostering import _load_generation_inputs
 
@@ -281,6 +295,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 period_id=period_id,
                 notification_type=NotificationType.ALGORITHM_GENERATION,
             )
+            release_ward_algorithm_lock(ward_id, self.request.id)
 
             return {
                 "task_id": self.request.id,
@@ -291,4 +306,8 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
 
     except Exception as exc:
         logger.error(f"Scheduled roster generation failed for ward {ward_id}: {exc}")
-        raise self.retry(exc=exc, countdown=60)
+        try:
+            raise self.retry(exc=exc, countdown=60)
+        except MaxRetriesExceededError:
+            release_ward_algorithm_lock(ward_id, self.request.id)
+            raise
