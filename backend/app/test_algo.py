@@ -319,11 +319,17 @@ def _ensure_test_manager(db: Session, ward: Ward | None = None) -> NurseManager:
         db.add(manager)
         db.flush()
 
-    user = db.exec(select(RBACUser).where(RBACUser.email == TEST_MANAGER_EMAIL)).first()
+    user = db.exec(select(RBACUser).where(RBACUser.managerid == manager.managerid)).first()
+    if not user:
+        user = db.exec(
+            select(RBACUser).where(RBACUser.username == TEST_MANAGER_USERNAME)
+        ).first()
+    if not user:
+        user = db.exec(select(RBACUser).where(RBACUser.email == TEST_MANAGER_EMAIL)).first()
     if not user:
         user = RBACUser(
             username=TEST_MANAGER_USERNAME,
-            email=TEST_MANAGER_EMAIL,
+            email=None,
             passwordhash=get_password_hash(TEST_MANAGER_PASSWORD),
             managerid=manager.managerid,
             isactive=True,
@@ -334,6 +340,8 @@ def _ensure_test_manager(db: Session, ward: Ward | None = None) -> NurseManager:
         db.add(user)
         db.flush()
     else:
+        user.username = TEST_MANAGER_USERNAME
+        user.email = None
         user.passwordhash = get_password_hash(TEST_MANAGER_PASSWORD)
         user.managerid = manager.managerid
         user.isactive = True
@@ -383,7 +391,7 @@ def _ensure_test_nurse_user(db: Session, nurse: Nurse) -> RBACUser:
     if not user:
         user = RBACUser(
             username=TEST_NURSE_USERNAME,
-            email=nurse.email,
+            email=None,
             passwordhash=get_password_hash(TEST_NURSE_PASSWORD),
             nurseid=nurse.nurseid,
             isactive=True,
@@ -395,7 +403,7 @@ def _ensure_test_nurse_user(db: Session, nurse: Nurse) -> RBACUser:
         db.flush()
     else:
         user.username = TEST_NURSE_USERNAME
-        user.email = nurse.email
+        user.email = None
         user.passwordhash = get_password_hash(TEST_NURSE_PASSWORD)
         user.nurseid = nurse.nurseid
         user.isactive = True
@@ -707,7 +715,7 @@ def seed_test_ward_with_anonymized_requests(
 
     db.commit()
     if test_nurse:
-        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+        print(f"  Nurse login: {TEST_NURSE_USERNAME} / {TEST_NURSE_PASSWORD}")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) with anonymized requests.")
@@ -817,7 +825,7 @@ def seed_requests_from_list(
             existing_dates.add(key)
         created += 1
     if test_nurse:
-        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+        print(f"  Nurse login: {TEST_NURSE_USERNAME} / {TEST_NURSE_PASSWORD}")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     return created
@@ -926,7 +934,7 @@ def seed_apr_2026_ward_6_preview(
 
     db.commit()
     if test_nurse:
-        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+        print(f"  Nurse login: {TEST_NURSE_USERNAME} / {TEST_NURSE_PASSWORD}")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(
@@ -1042,7 +1050,7 @@ def seed_requests(db: Session, ward_id: int) -> None:
 
     db.commit()
     if test_nurse:
-        print(f"\n  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+        print(f"\n  Nurse login: {TEST_NURSE_USERNAME} / {TEST_NURSE_PASSWORD}")
     if previous_roster_created:
         print(f"\n  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ {created} requests saved — go trigger the algorithm from the frontend.")

@@ -1484,7 +1484,7 @@ def _build_milp_config(
         "LOW_DAYS": {6, 7, 13, 14},
         "coverage_mode": "strict_by_class",
         "soften_coverage": False,
-        "soften_equivalent_target": False,
+        "soften_equivalent_target": True,
         "shift_priority": {"enabled": False},
         "min_do_with_other_nonwork": 2,
         "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": _shift_target_from_min(rn_min)},
