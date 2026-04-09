@@ -1774,10 +1774,11 @@ def _filter_requests_for_nurse_constraints(
     soft_requests: dict[int, list[tuple[int, str] | tuple[int, str, str]]],
 ) -> None:
     allowed_by_pattern = {
-        "AM_ONLY": {"AM", "A", "OFF", "DO", "RD", "AL"},
-        "PM_ONLY": {"PM", "P", "OFF", "DO", "RD", "AL"},
+        "AM_ONLY": {"AM", "A"},
+        "PM_ONLY": {"PM", "P"},
     }
     night_codes = {"NIGHT", "N"}
+    non_working_codes = {"OFF", "DO", "RD"}
 
     for nurse in nurses:
         nurse_id = nurse.get("id")
@@ -1790,6 +1791,12 @@ def _filter_requests_for_nurse_constraints(
         def _keep(item: tuple[int, str] | tuple[int, str, str]) -> bool:
             raw_shift = item[1]
             normalized = str(raw_shift).strip().upper()
+            # Keep all leave / non-working codes; pattern restrictions should only
+            # remove disallowed working shifts.
+            if normalized not in {"AM", "A", "PM", "P", "NIGHT", "N"}:
+                return True
+            if normalized in non_working_codes:
+                return True
             if no_night and normalized in night_codes:
                 return False
             if allowed is not None and normalized not in allowed:
