@@ -269,7 +269,7 @@ function RosterPlanningPage() {
       null,
     [periodWindow],
   );
-  const periodAnchor = selectedPeriod ?? initialPlanningPeriod;
+  const periodAnchor = initialPlanningPeriod ?? selectedPeriod;
   const visiblePlanningPeriods = useMemo(() => {
     if (displayPeriods.length === 0) {
       return [];
