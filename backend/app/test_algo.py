@@ -482,14 +482,13 @@ def _get_previous_period(db: Session, period: RosterPeriod) -> RosterPeriod | No
     ).first()
 
 
-def _seed_previous_period_roster(
+def _seed_roster_for_period(
     db: Session,
     ward_id: int,
-    period: RosterPeriod,
+    roster_period: RosterPeriod | None,
     nurses: list[Nurse],
 ) -> int:
-    previous_period = _get_previous_period(db, period)
-    if not previous_period or not nurses:
+    if not roster_period or not nurses:
         return 0
 
     nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
@@ -501,7 +500,7 @@ def _seed_previous_period_roster(
         for row in db.exec(
             select(Roster).where(
                 Roster.wardid == ward_id,
-                Roster.periodid == previous_period.periodid,
+                Roster.periodid == roster_period.periodid,
                 Roster.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
             )
         ).all()
@@ -509,14 +508,14 @@ def _seed_previous_period_roster(
     }
 
     shift_cycle = ("A", "P", "N", "DO")
-    num_days = (previous_period.enddate - previous_period.startdate).days + 1
+    num_days = (roster_period.enddate - roster_period.startdate).days + 1
     created = 0
 
     for nurse_index, nurse in enumerate(sorted(nurses, key=lambda n: n.nurseid or 0)):
         if nurse.nurseid is None:
             continue
         for day_idx in range(num_days):
-            shift_date = previous_period.startdate + timedelta(days=day_idx)
+            shift_date = roster_period.startdate + timedelta(days=day_idx)
             key = (nurse.nurseid, shift_date)
             if key in existing_entries:
                 continue
@@ -524,7 +523,7 @@ def _seed_previous_period_roster(
                 Roster(
                     nurseid=nurse.nurseid,
                     wardid=ward_id,
-                    periodid=previous_period.periodid,
+                    periodid=roster_period.periodid,
                     shiftdate=shift_date,
                     shiftcode=shift_cycle[(nurse_index + day_idx) % len(shift_cycle)],
                     status="Confirmed",
@@ -534,6 +533,16 @@ def _seed_previous_period_roster(
             created += 1
 
     return created
+
+
+def _seed_previous_period_roster(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurses: list[Nurse],
+) -> int:
+    previous_period = _get_previous_period(db, period)
+    return _seed_roster_for_period(db, ward_id, previous_period, nurses)
 
 
 def seed_test_ward_with_anonymized_requests(
@@ -629,6 +638,7 @@ def seed_test_ward_with_anonymized_requests(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward.wardid, current_period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
@@ -708,6 +718,8 @@ def seed_test_ward_with_anonymized_requests(
     db.commit()
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) with anonymized requests.")
@@ -715,7 +727,11 @@ def seed_test_ward_with_anonymized_requests(
 
 
 def seed_requests_from_list(
-    db: Session, ward_id: int, period: RosterPeriod, request_seeds: list[RequestSeed]
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    request_seeds: list[RequestSeed],
+    current_period: RosterPeriod | None = None,
 ) -> int:
     ward = db.get(Ward, ward_id)
     if not ward:
@@ -730,6 +746,7 @@ def seed_requests_from_list(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward_id, current_period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward_id, period, nurses)
 
     nurse_by_name = {_normalize_name(n.name): n for n in nurses}
@@ -818,6 +835,8 @@ def seed_requests_from_list(
         created += 1
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     return created
@@ -892,6 +911,7 @@ def seed_apr_2026_ward_6_preview(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward.wardid, period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
@@ -927,6 +947,8 @@ def seed_apr_2026_ward_6_preview(
     db.commit()
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(
@@ -959,6 +981,7 @@ def seed_requests(db: Session, ward_id: int) -> None:
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward_id, current_period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward_id, period, nurses)
 
     ward_shift_code_strs = [
@@ -1043,6 +1066,8 @@ def seed_requests(db: Session, ward_id: int) -> None:
     db.commit()
     if test_nurse:
         print(f"\n  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"\n  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"\n  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ {created} requests saved — go trigger the algorithm from the frontend.")
@@ -1070,7 +1095,13 @@ def main() -> None:
             if not period:
                 raise SystemExit("No current or upcoming roster period found.")
             requests = generate_request_seeds([args.ward_id])
-            created = seed_requests_from_list(db, args.ward_id, period, requests)
+            created = seed_requests_from_list(
+                db,
+                args.ward_id,
+                period,
+                requests,
+                current_period=current_period,
+            )
             db.commit()
             print(f"\n✓ {created} hardcoded requests saved — go trigger the algorithm from the frontend.")
         elif args.mode == "anonymized":
