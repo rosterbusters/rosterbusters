@@ -55,6 +55,11 @@ def get_current_user(session: SessionDep, token: TokenDep) -> RBACUser:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.isactive:
         raise HTTPException(status_code=400, detail="Inactive user")
+    if token_data.token_use != "access":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
+        )
     return user
 
 

@@ -1,4 +1,9 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import {
+  completeLogin2faInUi,
+  loginForE2E,
+  verifyEmailForCurrentUser,
+} from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const ADMIN_EMAIL =
@@ -12,16 +17,15 @@ async function loginToken(
   request: APIRequestContext,
   username: string,
   password: string,
+  recipientEmail?: string,
 ) {
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username, password },
+  return loginForE2E({
+    request,
+    username,
+    password,
+    recipientEmail,
+    apiBaseUrl: API_BASE_URL,
   })
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login: ${res.status()} ${body}`)
-  }
-  const json = await res.json()
-  return json.access_token as string
 }
 
 async function createUser(
@@ -65,6 +69,15 @@ async function completeFirstLogin(
   employeeId: string,
   email?: string,
 ) {
+  if (email) {
+    await verifyEmailForCurrentUser({
+      request,
+      token,
+      email,
+      apiBaseUrl: API_BASE_URL,
+    })
+  }
+
   const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -110,7 +123,12 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
     )
   }
 
-  const adminToken = await loginToken(request, ADMIN_EMAIL, ADMIN_PASSWORD)
+  const adminToken = await loginToken(
+    request,
+    ADMIN_EMAIL,
+    ADMIN_PASSWORD,
+    ADMIN_EMAIL,
+  )
 
   const wardsRes = await request.get(`${API_BASE_URL}/api/v1/wards/`)
   if (!wardsRes.ok()) {
@@ -150,7 +168,7 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
       ward_ids: [ward.wardid],
     })
 
-    const nmToken = await loginToken(request, nmUsername, nmPassword)
+    const nmToken = await loginToken(request, nmUsername, nmPassword, nmEmail)
     await completeFirstLogin(request, nmToken, nmPassword, nmEmployeeId, nmEmail)
 
     nurseUser = await createUser(request, adminToken, {
@@ -184,6 +202,7 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
     await page.getByTestId("login-username").fill(nmUsername)
     await page.getByTestId("login-password").fill(nmPassword)
     await page.getByRole("button", { name: /log in/i }).click()
+    await completeLogin2faInUi({ page, recipientEmail: nmEmail })
 
     if (page.url().includes("/first-login-setup")) {
       await page.getByPlaceholder("your.email@example.com").fill(nmEmail)
