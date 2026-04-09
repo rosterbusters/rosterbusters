@@ -518,7 +518,6 @@ def _seed_previous_period_roster(
                     shiftcode=shift_cycle[(nurse_index + day_idx) % len(shift_cycle)],
                     status="Confirmed",
                     assignmentmethod="Auto",
-                    comment="Seeded previous roster",
                 )
             )
             created += 1
