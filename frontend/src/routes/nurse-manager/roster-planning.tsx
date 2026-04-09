@@ -338,9 +338,14 @@ function RosterPlanningPage() {
   }, [periods]);
 
   const initialPlanningPeriod = useMemo(
-    () => periodWindow?.upcomingPeriod ?? periodWindow?.currentPeriod ?? null,
+    () =>
+      periodWindow?.upcomingPeriod ??
+      periodWindow?.requestOpenPeriod ??
+      periodWindow?.currentPeriod ??
+      null,
     [periodWindow],
   );
+  const periodAnchor = selectedPeriod ?? initialPlanningPeriod;
   const visiblePlanningPeriods = useMemo(() => {
     if (displayPeriods.length === 0) {
       return [];
@@ -350,9 +355,9 @@ function RosterPlanningPage() {
       moment(left.startDate).diff(moment(right.startDate)),
     );
 
-    if (initialPlanningPeriod) {
+    if (periodAnchor) {
       const firstVisibleIndex = ascendingPeriods.findIndex(
-        (period) => period.periodId === initialPlanningPeriod.periodId,
+        (period) => period.periodId === periodAnchor.periodId,
       );
 
       if (firstVisibleIndex >= 0) {
@@ -361,11 +366,11 @@ function RosterPlanningPage() {
     }
 
     const futurePeriods = ascendingPeriods.filter((period) =>
-      moment(period.startDate).isAfter(moment().startOf("day")),
+      moment(period.startDate).isSameOrAfter(moment().startOf("day"), "day"),
     );
 
     return (futurePeriods.length > 0 ? futurePeriods : ascendingPeriods).slice(0, 3);
-  }, [displayPeriods, initialPlanningPeriod]);
+  }, [displayPeriods, periodAnchor]);
 
   // Set default ward if not set
   useEffect(() => {
@@ -507,6 +512,13 @@ function RosterPlanningPage() {
       };
     });
   }, [rosterData, currentStartDate, viewMode, shiftDurationMap]);
+
+  const hasAssignedRosterData = useMemo(
+    () =>
+      rosterData.some((row) => Object.keys(row.shifts ?? {}).length > 0),
+    [rosterData],
+  );
+  const showAlgorithmGeneratedState = isAlgorithmGenerated && hasAssignedRosterData;
 
   const editHistory = useMemo<EditHistoryEntry[]>(() => {
     return changelogEntries.map((entry) => ({
@@ -786,12 +798,12 @@ function RosterPlanningPage() {
     setCurrentStartDate(date);
 
     const matchingPeriod =
-      visiblePlanningPeriods.find((period) =>
+      displayPeriods.find((period) =>
         moment(date).isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
-      ) ?? null;
+      ) ?? selectedPeriod;
 
     setSelectedPeriod(matchingPeriod);
-  }, [visiblePlanningPeriods]);
+  }, [displayPeriods, selectedPeriod]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -1201,7 +1213,7 @@ function RosterPlanningPage() {
           selectedPeriod={selectedPeriod}
           wards={displayWards}
           periods={visiblePlanningPeriods}
-          isAlgorithmGenerated={isAlgorithmGenerated}
+          isAlgorithmGenerated={showAlgorithmGeneratedState}
           isGenerating={isAlgorithmRunning}
           isPublishing={
             bulkUpsertRoster.isPending || publishRoster.isPending
@@ -1217,7 +1229,7 @@ function RosterPlanningPage() {
           algorithmType={algorithmType}
           onAlgorithmTypeChange={(t) => setAlgorithmType(t)}
           onGenerateAlgorithm={handleGenerateAlgorithm}
-          showAutoRegenerate={canAutoRegenerate}
+          showAutoRegenerate={showAlgorithmGeneratedState && canAutoRegenerate}
           onAutoRegenerate={handleAutoRegenerateClick}
           onClearRoster={handleClearRoster}
           onLoadMockData={handleLoadMockData}
@@ -1292,7 +1304,7 @@ function RosterPlanningPage() {
             isLoading={isAlgorithmRunning}
             loadingLabel={algorithmOverlayLabel}
             guidelines={guidelines}
-            isRosterGenerated={isAlgorithmGenerated}
+            isRosterGenerated={showAlgorithmGeneratedState}
             shiftRequestOverlays={shiftRequestOverlays}
             highlightedNurseIds={highlightedNoNightNurseIds}
             onNurseNameClick={handleOpenNurseSettings}
@@ -1304,7 +1316,7 @@ function RosterPlanningPage() {
           data={displayRosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
-          isRosterGenerated={isAlgorithmGenerated}
+          isRosterGenerated={showAlgorithmGeneratedState}
           guidelines={guidelines}
           dateOverrides={dateOverrides}
           originalGuidelines={originalGuidelines}

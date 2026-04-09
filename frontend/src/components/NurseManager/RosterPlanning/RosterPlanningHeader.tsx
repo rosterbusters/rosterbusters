@@ -115,7 +115,6 @@ export function RosterPlanningHeader({
     100,
     Math.max(0, Math.round(Number.isFinite(generationProgress) ? generationProgress : 0)),
   );
-  const today = moment().startOf("day");
   const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
   const sortedPeriods = useMemo(
     () =>
@@ -129,21 +128,10 @@ export function RosterPlanningHeader({
   const dateRangeText = selectedPeriod
     ? `${moment(selectedPeriod.startDate).format("MMMM DD")} - ${moment(selectedPeriod.endDate).format("MMMM DD")}`
     : `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
-
-  const currentPeriodId =
-    periods.find((period) =>
-      today.isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
-    )?.periodId ?? null;
-
-  const upcomingPeriodId =
-    periods
-      .filter((period) => moment(period.startDate).isAfter(today, "day"))
-      .sort((left, right) => moment(left.startDate).diff(moment(right.startDate)))[0]
-      ?.periodId ?? null;
+  const anchorUpcomingPeriodId = sortedPeriods[0]?.periodId ?? null;
 
   const getPeriodFlag = (period: RosterPeriod) => {
-    if (period.periodId === currentPeriodId) return "Current";
-    if (period.periodId === upcomingPeriodId) return "Upcoming";
+    if (period.periodId === anchorUpcomingPeriodId) return "Upcoming";
     return null;
   };
 
@@ -153,7 +141,9 @@ export function RosterPlanningHeader({
       <HStack gap={2} minW={0} flexWrap="nowrap">
         <Text whiteSpace="nowrap">{period.name}</Text>
         {flag ? (
-          <Badge variant={(flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any}>
+          <Badge
+            variant={"upcomingPeriod" as any}
+          >
             {flag}
           </Badge>
         ) : null}
@@ -612,7 +602,7 @@ export function RosterPlanningHeader({
                     px={4}
                     disabled={isGenerating}
                   >
-                    AB-RATIO
+                    CP-SAT
                   </Button>
                 </HStack>
 
