@@ -142,6 +142,7 @@ export function RosterPlanningHeader({
       ?.periodId ?? null;
 
   const getPeriodFlag = (period: RosterPeriod) => {
+    if (period.status === "RequestOpen") return "Request Open";
     if (period.periodId === currentPeriodId) return "Current";
     if (period.periodId === upcomingPeriodId) return "Upcoming";
     return null;
@@ -153,7 +154,13 @@ export function RosterPlanningHeader({
       <HStack gap={2} minW={0} flexWrap="nowrap">
         <Text whiteSpace="nowrap">{period.name}</Text>
         {flag ? (
-          <Badge variant={(flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any}>
+          <Badge
+            variant={
+              (
+                flag === "Current" ? "currentPeriod" : "upcomingPeriod"
+              ) as any
+            }
+          >
             {flag}
           </Badge>
         ) : null}

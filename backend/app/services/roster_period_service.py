@@ -24,11 +24,7 @@ PERIOD_LENGTH_DAYS = 14
 PERIODS_PER_ROSTER_YEAR = 26
 ROSTER_YEAR_LENGTH_DAYS = PERIOD_LENGTH_DAYS * PERIODS_PER_ROSTER_YEAR
 ROSTER_YEARS_TO_KEEP = 2
-# TODO: Replace this temporary bypass with the real roster planning lock cutoff
-# once the implementation date/policy is finalized.
 PLANNING_LOCK_OFFSET_DAYS = -365
-# TODO: Revert this temporary Apr 6, 2026 request-window bypass after roster testing finishes.
-TEMP_REQUEST_WINDOW_BYPASS_STARTDATE = date(2026, 4, 6)
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +46,7 @@ def get_roster_year_start(for_date: date) -> date:
 
 
 def get_planning_lock_date(startdate: date) -> date | None:
-    # TODO: Re-enable roster period planning lock calculation once policy is finalized.
+    # TODO: Re-enable roster period planning lock calculation once the cutoff policy is finalized.
     # return startdate - timedelta(days=PLANNING_LOCK_OFFSET_DAYS)
     return None
 
@@ -70,12 +66,7 @@ def build_roster_period_definitions(today: date | None = None) -> list[RosterPer
             startdate = roster_year_start + timedelta(days=period_index * PERIOD_LENGTH_DAYS)
             enddate = startdate + timedelta(days=PERIOD_LENGTH_DAYS - 1)
             requestopendate = startdate - timedelta(days=14)
-            # TODO: revert to original close date (startdate - 10 days) once request window timing is finalised
-            # requestclosedate = startdate - timedelta(days=10)
-            requestclosedate = startdate - timedelta(days=13)
-            if startdate == TEMP_REQUEST_WINDOW_BYPASS_STARTDATE:
-                # TODO: Remove this once Apr 6, 2026 roster testing is complete.
-                requestclosedate = enddate
+            requestclosedate = startdate - timedelta(days=2)
 
             if today > enddate:
                 status = "Published"

@@ -338,9 +338,14 @@ function RosterPlanningPage() {
   }, [periods]);
 
   const initialPlanningPeriod = useMemo(
-    () => periodWindow?.upcomingPeriod ?? periodWindow?.currentPeriod ?? null,
+    () =>
+      periodWindow?.requestOpenPeriod ??
+      periodWindow?.upcomingPeriod ??
+      periodWindow?.currentPeriod ??
+      null,
     [periodWindow],
   );
+  const periodAnchor = selectedPeriod ?? initialPlanningPeriod;
   const visiblePlanningPeriods = useMemo(() => {
     if (displayPeriods.length === 0) {
       return [];
@@ -350,9 +355,9 @@ function RosterPlanningPage() {
       moment(left.startDate).diff(moment(right.startDate)),
     );
 
-    if (initialPlanningPeriod) {
+    if (periodAnchor) {
       const firstVisibleIndex = ascendingPeriods.findIndex(
-        (period) => period.periodId === initialPlanningPeriod.periodId,
+        (period) => period.periodId === periodAnchor.periodId,
       );
 
       if (firstVisibleIndex >= 0) {
@@ -365,7 +370,7 @@ function RosterPlanningPage() {
     );
 
     return (futurePeriods.length > 0 ? futurePeriods : ascendingPeriods).slice(0, 3);
-  }, [displayPeriods, initialPlanningPeriod]);
+  }, [displayPeriods, periodAnchor]);
 
   // Set default ward if not set
   useEffect(() => {
@@ -786,12 +791,12 @@ function RosterPlanningPage() {
     setCurrentStartDate(date);
 
     const matchingPeriod =
-      visiblePlanningPeriods.find((period) =>
+      displayPeriods.find((period) =>
         moment(date).isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
-      ) ?? null;
+      ) ?? selectedPeriod;
 
     setSelectedPeriod(matchingPeriod);
-  }, [visiblePlanningPeriods]);
+  }, [displayPeriods, selectedPeriod]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
