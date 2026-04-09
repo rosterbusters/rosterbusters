@@ -8,7 +8,7 @@ from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash, should_bypass_verification, verify_password
 from app.models import (
     Message,
     Nurse,
@@ -159,18 +159,35 @@ def first_login_setup(
     # Require email to be verified first via /users/me/verify-email-code.
     submitted_email = body.email.strip() if body.email else ""
     current_email = current_user.email.strip() if current_user.email else ""
+    bypass_verification = should_bypass_verification(current_user)
     if submitted_email:
-        if not current_email:
+        existing_user = session.exec(
+            select(RBACUser).where(
+                RBACUser.email == submitted_email,
+                RBACUser.userid != current_user.userid,
+            )
+        ).first()
+        if existing_user:
             raise HTTPException(
                 status_code=400,
-                detail="Email is not verified. Please verify your email before completing setup.",
+                detail="This email is already registered to another user.",
             )
-        if submitted_email.lower() != current_email.lower():
-            raise HTTPException(
-                status_code=400,
-                detail="Submitted email does not match verified email. Please verify this email first.",
-            )
-    elif not current_email:
+
+        if bypass_verification:
+            current_email = submitted_email
+            current_user.email = submitted_email
+        else:
+            if not current_email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Email is not verified. Please verify your email before completing setup.",
+                )
+            if submitted_email.lower() != current_email.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Submitted email does not match verified email. Please verify this email first.",
+                )
+    elif not current_email and not bypass_verification:
         raise HTTPException(
             status_code=400,
             detail="Email verification is required before completing setup.",

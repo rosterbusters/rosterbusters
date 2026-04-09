@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import secrets
 import string
@@ -11,6 +11,9 @@ from passlib.context import CryptContext
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from app.models.rbac import RBACUser
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -68,3 +71,13 @@ def decrypt_default_password(token: str) -> str | None:
         return fernet.decrypt(token.encode()).decode()
     except InvalidToken:
         return None
+
+
+def should_bypass_verification(user: "RBACUser") -> bool:
+    identifiers = settings.verification_bypass_identifier_set
+    candidates = {
+        user.username.strip().lower(),
+        (user.email or "").strip().lower(),
+    }
+    candidates.discard("")
+    return any(candidate in identifiers for candidate in candidates)

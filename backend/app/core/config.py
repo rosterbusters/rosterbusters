@@ -25,6 +25,14 @@ def parse_cors(v: Any) -> list[str] | str:
     raise ValueError(v)
 
 
+def parse_csv_list(v: Any) -> list[str] | str:
+    if isinstance(v, str) and not v.startswith("["):
+        return [i.strip() for i in v.split(",") if i.strip()]
+    elif isinstance(v, list | str):
+        return v
+    raise ValueError(v)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
@@ -44,6 +52,9 @@ class Settings(BaseSettings):
 
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
+    ] = []
+    VERIFICATION_BYPASS_IDENTIFIERS: Annotated[
+        list[str] | str, BeforeValidator(parse_csv_list)
     ] = []
 
     @computed_field  # type: ignore[prop-decorator]
@@ -111,6 +122,20 @@ class Settings(BaseSettings):
     @property
     def smtp_enabled(self) -> bool:
         return bool(self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def verification_bypass_identifier_set(self) -> set[str]:
+        raw_identifiers = self.VERIFICATION_BYPASS_IDENTIFIERS
+        identifiers = (
+            raw_identifiers
+            if isinstance(raw_identifiers, list)
+            else parse_csv_list(raw_identifiers)
+        )
+        normalized = {identifier.strip().lower() for identifier in identifiers if identifier.strip()}
+        if self.ENVIRONMENT != "production":
+            normalized.add(str(self.FIRST_SUPERUSER).strip().lower())
+        return normalized
 
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     REDIS_URL: str = "redis://redis:6379/0"
