@@ -523,7 +523,10 @@ def _debug_milp_feasibility(
         }
         req_total_all = sum(req_totals.values())
         nurse_count = len(nurses)
-        max_equiv_capacity = nurse_count * equivalent_shift_target
+        class_equivalent_target = int(
+            class_cfg.get("equivalent_shift_target", equivalent_shift_target) or equivalent_shift_target
+        )
+        max_equiv_capacity = nurse_count * class_equivalent_target
         hard_summary = _summarize_hard_requests(hard_dict, non_working_shift_codes)
         leave_days = sum(len(v or []) for v in (al_dict or {}).values())
         carry_need_do = 0
@@ -640,6 +643,7 @@ def _validate_class_capacity(
     low_days,
     num_days,
     equivalent_shift_target,
+    soften_equivalent_target=False,
 ):
     req_totals = {
         s: sum(
@@ -649,15 +653,30 @@ def _validate_class_capacity(
         for s in ("A", "P", "N")
     }
     req_total_all = sum(req_totals.values())
-    max_equiv_capacity = len(nurses) * equivalent_shift_target
+    nurse_count = len(nurses)
+    effective_equivalent_shift_target = int(
+        class_cfg.get("equivalent_shift_target", equivalent_shift_target) or equivalent_shift_target
+    )
+    if soften_equivalent_target and nurse_count > 0:
+        original_target = effective_equivalent_shift_target
+        effective_equivalent_shift_target = max(
+            effective_equivalent_shift_target,
+            (req_total_all + nurse_count - 1) // nurse_count,
+        )
+        if effective_equivalent_shift_target > original_target:
+            print(
+                f"[MILP] Relaxed {class_name} equivalent target "
+                f"from {original_target} to {effective_equivalent_shift_target}"
+            )
+    max_equiv_capacity = nurse_count * effective_equivalent_shift_target
     if req_total_all <= max_equiv_capacity:
-        return
+        return effective_equivalent_shift_target
 
     shortage = req_total_all - max_equiv_capacity
     raise MILPInfeasibilityError(
         f"{class_name} demand exceeds class capacity: required={req_total_all} "
         f"capacity={max_equiv_capacity} shortage={shortage} req={req_totals} "
-        f"nurses={len(nurses)} eq_target={equivalent_shift_target}"
+        f"nurses={nurse_count} eq_target={effective_equivalent_shift_target}"
     )
 
 
@@ -699,6 +718,7 @@ def _solve(
     WEEKEND_DAYS = _normalize_days(cfg.get("weekend_days", [6, 7, 13, 14]), num_days)
     LOW_DAYS     = set(_normalize_days(cfg.get("LOW_DAYS", []), num_days))
     equivalent_shift_target = int(cfg.get("equivalent_shift_target", 10) or 10)
+    soften_equivalent_target = bool(cfg.get("soften_equivalent_target", False))
     weekly_night_cap = int(cfg.get("weekly_night_cap", 2) or 2)
     weekly_work_cap = int(cfg.get("weekly_work_cap", 5) or 5)
     weekly_do_cap_raw = cfg.get("weekly_do_cap")
@@ -746,6 +766,23 @@ def _solve(
     rn_nurses  = list(rn_list);  rng.shuffle(rn_nurses)
     en_nurses  = list(en_list);  rng.shuffle(en_nurses)
     hca_nurses = list(hca_list); rng.shuffle(hca_nurses)
+    class_equivalent_targets = {}
+    for class_name, nurses, class_cfg in (
+        ("RN", rn_nurses, rn_cfg),
+        ("EN", en_nurses, en_cfg),
+        ("HCA", hca_nurses, hca_cfg),
+    ):
+        class_equivalent_targets[class_name] = _validate_class_capacity(
+            class_name,
+            nurses,
+            class_cfg,
+            shift_requirements,
+            LOW_DAYS,
+            num_days,
+            equivalent_shift_target,
+            soften_equivalent_target=soften_equivalent_target,
+        )
+
     _debug_milp_feasibility(
         rn_nurses,
         en_nurses,
@@ -771,20 +808,6 @@ def _solve(
         prev_week_last2_hca,
         non_working_shift_codes,
     )
-    for class_name, nurses, class_cfg in (
-        ("RN", rn_nurses, rn_cfg),
-        ("EN", en_nurses, en_cfg),
-        ("HCA", hca_nurses, hca_cfg),
-    ):
-        _validate_class_capacity(
-            class_name,
-            nurses,
-            class_cfg,
-            shift_requirements,
-            LOW_DAYS,
-            num_days,
-            equivalent_shift_target,
-        )
 
     _default_w = {
         "dev_shift": 1.0,
@@ -855,7 +878,8 @@ def _solve(
     # ---- Nurse rules ----
     def add_nurse_rules(class_nurses, x_var, off_var, startN_var,
                         al_dict, hard_dict, prev_week_last2_dict,
-                        nurse_constraints_dict):
+                        nurse_constraints_dict,
+                        class_equivalent_target):
         for n in class_nurses:
             al_days            = set(al_dict.get(n, []))
             other_nonwork_days = set()
@@ -938,7 +962,7 @@ def _solve(
                 + fixed_equivalent_days
             )
             if preferred_shift is None:
-                m.cons.add(equivalent_days == equivalent_shift_target)
+                m.cons.add(equivalent_days == class_equivalent_target)
 
             # Weekly caps / permanent shift pattern
             if preferred_shift is None:
@@ -1013,13 +1037,13 @@ def _solve(
 
     add_nurse_rules(rn_nurses,  m.x_rn,  m.off_rn,  m.startN_rn,
                     annual_leave_rn,  hard_requests_rn,  prev_week_last2_rn,
-                    nurse_constraints_rn)
+                    nurse_constraints_rn, class_equivalent_targets["RN"])
     add_nurse_rules(en_nurses,  m.x_en,  m.off_en,  m.startN_en,
                     annual_leave_en,  hard_requests_en,  prev_week_last2_en,
-                    nurse_constraints_en)
+                    nurse_constraints_en, class_equivalent_targets["EN"])
     add_nurse_rules(hca_nurses, m.x_hca, m.off_hca, m.startN_hca,
                     annual_leave_hca, hard_requests_hca, prev_week_last2_hca,
-                    nurse_constraints_hca)
+                    nurse_constraints_hca, class_equivalent_targets["HCA"])
 
     # ---- Coverage constraints (strict by class only, notebook v14) ----
     def _req_for_day(class_name, class_cfg, d, s):
