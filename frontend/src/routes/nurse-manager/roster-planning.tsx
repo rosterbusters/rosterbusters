@@ -699,15 +699,6 @@ function RosterPlanningPage() {
       return;
     }
     const resetRows = buildManualRosterRows(wardStatistics?.nurses);
-    if (rosterEntries.length === 0) {
-      setIsAlgorithmGenerated(false);
-      setGeneratedAlgorithmMethod(null);
-      setLastAlgorithmRunAt(null);
-      setLastAlgorithmRunMs(null);
-      setRosterData(resetRows);
-      showSuccessToast("Roster cleared successfully");
-      return;
-    }
     try {
       await clearRoster.mutateAsync({
         wardId: selectedWard.wardId,
@@ -730,7 +721,6 @@ function RosterPlanningPage() {
   }, [
     selectedWard,
     selectedPeriod,
-    rosterEntries.length,
     buildManualRosterRows,
     clearRoster,
     wardStatistics?.nurses,
