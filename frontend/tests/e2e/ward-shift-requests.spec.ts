@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
 import { completeFirstLoginSetup } from "./admin-helpers"
+import { loginForE2E } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const ADMIN_EMAIL =
@@ -81,16 +82,15 @@ async function loginToken(
   request: APIRequestContext,
   username: string,
   password: string,
+  recipientEmail?: string,
 ) {
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username, password },
+  return loginForE2E({
+    request,
+    username,
+    password,
+    recipientEmail,
+    apiBaseUrl: API_BASE_URL,
   })
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login: ${res.status()} ${body}`)
-  }
-  const json = await res.json()
-  return json.access_token as string
 }
 
 async function createUser(
@@ -164,7 +164,12 @@ test("ward staff can create a shift request from the calendar", async ({
     )
   }
 
-  const adminToken = await loginToken(request, ADMIN_EMAIL, ADMIN_PASSWORD)
+  const adminToken = await loginToken(
+    request,
+    ADMIN_EMAIL,
+    ADMIN_PASSWORD,
+    ADMIN_EMAIL,
+  )
   const ward = await getActiveWard(request, adminToken)
 
   const suffix = Date.now().toString().slice(-6)
@@ -191,7 +196,12 @@ test("ward staff can create a shift request from the calendar", async ({
     })
     createdUserIds.push(nurseUser.userid)
 
-    nurseToken = await loginToken(request, nurseUsername, nursePassword)
+    nurseToken = await loginToken(
+      request,
+      nurseUsername,
+      nursePassword,
+      nurseEmail,
+    )
 
     // Newly created users are flagged for first-time setup and are route-guarded
     // away from ward-staff pages until setup is completed.

@@ -28,6 +28,24 @@ class Token(SQLModel):
 # Contents of JWT token
 class TokenPayload(SQLModel):
     sub: str | None = None
+    token_use: str = "access"
+
+
+class LoginAccessTokenResponse(SQLModel):
+    access_token: str | None = None
+    token_type: str = "bearer"
+    must_change_password: bool = False
+    two_factor_required: bool = False
+    two_factor_token: str | None = None
+
+
+class LoginEmail2FAVerify(SQLModel):
+    two_factor_token: str
+    code: str = Field(min_length=6, max_length=6)
+
+
+class LoginEmail2FAResend(SQLModel):
+    two_factor_token: str
 
 
 class NewPassword(SQLModel):
