@@ -124,6 +124,9 @@ APR_2026_WARD_6_REQUESTS: list[RequestSeed] = [
 TEST_MANAGER_USERNAME = "manager"
 TEST_MANAGER_EMAIL = "manager@example.com"
 TEST_MANAGER_PASSWORD = "manager123"
+TEST_NURSE_USERNAME = "nurse1"
+TEST_NURSE_NAME = "Nurse 1"
+TEST_NURSE_PASSWORD = "nurse123"
 
 
 def generate_request_seeds(ward_ids: list[int], strain: str = "baseline") -> list[RequestSeed]:
@@ -324,6 +327,8 @@ def _ensure_test_manager(db: Session, ward: Ward | None = None) -> NurseManager:
             passwordhash=get_password_hash(TEST_MANAGER_PASSWORD),
             managerid=manager.managerid,
             isactive=True,
+            must_change_password=False,
+            default_password_encrypted=None,
             createdat=datetime.now(timezone.utc),
         )
         db.add(user)
@@ -332,6 +337,8 @@ def _ensure_test_manager(db: Session, ward: Ward | None = None) -> NurseManager:
         user.passwordhash = get_password_hash(TEST_MANAGER_PASSWORD)
         user.managerid = manager.managerid
         user.isactive = True
+        user.must_change_password = False
+        user.default_password_encrypted = None
         db.add(user)
 
     role = _get_or_create_role(db, "NurseManager", "Nurse Manager")
@@ -359,6 +366,63 @@ def _ensure_test_manager(db: Session, ward: Ward | None = None) -> NurseManager:
 
     db.flush()
     return manager
+
+
+def _ensure_test_nurse_user(db: Session, nurse: Nurse) -> RBACUser:
+    if nurse.nurseid is None:
+        raise ValueError("Nurse must be persisted before creating a login user.")
+
+    user = db.exec(select(RBACUser).where(RBACUser.nurseid == nurse.nurseid)).first()
+    if not user:
+        user = db.exec(
+            select(RBACUser).where(RBACUser.username == TEST_NURSE_USERNAME)
+        ).first()
+    if not user:
+        user = db.exec(select(RBACUser).where(RBACUser.email == nurse.email)).first()
+
+    if not user:
+        user = RBACUser(
+            username=TEST_NURSE_USERNAME,
+            email=nurse.email,
+            passwordhash=get_password_hash(TEST_NURSE_PASSWORD),
+            nurseid=nurse.nurseid,
+            isactive=True,
+            must_change_password=False,
+            default_password_encrypted=None,
+            createdat=datetime.now(timezone.utc),
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.username = TEST_NURSE_USERNAME
+        user.email = nurse.email
+        user.passwordhash = get_password_hash(TEST_NURSE_PASSWORD)
+        user.nurseid = nurse.nurseid
+        user.isactive = True
+        user.must_change_password = False
+        user.default_password_encrypted = None
+        db.add(user)
+
+    role = _get_or_create_role(db, "Nurse", "Nurse")
+    existing_role = db.exec(
+        select(UserRole).where(
+            UserRole.userid == user.userid,
+            UserRole.roleid == role.roleid,
+            UserRole.wardid == nurse.wardid,
+        )
+    ).first()
+    if not existing_role:
+        db.add(
+            UserRole(
+                userid=user.userid,
+                roleid=role.roleid,
+                wardid=nurse.wardid,
+                isactive=True,
+            )
+        )
+
+    db.flush()
+    return user
 
 
 WARD_6_REQUIREMENTS = {
@@ -459,6 +523,10 @@ def seed_test_ward_with_anonymized_requests(
         )
 
     db.flush()
+    nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
+    test_nurse = nurse_by_name.get(TEST_NURSE_NAME)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
 
     # Ensure shift codes and ward shift codes exist for shift_request entries.
     # Leave types (AL, MC, HOL, …) are not shift codes. Modifier suffixes (-R/_R) are
@@ -723,6 +791,10 @@ def seed_apr_2026_ward_6_preview(
         )
 
     db.flush()
+    nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
+    test_nurse = nurse_by_name.get(TEST_NURSE_NAME)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
 
     codes = {
         _normalize_shift_request_code(req.code)
