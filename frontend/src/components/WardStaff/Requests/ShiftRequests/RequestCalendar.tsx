@@ -73,8 +73,8 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   });
 
   /**
-   * Prefer the period that contains today AND is RequestOpen.
-   * Fall back to the first RequestOpen period.
+   * TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
+   * For now, use the period containing today and fall back to the first available period.
    * This MUST match the logic in NewShiftRequest so created requests
    * appear in the correct period on the calendar.
    */
@@ -85,10 +85,9 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
     return (
       periods.find(
         (p) =>
-          p.status === 'RequestOpen' &&
           p.startdate <= todayStr &&
           p.enddate >= todayStr,
-      ) ?? periods.find((p) => p.status === 'RequestOpen')
+      ) ?? periods[0]
     );
   }, [periods]);
 

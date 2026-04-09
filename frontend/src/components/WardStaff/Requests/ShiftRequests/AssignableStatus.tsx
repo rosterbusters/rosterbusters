@@ -15,13 +15,13 @@ export function AssignableStatus() {
     if (!periods) return undefined;
     const d = new Date();
     const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    // TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
     return (
       periods.find(
         (p) =>
-          p.status === "RequestOpen" &&
           p.startdate <= todayStr &&
           p.enddate >= todayStr,
-      ) ?? periods.find((p) => p.status === "RequestOpen")
+      ) ?? periods[0]
     );
   }, [periods]);
 
