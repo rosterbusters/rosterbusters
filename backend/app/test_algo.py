@@ -5,12 +5,14 @@ Modes:
   - deterministic: uses nurse IDs (no randomness) to create 1-2 requests each
   - hardcoded: seeds the sample request list into a given ward/period
   - anonymized: creates a test ward with "Nurse 1..N" and seeds requests into the upcoming period
+  - anonymized-feasible: same as anonymized, but with added EN/SEN manpower sized for MILP feasibility
   - anonymized-apr-2026: creates a separate test ward for the Apr 06 - Apr 19 2026 preview data
 
 Usage:
     docker compose exec backend python app/test_algo.py --ward-id 1 --mode deterministic
     docker compose exec backend python app/test_algo.py --ward-id 1 --mode hardcoded
     docker compose exec backend python app/test_algo.py --mode anonymized
+    docker compose exec backend python app/test_algo.py --mode anonymized-feasible
     docker compose exec backend python app/test_algo.py --mode anonymized-apr-2026
 """
 import argparse
@@ -230,6 +232,21 @@ ANON_DESIGNATIONS: dict[str, str] = {
 }
 
 
+FEASIBLE_ANON_DESIGNATIONS: dict[str, str] = {
+    **ANON_DESIGNATIONS,
+    # The original anonymized seed only provides 5 EN/SEN nurses, while the
+    # current Ward 6 minima require 7 B-rank assignments per day. These
+    # additional EN/SEN staff lift the ward into MILP-feasible territory while
+    # preserving the same hardcoded request mix.
+    "Nurse 32": "EN",
+    "Nurse 33": "EN",
+    "Nurse 34": "EN",
+    "Nurse 35": "EN",
+    "Nurse 36": "SEN",
+    "Nurse 37": "SEN",
+}
+
+
 APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
     "Nurse 1": "SN",
     "Nurse 2": "SN",
@@ -445,6 +462,9 @@ WARD_6_REQUIREMENTS = {
     "nd_hca_min": 0,
     "nd_hca_max": 1,
 }
+
+
+FEASIBLE_WARD_6_REQUIREMENTS = dict(WARD_6_REQUIREMENTS)
 
 
 APR_2026_WARD_6_REQUIREMENTS = {
@@ -723,6 +743,169 @@ def seed_test_ward_with_anonymized_requests(
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) with anonymized requests.")
+    return created
+
+
+def seed_test_ward_with_feasible_anonymized_requests(
+    db: Session,
+    ward_name: str = "Test Ward Requests MILP Feasible",
+) -> int:
+    """
+    Seed the same anonymized request scenario as `seed_test_ward_with_anonymized_requests`,
+    but with enough EN/SEN manpower for the MILP solver to satisfy the ward's
+    strict B-rank minima.
+    """
+    periods = ensure_roster_period_window(db)
+    current_period, upcoming_period, _ = get_period_window(periods)
+    period = upcoming_period or current_period
+    if not period:
+        raise SystemExit("No current or upcoming roster period found.")
+
+    ward = db.exec(select(Ward).where(Ward.wardname == ward_name)).first()
+    if not ward:
+        ward = Ward(wardname=ward_name, wardtype="Test", location="Seeded")
+        db.add(ward)
+        db.flush()
+    _apply_ward_requirements(ward, FEASIBLE_WARD_6_REQUIREMENTS)
+    db.add(ward)
+    _ensure_test_manager(db, ward)
+
+    unique_names = sorted(FEASIBLE_ANON_DESIGNATIONS.keys(), key=_nurse_sort_key)
+
+    existing_nurses = db.exec(
+        select(Nurse).where(Nurse.wardid == ward.wardid)
+    ).all()
+    existing_by_name = {n.name: n for n in existing_nurses}
+
+    for anonymized in unique_names:
+        if anonymized in existing_by_name:
+            continue
+        designation = FEASIBLE_ANON_DESIGNATIONS.get(anonymized, "SN")
+        db.add(
+            Nurse(
+                name=anonymized,
+                employeeid=f"TEST-{anonymized.split()[-1]}",
+                designation=designation,
+                email=f"{anonymized.replace(' ', '').lower()}@example.com",
+                contactnumber="00000000",
+                wardid=ward.wardid,
+                employmenttype="FullTime",
+                isactive=True,
+            )
+        )
+
+    db.flush()
+    nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
+    test_nurse = nurse_by_name.get(TEST_NURSE_NAME)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+
+    allowed_leave_types = {
+        "AL",
+        "MC",
+        "CCL",
+        "ML",
+        "EML",
+        "Mar",
+        "FCL",
+        "SPL",
+        "CL",
+        "BDL",
+        "HOL",
+        "SD",
+        "FD",
+    }
+    codes = {
+        _normalize_shift_request_code(req.code)
+        for req in HARDCODED_REQUESTS
+        if req.request_type == "shift_request" or req.code not in allowed_leave_types
+    } | {"A", "P", "N"}
+    _ensure_shift_codes(db, codes)
+
+    existing_wsc = {
+        row.shiftcode
+        for row in db.exec(select(WardShiftCode).where(WardShiftCode.wardid == ward.wardid)).all()
+    }
+    for code in sorted(codes - existing_wsc):
+        db.add(WardShiftCode(wardid=ward.wardid, shiftcode=code))
+
+    base_start = min(req.date for req in HARDCODED_REQUESTS)
+    nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
+    test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward.wardid, current_period, nurses)
+    previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
+    nurse_by_name = {n.name: n for n in nurses}
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, [n.nurseid for n in nurses]
+    )
+
+    created = 0
+    for req in HARDCODED_REQUESTS:
+        shifted = _shift_to_upcoming_period(req, base_start, period)
+        if not shifted:
+            continue
+        nurse = nurse_by_name.get(req.name)
+        if not nurse:
+            continue
+
+        if shifted.request_type == "leave_request" and shifted.code in allowed_leave_types:
+            existing = db.exec(
+                select(LeaveRequest).where(
+                    LeaveRequest.nurseid == nurse.nurseid,
+                    LeaveRequest.startdate == shifted.date,
+                    LeaveRequest.enddate == shifted.date,
+                    LeaveRequest.leavetype == shifted.code,
+                )
+            ).first()
+            if existing:
+                continue
+            db.add(
+                LeaveRequest(
+                    nurseid=nurse.nurseid,
+                    startdate=shifted.date,
+                    enddate=shifted.date,
+                    leavetype=shifted.code,
+                    leavecategory="PreApproved",
+                    submittedduringperiod="BeforeRoster",
+                    status="Approved",
+                    impactsroster=True,
+                )
+            )
+            created += 1
+        else:
+            normalized_code = _normalize_shift_request_code(shifted.code)
+            key = (nurse.nurseid, shifted.date)
+            if key in existing_dates:
+                continue
+            db.add(
+                ShiftRequest(
+                    nurseid=nurse.nurseid,
+                    periodid=period.periodid,
+                    preferreddate=shifted.date,
+                    preferredshifttype=normalized_code,
+                    requestnumber=_claim_shift_request_number(
+                        used_numbers_by_nurse, nurse.nurseid
+                    ),
+                    status="Pending",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+            existing_dates.add(key)
+            created += 1
+
+    db.commit()
+    if test_nurse:
+        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
+    if previous_roster_created:
+        print(f"  Seeded {previous_roster_created} previous-period roster entries.")
+    print(
+        f"\nSeeded ward '{ward.wardname}' (id={ward.wardid}) "
+        "with MILP-feasible anonymized requests."
+    )
     return created
 
 
@@ -1080,7 +1263,13 @@ def main() -> None:
         "--mode",
         type=str,
         default="deterministic",
-        choices=["deterministic", "hardcoded", "anonymized", "anonymized-apr-2026"],
+        choices=[
+            "deterministic",
+            "hardcoded",
+            "anonymized",
+            "anonymized-feasible",
+            "anonymized-apr-2026",
+        ],
         help="Use deterministic seed logic, hardcoded sample requests, or anonymized test ward seeding.",
     )
     args = parser.parse_args()
@@ -1107,6 +1296,9 @@ def main() -> None:
         elif args.mode == "anonymized":
             created = seed_test_ward_with_anonymized_requests(db)
             print(f"✓ {created} anonymized requests saved.")
+        elif args.mode == "anonymized-feasible":
+            created = seed_test_ward_with_feasible_anonymized_requests(db)
+            print(f"âœ“ {created} anonymized MILP-feasible requests saved.")
         elif args.mode == "anonymized-apr-2026":
             created = seed_apr_2026_ward_6_preview(db)
             print(f"✓ {created} Apr 2026 preview requests saved.")
