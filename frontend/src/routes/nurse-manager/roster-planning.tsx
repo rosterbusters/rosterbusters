@@ -339,8 +339,8 @@ function RosterPlanningPage() {
 
   const initialPlanningPeriod = useMemo(
     () =>
-      periodWindow?.requestOpenPeriod ??
       periodWindow?.upcomingPeriod ??
+      periodWindow?.requestOpenPeriod ??
       periodWindow?.currentPeriod ??
       null,
     [periodWindow],
@@ -366,7 +366,7 @@ function RosterPlanningPage() {
     }
 
     const futurePeriods = ascendingPeriods.filter((period) =>
-      moment(period.startDate).isAfter(moment().startOf("day")),
+      moment(period.startDate).isSameOrAfter(moment().startOf("day"), "day"),
     );
 
     return (futurePeriods.length > 0 ? futurePeriods : ascendingPeriods).slice(0, 3);
