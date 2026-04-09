@@ -619,7 +619,7 @@ export function RosterPlanningHeader({
                     px={4}
                     disabled={isGenerating}
                   >
-                    AB-RATIO
+                    CP-SAT
                   </Button>
                 </HStack>
 
