@@ -53,6 +53,8 @@ interface RosterPlanningHeaderProps {
   viewMode: ViewMode;
   selectedWard: Ward | null;
   selectedPeriod: RosterPeriod | null;
+  currentPeriodId?: number | null;
+  upcomingPeriodId?: number | null;
   wards: Ward[];
   periods: RosterPeriod[];
   isAlgorithmGenerated?: boolean;
@@ -84,6 +86,8 @@ export function RosterPlanningHeader({
   viewMode,
   selectedWard,
   selectedPeriod,
+  currentPeriodId = null,
+  upcomingPeriodId = null,
   wards,
   periods,
   isAlgorithmGenerated = false,
@@ -146,10 +150,10 @@ export function RosterPlanningHeader({
   const earliestVisibleStartDate = sortedPeriods[0]?.startDate ?? null;
   const latestVisibleEndDate = sortedPeriods[sortedPeriods.length - 1]?.endDate ?? null;
   const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
-  const anchorUpcomingPeriodId = sortedPeriods[0]?.periodId ?? null;
 
   const getPeriodFlag = (period: RosterPeriod) => {
-    if (period.periodId === anchorUpcomingPeriodId) return "Upcoming";
+    if (upcomingPeriodId != null && period.periodId === upcomingPeriodId) return "Upcoming";
+    if (currentPeriodId != null && period.periodId === currentPeriodId) return "Current";
     return null;
   };
 
