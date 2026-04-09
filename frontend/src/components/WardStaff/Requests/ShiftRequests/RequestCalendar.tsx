@@ -42,8 +42,27 @@ export default function RequestCalendar({ wardId, isLocked = false }: RequestCal
   const { data: periodWindow } = useRosterPeriodWindow();
   const activePeriod = periodWindow?.upcomingPeriod;
 
-  // ─── Calendar anchor ──────────────────────────────────────────────────────
-  const [date, setDate] = useState(() => moment().toDate());
+  /**
+   * TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
+   * For now, use the period containing today and fall back to the first available period.
+   * This MUST match the logic in NewShiftRequest so created requests
+   * appear in the correct period on the calendar.
+   */
+  const activePeriod = useMemo(() => {
+    if (!periods) return undefined;
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return (
+      periods.find(
+        (p) =>
+          p.startdate <= todayStr &&
+          p.enddate >= todayStr,
+      ) ?? periods[0]
+    );
+  }, [periods]);
+
+  // ─── Calendar navigation ──────────────────────────────────────────────────
+  const [date, setDate] = useState(() => moment().startOf('isoWeek').toDate());
 
   useEffect(() => {
     if (activePeriod?.startDate) {

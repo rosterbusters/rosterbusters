@@ -7,8 +7,24 @@ import { useRosterPeriodWindow } from "@/components/NurseManager/RosterTable/use
 const MAX_REQUESTS = 3;
 
 export function AssignableStatus() {
-  const { data: periodWindow } = useRosterPeriodWindow();
-  const activePeriod = periodWindow?.requestOpenPeriod;
+  const { data: periods } = useQuery({
+    queryKey: ["roster-periods"],
+    queryFn: () => ShiftRequestsService.getRosterPeriods(),
+  });
+
+  const activePeriod = useMemo(() => {
+    if (!periods) return undefined;
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    // TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
+    return (
+      periods.find(
+        (p) =>
+          p.startdate <= todayStr &&
+          p.enddate >= todayStr,
+      ) ?? periods[0]
+    );
+  }, [periods]);
 
   const { data: userRequests } = useQuery({
     queryKey: ["shift-requests", "user"],

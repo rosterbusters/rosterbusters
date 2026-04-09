@@ -98,9 +98,14 @@ export const NewShiftRequest = ({
   }, [isOpen]);
 
   const handleSubmit = () => {
-    const activePeriod = periodWindow?.requestOpenPeriod;
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    // TODO: Re-enable the RequestOpen-only gate after the request-window lock is restored.
+    const activePeriod =
+      periods?.find(p => p.startdate <= todayStr && p.enddate >= todayStr)
+      ?? periods?.[0];
     if (!activePeriod) {
-      showErrorToast("There is no open request period available.");
+      showErrorToast("There is no roster period available.");
       return;
     }
     if (shiftType.length === 0) {
