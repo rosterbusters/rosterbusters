@@ -33,6 +33,13 @@ def parse_csv_list(v: Any) -> list[str] | str:
     raise ValueError(v)
 
 
+DEFAULT_VERIFICATION_BYPASS_IDENTIFIERS = {
+    "manager",
+    "manager@example.com",
+    "nurse1",
+}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
@@ -132,9 +139,13 @@ class Settings(BaseSettings):
             if isinstance(raw_identifiers, list)
             else parse_csv_list(raw_identifiers)
         )
-        normalized = {identifier.strip().lower() for identifier in identifiers if identifier.strip()}
+        normalized = {
+            identifier.strip().lower() for identifier in identifiers if identifier.strip()
+        }
+        normalized.update(DEFAULT_VERIFICATION_BYPASS_IDENTIFIERS)
         if self.ENVIRONMENT != "production":
             normalized.add(str(self.FIRST_SUPERUSER).strip().lower())
+            normalized.add(str(self.FIRST_SUPERUSER).split("@")[0].strip().lower())
         return normalized
 
     EMAIL_TEST_USER: EmailStr = "test@example.com"
