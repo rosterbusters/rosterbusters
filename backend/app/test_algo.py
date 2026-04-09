@@ -585,6 +585,46 @@ def _seed_previous_period_roster(
     return _seed_roster_for_period(db, ward_id, previous_period, nurses)
 
 
+def _clear_previous_period_last_day_nights(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurses: list[Nurse],
+) -> int:
+    """
+    MILP treats a previous-period NIGHT on the last day as a carry-over
+    obligation into day 1 of the new period. For the MILP-feasible seed mode,
+    rewrite those last-day historical rows to DO so re-runs can repair an
+    already-seeded ward instead of preserving infeasible carry-over.
+    """
+    previous_period = _get_previous_period(db, period)
+    if not previous_period:
+        return 0
+
+    nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
+    if not nurse_ids:
+        return 0
+
+    updated = 0
+    rows = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == previous_period.periodid,
+            Roster.shiftdate == previous_period.enddate,
+            Roster.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
+        )
+    ).all()
+    for row in rows:
+        if str(row.shiftcode).upper() == "N":
+            row.shiftcode = "DO"
+            row.assignmentmethod = "Auto"
+            row.status = "Confirmed"
+            db.add(row)
+            updated += 1
+
+    return updated
+
+
 def seed_test_ward_with_anonymized_requests(
     db: Session,
     ward_name: str = "Test Ward Requests",
@@ -856,6 +896,9 @@ def seed_test_ward_with_feasible_anonymized_requests(
         _ensure_test_nurse_user(db, test_nurse)
     current_roster_created = _seed_roster_for_period(db, ward.wardid, current_period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
+    previous_night_tail_cleared = _clear_previous_period_last_day_nights(
+        db, ward.wardid, period, nurses
+    )
     nurse_by_name = {n.name: n for n in nurses}
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
         db, period.periodid, [n.nurseid for n in nurses]
@@ -922,6 +965,11 @@ def seed_test_ward_with_feasible_anonymized_requests(
         print(f"  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
+    if previous_night_tail_cleared:
+        print(
+            "  Rewrote "
+            f"{previous_night_tail_cleared} previous-period last-day NIGHT entries to DO."
+        )
     print(
         f"\nSeeded ward '{ward.wardname}' (id={ward.wardid}) "
         "with MILP-feasible anonymized requests."
