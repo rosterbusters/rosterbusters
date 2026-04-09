@@ -1262,6 +1262,8 @@ function RosterPlanningPage() {
           viewMode={viewMode}
           selectedWard={selectedWard}
           selectedPeriod={effectiveSelectedPeriod}
+          currentPeriodId={periodWindow?.currentPeriod?.periodId ?? null}
+          upcomingPeriodId={periodWindow?.upcomingPeriod?.periodId ?? null}
           wards={displayWards}
           periods={visiblePlanningPeriods}
           isAlgorithmGenerated={showAlgorithmGeneratedState}
