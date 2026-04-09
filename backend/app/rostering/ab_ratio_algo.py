@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 
 try:
@@ -8,18 +9,122 @@ try:
 except ModuleNotFoundError:
     cp_model = None
 
-from app.rostering.cp_sat_algo import (
-    _LEAVE_CODES,
-    AL,
-    ALL_SHIFTS,
-    AM,
-    NIGHT,
-    OFF,
-    PM,
-    SHIFT_LABEL,
-    WORK_SHIFTS,
-    _build_greedy_hint,
-)
+# ── Shift codes ───────────────────────────────────────────────────────────────
+OFF, AM, PM, NIGHT, AL = 0, 1, 2, 3, 4
+ALL_SHIFTS  = [OFF, AM, PM, NIGHT, AL]
+WORK_SHIFTS = [AM, PM, NIGHT]
+SHIFT_LABEL = {OFF: "OFF", AM: "AM", PM: "PM", NIGHT: "NIGHT", AL: "AL"}
+
+_LEAVE_CODES = {"HOL", "MC", "URG", "CL", "UPL", "PH", "BCL", "CCL", "ML", "EML"}
+
+
+def _build_greedy_hint(
+    num_nurses: int,
+    num_days: int,
+    working_nurses: list[int],
+    al_nurses_set: set[int],
+    al_day_req: list[set],
+    post_night_off: set[int],
+    demand: list[dict],
+) -> list[list[int]]:
+    """
+    Greedy O(N×D) schedule used to warm-start the CP-SAT solver.
+
+    Strategy:
+      1. Pin fixed slots (full-AL nurses, single-day AL requests, post-night OFF).
+      2. Assign night blocks round-robin, capped per fortnight.
+      3. Add mandatory OFF after every night block.
+      4. Reserve 2 voluntary OFFs per week (weekends preferred).
+      5. Balance AM vs PM to match daily demand.
+    """
+    night_constant = math.ceil(((num_nurses * 2) / 3) / 4)
+    sched = [[AM] * num_days for _ in range(num_nurses)]
+
+    # Step 1: pin fixed slots
+    for n in al_nurses_set:
+        for d in range(num_days):
+            sched[n][d] = AL
+
+    for n in working_nurses:
+        for d in al_day_req[n]:
+            if d < num_days:
+                sched[n][d] = AL
+
+    for n in post_night_off:
+        if 0 not in al_day_req[n]:
+            sched[n][0] = OFF
+
+    # Step 2: night blocks, round-robin
+    night_counts = [0] * num_nurses
+    wn = list(working_nurses)
+    cursor = 0
+
+    for d in range(num_days):
+        nights_needed = sum(demand[d][NIGHT].get(r, 0) for r in "ABC")
+        assigned = 0
+
+        for _ in range(len(wn) * 2):
+            if assigned >= nights_needed:
+                break
+            n = wn[cursor % len(wn)]
+            cursor += 1
+
+            if sched[n][d] in (AL, OFF):
+                continue
+            if d > 0 and sched[n][d - 1] == NIGHT:
+                continue
+            if night_counts[n] >= night_constant:
+                continue
+
+            sched[n][d] = NIGHT
+            night_counts[n] += 1
+            assigned += 1
+
+            if (
+                d + 1 < num_days
+                and sched[n][d + 1] not in (AL,)
+                and (d + 1) not in al_day_req[n]
+                and night_counts[n] < 4
+            ):
+                sched[n][d + 1] = NIGHT
+                night_counts[n] += 1
+
+    # Mandatory OFF after every night block end
+    for n in working_nurses:
+        for d in range(num_days - 1):
+            if sched[n][d] == NIGHT and sched[n][d + 1] != NIGHT:
+                if (d + 1) not in al_day_req[n]:
+                    sched[n][d + 1] = OFF
+
+    # Step 3: 2 voluntary OFFs per week (weekends preferred)
+    for n in working_nurses:
+        for w_start in range(0, num_days, 7):
+            w_end = min(w_start + 7, num_days)
+            existing_off = sum(1 for d in range(w_start, w_end) if sched[n][d] == OFF)
+            to_add = max(0, 2 - existing_off)
+            candidates = sorted(
+                [d for d in range(w_start, w_end) if sched[n][d] not in (OFF, NIGHT, AL)],
+                key=lambda d: (0 if d % 7 in (5, 6) else 1),
+            )
+            for d in candidates[:to_add]:
+                sched[n][d] = OFF
+
+    # Step 4: balance AM vs PM to match daily demand
+    for d in range(num_days):
+        am_count = sum(1 for n in range(num_nurses) if sched[n][d] == AM)
+        pm_count = sum(1 for n in range(num_nurses) if sched[n][d] == PM)
+        am_needed = sum(demand[d][AM].get(r, 0) for r in "ABC")
+        pm_needed = sum(demand[d][PM].get(r, 0) for r in "ABC")
+
+        for n in working_nurses:
+            if sched[n][d] != AM:
+                continue
+            if pm_count < pm_needed and am_count > am_needed:
+                sched[n][d] = PM
+                pm_count += 1
+                am_count -= 1
+
+    return sched
 
 _SHIFT_STR_TO_CODE = {
     "AM": AM,
@@ -51,12 +156,13 @@ _DEFAULT_WEIGHTS = {
     "daily_total_night_overflow_tier2": 150_000,
     "daily_total_night_overflow_tier3": 320_000,
     "rn_night": 100_000,
-    "rn_night_over": 80_000,
+    "rn_night_over": 500_000,
     "rank_b_night": 100_000,
-    "rank_b_night_over": 80_000,
+    "rank_b_night_over": 500_000,
     "rank_c_night": 9_000,
     "rank_c_night_over": 14_000,
-    "isolated_night": 60_000,
+    "isolated_night": 100_000,
+    "double_night_pref": 120_000,
     "daily_total_shift_balance": 8_000,
     "daily_total_shift_balance_c": 3_500,
     "daily_ap_balance": 6_000,
@@ -79,6 +185,9 @@ _DEFAULT_C_SHIFT_RATIO = {
     PM: 1,
     NIGHT: 1,
 }
+# Soft-request weights: approved shift requests carry higher weight than pending
+# but both remain soft — the solver may override either when scheduling constraints demand it.
+# hard_requests (leave / non-working days) are always enforced as hard constraints and bypass this.
 _DEFAULT_REQUEST_PRIORITY_WEIGHTS = {
     "pending": 1,
     "approved": 5,
@@ -168,7 +277,14 @@ def _is_disallowed_work_shift(shift_code: int, shift_pattern: str | None, no_nig
 
 def _priority_weight(raw_priority, default_weights: dict[str, int]) -> int:
     priority = str(raw_priority).strip().lower() if raw_priority is not None else "pending"
-    return max(_coerce_int(default_weights.get(priority, 1), 1), 1)
+    pending_weight = _coerce_int(default_weights.get("pending", 1), 1)
+    approved_weight = _coerce_int(default_weights.get("approved", pending_weight + 1), pending_weight + 1)
+    if approved_weight <= pending_weight:
+        approved_weight = pending_weight + 1
+    effective_weights = dict(default_weights)
+    effective_weights["pending"] = pending_weight
+    effective_weights["approved"] = approved_weight
+    return max(_coerce_int(effective_weights.get(priority, 1), 1), 1)
 
 
 def _build_ab_targets(
@@ -537,6 +653,10 @@ def parse_ab_ratio_inputs(
 
     for nurse_idx in post_night_off:
         forced_day_zero = hard_assignments[nurse_idx].get(0)
+        # AB non-pattern nurses use soft carry-N preference — keep their hard requests on day 0
+        # (NIGHT on day 0 is a valid carry completion). Other nurses still need the hard OFF.
+        if nurse_ranks[nurse_idx] in {"A", "B"} and shift_pattern_by_nurse.get(nurse_idx) is None:
+            continue
         if forced_day_zero is not None and forced_day_zero != OFF and 0 not in al_day_req[nurse_idx]:
             del hard_assignments[nurse_idx][0]
 
@@ -946,6 +1066,19 @@ def run_ab_ratio_pipeline(
     progress_callback=None,
     milp_config: dict | None = None,
 ):
+    """
+    Main entry point for AB-RATIO nurse rostering.
+
+    Parameters
+    ----------
+    nurses      : list of {"id", "name", "rank"} dicts  (rank A/B/C)
+    shifts      : 14-element list of per-day shift-requirement dicts
+    hard_requests : leave / non-working day entries (AL, INHT, BL, …) — enforced as hard constraints
+    soft_requests : shift preferences with optional priority ("approved" or "pending").
+                    Approved requests carry weight 5; pending carry weight 1.
+                    Both are soft — the solver satisfies them where possible but may override.
+    prev_last_shift : optional previous-period final shift per nurse
+    """
     if cp_model is None:
         raise RuntimeError(
             "AB-RATIO requires the optional 'ortools' dependency, but it is not installed in this environment."
@@ -1051,6 +1184,9 @@ def run_ab_ratio_pipeline(
             model.Add(x[nurse_idx, day_idx, AL] == 1)
 
     for nurse_idx in post_night_off:
+        # AB non-pattern nurses use soft carry-N preference on day 0 (handled in AB loop)
+        if nurse_idx in managed_working_ab:
+            continue
         if not relax_post_night_rest and 0 not in al_day_req[nurse_idx]:
             model.Add(x[nurse_idx, 0, OFF] == 1)
 
@@ -1138,8 +1274,20 @@ def run_ab_ratio_pipeline(
                     x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
                 )
 
+        # Carry-N continuation: if prev roster ended on N, prefer starting this roster
+        # with N (completing the 2N block) rather than resting. Single-N carry is allowed
+        # but penalised at double_night_pref weight.
+        if nurse_idx in post_night_off and nurse_idx not in no_night_ids and 0 not in al_day_req[nurse_idx]:
+            carry_skip = model.NewBoolVar(f"carry_skip_ab_{nurse_idx}")
+            model.Add(carry_skip >= 1 - x[nurse_idx, 0, NIGHT])
+            add_penalty(carry_skip, weights["double_night_pref"])
+
         if nurse_idx not in no_night_ids:
             for day_idx in range(num_days):
+                # For carry-N nurses, day 0 = N is a valid completion of the previous
+                # roster's 2N block — do not penalise it as isolated.
+                if day_idx == 0 and nurse_idx in post_night_off:
+                    continue
                 isolated_night = model.NewBoolVar(f"isolated_night_ab_{nurse_idx}_{day_idx}")
                 if day_idx == 0:
                     if num_days == 1:
@@ -1493,40 +1641,40 @@ def run_ab_ratio_pipeline(
                 model.Add(c_gap_penalty >= c_day_spread - daily_total_shift_gap_target)
                 add_penalty(c_gap_penalty, weights["daily_total_shift_balance_c"])
 
-    for day_idx, target in enumerate(parsed["rn_night_targets"]):
-        if target <= 0 or not rank_a:
-            continue
-        count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
-        if not relax_rank_night_mins:
-            model.Add(count_a_night >= target)
-        shortage = model.NewIntVar(0, target, f"rn_night_short_{day_idx}")
-        model.Add(shortage >= target - count_a_night)
-        add_penalty(shortage, weights["rn_night"])
-
-    for day_idx, cap in enumerate(parsed["rank_a_night_caps"]):
+    for day_idx in range(num_days):
         if not rank_a:
-            continue
+            break
+        target = rn_night_targets[day_idx]
+        cap = parsed["rank_a_night_caps"][day_idx]
         count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
         allowed_max = cap + max(rank_a_night_allowed_excess, 0)
+        if target > 0:
+            if not relax_rank_night_mins:
+                model.Add(count_a_night >= target)
+            diff = model.NewIntVar(-len(rank_a), len(rank_a), f"rn_night_diff_{day_idx}")
+            model.Add(diff == count_a_night - target)
+            dev = model.NewIntVar(0, len(rank_a), f"rn_night_dev_{day_idx}")
+            model.AddAbsEquality(dev, diff)
+            add_penalty(dev, weights["rn_night"])
         over_cap = model.NewIntVar(0, len(rank_a), f"rn_night_over_{day_idx}")
         model.Add(over_cap >= count_a_night - allowed_max)
         add_penalty(over_cap, weights["rn_night_over"])
 
-    for day_idx, target in enumerate(parsed["rank_b_night_targets"]):
-        if target <= 0 or not rank_b:
-            continue
-        count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
-        if not relax_rank_night_mins:
-            model.Add(count_b_night >= target)
-        shortage = model.NewIntVar(0, target, f"rank_b_night_short_{day_idx}")
-        model.Add(shortage >= target - count_b_night)
-        add_penalty(shortage, weights["rank_b_night"])
-
-    for day_idx, cap in enumerate(parsed["rank_b_night_caps"]):
+    for day_idx in range(num_days):
         if not rank_b:
-            continue
+            break
+        target = parsed["rank_b_night_targets"][day_idx]
+        cap = parsed["rank_b_night_caps"][day_idx]
         count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
         allowed_max = cap + max(rank_b_night_allowed_excess, 0)
+        if target > 0:
+            if not relax_rank_night_mins:
+                model.Add(count_b_night >= target)
+            diff = model.NewIntVar(-len(rank_b), len(rank_b), f"rank_b_night_diff_{day_idx}")
+            model.Add(diff == count_b_night - target)
+            dev = model.NewIntVar(0, len(rank_b), f"rank_b_night_dev_{day_idx}")
+            model.AddAbsEquality(dev, diff)
+            add_penalty(dev, weights["rank_b_night"])
         over_cap = model.NewIntVar(0, len(rank_b), f"rank_b_night_over_{day_idx}")
         model.Add(over_cap >= count_b_night - allowed_max)
         add_penalty(over_cap, weights["rank_b_night_over"])

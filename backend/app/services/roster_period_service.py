@@ -49,8 +49,10 @@ def get_roster_year_start(for_date: date) -> date:
     return ROSTER_CYCLE_ANCHOR + timedelta(days=year_offset * ROSTER_YEAR_LENGTH_DAYS)
 
 
-def get_planning_lock_date(startdate: date) -> date:
-    return startdate - timedelta(days=PLANNING_LOCK_OFFSET_DAYS)
+def get_planning_lock_date(startdate: date) -> date | None:
+    # TODO: Re-enable roster period planning lock calculation once policy is finalized.
+    # return startdate - timedelta(days=PLANNING_LOCK_OFFSET_DAYS)
+    return None
 
 
 def build_roster_period_definitions(today: date | None = None) -> list[RosterPeriodDefinition]:
