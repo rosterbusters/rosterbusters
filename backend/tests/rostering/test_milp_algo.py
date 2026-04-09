@@ -1,4 +1,6 @@
-from app.rostering.milp_algo import run_milp_pipeline
+import pytest
+
+from app.rostering.milp_algo import MILPInfeasibilityError, run_milp_pipeline
 
 
 def test_milp_allows_single_night_block_when_forced() -> None:
@@ -27,3 +29,25 @@ def test_milp_allows_single_night_block_when_forced() -> None:
     nurse_rows = {nurse["name"]: nurse["schedule"] for nurse in result["nurses"]}
     assert nurse_rows["A1"][0] == "NIGHT"
     assert nurse_rows["A1"][1] == "OFF"
+
+
+def test_milp_fails_fast_when_class_demand_exceeds_capacity() -> None:
+    nurses = [
+        {"id": i, "name": f"B{i}", "rank": "B"}
+        for i in range(1, 12)
+    ]
+    shifts = [
+        {
+            "AM": {"A": 0, "B": 4, "C": 0},
+            "PM": {"A": 0, "B": 2, "C": 0},
+            "NIGHT": {"A": 0, "B": 2, "C": 0},
+        }
+        for _ in range(14)
+    ]
+
+    with pytest.raises(MILPInfeasibilityError, match="EN demand exceeds class capacity"):
+        run_milp_pipeline(
+            nurses,
+            shifts,
+            milp_config={"equivalent_shift_target": 10},
+        )

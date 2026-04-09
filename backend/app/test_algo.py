@@ -23,7 +23,7 @@ from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
-from app.models.roster import RosterPeriod, Ward
+from app.models.roster import Roster, RosterPeriod, Ward
 from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest, WardShiftCode
 from app.services.roster_period_service import ensure_roster_period_window, get_period_window
@@ -474,6 +474,68 @@ def _apply_ward_requirements(ward: Ward, requirements: dict[str, int]) -> None:
         setattr(ward, field_name, value)
 
 
+def _get_previous_period(db: Session, period: RosterPeriod) -> RosterPeriod | None:
+    return db.exec(
+        select(RosterPeriod)
+        .where(RosterPeriod.enddate < period.startdate)
+        .order_by(RosterPeriod.enddate.desc())
+    ).first()
+
+
+def _seed_previous_period_roster(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurses: list[Nurse],
+) -> int:
+    previous_period = _get_previous_period(db, period)
+    if not previous_period or not nurses:
+        return 0
+
+    nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
+    if not nurse_ids:
+        return 0
+
+    existing_entries = {
+        (row.nurseid, row.shiftdate)
+        for row in db.exec(
+            select(Roster).where(
+                Roster.wardid == ward_id,
+                Roster.periodid == previous_period.periodid,
+                Roster.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
+            )
+        ).all()
+        if row.nurseid is not None
+    }
+
+    shift_cycle = ("A", "P", "N", "DO")
+    num_days = (previous_period.enddate - previous_period.startdate).days + 1
+    created = 0
+
+    for nurse_index, nurse in enumerate(sorted(nurses, key=lambda n: n.nurseid or 0)):
+        if nurse.nurseid is None:
+            continue
+        for day_idx in range(num_days):
+            shift_date = previous_period.startdate + timedelta(days=day_idx)
+            key = (nurse.nurseid, shift_date)
+            if key in existing_entries:
+                continue
+            db.add(
+                Roster(
+                    nurseid=nurse.nurseid,
+                    wardid=ward_id,
+                    periodid=previous_period.periodid,
+                    shiftdate=shift_date,
+                    shiftcode=shift_cycle[(nurse_index + day_idx) % len(shift_cycle)],
+                    status="Confirmed",
+                    assignmentmethod="Auto",
+                )
+            )
+            created += 1
+
+    return created
+
+
 def seed_test_ward_with_anonymized_requests(
     db: Session,
     ward_name: str = "Test Ward Requests",
@@ -564,6 +626,10 @@ def seed_test_ward_with_anonymized_requests(
     # Seed requests mapped to upcoming period dates
     base_start = min(req.date for req in HARDCODED_REQUESTS)
     nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
+    test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+    previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
         db, period.periodid, [n.nurseid for n in nurses]
@@ -640,6 +706,10 @@ def seed_test_ward_with_anonymized_requests(
             created += 1
 
     db.commit()
+    if test_nurse:
+        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if previous_roster_created:
+        print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) with anonymized requests.")
     return created
 
@@ -657,6 +727,10 @@ def seed_requests_from_list(
     ).all()
     if not nurses:
         raise SystemExit(f"No active nurses in ward {ward_id}.")
+    test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+    previous_roster_created = _seed_previous_period_roster(db, ward_id, period, nurses)
 
     nurse_by_name = {_normalize_name(n.name): n for n in nurses}
     ward_shift_code_strs = {
@@ -742,6 +816,10 @@ def seed_requests_from_list(
             )
             existing_dates.add(key)
         created += 1
+    if test_nurse:
+        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if previous_roster_created:
+        print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     return created
 
 
@@ -811,6 +889,10 @@ def seed_apr_2026_ward_6_preview(
         db.add(WardShiftCode(wardid=ward.wardid, shiftcode=code))
 
     nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
+    test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+    previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
         db, period.periodid, [n.nurseid for n in nurses]
@@ -843,6 +925,10 @@ def seed_apr_2026_ward_6_preview(
         created += 1
 
     db.commit()
+    if test_nurse:
+        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if previous_roster_created:
+        print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(
         f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) "
         f"for Apr 06 - Apr 19 2026 preview."
@@ -870,6 +956,10 @@ def seed_requests(db: Session, ward_id: int) -> None:
     )
     if not nurses:
         raise SystemExit(f"No active nurses in ward {ward_id}.")
+    test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+    previous_roster_created = _seed_previous_period_roster(db, ward_id, period, nurses)
 
     ward_shift_code_strs = [
         wsc.shiftcode
@@ -951,6 +1041,10 @@ def seed_requests(db: Session, ward_id: int) -> None:
         print(f"  {nurse.name:<30} [{label}]  {nurse_created} request(s)")
 
     db.commit()
+    if test_nurse:
+        print(f"\n  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if previous_roster_created:
+        print(f"\n  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ {created} requests saved — go trigger the algorithm from the frontend.")
 
 

@@ -57,6 +57,9 @@ test("imported users show default password in the column", async ({
 
     await page.addInitScript((value) => {
       localStorage.setItem("access_token", value)
+      localStorage.setItem("token", value)
+      sessionStorage.setItem("access_token", value)
+      sessionStorage.setItem("token", value)
     }, token)
 
     await page.goto("/admin/users")
@@ -94,11 +97,19 @@ test("imported users show default password in the column", async ({
       fs.unlinkSync(filePath)
     }
     if (!createdUserId) {
-      const fallback = await getUserByUsername(request, token, username)
-      createdUserId = fallback?.userid ?? null
+      try {
+        const fallback = await getUserByUsername(request, token, username)
+        createdUserId = fallback?.userid ?? null
+      } catch {
+        createdUserId = null
+      }
     }
     if (createdUserId) {
-      await deleteUser(request, token, createdUserId)
+      try {
+        await deleteUser(request, token, createdUserId)
+      } catch {
+        // ignore cleanup auth errors so they do not hide the actual assertion failure
+      }
     }
   }
 })

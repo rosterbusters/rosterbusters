@@ -33,10 +33,11 @@ function RouteComponent() {
   const [isLeaveRequestOpen, setIsLeaveRequestOpen] = useState(false);
   const { user } = useAuth();
   const { isLocked, nextWindowStart, nextWindowEnd } = useApplicationLockStatus();
+  const isShiftLocked = activeTab === "shift" && isLocked;
 
   return (
     <>
-      {isLocked && (
+      {isShiftLocked && (
         <>
           <LockdownBanner
             nextWindowStart={nextWindowStart}
@@ -96,18 +97,20 @@ function RouteComponent() {
                 Leave Requests
               </Button>
             </HStack>
-            {isLocked ? (
-              <GridItem />
-            ) : activeTab === "shift" ? (
-              <Button
-                variant={"outline"}
-                justifySelf="end"
-                size="sm"
-                onClick={() => setIsShiftRequestOpen(true)}
-              >
-                <Plus />
-                Add Shift Request
-              </Button>
+            {activeTab === "shift" ? (
+              isLocked ? (
+                <GridItem />
+              ) : (
+                <Button
+                  variant={"outline"}
+                  justifySelf="end"
+                  size="sm"
+                  onClick={() => setIsShiftRequestOpen(true)}
+                >
+                  <Plus />
+                  Add Shift Request
+                </Button>
+              )
             ) : (
               <Button
                 variant={"outline"}
@@ -141,18 +144,22 @@ function RouteComponent() {
             {activeTab === "shift" ? (
               <RequestCalendar wardId={user?.wardid} isLocked={isLocked} />
             ) : (
-              <LeaveRequestCalendar wardId={user?.wardid} isLocked={isLocked} />
+              <LeaveRequestCalendar wardId={user?.wardid} isLocked={false} />
             )}
           </Box>
         </VStack>
 
-        {!isLocked && (
+        {activeTab === "shift" && !isLocked && (
           <>
             <NewShiftRequest
               isOpen={isShiftRequestOpen}
               onClose={() => setIsShiftRequestOpen(false)}
               wardId={user?.wardid}
             />
+          </>
+        )}
+        {activeTab === "leave" && (
+          <>
             <NewLeaveRequest
               isOpen={isLeaveRequestOpen}
               onClose={() => setIsLeaveRequestOpen(false)}

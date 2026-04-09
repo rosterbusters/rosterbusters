@@ -2,11 +2,12 @@ import { Box, Container, Flex, Heading, Image, Text, VStack, IconButton } from "
 import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
 import { FiLock, FiUser, FiEye, FiEyeOff } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
-import { useState } from "react"; 
+import { useEffect, useState } from "react"; 
 import { useForm, SubmitHandler } from 'react-hook-form';
 import type { Body_login_access_token as AccessToken } from "@/client"
 import { UsersService } from "@/client"
 import { Button } from "@chakra-ui/react";
+import { showErrorToast } from "@/components/ui/toast"
 import { Field } from "@/components/ui/field"
 import { Input } from "@chakra-ui/react"
 import { InputGroup } from "@/components/ui/input-group"
@@ -38,8 +39,37 @@ export const Route = createFileRoute("/login")({
 })
 
 function Login() {
-  const { loginMutation, error, resetError } = useAuth()
+  const {
+    loginMutation,
+    verifyEmail2faMutation,
+    resendEmail2faMutation,
+    email2faChallenge,
+    error,
+    resetError,
+  } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
+  const [verificationCode, setVerificationCode] = useState("")
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  const isTwoFactorStep = !!email2faChallenge
+
+  useEffect(() => {
+    if (isTwoFactorStep) {
+      setVerificationCode("")
+      setResendCooldown(0)
+    } else {
+      setVerificationCode("")
+      setResendCooldown(0)
+    }
+  }, [isTwoFactorStep])
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setTimeout(() => {
+      setResendCooldown((prev) => prev - 1)
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [resendCooldown])
   
   const {
     register,
@@ -61,6 +91,19 @@ function Login() {
       await loginMutation.mutateAsync(data)
     } catch {
       // error handling
+    }
+  }
+
+  const handleVerifyCode = async () => {
+    const code = verificationCode.trim()
+    if (!code || code.length !== 6) {
+      showErrorToast("Please enter the 6-digit code sent to your email.")
+      return
+    }
+    try {
+      await verifyEmail2faMutation.mutateAsync(code)
+    } catch {
+      // handled through hook error flow
     }
   }
 
@@ -130,10 +173,14 @@ function Login() {
                 fontWeight="700"
                 color="teal.700"
               >
-                Sign In
+                {isTwoFactorStep ? "Verify Login" : "Sign In"}
               </Heading>
               <Text color="gray.500" fontSize="sm">
-                Login with your <Text as="span" fontWeight="700" color="teal.600">SACH</Text> account.
+                {isTwoFactorStep ? (
+                  "Enter your verification code to continue."
+                ) : (
+                  <>Login with your <Text as="span" fontWeight="700" color="teal.600">SACH</Text> account.</>
+                )}
               </Text>
             </VStack>
 
@@ -141,67 +188,112 @@ function Login() {
             {/* Login Form */}
             <Box as="form" onSubmit={handleSubmit(onSubmit)}>
               <VStack gap={3} align="stretch"> 
-                {/* Username */}
-                <Field invalid={!!errors.username} errorText={errors.username?.message}>
-                  <InputGroup startElement={<FiUser color="gray" />} w="100%">
-                    <Input
-                      {...register("username", { required: "Required" })}
-                      data-testid="login-username"
-                      placeholder="Username, Email, or Employee ID"
-                      type="text"
-                      size="md"
-                      variant="subtle"
-                      bg="gray.50"
-                    />
-                  </InputGroup>
-                </Field>
+                {!isTwoFactorStep && (
+                  <>
+                    {/* Username */}
+                    <Field invalid={!!errors.username} errorText={errors.username?.message}>
+                      <InputGroup startElement={<FiUser color="gray" />} w="100%">
+                        <Input
+                          {...register("username", { required: "Required" })}
+                          data-testid="login-username"
+                          placeholder="Username, Email, or Employee ID"
+                          type="text"
+                          size="md"
+                          variant="subtle"
+                          bg="gray.50"
+                        />
+                      </InputGroup>
+                    </Field>
 
-                {/* Password */}
-                <Field invalid={!!errors.password} errorText={errors.password?.message}>
-                  <InputGroup
-                    startElement={<FiLock color="gray" />}
-                    endElement={
-                      <IconButton
-                        aria-label={showPassword ? "Hide password" : "Show password"}
-                        onClick={togglePasswordVisibility}
-                        variant="ghost"
-                        size="sm"
-                        color="gray.400"
+                    {/* Password */}
+                    <Field invalid={!!errors.password} errorText={errors.password?.message}>
+                      <InputGroup
+                        startElement={<FiLock color="gray" />}
+                        endElement={
+                          <IconButton
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                            onClick={togglePasswordVisibility}
+                            variant="ghost"
+                            size="sm"
+                            color="gray.400"
+                          >
+                            {showPassword ? <FiEyeOff /> : <FiEye />}
+                          </IconButton>
+                        }
+                        w="100%"
                       >
-                        {showPassword ? <FiEyeOff /> : <FiEye />}
-                      </IconButton>
-                    }
-                    w="100%"
+                        <Input
+                          {...register("password", passwordRules())}
+                          data-testid="login-password"
+                          placeholder="Password"
+                          type={showPassword ? "text" : "password"}
+                          size="md"
+                          variant="subtle"
+                          bg="gray.50"
+                        />
+                      </InputGroup>
+                    </Field>
+                  </>
+                )}
+
+                {isTwoFactorStep && (
+                  <Field
+                    label="Verification Code"
                   >
                     <Input
-                      {...register("password", passwordRules())}
-                      data-testid="login-password"
-                      placeholder="Password"
-                      type={showPassword ? "text" : "password"}
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="6-digit code"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
                       size="md"
                       variant="subtle"
                       bg="gray.50"
                     />
-                  </InputGroup>
-                </Field>
+                    <Text fontSize="sm" color="gray.500" mt={2}>
+                      Enter the 6-digit code sent to your email.
+                    </Text>
+                    <Flex justify="space-between" mt={2} gap={2} direction={{ base: "column", sm: "row" }}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await resendEmail2faMutation.mutateAsync()
+                            setResendCooldown(60)
+                          } catch {
+                            // handled through hook error flow
+                          }
+                        }}
+                        loading={resendEmail2faMutation.isPending}
+                        disabled={resendCooldown > 0 || resendEmail2faMutation.isPending}
+                      >
+                        {resendCooldown > 0 ? `Resend (${resendCooldown}s)` : "Resend Code"}
+                      </Button>
+                    </Flex>
+                  </Field>
+                )}
 
                 {error && (
                   <Text color="red.500" fontSize="xs" textAlign="center">{error}</Text>
                 )}
 
                 <Button
-                  type="submit"
+                  type={isTwoFactorStep ? "button" : "submit"}
                   variant='solid'
                   size="md"
                   w="100%"
-                  loading={isSubmitting}
+                  loading={isSubmitting || loginMutation.isPending || verifyEmail2faMutation.isPending}
                   mt={1}
+                  onClick={isTwoFactorStep ? handleVerifyCode : undefined}
                 >
-                  Log In
+                  {isTwoFactorStep ? "Verify Code" : "Log In"}
                 </Button>
 
                 {/* Forgot Password Link */}
-                <Flex justify="center" pt={1}>
+                <Flex justify="center" pt={1} display={isTwoFactorStep ? "none" : "flex"}>
                   <RouterLink 
                     to="/recover-password" 
                     style={{ 

@@ -1,0 +1,1 @@
+"""Rostering algorithm package."""
