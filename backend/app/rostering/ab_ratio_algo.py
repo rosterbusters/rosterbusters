@@ -1685,11 +1685,16 @@ def run_ab_ratio_pipeline(
         count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
         allowed_max = cap + max(rank_a_night_allowed_excess, 0)
         if target > 0:
-            diff = model.NewIntVar(-len(rank_a), len(rank_a), f"rn_night_diff_{day_idx}")
-            model.Add(diff == count_a_night - target)
-            dev = model.NewIntVar(0, len(rank_a), f"rn_night_dev_{day_idx}")
-            model.AddAbsEquality(dev, diff)
-            add_penalty(dev, weights["rn_night"])
+            if (
+                rank_a_night_cap_mode in {"hard", "hard_then_soft"}
+                and not relax_rank_night_mins
+            ):
+                model.Add(count_a_night >= target)
+            else:
+                shortfall_cap = max(target, len(rank_a))
+                shortfall = model.NewIntVar(0, shortfall_cap, f"rn_night_shortfall_{day_idx}")
+                model.Add(shortfall >= target - count_a_night)
+                add_penalty(shortfall, weights["rn_night"])
         if rank_a_night_cap_mode in {"hard", "hard_then_soft"} and not relax_rank_a_night_cap:
             model.Add(count_a_night <= cap)
         else:
@@ -1705,11 +1710,17 @@ def run_ab_ratio_pipeline(
         count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
         allowed_max = cap + max(rank_b_night_allowed_excess, 0)
         if target > 0:
-            diff = model.NewIntVar(-len(rank_b), len(rank_b), f"rank_b_night_diff_{day_idx}")
-            model.Add(diff == count_b_night - target)
-            dev = model.NewIntVar(0, len(rank_b), f"rank_b_night_dev_{day_idx}")
-            model.AddAbsEquality(dev, diff)
-            add_penalty(dev, weights["rank_b_night"])
+            if (
+                rank_b_night_min_mode in {"hard", "hard_then_soft"}
+                and not relax_rank_night_mins
+                and not relax_rank_b_night_min
+            ):
+                model.Add(count_b_night >= target)
+            else:
+                shortfall_cap = max(target, len(rank_b))
+                shortfall = model.NewIntVar(0, shortfall_cap, f"rank_b_night_shortfall_{day_idx}")
+                model.Add(shortfall >= target - count_b_night)
+                add_penalty(shortfall, weights["rank_b_night"])
         over_cap = model.NewIntVar(0, len(rank_b), f"rank_b_night_over_{day_idx}")
         model.Add(over_cap >= count_b_night - allowed_max)
         add_penalty(over_cap, weights["rank_b_night_over"])
