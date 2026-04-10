@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import { loginForE2E } from "../utils/auth"
 
 const API_URL = process.env.VITE_API_URL || "http://127.0.0.1:8000"
 
@@ -21,7 +22,12 @@ test.describe("algorithm notifications", () => {
       )
     }
 
-    const adminToken = await getAccessToken(request, ADMIN_EMAIL, ADMIN_PASSWORD)
+    const adminToken = await getAccessToken(
+      request,
+      ADMIN_EMAIL,
+      ADMIN_PASSWORD,
+      ADMIN_EMAIL,
+    )
 
     const seedResponse = await request.post(
       `${API_URL}/api/v1/roster/seed-requests-anonymized`,
@@ -50,6 +56,7 @@ test.describe("algorithm notifications", () => {
       request,
       managerEmail,
       managerPassword,
+      managerEmail,
     )
 
     const period =
@@ -220,21 +227,15 @@ async function getAccessToken(
   request: APIRequestContext,
   username: string,
   password: string,
+  recipientEmail?: string,
 ) {
-  const tokenResponse = await request.post(
-    `${API_URL}/api/v1/login/access-token`,
-    {
-      form: {
-        username,
-        password,
-      },
-    },
-  )
-  expect(tokenResponse.ok()).toBeTruthy()
-  const tokenPayload = await tokenResponse.json()
-  const token = tokenPayload?.access_token as string | undefined
-  expect(token).toBeTruthy()
-  return token as string
+  return loginForE2E({
+    request,
+    username,
+    password,
+    recipientEmail,
+    apiBaseUrl: API_URL,
+  })
 }
 
 async function pickRosterPeriod(

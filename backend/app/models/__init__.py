@@ -8,6 +8,9 @@ from sqlmodel import SQLModel
 
 # Web schemas (no more User/Item models)
 from app.models.web import (
+    LoginAccessTokenResponse,
+    LoginEmail2FAResend,
+    LoginEmail2FAVerify,
     Message,
     NewPassword,
     Token,
@@ -78,6 +81,9 @@ __all__ = [
     # SQLModel base
     "SQLModel",
     # Web schemas
+    "LoginAccessTokenResponse",
+    "LoginEmail2FAResend",
+    "LoginEmail2FAVerify",
     "Message",
     "NewPassword",
     "Token",

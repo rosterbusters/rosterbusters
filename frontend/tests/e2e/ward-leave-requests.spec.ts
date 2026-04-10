@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import { loginForE2E } from "../utils/auth"
 import {
   API_BASE_URL,
   createUser,
@@ -12,16 +13,15 @@ async function loginToken(
   request: APIRequestContext,
   username: string,
   password: string,
+  recipientEmail?: string,
 ) {
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username, password },
+  return loginForE2E({
+    request,
+    username,
+    password,
+    recipientEmail,
+    apiBaseUrl: API_BASE_URL,
   })
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login: ${res.status()} ${body}`)
-  }
-  const json = await res.json()
-  return json.access_token as string
 }
 
 const formatDateKey = (value: Date) =>
@@ -62,7 +62,12 @@ test("ward staff can create a leave request from the calendar", async ({
     })
     createdUserIds.push(nurseUser.userid)
 
-    nurseToken = await loginToken(request, nurseUsername, nursePassword)
+    nurseToken = await loginToken(
+      request,
+      nurseUsername,
+      nursePassword,
+      nurseEmail,
+    )
 
     // Newly created users are flagged for first-time setup and are route-guarded
     // away from ward-staff pages until setup is completed.

@@ -190,9 +190,30 @@ export type LoginAccessTokenData = {
     formData: Body_login_access_token;
 };
 
-export type LoginAccessTokenResponse = ({
-    [key: string]: (string);
-});
+export type LoginAccessTokenResponse = {
+    access_token?: (string | null);
+    token_type?: string;
+    must_change_password?: boolean;
+    two_factor_required?: boolean;
+    two_factor_token?: (string | null);
+};
+
+export type LoginEmail2FAVerify = {
+    two_factor_token: string;
+    code: string;
+};
+
+export type LoginEmail2FAVerifyData = {
+    requestBody: LoginEmail2FAVerify;
+};
+
+export type LoginEmail2FAResend = {
+    two_factor_token: string;
+};
+
+export type LoginEmail2FAResendData = {
+    requestBody: LoginEmail2FAResend;
+};
 
 export type ItemsReadItemsData = {
     limit?: number;

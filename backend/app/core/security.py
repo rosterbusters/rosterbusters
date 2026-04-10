@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import secrets
 import string
@@ -12,15 +12,25 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import settings
 
+if TYPE_CHECKING:
+    from app.models.rbac import RBACUser
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 ALGORITHM = "HS256"
 
 
-def create_access_token(subject: str | Any, expires_delta: timedelta) -> str:
+def create_access_token(
+    subject: str | Any,
+    expires_delta: timedelta,
+    token_use: str = "access",
+    extra_claims: dict[str, Any] | None = None,
+) -> str:
     expire = datetime.now(timezone.utc) + expires_delta
-    to_encode = {"exp": expire, "sub": str(subject)}
+    to_encode = {"exp": expire, "sub": str(subject), "token_use": token_use}
+    if extra_claims:
+        to_encode.update(extra_claims)
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -61,3 +71,13 @@ def decrypt_default_password(token: str) -> str | None:
         return fernet.decrypt(token.encode()).decode()
     except InvalidToken:
         return None
+
+
+def should_bypass_verification(user: "RBACUser") -> bool:
+    identifiers = settings.verification_bypass_identifier_set
+    candidates = {
+        user.username.strip().lower(),
+        (user.email or "").strip().lower(),
+    }
+    candidates.discard("")
+    return any(candidate in identifiers for candidate in candidates)

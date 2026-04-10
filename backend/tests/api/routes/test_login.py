@@ -24,6 +24,97 @@ def test_get_access_token(client: TestClient) -> None:
     assert tokens["access_token"]
 
 
+def test_get_access_token_requires_email_2fa_for_post_first_login_user(
+    client: TestClient, db: Session
+) -> None:
+    email = random_email()
+    password = random_lower_string()
+
+    user = RBACUser(
+        username=email.split("@")[0],
+        email=email,
+        passwordhash=get_password_hash(password),
+        isactive=True,
+        must_change_password=False,
+        createdat=datetime.now(timezone.utc),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    with (
+        patch("app.core.config.settings.SMTP_HOST", "smtp.example.com"),
+        patch("app.core.config.settings.EMAILS_FROM_EMAIL", "info@example.com"),
+        patch("app.utils.generate_login_2fa_code", return_value="123456"),
+        patch("app.utils.send_email"),
+    ):
+        login_data = {
+            "username": email,
+            "password": password,
+        }
+        r = client.post(f"{settings.API_V1_STR}/login/access-token", data=login_data)
+        tokens = r.json()
+
+        assert r.status_code == 200
+        assert tokens["two_factor_required"] is True
+        assert tokens["two_factor_token"]
+        assert tokens["access_token"] is None
+
+        verify_response = client.post(
+            f"{settings.API_V1_STR}/login/email-2fa/verify",
+            json={
+                "two_factor_token": tokens["two_factor_token"],
+                "code": "123456",
+            },
+        )
+
+        verify_tokens = verify_response.json()
+        assert verify_response.status_code == 200
+        assert verify_tokens["access_token"]
+
+        headers = {"Authorization": f"Bearer {verify_tokens['access_token']}"}
+        check_response = client.post(
+            f"{settings.API_V1_STR}/login/test-token",
+            headers=headers,
+        )
+        assert check_response.status_code == 200
+
+
+def test_get_access_token_skips_email_2fa_for_first_login_user(
+    client: TestClient, db: Session
+) -> None:
+    email = random_email()
+    password = random_lower_string()
+
+    user = RBACUser(
+        username=email.split("@")[0],
+        email=email,
+        passwordhash=get_password_hash(password),
+        isactive=True,
+        must_change_password=True,
+        createdat=datetime.now(timezone.utc),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    with (
+        patch("app.core.config.settings.SMTP_HOST", "smtp.example.com"),
+        patch("app.core.config.settings.EMAILS_FROM_EMAIL", "info@example.com"),
+        patch("app.utils.send_email"),
+    ):
+        login_data = {
+            "username": email,
+            "password": password,
+        }
+        r = client.post(f"{settings.API_V1_STR}/login/access-token", data=login_data)
+        tokens = r.json()
+
+        assert r.status_code == 200
+        assert tokens["access_token"]
+        assert tokens["two_factor_required"] is False
+
+
 def test_get_access_token_incorrect_password(client: TestClient) -> None:
     login_data = {
         "username": settings.FIRST_SUPERUSER,
