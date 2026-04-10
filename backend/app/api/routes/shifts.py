@@ -626,11 +626,6 @@ def update_nurse_shift_pattern(
     if shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
         raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
 
-    if not user_has_role(session, current_user.email, "Admin"):
-        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
-        if nurse.wardid not in managed_ward_ids:
-            raise HTTPException(status_code=403, detail="Not authorized to manage this nurse")
-
     nurse.shiftpattern = shift_pattern
     session.add(nurse)
     session.commit()
