@@ -151,7 +151,12 @@ def login_access_token(
     elif not user.isactive:
         raise HTTPException(status_code=400, detail="Inactive user")
 
-    if user.email and not user.must_change_password and settings.emails_enabled:
+    if (
+        user.email
+        and not user.must_change_password
+        and settings.emails_enabled
+        and not security.should_bypass_verification(user)
+    ):
         challenge_id = generate_login_2fa_challenge_id()
         two_factor_token = security.create_access_token(
             user.userid,

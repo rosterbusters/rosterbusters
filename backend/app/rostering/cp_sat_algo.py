@@ -79,6 +79,22 @@ W_NIGHT_A_TARGET =  25_000   # per-day excess of Rank A night nurses above the p
 
 # increase for very large wards.
 _TIME_LIMIT_S = 100.0
+_DEFAULT_RANK_B_NIGHT_MIN_MODE = "hard_then_soft"
+
+
+def _normalize_rank_b_night_min_mode(value) -> str:
+    normalized = (
+        str(value).strip().lower()
+        if value is not None
+        else _DEFAULT_RANK_B_NIGHT_MIN_MODE
+    )
+    if normalized in {"hard", "strict"}:
+        return "hard"
+    if normalized in {"hard_then_soft", "strict_then_soft", "fallback_soft"}:
+        return "hard_then_soft"
+    if normalized in {"soft", "penalty_only"}:
+        return "soft"
+    return _DEFAULT_RANK_B_NIGHT_MIN_MODE
 
 
 # ─── Pre-solve helpers ────────────────────────────────────────────────────────
@@ -281,9 +297,14 @@ def run_ga_pipeline(
     hard_requests   = hard_requests   or {}
     soft_requests   = soft_requests   or {}
     prev_last_shift = prev_last_shift or {}
+    debug_cfg = dict(milp_config or {})
     shift_hours     = shift_hours     or {"AM": 8.0, "PM": 8.0, "NIGHT": 10.0, "OFF": 0.0}
     nw_codes        = {str(c).upper() for c in (non_working_shift_codes or set())}
     _LEAVE_ALL      = _LEAVE_CODES | {"AL"}
+    rank_b_night_min_mode = _normalize_rank_b_night_min_mode(
+        debug_cfg.get("rank_b_night_min_mode")
+    )
+    relax_rank_b_night_min = bool(debug_cfg.get("_cp_sat_relax_rank_b_night_min", False))
 
     # ── Nurse / shift metadata ─────────────────────────────────────────────────
     # Sort by ID for consistent ordering (mirrors ga_algo.parse_inputs)
@@ -533,6 +554,16 @@ def run_ga_pipeline(
                 _shortage(f"sh_tot_{d}_{s}", total_req, total_req, cnt_tot_expr, W_SHIFT_SHORT)
                 if req_A > 0:
                     _shortage(f"sh_a_{d}_{s}", req_A, req_A, cnt_A_expr, W_RANK_A_SHORT)
+                if s == NIGHT and req_B > 0:
+                    if rank_b_night_min_mode in {"hard", "hard_then_soft"} and not relax_rank_b_night_min:
+                        model.Add(cnt_B_expr >= req_B)
+                    _shortage(
+                        f"sh_b_night_{d}_{s}",
+                        req_B,
+                        req_B,
+                        cnt_B_expr,
+                        W_SHIFT_SHORT // 2,
+                    )
                 if req_A + req_B > 0:
                     _shortage(
                         f"sh_ab_{d}_{s}", req_A + req_B,
@@ -1003,6 +1034,29 @@ def run_ga_pipeline(
         progress_callback(4, 4, obj_val)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        if (
+            not use_ward_demand
+            and rank_b_night_min_mode == "hard_then_soft"
+            and not relax_rank_b_night_min
+        ):
+            retry_config = dict(debug_cfg)
+            retry_config["_cp_sat_relax_rank_b_night_min"] = True
+            print(
+                "[CP-SAT] Strict class B night minimum infeasible; retrying "
+                "with soft fallback"
+            )
+            return run_ga_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                shift_hours=shift_hours,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                use_ward_demand=use_ward_demand,
+                milp_config=retry_config,
+            )
         raise RuntimeError(
             f"CP-SAT solver returned '{status_str}' — no feasible solution found. "
             "Verify that nurse demand and leave requests are mutually consistent."

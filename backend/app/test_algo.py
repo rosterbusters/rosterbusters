@@ -5,12 +5,14 @@ Modes:
   - deterministic: uses nurse IDs (no randomness) to create 1-2 requests each
   - hardcoded: seeds the sample request list into a given ward/period
   - anonymized: creates a test ward with "Nurse 1..N" and seeds requests into the upcoming period
+  - anonymized-feasible: same as anonymized, but with added EN/SEN manpower sized for MILP feasibility
   - anonymized-apr-2026: creates a separate test ward for the Apr 06 - Apr 19 2026 preview data
 
 Usage:
     docker compose exec backend python app/test_algo.py --ward-id 1 --mode deterministic
     docker compose exec backend python app/test_algo.py --ward-id 1 --mode hardcoded
     docker compose exec backend python app/test_algo.py --mode anonymized
+    docker compose exec backend python app/test_algo.py --mode anonymized-feasible
     docker compose exec backend python app/test_algo.py --mode anonymized-apr-2026
 """
 import argparse
@@ -124,6 +126,8 @@ APR_2026_WARD_6_REQUESTS: list[RequestSeed] = [
 TEST_MANAGER_USERNAME = "manager"
 TEST_MANAGER_EMAIL = "manager@example.com"
 TEST_MANAGER_PASSWORD = "manager123"
+TEST_NURSE_USERNAME = "nurse1"
+TEST_NURSE_NAME = "Nurse 1"
 TEST_NURSE_PASSWORD = "nurse123"
 
 
@@ -228,6 +232,41 @@ ANON_DESIGNATIONS: dict[str, str] = {
 }
 
 
+FEASIBLE_ANON_DESIGNATIONS: dict[str, str] = {
+    **ANON_DESIGNATIONS,
+    # The original anonymized seed only provides 5 EN/SEN nurses, while the
+    # current Ward 6 minima require 7 B-rank assignments per day. These
+    # additional EN/SEN staff lift the ward into MILP-feasible territory while
+    # preserving the same hardcoded request mix.
+    "Nurse 32": "EN",
+    "Nurse 33": "EN",
+    "Nurse 34": "EN",
+    "Nurse 35": "EN",
+    "Nurse 36": "SEN",
+    "Nurse 37": "SEN",
+}
+
+
+FEASIBLE_REQUESTS: list[RequestSeed] = [
+    # Keep a representative mix of shift preferences.
+    RequestSeed("Nurse 11", date(2026, 4, 1), "DO", "shift_request"),
+    RequestSeed("Nurse 12", date(2026, 3, 29), "P", "shift_request"),
+    RequestSeed("Nurse 27", date(2026, 4, 3), "DO", "shift_request"),
+    RequestSeed("Nurse 17", date(2026, 3, 25), "A", "shift_request"),
+    RequestSeed("Nurse 3", date(2026, 4, 2), "P", "shift_request"),
+    RequestSeed("Nurse 5", date(2026, 4, 2), "P", "shift_request"),
+    RequestSeed("Nurse 6", date(2026, 3, 26), "A", "shift_request"),
+    RequestSeed("Nurse 7", date(2026, 3, 27), "A", "shift_request"),
+    RequestSeed("Nurse 8", date(2026, 3, 28), "A", "shift_request"),
+    # Keep a small amount of approved leave so the solver still has real hard constraints.
+    RequestSeed("Nurse 1", date(2026, 3, 30), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 3, 31), "AL", "leave_request"),
+    RequestSeed("Nurse 2", date(2026, 3, 23), "AL", "leave_request"),
+    RequestSeed("Nurse 4", date(2026, 3, 25), "AL", "leave_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 3), "HOL", "leave_request"),
+]
+
+
 APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
     "Nurse 1": "SN",
     "Nurse 2": "SN",
@@ -325,6 +364,8 @@ def _ensure_test_manager(db: Session, ward: Ward | None = None) -> NurseManager:
             passwordhash=get_password_hash(TEST_MANAGER_PASSWORD),
             managerid=manager.managerid,
             isactive=True,
+            must_change_password=False,
+            default_password_encrypted=None,
             createdat=datetime.now(timezone.utc),
         )
         db.add(user)
@@ -333,6 +374,8 @@ def _ensure_test_manager(db: Session, ward: Ward | None = None) -> NurseManager:
         user.passwordhash = get_password_hash(TEST_MANAGER_PASSWORD)
         user.managerid = manager.managerid
         user.isactive = True
+        user.must_change_password = False
+        user.default_password_encrypted = None
         db.add(user)
 
     role = _get_or_create_role(db, "NurseManager", "Nurse Manager")
@@ -366,32 +409,36 @@ def _ensure_test_nurse_user(db: Session, nurse: Nurse) -> RBACUser:
     if nurse.nurseid is None:
         raise ValueError("Nurse must be persisted before creating a login user.")
 
-    username = "".join(ch.lower() for ch in nurse.name if ch.isalnum()) or f"nurse{nurse.nurseid}"
-    user = db.exec(
-        select(RBACUser).where(
-            (RBACUser.nurseid == nurse.nurseid) | (RBACUser.email == nurse.email)
-        )
-    ).first()
+    user = db.exec(select(RBACUser).where(RBACUser.nurseid == nurse.nurseid)).first()
+    if not user:
+        user = db.exec(
+            select(RBACUser).where(RBACUser.username == TEST_NURSE_USERNAME)
+        ).first()
+    if not user:
+        user = db.exec(select(RBACUser).where(RBACUser.email == nurse.email)).first()
+
     if not user:
         user = RBACUser(
-            username=username,
+            username=TEST_NURSE_USERNAME,
             email=nurse.email,
             passwordhash=get_password_hash(TEST_NURSE_PASSWORD),
             nurseid=nurse.nurseid,
             isactive=True,
+            must_change_password=False,
+            default_password_encrypted=None,
             createdat=datetime.now(timezone.utc),
         )
         db.add(user)
         db.flush()
     else:
-        user.username = user.username or username
+        user.username = TEST_NURSE_USERNAME
         user.email = nurse.email
         user.passwordhash = get_password_hash(TEST_NURSE_PASSWORD)
         user.nurseid = nurse.nurseid
-        user.managerid = None
         user.isactive = True
+        user.must_change_password = False
+        user.default_password_encrypted = None
         db.add(user)
-        db.flush()
 
     role = _get_or_create_role(db, "Nurse", "Nurse")
     existing_role = db.exec(
@@ -410,6 +457,7 @@ def _ensure_test_nurse_user(db: Session, nurse: Nurse) -> RBACUser:
                 isactive=True,
             )
         )
+
     db.flush()
     return user
 
@@ -434,6 +482,9 @@ WARD_6_REQUIREMENTS = {
     "nd_hca_min": 0,
     "nd_hca_max": 1,
 }
+
+
+FEASIBLE_WARD_6_REQUIREMENTS = dict(WARD_6_REQUIREMENTS)
 
 
 APR_2026_WARD_6_REQUIREMENTS = {
@@ -471,14 +522,13 @@ def _get_previous_period(db: Session, period: RosterPeriod) -> RosterPeriod | No
     ).first()
 
 
-def _seed_previous_period_roster(
+def _seed_roster_for_period(
     db: Session,
     ward_id: int,
-    period: RosterPeriod,
+    roster_period: RosterPeriod | None,
     nurses: list[Nurse],
 ) -> int:
-    previous_period = _get_previous_period(db, period)
-    if not previous_period or not nurses:
+    if not roster_period or not nurses:
         return 0
 
     nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
@@ -490,7 +540,7 @@ def _seed_previous_period_roster(
         for row in db.exec(
             select(Roster).where(
                 Roster.wardid == ward_id,
-                Roster.periodid == previous_period.periodid,
+                Roster.periodid == roster_period.periodid,
                 Roster.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
             )
         ).all()
@@ -498,14 +548,14 @@ def _seed_previous_period_roster(
     }
 
     shift_cycle = ("A", "P", "N", "DO")
-    num_days = (previous_period.enddate - previous_period.startdate).days + 1
+    num_days = (roster_period.enddate - roster_period.startdate).days + 1
     created = 0
 
     for nurse_index, nurse in enumerate(sorted(nurses, key=lambda n: n.nurseid or 0)):
         if nurse.nurseid is None:
             continue
         for day_idx in range(num_days):
-            shift_date = previous_period.startdate + timedelta(days=day_idx)
+            shift_date = roster_period.startdate + timedelta(days=day_idx)
             key = (nurse.nurseid, shift_date)
             if key in existing_entries:
                 continue
@@ -513,7 +563,7 @@ def _seed_previous_period_roster(
                 Roster(
                     nurseid=nurse.nurseid,
                     wardid=ward_id,
-                    periodid=previous_period.periodid,
+                    periodid=roster_period.periodid,
                     shiftdate=shift_date,
                     shiftcode=shift_cycle[(nurse_index + day_idx) % len(shift_cycle)],
                     status="Confirmed",
@@ -523,6 +573,56 @@ def _seed_previous_period_roster(
             created += 1
 
     return created
+
+
+def _seed_previous_period_roster(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurses: list[Nurse],
+) -> int:
+    previous_period = _get_previous_period(db, period)
+    return _seed_roster_for_period(db, ward_id, previous_period, nurses)
+
+
+def _clear_previous_period_last_day_nights(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurses: list[Nurse],
+) -> int:
+    """
+    MILP treats a previous-period NIGHT on the last day as a carry-over
+    obligation into day 1 of the new period. For the MILP-feasible seed mode,
+    rewrite those last-day historical rows to DO so re-runs can repair an
+    already-seeded ward instead of preserving infeasible carry-over.
+    """
+    previous_period = _get_previous_period(db, period)
+    if not previous_period:
+        return 0
+
+    nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
+    if not nurse_ids:
+        return 0
+
+    updated = 0
+    rows = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == previous_period.periodid,
+            Roster.shiftdate == previous_period.enddate,
+            Roster.nurseid.in_(nurse_ids),  # type: ignore[attr-defined]
+        )
+    ).all()
+    for row in rows:
+        if str(row.shiftcode).upper() == "N":
+            row.shiftcode = "DO"
+            row.assignmentmethod = "Auto"
+            row.status = "Confirmed"
+            db.add(row)
+            updated += 1
+
+    return updated
 
 
 def seed_test_ward_with_anonymized_requests(
@@ -574,6 +674,10 @@ def seed_test_ward_with_anonymized_requests(
         )
 
     db.flush()
+    nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
+    test_nurse = nurse_by_name.get(TEST_NURSE_NAME)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
 
     # Ensure shift codes and ward shift codes exist for shift_request entries.
     # Leave types (AL, MC, HOL, …) are not shift codes. Modifier suffixes (-R/_R) are
@@ -614,6 +718,7 @@ def seed_test_ward_with_anonymized_requests(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward.wardid, current_period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
@@ -693,14 +798,191 @@ def seed_test_ward_with_anonymized_requests(
     db.commit()
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) with anonymized requests.")
     return created
 
 
+def seed_test_ward_with_feasible_anonymized_requests(
+    db: Session,
+    ward_name: str = "Test Ward Requests MILP Feasible",
+) -> int:
+    """
+    Seed the same anonymized request scenario as `seed_test_ward_with_anonymized_requests`,
+    but with enough EN/SEN manpower for the MILP solver to satisfy the ward's
+    strict B-rank minima.
+    """
+    periods = ensure_roster_period_window(db)
+    current_period, upcoming_period, _ = get_period_window(periods)
+    period = upcoming_period or current_period
+    if not period:
+        raise SystemExit("No current or upcoming roster period found.")
+
+    ward = db.exec(select(Ward).where(Ward.wardname == ward_name)).first()
+    if not ward:
+        ward = Ward(wardname=ward_name, wardtype="Test", location="Seeded")
+        db.add(ward)
+        db.flush()
+    _apply_ward_requirements(ward, FEASIBLE_WARD_6_REQUIREMENTS)
+    db.add(ward)
+    _ensure_test_manager(db, ward)
+
+    unique_names = sorted(FEASIBLE_ANON_DESIGNATIONS.keys(), key=_nurse_sort_key)
+
+    existing_nurses = db.exec(
+        select(Nurse).where(Nurse.wardid == ward.wardid)
+    ).all()
+    existing_by_name = {n.name: n for n in existing_nurses}
+
+    for anonymized in unique_names:
+        if anonymized in existing_by_name:
+            continue
+        designation = FEASIBLE_ANON_DESIGNATIONS.get(anonymized, "SN")
+        db.add(
+            Nurse(
+                name=anonymized,
+                employeeid=f"TEST-{anonymized.split()[-1]}",
+                designation=designation,
+                email=f"{anonymized.replace(' ', '').lower()}@example.com",
+                contactnumber="00000000",
+                wardid=ward.wardid,
+                employmenttype="FullTime",
+                isactive=True,
+            )
+        )
+
+    db.flush()
+    nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
+    test_nurse = nurse_by_name.get(TEST_NURSE_NAME)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+
+    allowed_leave_types = {
+        "AL",
+        "MC",
+        "CCL",
+        "ML",
+        "EML",
+        "Mar",
+        "FCL",
+        "SPL",
+        "CL",
+        "BDL",
+        "HOL",
+        "SD",
+        "FD",
+    }
+    codes = {
+        _normalize_shift_request_code(req.code)
+        for req in FEASIBLE_REQUESTS
+        if req.request_type == "shift_request" or req.code not in allowed_leave_types
+    } | {"A", "P", "N"}
+    _ensure_shift_codes(db, codes)
+
+    existing_wsc = {
+        row.shiftcode
+        for row in db.exec(select(WardShiftCode).where(WardShiftCode.wardid == ward.wardid)).all()
+    }
+    for code in sorted(codes - existing_wsc):
+        db.add(WardShiftCode(wardid=ward.wardid, shiftcode=code))
+
+    base_start = min(req.date for req in FEASIBLE_REQUESTS)
+    nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
+    test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward.wardid, current_period, nurses)
+    previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
+    previous_night_tail_cleared = _clear_previous_period_last_day_nights(
+        db, ward.wardid, period, nurses
+    )
+    nurse_by_name = {n.name: n for n in nurses}
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, [n.nurseid for n in nurses]
+    )
+
+    created = 0
+    for req in FEASIBLE_REQUESTS:
+        shifted = _shift_to_upcoming_period(req, base_start, period)
+        if not shifted:
+            continue
+        nurse = nurse_by_name.get(req.name)
+        if not nurse:
+            continue
+
+        if shifted.request_type == "leave_request" and shifted.code in allowed_leave_types:
+            existing = db.exec(
+                select(LeaveRequest).where(
+                    LeaveRequest.nurseid == nurse.nurseid,
+                    LeaveRequest.startdate == shifted.date,
+                    LeaveRequest.enddate == shifted.date,
+                    LeaveRequest.leavetype == shifted.code,
+                )
+            ).first()
+            if existing:
+                continue
+            db.add(
+                LeaveRequest(
+                    nurseid=nurse.nurseid,
+                    startdate=shifted.date,
+                    enddate=shifted.date,
+                    leavetype=shifted.code,
+                    leavecategory="PreApproved",
+                    submittedduringperiod="BeforeRoster",
+                    status="Approved",
+                    impactsroster=True,
+                )
+            )
+            created += 1
+        else:
+            normalized_code = _normalize_shift_request_code(shifted.code)
+            key = (nurse.nurseid, shifted.date)
+            if key in existing_dates:
+                continue
+            db.add(
+                ShiftRequest(
+                    nurseid=nurse.nurseid,
+                    periodid=period.periodid,
+                    preferreddate=shifted.date,
+                    preferredshifttype=normalized_code,
+                    requestnumber=_claim_shift_request_number(
+                        used_numbers_by_nurse, nurse.nurseid
+                    ),
+                    status="Pending",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+            existing_dates.add(key)
+            created += 1
+
+    db.commit()
+    if test_nurse:
+        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
+    if previous_roster_created:
+        print(f"  Seeded {previous_roster_created} previous-period roster entries.")
+    if previous_night_tail_cleared:
+        print(
+            "  Rewrote "
+            f"{previous_night_tail_cleared} previous-period last-day NIGHT entries to DO."
+        )
+    print(
+        f"\nSeeded ward '{ward.wardname}' (id={ward.wardid}) "
+        "with MILP-feasible anonymized requests."
+    )
+    return created
+
+
 def seed_requests_from_list(
-    db: Session, ward_id: int, period: RosterPeriod, request_seeds: list[RequestSeed]
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    request_seeds: list[RequestSeed],
+    current_period: RosterPeriod | None = None,
 ) -> int:
     ward = db.get(Ward, ward_id)
     if not ward:
@@ -715,6 +997,7 @@ def seed_requests_from_list(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward_id, current_period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward_id, period, nurses)
 
     nurse_by_name = {_normalize_name(n.name): n for n in nurses}
@@ -803,6 +1086,8 @@ def seed_requests_from_list(
         created += 1
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     return created
@@ -854,6 +1139,10 @@ def seed_apr_2026_ward_6_preview(
         )
 
     db.flush()
+    nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
+    test_nurse = nurse_by_name.get(TEST_NURSE_NAME)
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
 
     codes = {
         _normalize_shift_request_code(req.code)
@@ -873,6 +1162,7 @@ def seed_apr_2026_ward_6_preview(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward.wardid, period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
@@ -908,6 +1198,8 @@ def seed_apr_2026_ward_6_preview(
     db.commit()
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(
@@ -940,6 +1232,7 @@ def seed_requests(db: Session, ward_id: int) -> None:
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
+    current_roster_created = _seed_roster_for_period(db, ward_id, current_period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward_id, period, nurses)
 
     ward_shift_code_strs = [
@@ -1024,6 +1317,8 @@ def seed_requests(db: Session, ward_id: int) -> None:
     db.commit()
     if test_nurse:
         print(f"\n  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    if current_roster_created:
+        print(f"\n  Seeded {current_roster_created} current-period roster entries.")
     if previous_roster_created:
         print(f"\n  Seeded {previous_roster_created} previous-period roster entries.")
     print(f"\n✓ {created} requests saved — go trigger the algorithm from the frontend.")
@@ -1036,7 +1331,13 @@ def main() -> None:
         "--mode",
         type=str,
         default="deterministic",
-        choices=["deterministic", "hardcoded", "anonymized", "anonymized-apr-2026"],
+        choices=[
+            "deterministic",
+            "hardcoded",
+            "anonymized",
+            "anonymized-feasible",
+            "anonymized-apr-2026",
+        ],
         help="Use deterministic seed logic, hardcoded sample requests, or anonymized test ward seeding.",
     )
     args = parser.parse_args()
@@ -1051,12 +1352,21 @@ def main() -> None:
             if not period:
                 raise SystemExit("No current or upcoming roster period found.")
             requests = generate_request_seeds([args.ward_id])
-            created = seed_requests_from_list(db, args.ward_id, period, requests)
+            created = seed_requests_from_list(
+                db,
+                args.ward_id,
+                period,
+                requests,
+                current_period=current_period,
+            )
             db.commit()
             print(f"\n✓ {created} hardcoded requests saved — go trigger the algorithm from the frontend.")
         elif args.mode == "anonymized":
             created = seed_test_ward_with_anonymized_requests(db)
             print(f"✓ {created} anonymized requests saved.")
+        elif args.mode == "anonymized-feasible":
+            created = seed_test_ward_with_feasible_anonymized_requests(db)
+            print(f"âœ“ {created} anonymized MILP-feasible requests saved.")
         elif args.mode == "anonymized-apr-2026":
             created = seed_apr_2026_ward_6_preview(db)
             print(f"✓ {created} Apr 2026 preview requests saved.")
