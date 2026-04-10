@@ -19,27 +19,38 @@ interface ShiftBadgeProps {
   onCommentIconClick?: (e: React.MouseEvent) => void;
   shiftRequestOverlay?: ShiftRequestOverlay;
   shiftDurationMap?: Map<string, number>;
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>;
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
 function formatTime(time: string): string {
-  const [hours, minutes] = time.split(":").map(Number);
+  const [hoursRaw, minutesRaw] = time.split(":");
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return time;
+  }
   const period = hours >= 12 ? "PM" : "AM";
   const displayHours = hours % 12 || 12;
   return `${displayHours}:${minutes.toString().padStart(2, "0")}${period}`;
 }
 
 // Get formatted time range for a shift
-function getTimeRange(shiftCode: ShiftCode): string | null {
+function getTimeRange(
+  shiftCode: ShiftCode,
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>,
+): string | null {
   const shiftInfo = SHIFT_CODE_MAP[shiftCode];
-  if (
-    !shiftInfo?.isWorking ||
-    !shiftInfo.defaultStart ||
-    !shiftInfo.defaultEnd
-  ) {
+  if (!shiftInfo?.isWorking) {
     return null;
   }
-  return `${formatTime(shiftInfo.defaultStart)}-${formatTime(shiftInfo.defaultEnd)}`;
+  const timeInfo = shiftTimeMap?.get(shiftCode);
+  const start = timeInfo?.start ?? shiftInfo.defaultStart;
+  const end = timeInfo?.end ?? shiftInfo.defaultEnd;
+  if (!start || !end) {
+    return null;
+  }
+  return `${formatTime(start)}-${formatTime(end)}`;
 }
 
 function getDurationHours(
@@ -67,6 +78,7 @@ export function ShiftBadge({
   onCommentIconClick,
   shiftRequestOverlay,
   shiftDurationMap,
+  shiftTimeMap,
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
@@ -102,7 +114,7 @@ export function ShiftBadge({
   const bgColor = SHIFT_COLOR_MAP[shiftCode];
   const shiftInfo = SHIFT_CODE_MAP[shiftCode];
   const isWorkingShift = shiftInfo?.isWorking ?? true;
-  const timeRange = getTimeRange(shiftCode);
+  const timeRange = getTimeRange(shiftCode, shiftTimeMap);
   const durationHours = getDurationHours(shiftCode, shiftDurationMap);
   const isWeekView = viewMode === "week";
   const hasComment = !!comment;

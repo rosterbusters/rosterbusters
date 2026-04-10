@@ -166,6 +166,8 @@ export interface ShiftCodeOption {
   description: string;
   isworking: boolean;
   shiftdurationhours: number | null;
+  defaultstart?: string | null;
+  defaultend?: string | null;
 }
 
 export function useAllShiftCodes() {
@@ -177,6 +179,8 @@ export function useAllShiftCodes() {
         description: string;
         isworking: boolean;
         shiftdurationhours: number | null;
+        defaultstart?: string | null;
+        defaultend?: string | null;
       }> = await fetchWithAuth("/api/v1/shift-requests/shift-codes");
 
       return data;

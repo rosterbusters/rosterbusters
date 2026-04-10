@@ -25,7 +25,7 @@ interface EditHistoryDialogProps {
   isOpen: boolean;
   onClose: () => void;
   entries: EditHistoryEntry[];
-  onUndo?: (entryId: number) => void;
+  onUndo?: (entryId: number) => void | Promise<void>;
 }
 
 function formatDateTime(dateStr: string): string {
@@ -41,6 +41,7 @@ export function EditHistoryDialog({
   const [filterModifiedBy, setFilterModifiedBy] = useState("");
   const [filterShiftDate, setFilterShiftDate] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [pendingUndoId, setPendingUndoId] = useState<number | null>(null);
 
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
@@ -60,10 +61,16 @@ export function EditHistoryDialog({
     });
   }, [entries, filterModifiedBy, filterShiftDate]);
 
-  const handleKeyboardUndo = useCallback(() => {
-    if (!onUndo || filteredEntries.length === 0) return;
-    onUndo(filteredEntries[0].id);
-  }, [onUndo, filteredEntries]);
+  const handleKeyboardUndo = useCallback(async () => {
+    if (!onUndo || filteredEntries.length === 0 || pendingUndoId != null) return;
+    const targetId = filteredEntries[0].id;
+    setPendingUndoId(targetId);
+    try {
+      await onUndo(targetId);
+    } finally {
+      setPendingUndoId(null);
+    }
+  }, [onUndo, filteredEntries, pendingUndoId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -76,6 +83,12 @@ export function EditHistoryDialog({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleKeyboardUndo]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPendingUndoId(null);
+    }
+  }, [isOpen]);
 
   const toggleFilter = (column: string) => {
     setActiveFilter(activeFilter === column ? null : column);
@@ -359,8 +372,22 @@ export function EditHistoryDialog({
                           size="xs"
                           variant="outline"
                           colorScheme="red"
-                          onClick={() => onUndo?.(entry.id)}
-                          disabled={!onUndo || entry.changeType !== "shift_change" || !entry.previousShiftCode}
+                          onClick={async () => {
+                            if (!onUndo || pendingUndoId != null) return;
+                            setPendingUndoId(entry.id);
+                            try {
+                              await onUndo(entry.id);
+                            } finally {
+                              setPendingUndoId(null);
+                            }
+                          }}
+                          loading={pendingUndoId === entry.id}
+                          disabled={
+                            !onUndo ||
+                            pendingUndoId != null ||
+                            entry.changeType !== "shift_change" ||
+                            !entry.previousShiftCode
+                          }
                         >
                           Undo
                         </Button>

@@ -1189,6 +1189,7 @@ def run_ab_ratio_pipeline(
     relax_rank_night_mins = _coerce_bool(debug_cfg.get("_ab_ratio_relax_rank_night_mins"), False)
     relax_rank_a_night_cap = _coerce_bool(debug_cfg.get("_ab_ratio_relax_rank_a_night_cap"), False)
     relax_rank_b_night_min = _coerce_bool(debug_cfg.get("_ab_ratio_relax_rank_b_night_min"), False)
+    relax_rank_c_night_cap = _coerce_bool(debug_cfg.get("_ab_ratio_relax_rank_c_night_cap"), False)
     diagnostic_retry_active = _coerce_bool(debug_cfg.get("_ab_ratio_diag_active"), False)
 
     if progress_callback:
@@ -1795,10 +1796,13 @@ def run_ab_ratio_pipeline(
         if not rank_c:
             continue
         count_c_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_c)
-        allowed_max = cap + max(rank_c_night_allowed_excess, 0)
-        over_cap = model.NewIntVar(0, len(rank_c), f"rank_c_night_over_{day_idx}")
-        model.Add(over_cap >= count_c_night - allowed_max)
-        add_penalty(over_cap, weights["rank_c_night_over"])
+        if not relax_rank_c_night_cap:
+            model.Add(count_c_night <= cap)
+        else:
+            allowed_max = cap + max(rank_c_night_allowed_excess, 0)
+            over_cap = model.NewIntVar(0, len(rank_c), f"rank_c_night_over_{day_idx}")
+            model.Add(over_cap >= count_c_night - allowed_max)
+            add_penalty(over_cap, weights["rank_c_night_over"])
 
     for nurse_idx in working_nurses:
         hard_days = set(hard_assignments[nurse_idx])
