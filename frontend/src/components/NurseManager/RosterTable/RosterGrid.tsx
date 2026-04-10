@@ -113,12 +113,20 @@ function getDisplayTitle(row: RosterRow): string {
 
 function getEnNaHcaSortRank(row: RosterRow): number {
   const title = getDisplayTitle(row).toUpperCase();
-  if (title === "EN") return 1;
-  if (title === "NA") return 2;
-  if (title === "HCA1") return 3;
-  if (title === "HCA2") return 4;
-  if (title === "HCA3") return 5;
-  if (title === "HCA") return 6;
+  if (title === "SEN") return 1;
+  if (title === "EN") return 2;
+  if (title === "NA") return 3;
+  if (title === "HCA1") return 4;
+  if (title === "HCA2") return 5;
+  if (title === "HCA3") return 6;
+  if (title === "HCA") return 7;
+  return 99;
+}
+
+function getSsnSnSortRank(row: RosterRow): number {
+  const title = getDisplayTitle(row).toUpperCase();
+  if (title === "SSN") return 1;
+  if (title === "SN") return 2;
   return 99;
 }
 
@@ -556,13 +564,19 @@ export function RosterGrid({
       if (!rows.length) return;
       const isCollapsed = collapsedGroups.has(groupKey);
       const sortedRows =
-        groupKey === "EN/NA/HCA1/HCA2"
+        groupKey === "SSN/SN"
           ? [...rows].sort((a, b) => {
-              const rankDelta = getEnNaHcaSortRank(a) - getEnNaHcaSortRank(b);
+              const rankDelta = getSsnSnSortRank(a) - getSsnSnSortRank(b);
               if (rankDelta !== 0) return rankDelta;
               return (a.name ?? "").localeCompare(b.name ?? "");
             })
-          : rows;
+          : groupKey === "EN/NA/HCA1/HCA2"
+            ? [...rows].sort((a, b) => {
+                const rankDelta = getEnNaHcaSortRank(a) - getEnNaHcaSortRank(b);
+                if (rankDelta !== 0) return rankDelta;
+                return (a.name ?? "").localeCompare(b.name ?? "");
+              })
+            : [...rows].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
       // Group Header Row
       allRows.push(
