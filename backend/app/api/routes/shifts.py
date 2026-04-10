@@ -615,6 +615,7 @@ def update_nurse_shift_pattern(
     if not (
         user_has_role(session, current_user.email, "NurseManager")
         or user_has_role(session, current_user.email, "Admin")
+        or current_user.managerid is not None
     ):
         raise HTTPException(status_code=403, detail="Not authorized to update nurse patterns")
 
