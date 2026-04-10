@@ -997,6 +997,10 @@ def parse_ab_ratio_inputs(
         "shift_pattern_by_nurse": shift_pattern_by_nurse,
         "no_night_ids": no_night_ids,
         "pattern_nurses": pattern_nurses,
+        "pattern_working_ab": pattern_working_ab,
+        "pattern_working_rank_a": pattern_working_rank_a,
+        "pattern_working_rank_b": pattern_working_rank_b,
+        "pattern_working_rank_c": pattern_working_rank_c,
         "leave_overlay": leave_overlay,
         "rank_a": rank_a,
         "rank_b": rank_b,
@@ -1182,6 +1186,10 @@ def run_ab_ratio_pipeline(
     no_night_ids = parsed["no_night_ids"]
     shift_pattern_by_nurse = parsed["shift_pattern_by_nurse"]
     pattern_nurses = parsed["pattern_nurses"]
+    pattern_working_ab = parsed["pattern_working_ab"]
+    pattern_working_rank_a = parsed["pattern_working_rank_a"]
+    pattern_working_rank_b = parsed["pattern_working_rank_b"]
+    pattern_working_rank_c = parsed["pattern_working_rank_c"]
     al_nurses_set = parsed["al_nurses_set"]
     al_day_req = parsed["al_day_req"]
     hard_assignments = parsed["hard_assignments"]
