@@ -186,7 +186,17 @@ function Login() {
 
 
             {/* Login Form */}
-            <Box as="form" onSubmit={handleSubmit(onSubmit)}>
+            <Box
+              as="form"
+              onSubmit={(e) => {
+                if (isTwoFactorStep) {
+                  e.preventDefault()
+                  handleVerifyCode()
+                  return
+                }
+                handleSubmit(onSubmit)(e)
+              }}
+            >
               <VStack gap={3} align="stretch"> 
                 {!isTwoFactorStep && (
                   <>
