@@ -344,6 +344,13 @@ def _weekly_do_target(week_len: int) -> int:
     return max(1, round(2 * week_len / 7))
 
 
+def _pattern_weekly_targets(week_len: int, free_days: int, fixed_off_days: int) -> tuple[int, int]:
+    base_off_target = max(0, week_len - 4)
+    off_target = min(free_days, max(base_off_target, fixed_off_days))
+    preferred_target = max(0, free_days - off_target)
+    return off_target, preferred_target
+
+
 def _resolve_daily_targets(raw_target, default_targets: list[int]) -> list[int]:
     num_days = len(default_targets)
     if isinstance(raw_target, (list, tuple)):
@@ -832,9 +839,11 @@ def parse_ab_ratio_inputs(
                 free_days = max(0, week_len - leave_days)
                 shift_pattern = shift_pattern_by_nurse.get(nurse_idx)
                 if shift_pattern in {"AM_ONLY", "PM_ONLY"}:
-                    min_off_days = min(len(fixed_off_days), free_days)
-                    preferred_target = min(4, max(0, free_days - min_off_days))
-                    target_do = free_days - preferred_target
+                    target_do, preferred_target = _pattern_weekly_targets(
+                        week_len,
+                        free_days,
+                        len(fixed_off_days),
+                    )
                     expected_work_slots += preferred_target
                 else:
                     target_do = max(_weekly_do_target(week_len), len(fixed_off_days))
