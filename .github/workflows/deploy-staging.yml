@@ -93,9 +93,13 @@ jobs:
 
       - name: Build & run Docker on EC2
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "export DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME }}'; export DOCKERHUB_TOKEN='${{ secrets.DOCKERHUB_TOKEN }}'; bash -s" << 'EOF'
           set -e
           cd ~/rosterbusters
+
+          # Authenticate before pulling base images to avoid Docker Hub
+          # unauthenticated rate limits during remote builds.
+          echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
 
           # Stop all containers including Traefik and any orphans
           docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v --remove-orphans 2>/dev/null || true

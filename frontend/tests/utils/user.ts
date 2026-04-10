@@ -1,12 +1,19 @@
 import { expect, type Page } from "@playwright/test"
+import { completeLogin2faInUi } from "./auth"
 
-export async function logInUser(page: Page, email: string, password: string) {
+export async function logInUser(
+  page: Page,
+  email: string,
+  password: string,
+  recipientEmail?: string,
+) {
   await page.goto("/login")
 
-  await page.getByPlaceholder("Email").fill(email)
-  await page.getByPlaceholder("Password", { exact: true }).fill(password)
+  await page.getByTestId("login-username").fill(email)
+  await page.getByTestId("login-password").fill(password)
   await page.getByRole("button", { name: "Log In" }).click()
-  await page.waitForURL("/")
+  await completeLogin2faInUi({ page, recipientEmail: recipientEmail || email })
+  await expect(page).not.toHaveURL(/\/login$/)
   await expect(
     page.getByText("Welcome back, nice to see you again!"),
   ).toBeVisible()

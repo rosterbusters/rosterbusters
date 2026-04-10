@@ -8,6 +8,7 @@ import {
   getAnyWard,
   getUserByUsername,
 } from "./admin-helpers"
+import { loginForE2E } from "../utils/auth"
 
 const MAILCATCHER_HOST = process.env.MAILCATCHER_HOST
 const DB_CONTAINER_ENV =
@@ -65,16 +66,15 @@ async function loginToken(
   request: APIRequestContext,
   username: string,
   password: string,
+  recipientEmail?: string,
 ) {
-  const res = await request.post(`${API_BASE_URL}/api/v1/login/access-token`, {
-    form: { username, password },
+  return loginForE2E({
+    request,
+    username,
+    password,
+    recipientEmail,
+    apiBaseUrl: API_BASE_URL,
   })
-  if (!res.ok()) {
-    const body = await res.text()
-    throw new Error(`Failed to login: ${res.status()} ${body}`)
-  }
-  const json = await res.json()
-  return json.access_token as string
 }
 
 async function fetchMailCatcherMessages(request: APIRequestContext) {
@@ -227,7 +227,12 @@ test.describe("leave request notifications", () => {
         throw new Error("Expected nurse user to have a nurseid.")
       }
 
-      nurseToken = await loginToken(request, nurseUsername, nursePassword)
+      nurseToken = await loginToken(
+        request,
+        nurseUsername,
+        nursePassword,
+        nurseEmail,
+      )
 
       const leaveCodesRes = await request.get(
         `${API_BASE_URL}/api/v1/leave/leave-codes`,

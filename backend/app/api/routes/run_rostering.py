@@ -4,6 +4,7 @@ import math
 import os
 import queue
 import threading
+from uuid import uuid4
 
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
@@ -42,6 +43,10 @@ from app.models.roster import (
 from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
+from app.services.algorithm_lock_service import (
+    acquire_ward_algorithm_lock,
+    release_ward_algorithm_lock,
+)
 from app.utils import generate_roster_release_email, generate_shift_updated_email, send_email
 import app.crud as crud
 from app.rostering.algo_scheduler import generate_roster
@@ -781,7 +786,12 @@ def clear_ward_roster(
     ).all()
 
     if not entries:
-        raise HTTPException(status_code=400, detail="No roster assignments found to clear")
+        return {
+            "ward_id": ward_id,
+            "period_id": period_id,
+            "deleted_count": 0,
+            "status": "already_empty",
+        }
 
     if any(entry.status == "Confirmed" for entry in entries):
         raise HTTPException(status_code=400, detail="Roster entries are already published")
@@ -1052,14 +1062,6 @@ def generate_roster_async(
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    _queue_algorithm_notification(
-        db,
-        manager_id=current_user.managerid,
-        ward_id=request_data.ward_id,
-        period_id=request_data.period_id,
-        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
-    )
-
     logger.info(
         "Queueing async roster generation ward_id=%s period_id=%s algorithm=%s user_id=%s",
         request_data.ward_id,
@@ -1068,10 +1070,30 @@ def generate_roster_async(
         getattr(current_user, "userid", None),
     )
 
-    task = _get_celery_app().send_task(
-        "tasks.generate_roster",
-        args=[request_data.ward_id, request_data.period_id],
-        kwargs={"algorithm": request_data.algorithm},
+    task_id = str(uuid4())
+    if not acquire_ward_algorithm_lock(request_data.ward_id, task_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Another algorithm generation is already in progress for this ward.",
+        )
+
+    try:
+        task = _get_celery_app().send_task(
+            "tasks.generate_roster",
+            args=[request_data.ward_id, request_data.period_id],
+            kwargs={"algorithm": request_data.algorithm},
+            task_id=task_id,
+        )
+    except Exception:
+        release_ward_algorithm_lock(request_data.ward_id, task_id)
+        raise
+
+    _queue_algorithm_notification(
+        db,
+        manager_id=current_user.managerid,
+        ward_id=request_data.ward_id,
+        period_id=request_data.period_id,
+        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
     )
     logger.info(
         "Queued async roster generation task_id=%s ward_id=%s period_id=%s algorithm=%s",
@@ -1111,10 +1133,23 @@ def trigger_scheduled_generation(
 
     for period in periods:
         for ward in active_wards:
-            task = _get_celery_app().send_task(
-                "tasks.generate_and_save_roster",
-                args=[ward.wardid, period.periodid],
-            )
+            task_id = str(uuid4())
+            if not acquire_ward_algorithm_lock(ward.wardid, task_id):
+                skipped.append({
+                    "ward_id": ward.wardid,
+                    "period_id": period.periodid,
+                    "reason": "algorithm_generation_in_progress",
+                })
+                continue
+            try:
+                task = _get_celery_app().send_task(
+                    "tasks.generate_and_save_roster",
+                    args=[ward.wardid, period.periodid],
+                    task_id=task_id,
+                )
+            except Exception:
+                release_ward_algorithm_lock(ward.wardid, task_id)
+                raise
             triggered.append({
                 "ward_id": ward.wardid,
                 "period_id": period.periodid,
@@ -1164,7 +1199,12 @@ def cancel_task(
     """Cancel a queued roster generation task."""
     if not _can_generate_roster(db, current_user):
         raise HTTPException(status_code=403, detail="Nurse manager access required")
+    task_result = _get_celery_app().AsyncResult(task_id)
+    task_args = task_result.args or []
+    ward_id = task_args[0] if task_args else None
     _get_celery_app().control.revoke(task_id, terminate=True)
+    if isinstance(ward_id, int):
+        release_ward_algorithm_lock(ward_id, task_id)
     return {"task_id": task_id, "status": "cancelled"}
 
 
@@ -1469,7 +1509,7 @@ def _build_milp_config(
         "LOW_DAYS": {6, 7, 13, 14},
         "coverage_mode": "strict_by_class",
         "soften_coverage": False,
-        "soften_equivalent_target": False,
+        "soften_equivalent_target": True,
         "shift_priority": {"enabled": False},
         "min_do_with_other_nonwork": 2,
         "RN":  {"normal_min": rn_min,  "low_exact": None, "day_target": rn_min,  "shift_target": _shift_target_from_min(rn_min)},
@@ -1599,6 +1639,14 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     shift_label_map = _load_shift_label_map(db)
     hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
     leave_hard = _load_leave_requests(db, ward_id, period, set(nurse_ids), len(shifts_data))
+    logger.warning(
+        "[DEBUG] leave_hard_summary ward=%s period=%s total=%s codes=%s sample=%s",
+        ward_id,
+        period_id,
+        sum(len(v) for v in leave_hard.values()),
+        _summarize_request_codes(leave_hard),
+        _sample_requests(leave_hard),
+    )
     for nurse_id, days in leave_hard.items():
         existing = hard_requests.setdefault(nurse_id, [])
         leave_days = {day_idx for day_idx, _ in days}
@@ -1613,6 +1661,16 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
 
     logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
     logger.warning(f"[DEBUG] nurses={len(nurses_data)} hard_requests={sum(len(v) for v in hard_requests.values())} soft_requests={sum(len(v) for v in soft_requests.values())}")
+    logger.warning(
+        "[DEBUG] hard_request_codes=%s hard_request_sample=%s",
+        _summarize_request_codes(hard_requests),
+        _sample_requests(hard_requests),
+    )
+    logger.warning(
+        "[DEBUG] soft_request_codes=%s soft_request_sample=%s",
+        _summarize_request_codes(soft_requests),
+        _sample_requests(soft_requests),
+    )
     logger.warning(
         "[DEBUG] rank_counts=%s staffing=%s",
         rank_counts,
@@ -1671,6 +1729,29 @@ def _jsonify_algo_inputs(payload: Any) -> Any:
     if isinstance(payload, set):
         return [_jsonify_algo_inputs(v) for v in sorted(payload)]
     return payload
+
+
+def _summarize_request_codes(
+    requests: dict[int, list[tuple[int, str]] | list[tuple[int, str, str]]]
+) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for items in requests.values():
+        for item in items:
+            if len(item) < 2:
+                continue
+            code = str(item[1]).strip().upper()
+            summary[code] = summary.get(code, 0) + 1
+    return dict(sorted(summary.items()))
+
+
+def _sample_requests(
+    requests: dict[int, list[tuple[int, str]] | list[tuple[int, str, str]]],
+    limit_nurses: int = 5,
+) -> dict[int, list[tuple[Any, ...]]]:
+    sample: dict[int, list[tuple[Any, ...]]] = {}
+    for nurse_id in sorted(requests.keys())[:limit_nurses]:
+        sample[nurse_id] = list(requests[nurse_id][:10])
+    return sample
 
 
 @router.get("/generation-inputs")
@@ -1799,10 +1880,11 @@ def _filter_requests_for_nurse_constraints(
     soft_requests: dict[int, list[tuple[int, str] | tuple[int, str, str]]],
 ) -> None:
     allowed_by_pattern = {
-        "AM_ONLY": {"AM", "A", "OFF", "DO", "RD", "AL"},
-        "PM_ONLY": {"PM", "P", "OFF", "DO", "RD", "AL"},
+        "AM_ONLY": {"AM", "A"},
+        "PM_ONLY": {"PM", "P"},
     }
     night_codes = {"NIGHT", "N"}
+    non_working_codes = {"OFF", "DO", "RD"}
 
     for nurse in nurses:
         nurse_id = nurse.get("id")
@@ -1815,6 +1897,12 @@ def _filter_requests_for_nurse_constraints(
         def _keep(item: tuple[int, str] | tuple[int, str, str]) -> bool:
             raw_shift = item[1]
             normalized = str(raw_shift).strip().upper()
+            # Keep all leave / non-working codes; pattern restrictions should only
+            # remove disallowed working shifts.
+            if normalized not in {"AM", "A", "PM", "P", "NIGHT", "N"}:
+                return True
+            if normalized in non_working_codes:
+                return True
             if no_night and normalized in night_codes:
                 return False
             if allowed is not None and normalized not in allowed:

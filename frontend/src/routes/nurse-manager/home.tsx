@@ -31,6 +31,7 @@ import {
   showSuccessToast,
 } from "@/components/ui/toast";
 import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer";
+import useAuth from "@/hooks/useAuth";
 import { WardsService } from "@/client";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Ward } from "@/client/types.gen";
@@ -122,6 +123,7 @@ const INITIAL_EDIT_HISTORY: EditHistoryEntry[] = [
 ];
 
 function NurseManagerHome() {
+  const { user } = useAuth();
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
     moment().startOf("isoWeek").toDate()
@@ -584,14 +586,19 @@ function NurseManagerHome() {
     setDateOverrides({});
   }, [selectedWard?.wardid]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Set default ward if not set, restoring from localStorage if available
+  // Default to the nurse manager's assigned ward when available, then restore
+  // the last selected ward, and finally fall back to the first accessible ward.
   useEffect(() => {
     if (wards.length > 0 && !selectedWard) {
+      const assignedWard =
+        user?.wardid != null
+          ? wards.find((w) => w.wardid === user.wardid) ?? null
+          : null;
       const savedId = localStorage.getItem("selectedWardId");
       const restored = savedId ? wards.find(w => String(w.wardid) === savedId) : null;
-      setSelectedWard(restored ?? wards[0]);
+      setSelectedWard(assignedWard ?? restored ?? wards[0]);
     }
-  }, [wards, selectedWard]);
+  }, [selectedWard, user?.wardid, wards]);
 
 
   return (

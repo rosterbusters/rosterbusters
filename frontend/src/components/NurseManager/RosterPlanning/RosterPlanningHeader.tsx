@@ -53,6 +53,8 @@ interface RosterPlanningHeaderProps {
   viewMode: ViewMode;
   selectedWard: Ward | null;
   selectedPeriod: RosterPeriod | null;
+  currentPeriodId?: number | null;
+  upcomingPeriodId?: number | null;
   wards: Ward[];
   periods: RosterPeriod[];
   isAlgorithmGenerated?: boolean;
@@ -84,6 +86,8 @@ export function RosterPlanningHeader({
   viewMode,
   selectedWard,
   selectedPeriod,
+  currentPeriodId = null,
+  upcomingPeriodId = null,
   wards,
   periods,
   isAlgorithmGenerated = false,
@@ -115,7 +119,6 @@ export function RosterPlanningHeader({
     100,
     Math.max(0, Math.round(Number.isFinite(generationProgress) ? generationProgress : 0)),
   );
-  const today = moment().startOf("day");
   const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
   const sortedPeriods = useMemo(
     () =>
@@ -124,26 +127,33 @@ export function RosterPlanningHeader({
       ),
     [periods],
   );
+  const effectiveSelectedPeriod = useMemo(() => {
+    if (selectedPeriod) {
+      const matchingVisiblePeriod = sortedPeriods.find(
+        (period) => period.periodId === selectedPeriod.periodId,
+      );
+      if (matchingVisiblePeriod) {
+        return matchingVisiblePeriod;
+      }
+    }
+
+    const periodForCurrentDate = sortedPeriods.find((period) =>
+      moment(currentStartDate).isBetween(
+        moment(period.startDate),
+        moment(period.endDate),
+        "day",
+        "[]",
+      ),
+    );
+    return periodForCurrentDate ?? sortedPeriods[0] ?? null;
+  }, [currentStartDate, selectedPeriod, sortedPeriods]);
   const earliestVisibleStartDate = sortedPeriods[0]?.startDate ?? null;
   const latestVisibleEndDate = sortedPeriods[sortedPeriods.length - 1]?.endDate ?? null;
-  const dateRangeText = selectedPeriod
-    ? `${moment(selectedPeriod.startDate).format("MMMM DD")} - ${moment(selectedPeriod.endDate).format("MMMM DD")}`
-    : `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
-
-  const currentPeriodId =
-    periods.find((period) =>
-      today.isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
-    )?.periodId ?? null;
-
-  const upcomingPeriodId =
-    periods
-      .filter((period) => moment(period.startDate).isAfter(today, "day"))
-      .sort((left, right) => moment(left.startDate).diff(moment(right.startDate)))[0]
-      ?.periodId ?? null;
+  const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
 
   const getPeriodFlag = (period: RosterPeriod) => {
-    if (period.periodId === currentPeriodId) return "Current";
-    if (period.periodId === upcomingPeriodId) return "Upcoming";
+    if (upcomingPeriodId != null && period.periodId === upcomingPeriodId) return "Upcoming";
+    if (currentPeriodId != null && period.periodId === currentPeriodId) return "Current";
     return null;
   };
 
@@ -153,7 +163,9 @@ export function RosterPlanningHeader({
       <HStack gap={2} minW={0} flexWrap="nowrap">
         <Text whiteSpace="nowrap">{period.name}</Text>
         {flag ? (
-          <Badge variant={(flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any}>
+          <Badge
+            variant={"upcomingPeriod" as any}
+          >
             {flag}
           </Badge>
         ) : null}
@@ -210,7 +222,7 @@ export function RosterPlanningHeader({
   });
 
   const periodCollection = createListCollection({
-    items: periods,
+    items: sortedPeriods,
     itemToString: (period: RosterPeriod) => {
       const flag = getPeriodFlag(period);
       return flag ? `${period.name} ${flag}` : period.name;
@@ -505,9 +517,9 @@ export function RosterPlanningHeader({
             size="sm"
             width="270px"
             color="foreground"
-            value={selectedPeriod ? [String(selectedPeriod.periodId)] : []}
+            value={effectiveSelectedPeriod ? [String(effectiveSelectedPeriod.periodId)] : []}
             onValueChange={(details) => {
-              const period = periods.find(
+              const period = sortedPeriods.find(
                 (p) => String(p.periodId) === details.value[0],
               );
               if (period) onPeriodChange(period);
@@ -516,8 +528,8 @@ export function RosterPlanningHeader({
             <Select.HiddenSelect />
             <Select.Control>
               <Select.Trigger>
-                {selectedPeriod ? (
-                  renderPeriodLabel(selectedPeriod)
+                {effectiveSelectedPeriod ? (
+                  renderPeriodLabel(effectiveSelectedPeriod)
                 ) : (
                   <Select.ValueText placeholder="Select period" />
                 )}
@@ -612,7 +624,7 @@ export function RosterPlanningHeader({
                     px={4}
                     disabled={isGenerating}
                   >
-                    AB-RATIO
+                    CP-SAT
                   </Button>
                 </HStack>
 
