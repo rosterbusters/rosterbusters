@@ -1361,6 +1361,7 @@ function RosterPlanningPage() {
             shiftRequestOverlays={shiftRequestOverlays}
             highlightedNurseIds={highlightedNoNightNurseIds}
             onNurseNameClick={handleOpenNurseSettings}
+            shiftDurationMap={shiftDurationMap}
           />
         </Box>
 

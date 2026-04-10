@@ -20,6 +20,7 @@ from sqlmodel import Session, select, delete
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.core.config import settings
+from app.cache import cache_delete, cache_get_json, cache_set_json
 from app.models.enums import NotificationType
 from app.designation_mapping import (
     classify_designation_with_rank_map,
@@ -136,6 +137,12 @@ class NursePeriodConstraintCreateRequest(BaseModel):
 
 
 router = APIRouter()
+
+CACHE_TTL_WARD_ROSTER_SECONDS = 60
+
+
+def _ward_roster_cache_key(ward_id: int, period_id: int) -> str:
+    return f"ward:roster:{ward_id}:{period_id}"
 
 
 def _list_table_columns(session: Session, table_name: str) -> set[str]:
@@ -396,6 +403,11 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
 @router.get("/ward/{ward_id}")
 def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db)):
     """Get roster entries for a ward within a roster period."""
+    cache_key = _ward_roster_cache_key(ward_id, period_id)
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
+
     ward = db.get(Ward, ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
@@ -411,7 +423,7 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
         )
     ).all()
 
-    return {
+    payload = {
         "ward": {"wardId": ward.wardid, "wardName": ward.wardname, "wardType": ward.wardtype},
         "period": {
             "periodId": period.periodid,
@@ -431,6 +443,8 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
             for e in entries
         ],
     }
+    cache_set_json(cache_key, payload, CACHE_TTL_WARD_ROSTER_SECONDS)
+    return payload
 
 
 @router.get("/constraints", response_model=list[NursePeriodConstraintPublic])
@@ -561,6 +575,7 @@ def create_or_update_roster_entry(
     session.add(entry)
     session.commit()
     session.refresh(entry)
+    cache_delete(_ward_roster_cache_key(body.ward_id, body.period_id))
 
     if (
         is_update
@@ -625,10 +640,14 @@ def bulk_upsert_roster_entries(
         return {"entries": [], "count": 0}
 
     saved_entries: list[dict[str, Any]] = []
+    cache_keys: set[str] = set()
     for entry_payload in body.entries:
         entry = _upsert_roster_entry(session, entry_payload, current_user)
         session.add(entry)
         session.flush()
+        cache_keys.add(
+            _ward_roster_cache_key(entry_payload.ward_id, entry_payload.period_id)
+        )
         saved_entries.append(
             {
                 "roster_id": entry.rosterid,
@@ -643,6 +662,8 @@ def bulk_upsert_roster_entries(
         )
 
     session.commit()
+    for key in cache_keys:
+        cache_delete(key)
     return {"entries": saved_entries, "count": len(saved_entries)}
 
 
@@ -682,6 +703,7 @@ def publish_ward_roster(
     period.status = "Finalized"
     session.add(period)
     session.commit()
+    cache_delete(_ward_roster_cache_key(ward_id, period_id))
 
     roster_period_label = period.name or f"{period.startdate} to {period.enddate}"
     nurses = session.exec(
@@ -781,6 +803,7 @@ def clear_ward_roster(
         )
     ).rowcount or 0
     session.commit()
+    cache_delete(_ward_roster_cache_key(ward_id, period_id))
 
     return {
         "ward_id": ward_id,
@@ -804,6 +827,8 @@ def update_roster_comment(
     entry.comment = body.comment or None
     session.add(entry)
     session.commit()
+    if entry.wardid is not None and entry.periodid is not None:
+        cache_delete(_ward_roster_cache_key(entry.wardid, entry.periodid))
     return {"roster_id": roster_id, "comment": entry.comment}
 
 

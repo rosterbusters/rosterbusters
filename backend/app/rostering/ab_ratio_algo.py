@@ -1685,8 +1685,6 @@ def run_ab_ratio_pipeline(
         count_a_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_a)
         allowed_max = cap + max(rank_a_night_allowed_excess, 0)
         if target > 0:
-            if not relax_rank_night_mins:
-                model.Add(count_a_night >= target)
             diff = model.NewIntVar(-len(rank_a), len(rank_a), f"rn_night_diff_{day_idx}")
             model.Add(diff == count_a_night - target)
             dev = model.NewIntVar(0, len(rank_a), f"rn_night_dev_{day_idx}")
@@ -1707,12 +1705,6 @@ def run_ab_ratio_pipeline(
         count_b_night = sum(x[nurse_idx, day_idx, NIGHT] for nurse_idx in rank_b)
         allowed_max = cap + max(rank_b_night_allowed_excess, 0)
         if target > 0:
-            if (
-                rank_b_night_min_mode in {"hard", "hard_then_soft"}
-                and not relax_rank_night_mins
-                and not relax_rank_b_night_min
-            ):
-                model.Add(count_b_night >= target)
             diff = model.NewIntVar(-len(rank_b), len(rank_b), f"rank_b_night_diff_{day_idx}")
             model.Add(diff == count_b_night - target)
             dev = model.NewIntVar(0, len(rank_b), f"rank_b_night_dev_{day_idx}")
