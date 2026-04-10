@@ -826,6 +826,7 @@ def _solve(
     weekend_night_target = float(cfg.get("weekend_night_target", 0.5) or 0.5)
     coverage_mode = str(cfg.get("coverage_mode", "strict_by_class")).strip().lower()
     total_min_cfg = cfg.get("TOTAL_MIN") or {}
+    enforce_total_min = bool(cfg.get("enforce_total_min", False))
     shift_priority_cfg = cfg.get("shift_priority", {}) or {}
     shift_priority_enabled = bool(shift_priority_cfg.get("enabled", False))
     shift_priority_order = [
@@ -906,7 +907,7 @@ def _solve(
         equivalent_shift_target,
         weekly_work_cap,
         weekly_night_cap,
-        total_min_cfg,
+        total_min_cfg if enforce_total_min else {},
         hard_requests_rn,
         hard_requests_en,
         hard_requests_hca,
@@ -1182,7 +1183,7 @@ def _solve(
             m.cons.add(c_en >= e_req)
             m.cons.add(c_hca >= h_req)
 
-    if total_min_cfg:
+    if enforce_total_min and total_min_cfg:
         for d in DAYS:
             for s in SHIFTS:
                 total_required = int(total_min_cfg.get(s, 0) or 0)
