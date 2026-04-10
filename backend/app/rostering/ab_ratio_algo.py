@@ -196,6 +196,7 @@ _DEFAULT_RN_NIGHT_ALLOWED_EXCESS = 1
 _DEFAULT_DAILY_TOTAL_SHIFT_GAP_TARGET = 2
 _DEFAULT_DAILY_TOTAL_SHIFT_BALANCE_ENABLED = True
 _DEFAULT_AB_RATIO_COVERAGE_MODE = "night_caps_only"
+_DEFAULT_RANK_A_NIGHT_CAP_MODE = "hard_then_soft"
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +231,17 @@ def _normalize_ab_ratio_coverage_mode(value) -> str:
     if normalized in {"night_caps_only", "no_coverage", "ratio_dominant"}:
         return "night_caps_only"
     return _DEFAULT_AB_RATIO_COVERAGE_MODE
+
+
+def _normalize_rank_night_cap_mode(value, default_mode: str) -> str:
+    normalized = str(value).strip().lower() if value is not None else default_mode
+    if normalized in {"hard", "strict"}:
+        return "hard"
+    if normalized in {"hard_then_soft", "strict_then_soft", "fallback_soft"}:
+        return "hard_then_soft"
+    if normalized in {"soft", "penalty_only"}:
+        return "soft"
+    return default_mode
 
 
 def _to_internal_code(raw, leave_codes: set[str], non_working_codes: set[str]) -> int | None:
@@ -897,6 +909,10 @@ def parse_ab_ratio_inputs(
         raw_rank_a_allowed_excess,
         rn_night_allowed_excess,
     )
+    rank_a_night_cap_mode = _normalize_rank_night_cap_mode(
+        cfg.get("rank_a_night_cap_mode", cfg.get("a_night_cap_mode")),
+        _DEFAULT_RANK_A_NIGHT_CAP_MODE,
+    )
 
     default_rank_b_night_targets = [demand[day_idx][NIGHT]["B"] for day_idx in range(num_days)]
     raw_rank_b_target = cfg.get("rank_b_night_min_per_day", cfg.get("b_night_min_per_day"))
@@ -981,6 +997,7 @@ def parse_ab_ratio_inputs(
         "rn_night_allowed_excess": rn_night_allowed_excess,
         "rank_a_night_caps": rank_a_night_caps,
         "rank_a_night_allowed_excess": rank_a_night_allowed_excess,
+        "rank_a_night_cap_mode": rank_a_night_cap_mode,
         "rank_b_night_targets": rank_b_night_targets,
         "rank_b_night_caps": rank_b_night_caps,
         "rank_b_night_allowed_excess": rank_b_night_allowed_excess,
@@ -1107,6 +1124,7 @@ def run_ab_ratio_pipeline(
     relax_no_three_nights = _coerce_bool(debug_cfg.get("_ab_ratio_relax_no_three_nights"), False)
     relax_pattern_exact = _coerce_bool(debug_cfg.get("_ab_ratio_relax_pattern_exact"), False)
     relax_rank_night_mins = _coerce_bool(debug_cfg.get("_ab_ratio_relax_rank_night_mins"), False)
+    relax_rank_a_night_cap = _coerce_bool(debug_cfg.get("_ab_ratio_relax_rank_a_night_cap"), False)
     diagnostic_retry_active = _coerce_bool(debug_cfg.get("_ab_ratio_diag_active"), False)
 
     if progress_callback:
@@ -1151,6 +1169,7 @@ def run_ab_ratio_pipeline(
     rn_night_targets = parsed["rn_night_targets"]
     rn_night_allowed_excess = parsed["rn_night_allowed_excess"]
     rank_a_night_allowed_excess = parsed["rank_a_night_allowed_excess"]
+    rank_a_night_cap_mode = parsed["rank_a_night_cap_mode"]
     rank_b_night_allowed_excess = parsed["rank_b_night_allowed_excess"]
     rank_c_night_allowed_excess = parsed["rank_c_night_allowed_excess"]
     ab_ratio_coverage_mode = parsed["ab_ratio_coverage_mode"]
@@ -1656,9 +1675,12 @@ def run_ab_ratio_pipeline(
             dev = model.NewIntVar(0, len(rank_a), f"rn_night_dev_{day_idx}")
             model.AddAbsEquality(dev, diff)
             add_penalty(dev, weights["rn_night"])
-        over_cap = model.NewIntVar(0, len(rank_a), f"rn_night_over_{day_idx}")
-        model.Add(over_cap >= count_a_night - allowed_max)
-        add_penalty(over_cap, weights["rn_night_over"])
+        if rank_a_night_cap_mode in {"hard", "hard_then_soft"} and not relax_rank_a_night_cap:
+            model.Add(count_a_night <= cap)
+        else:
+            over_cap = model.NewIntVar(0, len(rank_a), f"rn_night_over_{day_idx}")
+            model.Add(over_cap >= count_a_night - allowed_max)
+            add_penalty(over_cap, weights["rn_night_over"])
 
     for day_idx in range(num_days):
         if not rank_b:
@@ -1733,6 +1755,27 @@ def run_ab_ratio_pipeline(
 
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        if (
+            rank_a_night_cap_mode == "hard_then_soft"
+            and not relax_rank_a_night_cap
+            and not diagnostic_retry_active
+        ):
+            retry_config = dict(debug_cfg)
+            retry_config["_ab_ratio_relax_rank_a_night_cap"] = True
+            logger.warning(
+                "[AB-DEBUG] strict rank A night cap infeasible; retrying with soft cap fallback"
+            )
+            return run_ab_ratio_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                shift_hours=shift_hours,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                milp_config=retry_config,
+            )
         feasible_relaxations: list[str] = []
         if not diagnostic_retry_active:
             diagnostic_profiles = [

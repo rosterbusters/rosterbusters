@@ -1348,7 +1348,7 @@ def _solve(
     if time_limit is not None:
         solver.options["TimeLimit"] = time_limit
     if solver_name == "gurobi": #CHANGE MIPGAP BACK LATER
-        solver.options["MIPGap"]   = 0.08  # 2% gap — sufficient for nurse schedules
+        solver.options["MIPGap"]   = 0.02  # 2% gap — sufficient for nurse schedules
         solver.options["Threads"]  = 0     # 0 = use all available cores
         solver.options["Method"]   = 2     # Barrier LP relaxation (faster for large MIPs)
         solver.options["Presolve"] = 2     # Aggressive presolve
