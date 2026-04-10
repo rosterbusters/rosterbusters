@@ -18,6 +18,7 @@ interface ShiftBadgeProps {
   comment?: string;
   onCommentIconClick?: (e: React.MouseEvent) => void;
   shiftRequestOverlay?: ShiftRequestOverlay;
+  shiftDurationMap?: Map<string, number>;
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
@@ -41,6 +42,21 @@ function getTimeRange(shiftCode: ShiftCode): string | null {
   return `${formatTime(shiftInfo.defaultStart)}-${formatTime(shiftInfo.defaultEnd)}`;
 }
 
+function getDurationHours(
+  shiftCode: ShiftCode,
+  shiftDurationMap?: Map<string, number>,
+): number | null {
+  const shiftInfo = SHIFT_CODE_MAP[shiftCode];
+  if (!shiftInfo?.isWorking) {
+    return null;
+  }
+  const mapValue = shiftDurationMap?.get(shiftCode);
+  if (typeof mapValue === "number") {
+    return mapValue;
+  }
+  return shiftInfo?.durationHours ?? null;
+}
+
 export function ShiftBadge({
   shiftCode,
   onClick,
@@ -50,6 +66,7 @@ export function ShiftBadge({
   comment,
   onCommentIconClick,
   shiftRequestOverlay,
+  shiftDurationMap,
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
@@ -86,6 +103,7 @@ export function ShiftBadge({
   const shiftInfo = SHIFT_CODE_MAP[shiftCode];
   const isWorkingShift = shiftInfo?.isWorking ?? true;
   const timeRange = getTimeRange(shiftCode);
+  const durationHours = getDurationHours(shiftCode, shiftDurationMap);
   const isWeekView = viewMode === "week";
   const hasComment = !!comment;
 
@@ -227,11 +245,27 @@ export function ShiftBadge({
       </Box>
     );
 
+    if (durationHours != null) {
+      return (
+        <Tooltip
+          content={
+            <Text fontSize="xs" color="whiteAlpha.900" py={1}>
+              {durationHours}h
+            </Text>
+          }
+          showArrow
+        >
+          {weekBadge}
+        </Tooltip>
+      );
+    }
+
     return weekBadge;
   }
 
   // 2-week view - compact badges with tooltip on hover
   const showShiftTooltip = viewMode === "twoWeeks" && timeRange;
+  const showDurationTooltip = durationHours != null;
 
   const twoWeekBadge = (
     <Box position="relative" display="inline-block">
@@ -293,7 +327,27 @@ export function ShiftBadge({
             <Text fontSize="xs" color="whiteAlpha.800">
               {timeRange}
             </Text>
+            {showDurationTooltip && (
+              <Text fontSize="xs" color="whiteAlpha.800">
+                {durationHours}h
+              </Text>
+            )}
           </VStack>
+        }
+        showArrow
+      >
+        {twoWeekBadge}
+      </Tooltip>
+    );
+  }
+
+  if (showDurationTooltip) {
+    return (
+      <Tooltip
+        content={
+          <Text fontSize="xs" color="whiteAlpha.900" py={1}>
+            {durationHours}h
+          </Text>
         }
         showArrow
       >
