@@ -124,6 +124,7 @@ export interface HoursSummary {
 // Row data structure for the roster grid
 export interface RosterRow {
   nurseId: number;
+  employeeId?: string | null;
   name: string;
   designation: StaffDesignation | string;
   staffingRole?: StaffRole | null;
@@ -172,6 +173,7 @@ export interface WardRosterResponse {
 
 export interface NurseInfo {
   nurseId: number;
+  employeeId?: string | null;
   name: string;
   designation: string;
   staffing_role?: StaffRole | null;

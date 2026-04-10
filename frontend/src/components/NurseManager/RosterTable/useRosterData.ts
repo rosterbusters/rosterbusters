@@ -330,6 +330,7 @@ export function transformRosterData(
 
     return {
       nurseId: nurse.nurseId,
+      employeeId: nurse.employeeId ?? null,
       name: nurse.name,
       designation: nurse.designation,
       staffingRole: nurse.staffing_role ?? null,
@@ -1133,12 +1134,17 @@ export function useAutoReviewShiftRequests() {
 // Hook for Excel export
 export function useRosterExport() {
   return {
-    exportToXLSX: async (data: RosterRow[], startDate: Date, viewMode: "week" | "twoWeeks") => {
+    exportToXLSX: async (data: RosterRow[], startDate: Date, _viewMode: "week" | "twoWeeks") => {
       const XLSX = await import("xlsx");
-      const days = viewMode === "week" ? 7 : 14;
+      const days = 14;
 
-      // Header row: 2 blank cells + date strings in YYYY-MM-DD
-      const header = [
+      // Match the requested sheet layout:
+      // Row 1: A1=EMP_NO
+      // Row 2: D2..Q2 contain the 14 roster dates
+      // Row 3+: A=Designation, B=Name, C=Staff ID, D..Q=shifts
+      const row1 = ["EMP_NO", "", "", ...Array.from({ length: days }, () => "")];
+      const row2 = [
+        "",
         "",
         "",
         ...Array.from({ length: days }, (_, i) =>
@@ -1146,22 +1152,23 @@ export function useRosterExport() {
         ),
       ];
 
-      // Data rows: designation (acronym), name, then shift code per day
       const rows = data.map((row) => [
         designationToAcronym(row.designation),
         row.name,
+        row.employeeId ?? "",
         ...Array.from({ length: days }, (_, i) => {
           const dateKey = moment(startDate).add(i, "days").format("YYYY-MM-DD");
           return row.shifts[dateKey]?.shiftCode ?? "";
         }),
       ]);
 
-      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      const ws = XLSX.utils.aoa_to_sheet([row1, row2, ...rows]);
 
       ws["!cols"] = [
-        { wch: 10 }, // designation (acronym – narrower)
-        { wch: 20 }, // name
-        ...Array(days).fill({ wch: 12 }), // date columns
+        { wch: 10 },
+        { wch: 16 },
+        { wch: 12 },
+        ...Array.from({ length: days }, () => ({ wch: 12 })),
       ];
 
       const wb = XLSX.utils.book_new();

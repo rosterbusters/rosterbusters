@@ -377,6 +377,7 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
             {
                 "nurseId": n.nurseid,
                 "name": n.name,
+                "employeeId": n.employeeid,
                 "designation": n.designation,
                 "email": n.email,
                 "contactNumber": n.contactnumber or "",

@@ -512,6 +512,7 @@ function RosterPlanningPage() {
       setRosterData(
         nurses.map((nurse) => ({
           nurseId: nurse.nurseId,
+          employeeId: nurse.employeeId ?? null,
           name: nurse.name,
           designation: nurse.designation,
           staffingRole: nurse.staffing_role ?? null,
@@ -530,6 +531,7 @@ function RosterPlanningPage() {
     const entries = nurses ?? [];
     return entries.map((nurse) => ({
       nurseId: nurse.nurseId,
+      employeeId: nurse.employeeId ?? null,
       name: nurse.name,
       designation: nurse.designation,
       staffingRole: nurse.staffing_role ?? null,
@@ -1149,6 +1151,7 @@ function RosterPlanningPage() {
     setRosterData(
       nurses.map((nurse) => ({
         nurseId: nurse.nurseId,
+        employeeId: nurse.employeeId ?? null,
         name: nurse.name,
         designation: nurse.designation,
         staffingRole: nurse.staffing_role ?? null,
