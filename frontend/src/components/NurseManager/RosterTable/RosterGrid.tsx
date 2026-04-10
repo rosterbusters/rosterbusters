@@ -296,6 +296,7 @@ interface RosterGridProps {
   highlightedNurseIds?: Set<number>;
   onNurseNameClick?: (row: RosterRow) => void;
   shiftDurationMap?: Map<string, number>;
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>;
 }
 
 interface RosterGridRowProps {
@@ -320,6 +321,7 @@ interface RosterGridRowProps {
   ) => void;
   shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>;
   shiftDurationMap?: Map<string, number>;
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>;
 }
 
 const RosterGridRow = React.memo(function RosterGridRow({
@@ -332,6 +334,7 @@ const RosterGridRow = React.memo(function RosterGridRow({
   handleCommentIconClick,
   shiftRequestOverlays,
   shiftDurationMap,
+  shiftTimeMap,
 }: RosterGridRowProps) {
   const displayName = getDisplayName(row);
   const isHighlighted = highlightedNurseIds?.has(row.nurseId) ?? false;
@@ -421,6 +424,7 @@ const RosterGridRow = React.memo(function RosterGridRow({
                   }
                   shiftRequestOverlay={shiftRequestOverlays?.[String(row.nurseId)]?.[dateKey]}
                   shiftDurationMap={shiftDurationMap}
+                  shiftTimeMap={shiftTimeMap}
                 />
               </Box>
             </Flex>
@@ -511,6 +515,7 @@ export function RosterGrid({
   highlightedNurseIds,
   onNurseNameClick,
   shiftDurationMap,
+  shiftTimeMap,
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -957,6 +962,7 @@ export function RosterGrid({
               handleCommentIconClick={handleCommentIconClick}
               shiftRequestOverlays={shiftRequestOverlays}
               shiftDurationMap={shiftDurationMap}
+              shiftTimeMap={shiftTimeMap}
             />,
           );
         });

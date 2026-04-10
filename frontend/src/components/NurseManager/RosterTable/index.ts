@@ -26,6 +26,7 @@ export {
   useResumeAlgorithmTask,
   useGenerationInputs,
   useShiftCodes,
+  useAllShiftCodes,
   useUpdateNurseShiftPattern,
   useUpsertPeriodConstraint,
   useDeletePeriodConstraint,
