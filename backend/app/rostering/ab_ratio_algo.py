@@ -213,6 +213,13 @@ def _coerce_int(value, default: int) -> int:
         return default
 
 
+def _coerce_float(value, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _coerce_bool(value, default: bool) -> bool:
     if isinstance(value, bool):
         return value
@@ -302,14 +309,14 @@ def _priority_weight(raw_priority, default_weights: dict[str, int]) -> int:
 
 def _build_ab_targets(
     total_slots: int,
-    ratio_weights: dict[int, int],
+    ratio_weights: dict[int, float],
 ) -> tuple[dict[int, int], dict[int, float]]:
-    grand_total = sum(max(int(ratio_weights.get(shift_code, 0)), 0) for shift_code in (AM, PM, NIGHT))
+    grand_total = sum(max(float(ratio_weights.get(shift_code, 0)), 0.0) for shift_code in (AM, PM, NIGHT))
     if total_slots <= 0 or grand_total <= 0:
         return {AM: 0, PM: 0, NIGHT: 0}, {AM: 0.0, PM: 0.0, NIGHT: 0.0}
 
     exact_targets = {
-        shift_code: (total_slots * max(int(ratio_weights.get(shift_code, 0)), 0) / grand_total)
+        shift_code: (total_slots * max(float(ratio_weights.get(shift_code, 0)), 0.0) / grand_total)
         for shift_code in (AM, PM, NIGHT)
     }
     roster_totals = {
@@ -378,31 +385,31 @@ def _resolve_daily_targets(raw_target, default_targets: list[int]) -> list[int]:
     return [default_target for _ in range(num_days)]
 
 
-def _normalize_ab_shift_ratio(config_ratio) -> dict[int, int]:
+def _normalize_ab_shift_ratio(config_ratio) -> dict[int, float]:
     normalized = dict(_DEFAULT_AB_SHIFT_RATIO)
     if isinstance(config_ratio, dict):
         for raw_key, value in config_ratio.items():
             key = str(raw_key).strip().upper()
             if key in {"AM", "A"}:
-                normalized[AM] = max(_coerce_int(value, normalized[AM]), 0)
+                normalized[AM] = max(_coerce_float(value, normalized[AM]), 0.0)
             elif key in {"PM", "P"}:
-                normalized[PM] = max(_coerce_int(value, normalized[PM]), 0)
+                normalized[PM] = max(_coerce_float(value, normalized[PM]), 0.0)
             elif key in {"NIGHT", "N"}:
-                normalized[NIGHT] = max(_coerce_int(value, normalized[NIGHT]), 0)
+                normalized[NIGHT] = max(_coerce_float(value, normalized[NIGHT]), 0.0)
     return normalized
 
 
-def _normalize_c_shift_ratio(config_ratio) -> dict[int, int]:
+def _normalize_c_shift_ratio(config_ratio) -> dict[int, float]:
     normalized = dict(_DEFAULT_C_SHIFT_RATIO)
     if isinstance(config_ratio, dict):
         for raw_key, value in config_ratio.items():
             key = str(raw_key).strip().upper()
             if key in {"AM", "A"}:
-                normalized[AM] = max(_coerce_int(value, normalized[AM]), 0)
+                normalized[AM] = max(_coerce_float(value, normalized[AM]), 0.0)
             elif key in {"PM", "P"}:
-                normalized[PM] = max(_coerce_int(value, normalized[PM]), 0)
+                normalized[PM] = max(_coerce_float(value, normalized[PM]), 0.0)
             elif key in {"NIGHT", "N"}:
-                normalized[NIGHT] = max(_coerce_int(value, normalized[NIGHT]), 0)
+                normalized[NIGHT] = max(_coerce_float(value, normalized[NIGHT]), 0.0)
     return normalized
 
 
@@ -654,6 +661,10 @@ def parse_ab_ratio_inputs(
     pattern_nurses = {
         idx for idx, pattern in shift_pattern_by_nurse.items() if pattern is not None
     }
+    pattern_working_ab = [idx for idx in working_ab if idx in pattern_nurses]
+    pattern_working_rank_c = [idx for idx in working_rank_c if idx in pattern_nurses]
+    pattern_working_rank_a = [idx for idx in working_rank_a if idx in pattern_nurses]
+    pattern_working_rank_b = [idx for idx in working_rank_b if idx in pattern_nurses]
     managed_working_ab = [idx for idx in working_ab if idx not in pattern_nurses]
     managed_working_rank_c = [idx for idx in working_rank_c if idx not in pattern_nurses]
     managed_working_rank_a = [idx for idx in working_rank_a if idx not in pattern_nurses]
@@ -859,6 +870,9 @@ def parse_ab_ratio_inputs(
     expected_ab_work_slots = 0
     if managed_working_ab:
         ab_weekly_do_targets, expected_ab_work_slots = _build_weekly_do_targets_for_group(managed_working_ab)
+    if pattern_working_ab:
+        _, expected_pattern_ab_work_slots = _build_weekly_do_targets_for_group(pattern_working_ab)
+        expected_ab_work_slots += expected_pattern_ab_work_slots
 
     ab_target_totals, ab_target_ratios = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
     ab_daily_targets = {
@@ -869,6 +883,9 @@ def parse_ab_ratio_inputs(
     expected_a_work_slots = 0
     if managed_working_rank_a:
         _, expected_a_work_slots = _build_weekly_do_targets_for_group(managed_working_rank_a)
+    if pattern_working_rank_a:
+        _, expected_pattern_a_work_slots = _build_weekly_do_targets_for_group(pattern_working_rank_a)
+        expected_a_work_slots += expected_pattern_a_work_slots
     a_target_totals, _ = _build_ab_targets(expected_a_work_slots, ab_shift_ratio)
     a_daily_targets = {
         shift_code: _distribute_targets(a_target_totals[shift_code], num_days)
@@ -878,6 +895,9 @@ def parse_ab_ratio_inputs(
     expected_b_work_slots = 0
     if managed_working_rank_b:
         _, expected_b_work_slots = _build_weekly_do_targets_for_group(managed_working_rank_b)
+    if pattern_working_rank_b:
+        _, expected_pattern_b_work_slots = _build_weekly_do_targets_for_group(pattern_working_rank_b)
+        expected_b_work_slots += expected_pattern_b_work_slots
     b_target_totals, _ = _build_ab_targets(expected_b_work_slots, ab_shift_ratio)
     b_daily_targets = {
         shift_code: _distribute_targets(b_target_totals[shift_code], num_days)
@@ -888,6 +908,9 @@ def parse_ab_ratio_inputs(
     expected_c_work_slots = 0
     if managed_working_rank_c:
         c_weekly_do_targets, expected_c_work_slots = _build_weekly_do_targets_for_group(managed_working_rank_c)
+    if pattern_working_rank_c:
+        _, expected_pattern_c_work_slots = _build_weekly_do_targets_for_group(pattern_working_rank_c)
+        expected_c_work_slots += expected_pattern_c_work_slots
 
     pattern_weekly_do_targets: dict[int, list[int]] = {}
     if pattern_nurses:
@@ -1433,10 +1456,22 @@ def run_ab_ratio_pipeline(
                     sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
                     == off_target
                 )
+        for day_idx in range(num_days - 2):
+            model.Add(
+                x[nurse_idx, day_idx, OFF]
+                + x[nurse_idx, day_idx + 1, OFF]
+                + x[nurse_idx, day_idx + 2, OFF]
+                <= 2
+            )
+
+    ab_am_pm_nurses = managed_working_ab + pattern_working_ab
+    a_am_pm_nurses = managed_working_rank_a + pattern_working_rank_a
+    b_am_pm_nurses = managed_working_rank_b + pattern_working_rank_b
+    c_am_pm_nurses = managed_working_rank_c + pattern_working_rank_c
 
     ab_target_totals = parsed["ab_target_totals"]
     for shift_code, weight_key in ((AM, "ratio_am"), (PM, "ratio_pm"), (NIGHT, "ratio_night")):
-        target_nurses = managed_working_ab if shift_code in {AM, PM} else ratio_working_ab
+        target_nurses = ab_am_pm_nurses if shift_code in {AM, PM} else ratio_working_ab
         actual_total = model.NewIntVar(0, len(target_nurses) * max(num_days, 1), f"ab_actual_{shift_code}")
         model.Add(
             actual_total
@@ -1457,8 +1492,8 @@ def run_ab_ratio_pipeline(
         add_penalty(dev, weights[weight_key])
 
     for group_name, managed_group_nurses, night_group_nurses, group_targets in (
-        ("a", managed_working_rank_a, ratio_working_rank_a, a_daily_targets),
-        ("b", managed_working_rank_b, ratio_working_rank_b, b_daily_targets),
+        ("a", a_am_pm_nurses, ratio_working_rank_a, a_daily_targets),
+        ("b", b_am_pm_nurses, ratio_working_rank_b, b_daily_targets),
     ):
         for shift_code, weight_key, group_nurses in (
             (AM, "daily_ratio_am", managed_group_nurses),
@@ -1517,22 +1552,23 @@ def run_ab_ratio_pipeline(
                     add_penalty(overflow_tier3, weights["daily_ratio_night_overflow_tier3"])
 
     for shift_code, weight_key in ((AM, "c_ratio_am"), (PM, "c_ratio_pm"), (NIGHT, "c_ratio_night")):
-        actual_total = model.NewIntVar(0, len(ratio_working_rank_c) * max(num_days, 1), f"c_actual_{shift_code}")
+        c_ratio_nurses = c_am_pm_nurses if shift_code in {AM, PM} else ratio_working_rank_c
+        actual_total = model.NewIntVar(0, len(c_ratio_nurses) * max(num_days, 1), f"c_actual_{shift_code}")
         model.Add(
             actual_total
             == sum(
                 x[nurse_idx, day_idx, shift_code]
-                for nurse_idx in ratio_working_rank_c
+                for nurse_idx in c_ratio_nurses
                 for day_idx in range(num_days)
             )
         )
         diff = model.NewIntVar(
-            -len(ratio_working_rank_c) * max(num_days, 1),
-            len(ratio_working_rank_c) * max(num_days, 1),
+            -len(c_ratio_nurses) * max(num_days, 1),
+            len(c_ratio_nurses) * max(num_days, 1),
             f"c_diff_{shift_code}",
         )
         model.Add(diff == actual_total - c_target_totals[shift_code])
-        dev = model.NewIntVar(0, len(ratio_working_rank_c) * max(num_days, 1), f"c_dev_{shift_code}")
+        dev = model.NewIntVar(0, len(c_ratio_nurses) * max(num_days, 1), f"c_dev_{shift_code}")
         model.AddAbsEquality(dev, diff)
         add_penalty(dev, weights[weight_key])
 
@@ -1542,18 +1578,19 @@ def run_ab_ratio_pipeline(
         (NIGHT, "c_daily_ratio_night"),
     ):
         for day_idx in range(num_days):
-            actual_day_total = model.NewIntVar(0, len(ratio_working_rank_c), f"c_day_actual_{shift_code}_{day_idx}")
+            c_daily_nurses = c_am_pm_nurses if shift_code in {AM, PM} else ratio_working_rank_c
+            actual_day_total = model.NewIntVar(0, len(c_daily_nurses), f"c_day_actual_{shift_code}_{day_idx}")
             model.Add(
                 actual_day_total
-                == sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in ratio_working_rank_c)
+                == sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in c_daily_nurses)
             )
             day_diff = model.NewIntVar(
-                -len(ratio_working_rank_c),
-                len(ratio_working_rank_c),
+                -len(c_daily_nurses),
+                len(c_daily_nurses),
                 f"c_day_diff_{shift_code}_{day_idx}",
             )
             model.Add(day_diff == actual_day_total - c_daily_targets[shift_code][day_idx])
-            day_dev = model.NewIntVar(0, len(ratio_working_rank_c), f"c_day_dev_{shift_code}_{day_idx}")
+            day_dev = model.NewIntVar(0, len(c_daily_nurses), f"c_day_dev_{shift_code}_{day_idx}")
             model.AddAbsEquality(day_dev, day_diff)
             add_penalty(day_dev, weights[weight_key])
             if shift_code == NIGHT:
