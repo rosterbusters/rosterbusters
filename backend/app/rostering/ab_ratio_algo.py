@@ -146,9 +146,9 @@ _DEFAULT_WEIGHTS = {
     "ratio_am": 8_000,
     "ratio_pm": 8_000,
     "ratio_night": 9_000,
-    "daily_ratio_am": 3_000,
-    "daily_ratio_pm": 3_000,
-    "daily_ratio_night": 4_000,
+    "daily_ratio_am": 6_000,
+    "daily_ratio_pm": 6_000,
+    "daily_ratio_night": 8_000,
     "daily_ratio_night_overflow": 80_000,
     "daily_ratio_night_overflow_tier2": 110_000,
     "daily_ratio_night_overflow_tier3": 260_000,
@@ -169,9 +169,9 @@ _DEFAULT_WEIGHTS = {
     "c_ratio_am": 4_000,
     "c_ratio_pm": 4_200,
     "c_ratio_night": 4_200,
-    "c_daily_ratio_am": 1_800,
-    "c_daily_ratio_pm": 2_600,
-    "c_daily_ratio_night": 2_600,
+    "c_daily_ratio_am": 3_600,
+    "c_daily_ratio_pm": 5_200,
+    "c_daily_ratio_night": 5_200,
     "soft_request": 200,
 }
 _DEFAULT_TIME_LIMIT_S = 60.0
@@ -198,6 +198,7 @@ _DEFAULT_DAILY_TOTAL_SHIFT_BALANCE_ENABLED = True
 _DEFAULT_AB_RATIO_COVERAGE_MODE = "night_caps_only"
 _DEFAULT_RANK_A_NIGHT_CAP_MODE = "hard_then_soft"
 _DEFAULT_RANK_B_NIGHT_MIN_MODE = "hard_then_soft"
+_DEFAULT_WEIGHT_CAP = 1_000_000
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +306,24 @@ def _priority_weight(raw_priority, default_weights: dict[str, int]) -> int:
     effective_weights["pending"] = pending_weight
     effective_weights["approved"] = approved_weight
     return max(_coerce_int(effective_weights.get(priority, 1), 1), 1)
+
+
+def _normalize_ratio_weights(weights: dict[str, int], max_weight: int) -> dict[str, int]:
+    positive_values = [value for value in weights.values() if value > 0]
+    if not positive_values:
+        return weights
+    current_max = max(positive_values)
+    if current_max <= max_weight:
+        return weights
+    scale = max_weight / current_max
+    normalized: dict[str, int] = {}
+    for key, value in weights.items():
+        if value <= 0:
+            normalized[key] = 0
+        else:
+            scaled = int(round(value * scale))
+            normalized[key] = max(1, scaled)
+    return normalized
 
 
 def _build_ab_targets(
@@ -807,6 +826,8 @@ def parse_ab_ratio_inputs(
         cfg.get("c_daily_ratio_night_weight"),
         ratio_weights["c_daily_ratio_night"],
     )
+    weight_cap = max(_coerce_int(cfg.get("ab_ratio_weight_cap"), _DEFAULT_WEIGHT_CAP), 1)
+    ratio_weights = _normalize_ratio_weights(ratio_weights, weight_cap)
     ab_shift_ratio = _normalize_ab_shift_ratio(cfg.get("ab_shift_ratio"))
     c_shift_ratio = _normalize_c_shift_ratio(cfg.get("c_shift_ratio"))
     ab_ratio_coverage_mode = _normalize_ab_ratio_coverage_mode(
