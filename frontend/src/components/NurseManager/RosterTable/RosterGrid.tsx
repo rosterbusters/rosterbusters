@@ -72,6 +72,7 @@ interface RosterGridProps {
   shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>;
   highlightedNurseIds?: Set<number>;
   onNurseNameClick?: (row: RosterRow) => void;
+  shiftDurationMap?: Map<string, number>;
 }
 
 // Generate day columns based on view mode and start date
@@ -145,6 +146,7 @@ export function RosterGrid({
   shiftRequestOverlays = {},
   highlightedNurseIds,
   onNurseNameClick,
+  shiftDurationMap,
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -691,6 +693,7 @@ export function RosterGrid({
                     handleCommentIconClick(row.nurseId, displayName, dateKey, shift, e)
                   }
                   shiftRequestOverlay={shiftRequestOverlays[String(row.nurseId)]?.[dateKey]}
+                  shiftDurationMap={shiftDurationMap}
                 />
               </Box>
             </Flex>

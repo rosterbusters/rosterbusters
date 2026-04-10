@@ -678,6 +678,7 @@ function NurseManagerHome() {
             isLoading={wardsLoading || rosterLoading}
             showSummary={false}
             shiftRequestOverlays={mockOverlays}
+            shiftDurationMap={shiftDurationMap}
           />
         </Box>
 
