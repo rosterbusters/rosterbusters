@@ -1300,6 +1300,20 @@ def run_ab_ratio_pipeline(
                     model.Add(x[nurse_idx, day_idx, AM] == 0)
                     model.Add(x[nurse_idx, day_idx, NIGHT] == 0)
 
+    night_ineligible_ids = set(no_night_ids)
+    for nurse_idx, shift_pattern in shift_pattern_by_nurse.items():
+        if shift_pattern in {"AM_ONLY", "PM_ONLY"}:
+            night_ineligible_ids.add(nurse_idx)
+    nurses_with_leave_days = {nurse_idx for nurse_idx in working_nurses if al_day_req[nurse_idx]}
+    if nurses_with_leave_days:
+        logger.warning(
+            "[AB-DEBUG] leave-day nurses excluded from min-nights: %s",
+            ", ".join(
+                f"{nurse_names[nurse_idx]} (#{nurse_idx}, rank {nurse_ranks[nurse_idx]})"
+                for nurse_idx in sorted(nurses_with_leave_days)
+            ),
+        )
+
     penalty_vars: list[cp_model.IntVar] = []
     penalty_weights: list[int] = []
 
@@ -1325,9 +1339,13 @@ def run_ab_ratio_pipeline(
 
     for nurse_idx in managed_working_ab:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
-        if nurse_idx not in no_night_ids and not relax_min_nights:
+        if (
+            nurse_idx not in night_ineligible_ids
+            and nurse_idx not in nurses_with_leave_days
+            and not relax_min_nights
+        ):
             model.Add(total_nights >= 2)
-        if nurse_idx in no_night_ids:
+        if nurse_idx in night_ineligible_ids:
             model.Add(total_nights == 0)
         else:
             model.Add(total_nights <= 4)
@@ -1402,9 +1420,13 @@ def run_ab_ratio_pipeline(
 
     for nurse_idx in managed_working_rank_c:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
-        if nurse_idx not in no_night_ids and not relax_min_nights:
+        if (
+            nurse_idx not in night_ineligible_ids
+            and nurse_idx not in nurses_with_leave_days
+            and not relax_min_nights
+        ):
             model.Add(total_nights >= 2)
-        if nurse_idx in no_night_ids:
+        if nurse_idx in night_ineligible_ids:
             model.Add(total_nights == 0)
         else:
             model.Add(total_nights <= 4)
