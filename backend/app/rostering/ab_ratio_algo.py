@@ -1198,6 +1198,8 @@ def run_ab_ratio_pipeline(
     model = cp_model.CpModel()
     num_nurses = parsed["num_nurses"]
     num_days = parsed["num_days"]
+    nurse_names = parsed["nurse_names"]
+    nurse_ranks = parsed["nurse_ranks"]
     demand = parsed["demand"]
     working_nurses = parsed["working_nurses"]
     working_ab = parsed["working_ab"]
