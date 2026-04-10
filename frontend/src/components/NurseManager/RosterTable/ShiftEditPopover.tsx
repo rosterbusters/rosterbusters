@@ -275,11 +275,12 @@ export function ShiftEditPopover({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleUndoAll]);
 
+  const workingOverride = new Set<ShiftCode>(["DO", "RD"]);
   const workingShifts = allShiftCodes
-    .filter((shiftCode) => shiftCode.isworking)
+    .filter((shiftCode) => shiftCode.isworking || workingOverride.has(shiftCode.shiftcode as ShiftCode))
     .map((shiftCode) => shiftCode.shiftcode as ShiftCode);
   const leaveShifts = allShiftCodes
-    .filter((shiftCode) => !shiftCode.isworking)
+    .filter((shiftCode) => !shiftCode.isworking && !workingOverride.has(shiftCode.shiftcode as ShiftCode))
     .map((shiftCode) => shiftCode.shiftcode as ShiftCode);
   const shiftDescriptions = Object.fromEntries(
     allShiftCodes.map((shiftCode) => [shiftCode.shiftcode, shiftCode.description]),
