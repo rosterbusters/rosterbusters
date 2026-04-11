@@ -22,10 +22,16 @@ def _build_greedy_hint(
     num_nurses: int,
     num_days: int,
     working_nurses: list[int],
+    nurse_ranks: list[str],
     al_nurses_set: set[int],
     al_day_req: list[set],
     post_night_off: set[int],
     demand: list[dict],
+    hard_assignments: list[dict[int, int]] | None = None,
+    no_night_ids: set[int] | None = None,
+    shift_pattern_by_nurse: dict[int, str | None] | None = None,
+    managed_working_ab: list[int] | None = None,
+    weekly_do_targets_by_nurse: dict[int, list[int]] | None = None,
 ) -> list[list[int]]:
     """
     Greedy O(N×D) schedule used to warm-start the CP-SAT solver.
@@ -34,76 +40,152 @@ def _build_greedy_hint(
       1. Pin fixed slots (full-AL nurses, single-day AL requests, post-night OFF).
       2. Assign night blocks round-robin, capped per fortnight.
       3. Add mandatory OFF after every night block.
-      4. Reserve 2 voluntary OFFs per week (weekends preferred).
+      4. Reserve weekly OFF targets (weekends preferred).
       5. Balance AM vs PM to match daily demand.
     """
-    night_constant = math.ceil(((num_nurses * 2) / 3) / 4)
     sched = [[AM] * num_days for _ in range(num_nurses)]
+    hard_assignments = hard_assignments or [{} for _ in range(num_nurses)]
+    no_night_ids = no_night_ids or set()
+    shift_pattern_by_nurse = shift_pattern_by_nurse or {}
+    managed_working_ab_set = set(managed_working_ab or [])
+    weekly_do_targets_by_nurse = weekly_do_targets_by_nurse or {}
+    pinned = [[False] * num_days for _ in range(num_nurses)]
 
     # Step 1: pin fixed slots
     for n in al_nurses_set:
         for d in range(num_days):
             sched[n][d] = AL
+            pinned[n][d] = True
 
     for n in working_nurses:
+        if shift_pattern_by_nurse.get(n) == "PM_ONLY":
+            for d in range(num_days):
+                sched[n][d] = PM
         for d in al_day_req[n]:
             if d < num_days:
                 sched[n][d] = AL
+                pinned[n][d] = True
 
     for n in post_night_off:
+        if n in managed_working_ab_set:
+            continue
         if 0 not in al_day_req[n]:
             sched[n][0] = OFF
+            pinned[n][0] = True
+
+    for n in working_nurses:
+        for d, shift_code in hard_assignments[n].items():
+            if 0 <= d < num_days:
+                sched[n][d] = shift_code
+                pinned[n][d] = True
 
     # Step 2: night blocks, round-robin
     night_counts = [0] * num_nurses
-    wn = list(working_nurses)
-    cursor = 0
+    weekly_night_counts = [[0] * math.ceil(max(num_days, 1) / 7) for _ in range(num_nurses)]
+    for n in working_nurses:
+        for d in range(num_days):
+            if sched[n][d] == NIGHT:
+                night_counts[n] += 1
+                weekly_night_counts[n][d // 7] += 1
+    eligible_by_rank = {
+        rank: [
+            n
+            for n in working_nurses
+            if nurse_ranks[n] == rank
+            and n not in no_night_ids
+            and shift_pattern_by_nurse.get(n) not in {"AM_ONLY", "PM_ONLY"}
+        ]
+        for rank in "ABC"
+    }
+    cursors = {rank: 0 for rank in "ABC"}
+
+    def can_assign_night(nurse_idx: int, day_idx: int) -> bool:
+        week_idx = day_idx // 7
+        if pinned[nurse_idx][day_idx]:
+            return False
+        if sched[nurse_idx][day_idx] in (AL, OFF):
+            return False
+        if nurse_idx in no_night_ids:
+            return False
+        if shift_pattern_by_nurse.get(nurse_idx) in {"AM_ONLY", "PM_ONLY"}:
+            return False
+        if night_counts[nurse_idx] >= 4:
+            return False
+        if weekly_night_counts[nurse_idx][week_idx] >= 2:
+            return False
+        if day_idx >= 2 and sched[nurse_idx][day_idx - 1] == NIGHT and sched[nurse_idx][day_idx - 2] == NIGHT:
+            return False
+        if day_idx > 0 and sched[nurse_idx][day_idx - 1] == NIGHT:
+            return False
+        return True
+
+    def assign_night(nurse_idx: int, day_idx: int) -> None:
+        sched[nurse_idx][day_idx] = NIGHT
+        night_counts[nurse_idx] += 1
+        weekly_night_counts[nurse_idx][day_idx // 7] += 1
 
     for d in range(num_days):
-        nights_needed = sum(demand[d][NIGHT].get(r, 0) for r in "ABC")
-        assigned = 0
-
-        for _ in range(len(wn) * 2):
-            if assigned >= nights_needed:
-                break
-            n = wn[cursor % len(wn)]
-            cursor += 1
-
-            if sched[n][d] in (AL, OFF):
+        for rank in "ABC":
+            rank_pool = eligible_by_rank[rank]
+            if not rank_pool:
                 continue
-            if d > 0 and sched[n][d - 1] == NIGHT:
-                continue
-            if night_counts[n] >= night_constant:
-                continue
+            nights_needed = max(
+                0,
+                demand[d][NIGHT].get(rank, 0)
+                - sum(1 for n in rank_pool if sched[n][d] == NIGHT),
+            )
+            assigned = 0
 
-            sched[n][d] = NIGHT
-            night_counts[n] += 1
-            assigned += 1
+            for _ in range(len(rank_pool) * 2):
+                if assigned >= nights_needed:
+                    break
+                n = rank_pool[cursors[rank] % len(rank_pool)]
+                cursors[rank] += 1
 
-            if (
-                d + 1 < num_days
-                and sched[n][d + 1] not in (AL,)
-                and (d + 1) not in al_day_req[n]
-                and night_counts[n] < 4
-            ):
-                sched[n][d + 1] = NIGHT
-                night_counts[n] += 1
+                if not can_assign_night(n, d):
+                    continue
+
+                assign_night(n, d)
+                assigned += 1
+
+                if (
+                    d + 1 < num_days
+                    and d // 7 == (d + 1) // 7
+                    and not pinned[n][d + 1]
+                    and sched[n][d + 1] not in (AL, OFF)
+                    and night_counts[n] < 4
+                    and weekly_night_counts[n][(d + 1) // 7] < 2
+                ):
+                    assign_night(n, d + 1)
 
     # Mandatory OFF after every night block end
     for n in working_nurses:
         for d in range(num_days - 1):
             if sched[n][d] == NIGHT and sched[n][d + 1] != NIGHT:
-                if (d + 1) not in al_day_req[n]:
+                if not pinned[n][d + 1] and (d + 1) not in al_day_req[n]:
                     sched[n][d + 1] = OFF
 
-    # Step 3: 2 voluntary OFFs per week (weekends preferred)
+    # Step 3: weekly OFF targets (weekends preferred)
     for n in working_nurses:
-        for w_start in range(0, num_days, 7):
+        for week_index, w_start in enumerate(range(0, num_days, 7)):
             w_end = min(w_start + 7, num_days)
+            week_len = w_end - w_start
+            weekly_targets = weekly_do_targets_by_nurse.get(n, [])
+            leave_days = sum(1 for d in range(w_start, w_end) if d in al_day_req[n])
+            free_days = max(0, week_len - leave_days)
+            target_off = (
+                weekly_targets[week_index]
+                if week_index < len(weekly_targets)
+                else _leave_adjusted_weekly_do_target(free_days, leave_days)
+            )
             existing_off = sum(1 for d in range(w_start, w_end) if sched[n][d] == OFF)
-            to_add = max(0, 2 - existing_off)
+            to_add = max(0, target_off - existing_off)
             candidates = sorted(
-                [d for d in range(w_start, w_end) if sched[n][d] not in (OFF, NIGHT, AL)],
+                [
+                    d
+                    for d in range(w_start, w_end)
+                    if not pinned[n][d] and sched[n][d] not in (OFF, NIGHT, AL)
+                ],
                 key=lambda d: (0 if d % 7 in (5, 6) else 1),
             )
             for d in candidates[:to_add]:
@@ -117,7 +199,7 @@ def _build_greedy_hint(
         pm_needed = sum(demand[d][PM].get(r, 0) for r in "ABC")
 
         for n in working_nurses:
-            if sched[n][d] != AM:
+            if pinned[n][d] or shift_pattern_by_nurse.get(n) == "AM_ONLY" or sched[n][d] != AM:
                 continue
             if pm_count < pm_needed and am_count > am_needed:
                 sched[n][d] = PM
@@ -159,8 +241,8 @@ _DEFAULT_WEIGHTS = {
     "rn_night_over": 500_000,
     "rank_b_night": 100_000,
     "rank_b_night_over": 500_000,
-    "rank_c_night": 9_000,
     "rank_c_night_over": 14_000,
+    "min_nights": 100_000,
     "isolated_night": 100_000,
     "double_night_pref": 120_000,
     "daily_total_shift_balance": 24_000,
@@ -376,6 +458,14 @@ def _pattern_weekly_targets(week_len: int, free_days: int, fixed_off_days: int) 
     off_target = min(free_days, max(base_off_target, fixed_off_days))
     preferred_target = max(0, free_days - off_target)
     return off_target, preferred_target
+
+
+def _leave_adjusted_weekly_do_target(free_days: int, leave_days: int, fixed_off_days: int = 0) -> int:
+    if free_days <= 0:
+        return 0
+    if leave_days >= 5:
+        return free_days
+    return min(free_days, max(_weekly_do_target(free_days), fixed_off_days))
 
 
 def _resolve_daily_targets(raw_target, default_targets: list[int]) -> list[int]:
@@ -672,7 +762,6 @@ def parse_ab_ratio_inputs(
     rank_a = [idx for idx in range(num_nurses) if nurse_ranks[idx] == "A"]
     rank_b = [idx for idx in range(num_nurses) if nurse_ranks[idx] == "B"]
     rank_c = [idx for idx in range(num_nurses) if nurse_ranks[idx] == "C"]
-    rank_ab = [idx for idx in range(num_nurses) if nurse_ranks[idx] in {"A", "B"}]
     working_ab = [idx for idx in working_nurses if nurse_ranks[idx] in {"A", "B"}]
     working_rank_c = [idx for idx in working_nurses if nurse_ranks[idx] == "C"]
     working_rank_a = [idx for idx in working_ab if nurse_ranks[idx] == "A"]
@@ -786,9 +875,13 @@ def parse_ab_ratio_inputs(
         cfg.get("isolated_night_weight"),
         ratio_weights["isolated_night"],
     )
-    ratio_weights["rank_c_night"] = _coerce_int(
-        cfg.get("rank_c_night_weight"),
-        ratio_weights["rank_c_night"],
+    ratio_weights["double_night_pref"] = _coerce_int(
+        cfg.get("double_night_pref_weight"),
+        ratio_weights["double_night_pref"],
+    )
+    ratio_weights["min_nights"] = _coerce_int(
+        cfg.get("min_nights_weight"),
+        ratio_weights["min_nights"],
     )
     ratio_weights["daily_total_shift_balance"] = _coerce_int(
         cfg.get("daily_total_shift_balance_weight"),
@@ -879,7 +972,11 @@ def parse_ab_ratio_inputs(
                     )
                     expected_work_slots += preferred_target
                 else:
-                    target_do = max(_weekly_do_target(week_len), len(fixed_off_days))
+                    target_do = _leave_adjusted_weekly_do_target(
+                        free_days,
+                        leave_days,
+                        len(fixed_off_days),
+                    )
                     expected_work_slots += max(0, free_days - target_do)
                 weekly_targets.append(target_do)
 
@@ -895,11 +992,7 @@ def parse_ab_ratio_inputs(
         _, expected_pattern_ab_work_slots = _build_weekly_do_targets_for_group(pattern_working_ab)
         expected_ab_work_slots += expected_pattern_ab_work_slots
 
-    ab_target_totals, ab_target_ratios = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
-    ab_daily_targets = {
-        shift_code: _distribute_targets(ab_target_totals[shift_code], num_days)
-        for shift_code in (AM, PM, NIGHT)
-    }
+    ab_target_totals, _ = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
 
     expected_a_work_slots = 0
     if managed_working_rank_a:
@@ -936,7 +1029,7 @@ def parse_ab_ratio_inputs(
     pattern_weekly_do_targets: dict[int, list[int]] = {}
     if pattern_nurses:
         pattern_weekly_do_targets, _ = _build_weekly_do_targets_for_group(sorted(pattern_nurses))
-    c_target_totals, c_target_ratios = _build_ab_targets(expected_c_work_slots, c_shift_ratio)
+    c_target_totals, _ = _build_ab_targets(expected_c_work_slots, c_shift_ratio)
     c_daily_targets = {
         shift_code: _distribute_targets(c_target_totals[shift_code], num_days)
         for shift_code in (AM, PM, NIGHT)
@@ -989,9 +1082,6 @@ def parse_ab_ratio_inputs(
     )
 
     default_rank_c_night_caps = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
-    default_rank_c_night_targets = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
-    raw_rank_c_target = cfg.get("rank_c_night_min_per_day", cfg.get("c_night_min_per_day"))
-    rank_c_night_targets = _resolve_daily_targets(raw_rank_c_target, default_rank_c_night_targets)
     raw_rank_c_cap = cfg.get("rank_c_night_cap_per_day", cfg.get("c_night_cap_per_day"))
     rank_c_night_caps = _resolve_daily_targets(raw_rank_c_cap, default_rank_c_night_caps)
     raw_rank_c_allowed_excess = cfg.get(
@@ -1026,12 +1116,7 @@ def parse_ab_ratio_inputs(
         "rank_a": rank_a,
         "rank_b": rank_b,
         "rank_c": rank_c,
-        "rank_ab": rank_ab,
         "working_nurses": working_nurses,
-        "working_ab": working_ab,
-        "working_rank_c": working_rank_c,
-        "working_rank_a": working_rank_a,
-        "working_rank_b": working_rank_b,
         "managed_working_ab": managed_working_ab,
         "managed_working_rank_c": managed_working_rank_c,
         "managed_working_rank_a": managed_working_rank_a,
@@ -1041,19 +1126,12 @@ def parse_ab_ratio_inputs(
         "ratio_working_rank_a": ratio_working_rank_a,
         "ratio_working_rank_b": ratio_working_rank_b,
         "ab_weekly_do_targets": ab_weekly_do_targets,
-        "ab_shift_ratio": ab_shift_ratio,
-        "expected_ab_work_slots": expected_ab_work_slots,
         "ab_target_totals": ab_target_totals,
-        "ab_target_ratios": ab_target_ratios,
-        "ab_daily_targets": ab_daily_targets,
         "a_daily_targets": a_daily_targets,
         "b_daily_targets": b_daily_targets,
         "c_weekly_do_targets": c_weekly_do_targets,
         "pattern_weekly_do_targets": pattern_weekly_do_targets,
-        "c_shift_ratio": c_shift_ratio,
-        "expected_c_work_slots": expected_c_work_slots,
         "c_target_totals": c_target_totals,
-        "c_target_ratios": c_target_ratios,
         "c_daily_targets": c_daily_targets,
         "rn_night_targets": rn_night_targets,
         "rn_night_allowed_excess": rn_night_allowed_excess,
@@ -1064,7 +1142,6 @@ def parse_ab_ratio_inputs(
         "rank_b_night_caps": rank_b_night_caps,
         "rank_b_night_allowed_excess": rank_b_night_allowed_excess,
         "rank_b_night_min_mode": rank_b_night_min_mode,
-        "rank_c_night_targets": rank_c_night_targets,
         "rank_c_night_caps": rank_c_night_caps,
         "rank_c_night_allowed_excess": rank_c_night_allowed_excess,
         "ab_ratio_coverage_mode": ab_ratio_coverage_mode,
@@ -1181,6 +1258,7 @@ def run_ab_ratio_pipeline(
 
     debug_cfg = dict(milp_config or {})
     relax_min_nights = _coerce_bool(debug_cfg.get("_ab_ratio_relax_min_nights"), False)
+    min_nights_required = max(0, _coerce_int(debug_cfg.get("ab_ratio_min_nights"), 2))
     relax_min_non_working = _coerce_bool(debug_cfg.get("_ab_ratio_relax_min_non_working"), False)
     relax_weekly_off = _coerce_bool(debug_cfg.get("_ab_ratio_relax_weekly_off"), False)
     relax_post_night_rest = _coerce_bool(debug_cfg.get("_ab_ratio_relax_post_night_rest"), False)
@@ -1202,8 +1280,6 @@ def run_ab_ratio_pipeline(
     nurse_ranks = parsed["nurse_ranks"]
     demand = parsed["demand"]
     working_nurses = parsed["working_nurses"]
-    working_ab = parsed["working_ab"]
-    working_rank_c = parsed["working_rank_c"]
     rank_a = parsed["rank_a"]
     rank_b = parsed["rank_b"]
     rank_c = parsed["rank_c"]
@@ -1219,8 +1295,6 @@ def run_ab_ratio_pipeline(
     hard_assignments = parsed["hard_assignments"]
     soft_assignments = parsed["soft_assignments"]
     post_night_off = parsed["post_night_off"]
-    working_rank_a = parsed["working_rank_a"]
-    working_rank_b = parsed["working_rank_b"]
     managed_working_ab = parsed["managed_working_ab"]
     managed_working_rank_c = parsed["managed_working_rank_c"]
     managed_working_rank_a = parsed["managed_working_rank_a"]
@@ -1232,13 +1306,11 @@ def run_ab_ratio_pipeline(
     ab_weekly_do_targets = parsed["ab_weekly_do_targets"]
     c_weekly_do_targets = parsed["c_weekly_do_targets"]
     pattern_weekly_do_targets = parsed["pattern_weekly_do_targets"]
-    ab_daily_targets = parsed["ab_daily_targets"]
     a_daily_targets = parsed["a_daily_targets"]
     b_daily_targets = parsed["b_daily_targets"]
     c_target_totals = parsed["c_target_totals"]
     c_daily_targets = parsed["c_daily_targets"]
     rn_night_targets = parsed["rn_night_targets"]
-    rn_night_allowed_excess = parsed["rn_night_allowed_excess"]
     rank_a_night_allowed_excess = parsed["rank_a_night_allowed_excess"]
     rank_a_night_cap_mode = parsed["rank_a_night_cap_mode"]
     rank_b_night_allowed_excess = parsed["rank_b_night_allowed_excess"]
@@ -1323,6 +1395,25 @@ def run_ab_ratio_pipeline(
         penalty_vars.append(var)
         penalty_weights.append(weight)
 
+    def add_min_nights_rule(nurse_idx: int, total_nights: cp_model.LinearExpr) -> None:
+        if min_nights_required <= 0:
+            return
+        if (
+            nurse_idx in night_ineligible_ids
+            or nurse_idx in nurses_with_leave_days
+        ):
+            return
+        if not relax_min_nights:
+            model.Add(total_nights >= min_nights_required)
+            return
+        shortfall = model.NewIntVar(
+            0,
+            min_nights_required,
+            f"min_nights_shortfall_{nurse_idx}",
+        )
+        model.Add(shortfall >= min_nights_required - total_nights)
+        add_penalty(shortfall, weights["min_nights"])
+
     if ab_ratio_coverage_mode == "current":
         c_coverage_weight_by_shift = {
             AM: "coverage_c_am",
@@ -1341,12 +1432,7 @@ def run_ab_ratio_pipeline(
 
     for nurse_idx in managed_working_ab:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
-        if (
-            nurse_idx not in night_ineligible_ids
-            and nurse_idx not in nurses_with_leave_days
-            and not relax_min_nights
-        ):
-            model.Add(total_nights >= 2)
+        add_min_nights_rule(nurse_idx, total_nights)
         if nurse_idx in night_ineligible_ids:
             model.Add(total_nights == 0)
         else:
@@ -1397,6 +1483,9 @@ def run_ab_ratio_pipeline(
                 # roster's 2N block — do not penalise it as isolated.
                 if day_idx == 0 and nurse_idx in post_night_off:
                     continue
+                # A last-day N can continue as N-DO in the next roster horizon.
+                if day_idx == num_days - 1:
+                    continue
                 isolated_night = model.NewBoolVar(f"isolated_night_ab_{nurse_idx}_{day_idx}")
                 if day_idx == 0:
                     if num_days == 1:
@@ -1422,12 +1511,7 @@ def run_ab_ratio_pipeline(
 
     for nurse_idx in managed_working_rank_c:
         total_nights = sum(x[nurse_idx, day_idx, NIGHT] for day_idx in range(num_days))
-        if (
-            nurse_idx not in night_ineligible_ids
-            and nurse_idx not in nurses_with_leave_days
-            and not relax_min_nights
-        ):
-            model.Add(total_nights >= 2)
+        add_min_nights_rule(nurse_idx, total_nights)
         if nurse_idx in night_ineligible_ids:
             model.Add(total_nights == 0)
         else:
@@ -1466,6 +1550,9 @@ def run_ab_ratio_pipeline(
 
         if nurse_idx not in no_night_ids:
             for day_idx in range(num_days):
+                # A last-day N can continue as N-DO in the next roster horizon.
+                if day_idx == num_days - 1:
+                    continue
                 isolated_night = model.NewBoolVar(f"isolated_night_c_{nurse_idx}_{day_idx}")
                 if day_idx == 0:
                     if num_days == 1:
@@ -1853,14 +1940,25 @@ def run_ab_ratio_pipeline(
     solver.parameters.randomize_search = False
     solver.parameters.log_search_progress = False
 
+    hint_weekly_do_targets = {
+        **ab_weekly_do_targets,
+        **c_weekly_do_targets,
+        **pattern_weekly_do_targets,
+    }
     hint_sched = _build_greedy_hint(
         num_nurses,
         num_days,
         working_nurses,
+        parsed["nurse_ranks"],
         al_nurses_set,
         al_day_req,
         post_night_off,
         demand,
+        hard_assignments,
+        no_night_ids,
+        shift_pattern_by_nurse,
+        managed_working_ab,
+        hint_weekly_do_targets,
     )
     for nurse_idx in range(num_nurses):
         for day_idx in range(num_days):
@@ -1954,10 +2052,23 @@ def run_ab_ratio_pipeline(
                         "[AB-DEBUG] diagnostic relaxation became feasible: %s",
                         label,
                     )
-        if feasible_relaxations == ["min_nights"]:
-            raise ABRatioInfeasibilityError(
-                "AB-RATIO infeasible: the hard minimum 2-night requirement conflicts with the current "
-                "no-night, leave, and hard-request constraints for this roster period."
+        if not relax_min_nights and feasible_relaxations == ["min_nights"]:
+            retry_config = dict(debug_cfg)
+            retry_config["_ab_ratio_relax_min_nights"] = True
+            logger.warning(
+                "[AB-DEBUG] hard minimum %s-night requirement infeasible; retrying with soft minimum fallback",
+                min_nights_required,
+            )
+            return run_ab_ratio_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                shift_hours=shift_hours,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                milp_config=retry_config,
             )
         if feasible_relaxations == ["rank_night_mins"]:
             raise ABRatioInfeasibilityError(
