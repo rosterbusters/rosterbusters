@@ -44,7 +44,7 @@ function getEventsForDay(day: Date, events: Event[]): Event[] {
 function groupByLeaveType(events: Event[]): Map<string, Event[]> {
   const grouped = new Map<string, Event[]>();
   events.forEach((ev) => {
-    const key = ev.resource?.shiftType ?? ev.title;
+    const key = ev.resource?.leaveType ?? ev.title;
     const existing = grouped.get(key) ?? [];
     existing.push(ev);
     grouped.set(key, existing);
@@ -63,6 +63,31 @@ function rangesOverlap(
   const bStart = new Date(startB);
   const bEnd = new Date(endB);
   return aStart <= bEnd && bStart <= aEnd;
+}
+
+function getLeaveRequestsFromEvent(event: Event) {
+  const nestedRequests = event.resource?.requests;
+  if (Array.isArray(nestedRequests) && nestedRequests.length > 0) {
+    return nestedRequests.map((request) => ({
+      requestId: request.requestId,
+      nurseName: request.nurseName ?? "",
+      leaveType: request.leaveType ?? event.resource?.leaveType ?? event.title ?? "",
+      startDate: request.startDate ?? event.resource?.startDate ?? "",
+      endDate: request.endDate ?? event.resource?.endDate ?? "",
+      status: request.status ?? event.resource?.status ?? "Pending",
+    }));
+  }
+
+  return [
+    {
+      requestId: event.resource?.requestId,
+      nurseName: event.resource?.nurseName ?? "",
+      leaveType: event.resource?.leaveType ?? event.title ?? "",
+      startDate: event.resource?.startDate ?? "",
+      endDate: event.resource?.endDate ?? "",
+      status: event.resource?.status ?? "Pending",
+    },
+  ];
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -143,10 +168,12 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
               const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
+              const dateKey = moment(day).format("YYYY-MM-DD");
 
               return (
                 <GridItem
                   key={di}
+                  data-testid={`leave-request-calendar-cell-${dateKey}`}
                   bg={isToday ? "menuactive" : isPastDate ? "gray.100" : "white"}
                   textAlign="start"
                   color={isPastDate ? "gray.500" : isCurrentMonth ? "foreground" : "gray.400"}
@@ -175,14 +202,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                           .map((event) => event.resource?.nurseName ?? "")
                           .filter(Boolean)
                           .join(", ");
-                        const requests = groupEvents.map((event) => ({
-                          requestId: event.resource?.requestId,
-                          nurseName: event.resource?.nurseName ?? "",
-                          leaveType: event.resource?.shiftType ?? leaveType,
-                          startDate: event.resource?.startDate ?? "",
-                          endDate: event.resource?.endDate ?? "",
-                          status: event.resource?.status ?? "Pending",
-                        }));
+                        const requests = groupEvents.flatMap(getLeaveRequestsFromEvent);
                         const leadRequest = requests[0];
 
                         if (!leadRequest) {
@@ -195,6 +215,11 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                             pb={2}
                             maxW="100%"
                             onClick={(e) => e.stopPropagation()}
+                            data-testid={
+                              leadRequest.requestId
+                                ? `leave-request-${leadRequest.requestId}`
+                                : undefined
+                            }
                           >
                             <CalendarRequestBlock
                               shift={leaveType}
@@ -203,14 +228,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               onClick={() =>
                                 setSelectedRequest(() => {
                                   const overlapping = events
-                                    .map((event) => ({
-                                      requestId: event.resource?.requestId,
-                                      nurseName: event.resource?.nurseName ?? "",
-                                      leaveType: event.resource?.shiftType ?? event.title ?? "",
-                                      startDate: event.resource?.startDate ?? "",
-                                      endDate: event.resource?.endDate ?? "",
-                                      status: event.resource?.status ?? "Pending",
-                                    }))
+                                    .flatMap(getLeaveRequestsFromEvent)
                                     .filter(
                                       (event) =>
                                         event.requestId != null &&
