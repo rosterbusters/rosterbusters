@@ -1484,6 +1484,7 @@ def _apply_milp_policy_overrides(base_config: dict, policy: dict | None) -> dict
         "min_do_with_other_nonwork",
         "weights",
         "num_days",
+        "ab_ratio_min_nights",
     ):
         if key in policy:
             base_config[key] = policy[key]
