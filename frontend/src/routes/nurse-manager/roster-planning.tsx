@@ -426,14 +426,14 @@ function RosterPlanningPage() {
 
   // Reset guidelines and per-date overrides when the selected ward changes
   useEffect(() => {
-    setGuidelines(getWardGuidelines(selectedWard?.wardName));
+    setGuidelines(getWardGuidelines(selectedWard));
     setDateOverrides({});
-  }, [selectedWard?.wardName]);
+  }, [selectedWard]);
 
   // Unmodified ward defaults — used by the dialog's "Reset to ward default" action
   const originalGuidelines = useMemo(
-    () => getWardGuidelines(selectedWard?.wardName),
-    [selectedWard?.wardName],
+    () => getWardGuidelines(selectedWard),
+    [selectedWard],
   );
 
   // Reset roster state when switching ward/period so saved rosters load correctly

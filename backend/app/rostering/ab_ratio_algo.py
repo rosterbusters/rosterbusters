@@ -1081,8 +1081,12 @@ def parse_ab_ratio_inputs(
         _DEFAULT_RANK_B_NIGHT_MIN_MODE,
     )
 
+    hca_policy = cfg.get("HCA") if isinstance(cfg.get("HCA"), dict) else {}
     default_rank_c_night_caps = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
-    raw_rank_c_cap = cfg.get("rank_c_night_cap_per_day", cfg.get("c_night_cap_per_day"))
+    raw_rank_c_cap = cfg.get(
+        "rank_c_night_cap_per_day",
+        cfg.get("c_night_cap_per_day", hca_policy.get("max_night_per_day")),
+    )
     rank_c_night_caps = _resolve_daily_targets(raw_rank_c_cap, default_rank_c_night_caps)
     raw_rank_c_allowed_excess = cfg.get(
         "rank_c_night_allowed_excess",

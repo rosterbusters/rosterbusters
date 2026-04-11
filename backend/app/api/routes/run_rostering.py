@@ -1553,17 +1553,27 @@ def _staffing_to_algo_inputs(ward: Ward):
             def _min(role: str, shift: str) -> int:
                 return int(g.get(role, {}).get(shift, {}).get("minimum", 0))
 
+            def _max(role: str, shift: str) -> int | None:
+                value = g.get(role, {}).get(shift, {}).get("maximum")
+                if value is None:
+                    return None
+                return int(value)
+
             rank_min = {
                 "A": {"A": 0, "P": 0, "N": 0},
                 "B": {"A": 0, "P": 0, "N": 0},
                 "C": {"A": 0, "P": 0, "N": 0},
             }
+            rank_night_max: dict[str, int | None] = {"A": None, "B": None, "C": None}
             for role in ("RN", "EN", "NA", "HCA12", "HCA3"):
                 rank = staffing_role_to_roster_rank(session, role)
                 if rank is None:
                     continue
                 for shift in ("A", "P", "N"):
                     rank_min[rank][shift] += _min(role, shift)
+                role_night_max = _max(role, "N")
+                if role_night_max is not None:
+                    rank_night_max[rank] = (rank_night_max[rank] or 0) + role_night_max
 
             daily_req = {
                 "AM":    {"A": rank_min["A"]["A"], "B": rank_min["B"]["A"], "C": rank_min["C"]["A"]},
@@ -1575,7 +1585,7 @@ def _staffing_to_algo_inputs(ward: Ward):
                 rank_min["B"],
                 rank_min["C"],
                 rn_max_night_per_day=ward.nd_rn,
-                hca_max_night_per_day=ward.nd_hca_max,
+                hca_max_night_per_day=rank_night_max["C"] if rank_night_max["C"] is not None else ward.nd_hca_max,
                 policy=milp_policy,
             )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):

@@ -147,6 +147,37 @@ def test_ab_ratio_no_night_nurse_can_still_receive_day_shifts() -> None:
     assert any(shift in {"A", "P"} for shift in no_night_schedule)
 
 
+def test_ab_ratio_class_c_min_nights_follow_backend_night_max() -> None:
+    nurses = [
+        {"id": 1, "name": "HCA One", "rank": "C"},
+        {"id": 2, "name": "HCA Two", "rank": "C"},
+        {"id": 3, "name": "HCA Three", "rank": "C"},
+    ]
+    shifts = [
+        {
+            "AM": {"A": 0, "B": 0, "C": 0},
+            "PM": {"A": 0, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+        for _ in range(14)
+    ]
+
+    result = run_ab_ratio_pipeline(
+        nurses,
+        shifts,
+        milp_config={
+            "ab_ratio_time_limit_s": 5,
+            "HCA": {"max_night_per_day": 1},
+        },
+    )
+
+    for nurse in result["nurses"]:
+        assert nurse["schedule"].count("NIGHT") >= 2
+
+    for day_idx in range(14):
+        assert sum(nurse["schedule"][day_idx] == "NIGHT" for nurse in result["nurses"]) <= 1
+
+
 def test_ab_ratio_allows_four_nights_only_as_two_per_week() -> None:
     nurses = [
         {"id": 1, "name": "A1", "rank": "A"},
