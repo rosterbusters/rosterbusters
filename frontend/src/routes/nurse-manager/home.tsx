@@ -672,16 +672,7 @@ function NurseManagerHome() {
   // Re-initialise guidelines whenever the selected ward changes
   useEffect(() => {
     if (!selectedWard) return;
-    const stored = (selectedWard as any)?.staffing_json as string | undefined;
-    if (stored) {
-      try {
-        setGuidelines(JSON.parse(stored));
-      } catch {
-        setGuidelines(getWardGuidelines(selectedWard.wardname));
-      }
-    } else {
-      setGuidelines(getWardGuidelines(selectedWard.wardname));
-    }
+    setGuidelines(getWardGuidelines(selectedWard));
     setDateOverrides({});
   }, [selectedWard?.wardid]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -790,7 +781,7 @@ function NurseManagerHome() {
           isRosterGenerated={true}
           guidelines={guidelines}
           dateOverrides={dateOverrides}
-          originalGuidelines={getWardGuidelines(selectedWard?.wardname)}
+          originalGuidelines={getWardGuidelines(selectedWard)}
           onGuidelinesChange={handleGuidelinesChange}
           onDateOverrideChange={handleDateOverrideChange}
         />
