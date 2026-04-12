@@ -137,6 +137,8 @@ export async function createUser(
     username: string
     email?: string
     generated_password?: string | null
+    nurseid?: number | null
+    managerid?: number | null
   }>
 }
 

@@ -12,6 +12,9 @@ import {
   useRosterPageData,
   useRosterExport,
   useShiftCodes,
+  useAllShiftCodes,
+  useUpdateRoster,
+  useUpdateRosterComment,
   useRosterChangelog,
   useCreateChangelog,
   getShiftDurationHours,
@@ -148,6 +151,9 @@ function NurseManagerHome() {
   const { data: periods = [] } = useRosterPeriods();
   const { data: periodWindow } = useRosterPeriodWindow();
   const { data: shiftDurationMap = new Map() } = useShiftCodes();
+  const { data: allShiftCodes = [] } = useAllShiftCodes();
+  const updateRoster = useUpdateRoster();
+  const updateRosterComment = useUpdateRosterComment();
   const { exportToXLSX } = useRosterExport();
 
   const { rows: apiRows, isLoading: rosterLoading } = useRosterPageData(
@@ -255,6 +261,19 @@ function NurseManagerHome() {
     });
   }, [localRosterData, currentStartDate, viewMode, shiftDurationMap]);
 
+  const shiftTimeMap = useMemo(() => {
+    const map = new Map<string, { start?: string; end?: string }>();
+    allShiftCodes.forEach((code) => {
+      if (code.defaultstart || code.defaultend) {
+        map.set(code.shiftcode, {
+          start: code.defaultstart ?? undefined,
+          end: code.defaultend ?? undefined,
+        });
+      }
+    });
+    return map;
+  }, [allShiftCodes]);
+
   // Handlers
   const handleDateChange = useCallback((date: Date) => {
     setCurrentStartDate(date);
@@ -283,11 +302,17 @@ function NurseManagerHome() {
   }, []);
 
   const handleShiftChange = useCallback(
-    (nurseId: number, date: string, newShiftCode: ShiftCode) => {
-      // Capture old values before updating state
+    async (nurseId: number, date: string, newShiftCode: ShiftCode) => {
+      const wardId = selectedWard?.wardid ?? null;
+      const periodId = selectedPeriod?.periodId ?? null;
+      if (!wardId || !periodId) {
+        showErrorToast("Please select a ward and roster period first.");
+        return;
+      }
+
       const row = localRosterData.find(r => r.nurseId === nurseId);
       const oldShiftCode = row?.shifts[date]?.shiftCode ?? null;
-      const rosterId = row?.shifts[date]?.rosterId ?? null;
+      const previousShift = row?.shifts[date] ? { ...row.shifts[date] } : null;
 
       setLocalRosterData(prevData =>
         prevData.map(r => {
@@ -311,46 +336,96 @@ function NurseManagerHome() {
         })
       );
 
-      // Persist to changelog
-      createChangelog({
-        rosterid: rosterId,
-        oldnurseid: nurseId,
-        oldshiftcode: oldShiftCode,
-        newshiftcode: newShiftCode,
-        changetype: "shift_change",
-        changesource: "Manual",
-      });
-
-      if (oldShiftCode !== null) {
-        const undoItem: UndoRedoItem = {
+      try {
+        const result = await updateRoster.mutateAsync({
+          wardId,
           nurseId,
-          nurseName: row?.name ?? "",
-          date,
-          rosterId,
-          fromShiftCode: oldShiftCode,
-          toShiftCode: newShiftCode,
-        };
-        setUndoStack(prev => [...prev, undoItem]);
-        setRedoStack([]);
-        createToast({
-          title: "Shift updated",
-          description: `${row?.name ?? "Nurse"}: ${oldShiftCode} → ${newShiftCode}`,
-          action: {
-            label: "Undo",
-            onClick: () => undoRedoHandlersRef.current.performUndo(undoItem),
-          },
-          meta: { closable: true },
-          duration: 5000,
+          periodId,
+          shiftDate: date,
+          shiftCode: newShiftCode,
+          comment: previousShift?.comment,
         });
+
+        const rosterId =
+          (result as { roster_id?: number })?.roster_id ??
+          previousShift?.rosterId ??
+          0;
+
+        if (rosterId) {
+          setLocalRosterData(prevData =>
+            prevData.map(r => {
+              if (r.nurseId !== nurseId) return r;
+              const shift = r.shifts[date];
+              if (!shift || shift.rosterId === rosterId) return r;
+              return {
+                ...r,
+                shifts: {
+                  ...r.shifts,
+                  [date]: {
+                    ...shift,
+                    rosterId,
+                  },
+                },
+              };
+            })
+          );
+        }
+
+        createChangelog({
+          rosterid: rosterId || null,
+          oldnurseid: nurseId,
+          oldshiftcode: oldShiftCode,
+          newshiftcode: newShiftCode,
+          changetype: "shift_change",
+          changesource: "Manual",
+        });
+
+        if (oldShiftCode !== null) {
+          const undoItem: UndoRedoItem = {
+            nurseId,
+            nurseName: row?.name ?? "",
+            date,
+            rosterId,
+            fromShiftCode: oldShiftCode,
+            toShiftCode: newShiftCode,
+          };
+          setUndoStack(prev => [...prev, undoItem]);
+          setRedoStack([]);
+          createToast({
+            title: "Shift updated",
+            description: `${row?.name ?? "Nurse"}: ${oldShiftCode} → ${newShiftCode}`,
+            action: {
+              label: "Undo",
+              onClick: () => undoRedoHandlersRef.current.performUndo(undoItem),
+            },
+            meta: { closable: true },
+            duration: 5000,
+          });
+        }
+      } catch {
+        showErrorToast("Failed to update shift. Please try again.");
+        setLocalRosterData(prevData =>
+          prevData.map(r => {
+            if (r.nurseId !== nurseId) return r;
+            const nextShifts = { ...r.shifts };
+            if (previousShift) {
+              nextShifts[date] = previousShift;
+            } else {
+              nextShifts[date] = null;
+            }
+            return { ...r, shifts: nextShifts };
+          })
+        );
       }
     },
-    [localRosterData, createChangelog]
+    [localRosterData, selectedWard?.wardid, selectedPeriod?.periodId, updateRoster, createChangelog]
   );
 
   const handleCommentChange = useCallback(
-    (nurseId: number, date: string, comment: string) => {
+    async (nurseId: number, date: string, comment: string) => {
       const row = localRosterData.find(r => r.nurseId === nurseId);
       const rosterId = row?.shifts[date]?.rosterId ?? null;
+      const previousShift = row?.shifts[date] ? { ...row.shifts[date] } : null;
 
       setLocalRosterData(prevData =>
         prevData.map(r => {
@@ -370,17 +445,41 @@ function NurseManagerHome() {
         })
       );
 
-      if (comment) {
-        createChangelog({
-          rosterid: rosterId,
-          oldnurseid: nurseId,
-          changetype: "comment",
-          reason: comment,
-          changesource: "Manual",
+      if (!rosterId) {
+        showErrorToast("Please save the shift before adding a comment.");
+        return;
+      }
+
+      try {
+        await updateRosterComment.mutateAsync({
+          rosterId,
+          comment: comment || null,
         });
+
+        if (comment) {
+          createChangelog({
+            rosterid: rosterId,
+            oldnurseid: nurseId,
+            changetype: "comment",
+            reason: comment,
+            changesource: "Manual",
+          });
+        }
+      } catch {
+        showErrorToast("Failed to save comment. Please try again.");
+        setLocalRosterData(prevData =>
+          prevData.map(r => {
+            if (r.nurseId !== nurseId) return r;
+            const nextShifts = { ...r.shifts };
+            if (previousShift) {
+              nextShifts[date] = previousShift;
+            }
+            return { ...r, shifts: nextShifts };
+          })
+        );
       }
     },
-    [localRosterData, createChangelog]
+    [localRosterData, updateRosterComment, createChangelog]
   );
   const handleExportXLSX = useCallback(() => {
     exportToXLSX(displayRosterData, currentStartDate, viewMode);
@@ -573,16 +672,7 @@ function NurseManagerHome() {
   // Re-initialise guidelines whenever the selected ward changes
   useEffect(() => {
     if (!selectedWard) return;
-    const stored = (selectedWard as any)?.staffing_json as string | undefined;
-    if (stored) {
-      try {
-        setGuidelines(JSON.parse(stored));
-      } catch {
-        setGuidelines(getWardGuidelines(selectedWard.wardname));
-      }
-    } else {
-      setGuidelines(getWardGuidelines(selectedWard.wardname));
-    }
+    setGuidelines(getWardGuidelines(selectedWard));
     setDateOverrides({});
   }, [selectedWard?.wardid]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -679,6 +769,7 @@ function NurseManagerHome() {
             showSummary={false}
             shiftRequestOverlays={mockOverlays}
             shiftDurationMap={shiftDurationMap}
+            shiftTimeMap={shiftTimeMap}
           />
         </Box>
 
@@ -690,7 +781,7 @@ function NurseManagerHome() {
           isRosterGenerated={true}
           guidelines={guidelines}
           dateOverrides={dateOverrides}
-          originalGuidelines={getWardGuidelines(selectedWard?.wardname)}
+          originalGuidelines={getWardGuidelines(selectedWard)}
           onGuidelinesChange={handleGuidelinesChange}
           onDateOverrideChange={handleDateOverrideChange}
         />

@@ -998,6 +998,9 @@ def _solve(
             shift_pattern = nurse_constraints.get("shift_pattern")
             no_night = bool(nurse_constraints.get("no_night"))
             preferred_shift = "A" if shift_pattern == "AM_ONLY" else "P" if shift_pattern == "PM_ONLY" else None
+            forced_day1_off = False
+            forced_day1_night = False
+            forced_day2_off = False
 
             # Scan hard requests to collect AL / INHT/BL days
             for d in DAYS:
@@ -1012,16 +1015,27 @@ def _solve(
             # Carry-in obligations from previous horizon
             if carry_state == "NEED_DO":
                 # Previous horizon ended N,N → day 1 must be DO
-                m.cons.add(off_var[n, 1] == 1)
-                for s in SHIFTS:
-                    m.cons.add(x_var[n, 1, s] == 0)
+                forced_day1_off = True
 
             elif carry_state == "NEED_N_DO":
                 # Previous horizon ended ?,N → day 1 = N, day 2 = DO
+                # If nurse cannot do nights (or is permanent AM/PM), fall back to day-1 DO only.
+                if no_night or preferred_shift is not None:
+                    forced_day1_off = True
+                else:
+                    forced_day1_night = True
+                    forced_day2_off = True
+
+            if forced_day1_off:
+                m.cons.add(off_var[n, 1] == 1)
+                for s in SHIFTS:
+                    m.cons.add(x_var[n, 1, s] == 0)
+            if forced_day1_night:
                 m.cons.add(off_var[n, 1] == 0)
                 m.cons.add(x_var[n, 1, "N"] == 1)
                 m.cons.add(x_var[n, 1, "A"] == 0)
                 m.cons.add(x_var[n, 1, "P"] == 0)
+            if forced_day2_off:
                 m.cons.add(off_var[n, 2] == 1)
                 for s in SHIFTS:
                     m.cons.add(x_var[n, 2, s] == 0)
@@ -1029,9 +1043,9 @@ def _solve(
             # Daily linking
             for d in DAYS:
                 # Skip days already forced by carry-in
-                if carry_state == "NEED_DO" and d == 1:
+                if forced_day1_off and d == 1:
                     continue
-                if carry_state == "NEED_N_DO" and d in {1, 2}:
+                if forced_day1_night and d in {1, 2}:
                     continue
 
                 raw = _get_request_code(hard_dict.get(n, {}).get(f"Day {d}", ""))
