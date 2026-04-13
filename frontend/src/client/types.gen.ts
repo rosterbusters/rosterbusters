@@ -160,6 +160,7 @@ export type Ward = {
     wardid?: (number | null);
     wardname: string;
     wardtype?: (string | null);
+    wardhourtype?: string;
     location?: (string | null);
     isactive?: boolean;
     am_total?: (number | null);
@@ -264,6 +265,26 @@ export type ShiftRequestsGetShiftCodesByWardData = {
 };
 
 export type ShiftRequestsGetShiftCodesByWardResponse = (Array<ShiftCodePublic>);
+
+export type ShiftRequestsGetWardShiftCodesAdminData = {
+    wardId: number;
+};
+
+export type ShiftRequestsGetWardShiftCodesAdminResponse = (Array<ShiftCodePublic>);
+
+export type ShiftRequestsAddShiftToWardData = {
+    shiftCode: string;
+    wardId: number;
+};
+
+export type ShiftRequestsAddShiftToWardResponse = (void);
+
+export type ShiftRequestsRemoveShiftFromWardData = {
+    shiftCode: string;
+    wardId: number;
+};
+
+export type ShiftRequestsRemoveShiftFromWardResponse = (void);
 
 export type ShiftRequestsGetRosterPeriodsResponse = (Array<RosterPeriodPublic>);
 

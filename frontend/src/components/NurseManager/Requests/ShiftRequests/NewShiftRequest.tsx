@@ -25,6 +25,7 @@ import {
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import type { NursePublic } from "@/client/types.gen";
 import { Trash2 } from "lucide-react";
+import { formatShiftCodeLabel } from "@/utils"
 
 const MAX_REQUESTS = 3;
 
@@ -89,24 +90,25 @@ export const NewShiftRequest = ({
   });
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", "all"],
+    queryKey: ["shift-codes", wardId ?? "default"],
     queryFn: () =>
-      ShiftRequestsService.getAllShiftCodes(),
-    // enabled: wardId !== undefined,
+      wardId != null
+        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
+        : ShiftRequestsService.getAllShiftCodes(),
   });
+
+  const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: (shiftCodes ?? [])
-          .filter((sc) => sc.shiftcode !== "MC")
-          .map((sc) => ({
+        items: requestableShiftCodes.map((sc) => ({
             value: sc.shiftcode,
             label: sc.shiftcode,
             description: sc.description,
           })),
       }),
-    [shiftCodes],
+    [requestableShiftCodes],
   );
 
   const nurseCollection = useMemo(
@@ -121,14 +123,9 @@ export const NewShiftRequest = ({
     [wardNurses],
   );
 
-  const { data: workingCodes } = useQuery({
-    queryKey: ["shift-codes", "working"],
-    queryFn: () => ShiftRequestsService.getWorkingShiftCodes(),
-  });
-
-  const workingCodeSet = useMemo(
-    () => new Set([...(workingCodes ?? []).map((code) => code.shiftcode), "DO", "RD"]),
-    [workingCodes],
+  const wardShiftCodeSet = useMemo(
+    () => new Set((requestableShiftCodes ?? []).map((code) => code.shiftcode)),
+    [requestableShiftCodes],
   );
 
   const selectedNurseId = selectedNurse.length > 0 ? Number(selectedNurse[0]) : null;
@@ -142,7 +139,7 @@ export const NewShiftRequest = ({
           (request) =>
             request.nurseid === selectedNurseId &&
             request.periodid === activePeriod.periodId &&
-            workingCodeSet.has(request.preferredshifttype),
+              wardShiftCodeSet.has(request.preferredshifttype),
         ).length
       : 0;
 
@@ -289,7 +286,7 @@ export const NewShiftRequest = ({
                           <Select.Item item={code.value} key={code.value}>
                             <Tooltip content={code.description}>
                               <Badge variant={`${code.value}Shift` as any}>
-                                {code.value}
+                                {formatShiftCodeLabel(code.value)}
                               </Badge>
                             </Tooltip>
 

@@ -44,6 +44,9 @@ export const confirmPasswordRules = (
   return rules
 }
 
+export const formatShiftCodeLabel = (shiftCode: string) =>
+  shiftCode === "P" ? "PM" : shiftCode
+
 export const handleError = (err: ApiError) => {
   const errDetail = (err.body as any)?.detail
   let errorMessage = errDetail || "Something went wrong."
