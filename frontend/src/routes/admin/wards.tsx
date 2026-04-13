@@ -30,8 +30,8 @@ export const Route = createFileRoute("/admin/wards")({
 
 type WardFormData = Omit<Ward, "wardid"> & { wardid?: number | null }
 
-const EIGHT_HOUR_SHIFT_CODES = ["A", "P", "N", "DO"] as const
-const TWELVE_HOUR_SHIFT_CODES = ["A-12", "N-12", "DO"] as const
+const EIGHT_HOUR_SHIFT_CODES: string[] = ["A", "P", "N", "DO"]
+const TWELVE_HOUR_SHIFT_CODES: string[] = ["A-12", "N-12", "DO"]
 
 function getAllowedShiftCodesByHourType(wardHourType?: string | null) {
   return wardHourType === "12_HOURS"
@@ -92,19 +92,19 @@ function WardFormDialog({
   })
 
   // Fetch all requestable shift codes
-  const { data: allShiftCodes } = useQuery({
+  const { data: allShiftCodes } = useQuery<ShiftCodePublic[]>({
     queryKey: ["shift-codes-all"],
     queryFn: () => ShiftRequestsService.getAllShiftCodes(),
     enabled: open,
   })
 
   // Fetch ward's assigned shift codes (only when editing)
-  const { data: wardShiftCodes } = useQuery({
+  const { data: wardShiftCodes } = useQuery<ShiftCodePublic[]>({
     queryKey: ["ward-shift-codes", editWard?.wardid],
     queryFn: () =>
       editWard?.wardid
         ? ShiftRequestsService.getWardShiftCodesAdmin({ wardId: editWard.wardid })
-        : Promise.resolve([]),
+        : Promise.resolve([] as ShiftCodePublic[]),
     enabled: open && !!editWard?.wardid,
   })
 
@@ -117,9 +117,7 @@ function WardFormDialog({
     () => {
       const order = new Map(allowedShiftCodes.map((code, index) => [code, index]))
       return (allShiftCodes ?? [])
-        .filter((shift) =>
-          allowedShiftCodes.includes(shift.shiftcode as (typeof allowedShiftCodes)[number]),
-        )
+        .filter((shift) => allowedShiftCodes.includes(shift.shiftcode))
         .sort((a, b) => (order.get(a.shiftcode) ?? 999) - (order.get(b.shiftcode) ?? 999))
     },
     [allShiftCodes, allowedShiftCodes],
@@ -165,14 +163,14 @@ function WardFormDialog({
   useEffect(() => {
     if (!open || !isEdit || !wardShiftCodes) return
     const wardCodes = wardShiftCodes.map((shift) => shift.shiftcode)
-    const filtered = wardCodes.filter((code) => allowedShiftCodes.includes(code as (typeof allowedShiftCodes)[number]))
+    const filtered = wardCodes.filter((code) => allowedShiftCodes.includes(code))
     setSelectedShiftCodes(filtered.length > 0 ? filtered : [...allowedShiftCodes])
   }, [open, isEdit, wardShiftCodes, allowedShiftCodes])
 
   useEffect(() => {
     if (!open) return
     setSelectedShiftCodes((prev) => {
-      const filtered = prev.filter((code) => allowedShiftCodes.includes(code as (typeof allowedShiftCodes)[number]))
+      const filtered = prev.filter((code) => allowedShiftCodes.includes(code))
       return filtered.length > 0 ? filtered : [...allowedShiftCodes]
     })
   }, [open, allowedShiftCodes])
