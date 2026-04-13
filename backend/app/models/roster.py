@@ -21,6 +21,7 @@ class Ward(SQLModel, table=True):
     wardid: Optional[int] = Field(default=None, primary_key=True)
     wardname: str = Field(max_length=100)
     wardtype: Optional[str] = Field(default=None, max_length=50)
+    wardhourtype: str = Field(default="8_HOURS", max_length=20)
     location: Optional[str] = Field(default=None, max_length=100)
     managerid: Optional[int] = Field(default=None)
     isactive: bool = Field(default=True)

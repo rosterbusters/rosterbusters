@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, LoginEmail2FAVerifyData, LoginEmail2FAResendData, Message, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsGetAllNursesResponse, ShiftRequestsReviewShiftRequestData, ShiftRequestsReviewShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse, Ward } from './types.gen';
+import type { LoginGoogleResponse, AuthGoogleCallbackResponse, LoginAccessTokenData, LoginAccessTokenResponse, LoginEmail2FAVerifyData, LoginEmail2FAResendData, Message, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, PrivateCreateUserData, PrivateCreateUserResponse, ShiftRequestsGetLeaveCodesResponse, ShiftRequestsGetAllShiftCodesResponse, ShiftRequestsGetWorkingShiftCodesResponse, ShiftRequestsGetShiftCodesByWardData, ShiftRequestsGetShiftCodesByWardResponse, ShiftRequestsGetWardShiftCodesAdminData, ShiftRequestsGetWardShiftCodesAdminResponse, ShiftRequestsAddShiftToWardData, ShiftRequestsAddShiftToWardResponse, ShiftRequestsRemoveShiftFromWardData, ShiftRequestsRemoveShiftFromWardResponse, ShiftRequestsGetRosterPeriodsResponse, ShiftRequestsGetRosterPeriodData, ShiftRequestsGetRosterPeriodResponse, ShiftRequestsGetUserShiftRequestsResponse, ShiftRequestsCreateShiftRequestData, ShiftRequestsCreateShiftRequestResponse, ShiftRequestsGetShiftRequestsByWardData, ShiftRequestsGetShiftRequestsByWardResponse, ShiftRequestsUpdateShiftRequestData, ShiftRequestsUpdateShiftRequestResponse, ShiftRequestsDeleteShiftRequestData, ShiftRequestsDeleteShiftRequestResponse, ShiftRequestsGetWardNursesData, ShiftRequestsGetWardNursesResponse, ShiftRequestsGetAllNursesResponse, ShiftRequestsReviewShiftRequestData, ShiftRequestsReviewShiftRequestResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WardsGetWardsResponse, Ward } from './types.gen';
 
 export class DefaultService {
     /**
@@ -281,6 +281,71 @@ export class ShiftRequestsService {
             url: '/api/v1/shift-requests/shift-codes/ward/{ward_id}',
             path: {
                 ward_id: data.wardId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Get Ward Shift Codes Admin
+     * Get the requestable shift codes assigned to a ward (admin only).
+     * @param data The data for the request.
+     * @param data.wardId
+     * @returns ShiftCodePublic Successful Response
+     * @throws ApiError
+     */
+    public static getWardShiftCodesAdmin(data: ShiftRequestsGetWardShiftCodesAdminData): CancelablePromise<ShiftRequestsGetWardShiftCodesAdminResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/shift-requests/admin/ward/{ward_id}/shift-codes',
+            path: {
+                ward_id: data.wardId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Add Shift To Ward
+     * Assign a requestable shift code to a ward (admin only).
+     * @param data The data for the request.
+     * @param data.wardId
+     * @param data.shiftCode
+     * @throws ApiError
+     */
+    public static addShiftToWard(data: ShiftRequestsAddShiftToWardData): CancelablePromise<ShiftRequestsAddShiftToWardResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/shift-requests/admin/ward/{ward_id}/shift-codes/{shift_code}',
+            path: {
+                ward_id: data.wardId,
+                shift_code: data.shiftCode,
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Remove Shift From Ward
+     * Remove a requestable shift code from a ward (admin only).
+     * @param data The data for the request.
+     * @param data.wardId
+     * @param data.shiftCode
+     * @throws ApiError
+     */
+    public static removeShiftFromWard(data: ShiftRequestsRemoveShiftFromWardData): CancelablePromise<ShiftRequestsRemoveShiftFromWardResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/shift-requests/admin/ward/{ward_id}/shift-codes/{shift_code}',
+            path: {
+                ward_id: data.wardId,
+                shift_code: data.shiftCode,
             },
             errors: {
                 422: 'Validation Error'

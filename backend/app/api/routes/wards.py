@@ -12,6 +12,13 @@ class WardStaffingIn(BaseModel):
 router = APIRouter(prefix="/wards", tags=["wards"])
 
 
+def _normalize_ward_hour_type(value: str | None) -> str:
+    normalized = (value or "8_HOURS").strip().upper()
+    if normalized not in {"8_HOURS", "12_HOURS"}:
+        raise HTTPException(status_code=400, detail="wardhourtype must be 8_HOURS or 12_HOURS")
+    return normalized
+
+
 @router.get("/", response_model=list[Ward])
 def get_wards(session: SessionDep):
     statement = select(Ward).order_by(Ward.wardid.asc())
@@ -33,7 +40,10 @@ def get_ward(ward_id: int, session: SessionDep):
 )
 def create_ward(*, session: SessionDep, ward_in: Ward):
     """Create a new ward (admin only)."""
-    db_ward = Ward.model_validate(ward_in, update={"wardid": None})
+    db_ward = Ward.model_validate(
+        ward_in,
+        update={"wardid": None, "wardhourtype": _normalize_ward_hour_type(ward_in.wardhourtype)},
+    )
     session.add(db_ward)
     session.commit()
     session.refresh(db_ward)
@@ -51,6 +61,8 @@ def update_ward(ward_id: int, *, session: SessionDep, ward_in: Ward):
     if not db_ward:
         raise HTTPException(status_code=404, detail="Ward not found")
     update_data = ward_in.model_dump(exclude_unset=True, exclude={"wardid"})
+    if "wardhourtype" in update_data:
+        update_data["wardhourtype"] = _normalize_ward_hour_type(update_data.get("wardhourtype"))
     db_ward.sqlmodel_update(update_data)
     session.add(db_ward)
     session.commit()

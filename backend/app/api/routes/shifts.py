@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -31,7 +31,7 @@ from app.utils import (
     send_email,
 )
 from app.core.config import settings
-from app.cache import cache_get_json, cache_set_json
+from app.cache import cache_delete, cache_get_json, cache_set_json
 from app.rbac import get_rbac_user_by_email, user_has_role
 from app.services.roster_period_service import (
     ensure_roster_period_window,
@@ -43,10 +43,127 @@ import logging
 logger = logging.getLogger(__name__)
 
 CACHE_TTL_SHIFT_CODES_SECONDS = 300
+EIGHT_HOUR_REQUESTABLE_SHIFT_CODES = ("A", "P", "N", "DO")
+TWELVE_HOUR_REQUESTABLE_SHIFT_CODES = ("A-12", "N-12", "DO")
+REQUESTABLE_SHIFT_CODES = EIGHT_HOUR_REQUESTABLE_SHIFT_CODES + tuple(
+    code for code in TWELVE_HOUR_REQUESTABLE_SHIFT_CODES if code not in EIGHT_HOUR_REQUESTABLE_SHIFT_CODES
+)
+DEFAULT_WARD_HOUR_TYPE = "8_HOURS"
+
+REQUESTABLE_SHIFT_CODE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "A": {
+        "description": "0700-1500 (AM SHIFT)",
+        "isworking": True,
+        "defaultstart": time(7, 0),
+        "defaultend": time(15, 0),
+        "shiftdurationhours": 8,
+    },
+    "P": {
+        "description": "1500-2300 (PM SHIFT)",
+        "isworking": True,
+        "defaultstart": time(15, 0),
+        "defaultend": time(23, 0),
+        "shiftdurationhours": 8,
+    },
+    "N": {
+        "description": "2300-0700 (NIGHT SHIFT)",
+        "isworking": True,
+        "defaultstart": time(23, 0),
+        "defaultend": time(7, 0),
+        "shiftdurationhours": 8,
+    },
+    "DO": {
+        "description": "DAY OFF",
+        "isworking": False,
+        "defaultstart": None,
+        "defaultend": None,
+        "shiftdurationhours": 0,
+    },
+    "A-12": {
+        "description": "0700-1900 (12-HOUR DAY SHIFT)",
+        "isworking": True,
+        "defaultstart": time(7, 0),
+        "defaultend": time(19, 0),
+        "shiftdurationhours": 12,
+    },
+    "N-12": {
+        "description": "1900-0700 (NIGHT SHIFT)",
+        "isworking": True,
+        "defaultstart": time(19, 0),
+        "defaultend": time(7, 0),
+        "shiftdurationhours": 12,
+    },
+}
 
 
 def _shift_codes_cache_key(scope: str) -> str:
     return f"shift:codes:{scope}"
+
+
+def _requestable_codes_for_hour_type(ward_hour_type: str | None) -> tuple[str, ...]:
+    normalized = (ward_hour_type or DEFAULT_WARD_HOUR_TYPE).strip().upper()
+    if normalized == "12_HOURS":
+        return TWELVE_HOUR_REQUESTABLE_SHIFT_CODES
+    return EIGHT_HOUR_REQUESTABLE_SHIFT_CODES
+
+
+def _ensure_requestable_shift_codes_exist(session: SessionDep, codes: tuple[str, ...]) -> None:
+    existing = set(
+        session.exec(
+            select(ShiftCode.shiftcode).where(ShiftCode.shiftcode.in_(list(codes)))
+        ).all()
+    )
+    missing = [code for code in codes if code not in existing]
+    if not missing:
+        return
+
+    for code in missing:
+        defaults = REQUESTABLE_SHIFT_CODE_DEFAULTS.get(code)
+        if not defaults:
+            continue
+        session.add(
+            ShiftCode(
+                shiftcode=code,
+                description=defaults["description"],
+                isworking=defaults["isworking"],
+                defaultstart=defaults["defaultstart"],
+                defaultend=defaults["defaultend"],
+                shiftdurationhours=defaults["shiftdurationhours"],
+            )
+        )
+
+    session.commit()
+
+
+def _get_requestable_shift_codes(session: SessionDep, ward_id: int | None = None) -> list[ShiftCode]:
+    _ensure_requestable_shift_codes_exist(session, REQUESTABLE_SHIFT_CODES)
+
+    allowed_codes = REQUESTABLE_SHIFT_CODES
+    ward_hour_type = DEFAULT_WARD_HOUR_TYPE
+    if ward_id is not None:
+        ward = session.get(Ward, ward_id)
+        if ward:
+            ward_hour_type = ward.wardhourtype
+            allowed_codes = _requestable_codes_for_hour_type(ward.wardhourtype)
+
+    statement = select(ShiftCode).where(ShiftCode.shiftcode.in_(list(allowed_codes)))
+    if ward_id is not None:
+        from app.models.shifts import WardShiftCode
+
+        ward_statement = (
+            select(ShiftCode)
+            .join(WardShiftCode, ShiftCode.shiftcode == WardShiftCode.shiftcode)
+            .where(WardShiftCode.wardid == ward_id)
+            .where(ShiftCode.shiftcode.in_(list(allowed_codes)))
+        )
+        ward_codes = list(session.exec(ward_statement).all())
+        if ward_codes:
+            order = {code: index for index, code in enumerate(allowed_codes)}
+            return sorted(ward_codes, key=lambda code: order.get(code.shiftcode, len(order)))
+
+    codes = list(session.exec(statement).all())
+    order = {code: index for index, code in enumerate(_requestable_codes_for_hour_type(ward_hour_type))}
+    return sorted(codes, key=lambda code: order.get(code.shiftcode, len(order)))
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -263,22 +380,21 @@ def get_all_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     cached = cache_get_json(cache_key)
     if cached is not None:
         return cached
-    codes = list(session.exec(select(ShiftCode)).all())
-    payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+    codes = _get_requestable_shift_codes(session)
+    payload = [ShiftCodePublic.model_validate(code).model_dump(mode="json") for code in codes]
     cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
     return payload
 
 
 @router.get("/shift-codes/working", response_model=list[ShiftCodePublic])
 def get_working_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
-    """Get all shift codes where isworking is true."""
+    """Get the requestable shift codes."""
     cache_key = _shift_codes_cache_key("working")
     cached = cache_get_json(cache_key)
     if cached is not None:
         return cached
-    statement = select(ShiftCode).where(ShiftCode.isworking == True)  # noqa: E712
-    codes = list(session.exec(statement).all())
-    payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+    codes = _get_requestable_shift_codes(session)
+    payload = [ShiftCodePublic.model_validate(code).model_dump(mode="json") for code in codes]
     cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
     return payload
 
@@ -289,30 +405,13 @@ def get_shift_codes_by_ward(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Any:
-    """Get applicable shift codes for a ward, falling back to all working codes."""
+    """Get applicable requestable shift codes for a ward."""
     cache_key = _shift_codes_cache_key(f"ward:{ward_id}")
     cached = cache_get_json(cache_key)
     if cached is not None:
         return cached
-    try:
-        from app.models.shifts import WardShiftCode  # noqa: F401
-        statement = (
-            select(ShiftCode)
-            .join(WardShiftCode, ShiftCode.shiftcode == WardShiftCode.shiftcode)
-            .where(WardShiftCode.wardid == ward_id)
-            .where(ShiftCode.isworking == True)  # noqa: E712
-        )
-        codes = list(session.exec(statement).all())
-        if codes:
-            payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
-            cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
-            return payload
-    except Exception:
-        pass
-
-    statement = select(ShiftCode).where(ShiftCode.isworking == True)  # noqa: E712
-    codes = list(session.exec(statement).all())
-    payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+    codes = _get_requestable_shift_codes(session, ward_id=ward_id)
+    payload = [ShiftCodePublic.model_validate(code).model_dump(mode="json") for code in codes]
     cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
     return payload
 
@@ -421,6 +520,15 @@ def create_shift_request(
     if not target_nurse_id:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
 
+    target_nurse = session.get(Nurse, target_nurse_id)
+    if not target_nurse:
+        raise HTTPException(status_code=404, detail="Nurse not found")
+
+    preferred_shift_code = request_in.preferredshifttype.strip().upper()
+    allowed_shift_codes = {code.shiftcode for code in _get_requestable_shift_codes(session, target_nurse.wardid)}
+    if preferred_shift_code not in allowed_shift_codes:
+        raise HTTPException(status_code=400, detail="Selected shift is not available for this ward")
+
     existing_requests = list(
         session.exec(
             select(ShiftRequest).where(
@@ -458,7 +566,8 @@ def create_shift_request(
     next_number = next(n for n in range(1, len(existing_requests) + 2) if n not in used_numbers)
 
     shift_request = ShiftRequest(
-        **request_in.model_dump(exclude={"nurseid"}),
+        **request_in.model_dump(exclude={"nurseid", "preferredshifttype"}),
+        preferredshifttype=preferred_shift_code,
         nurseid=target_nurse_id,
         requestnumber=next_number,
     )
@@ -491,6 +600,16 @@ def update_shift_request(
 
     if not can_update:
         raise HTTPException(status_code=403, detail="Not authorized to update this request")
+
+    if request_in.preferredshifttype is not None:
+        nurse = session.get(Nurse, shift_request.nurseid)
+        if not nurse:
+            raise HTTPException(status_code=404, detail="Nurse not found")
+        preferred_shift_code = request_in.preferredshifttype.strip().upper()
+        allowed_shift_codes = {code.shiftcode for code in _get_requestable_shift_codes(session, nurse.wardid)}
+        if preferred_shift_code not in allowed_shift_codes:
+            raise HTTPException(status_code=400, detail="Selected shift is not available for this ward")
+        request_in.preferredshifttype = preferred_shift_code
 
     update_data = request_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -632,6 +751,89 @@ def get_ward_nurses(
     """Get all active nurses for a specific ward."""
     statement = select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     return list(session.exec(statement).all())
+
+
+@router.get("/admin/ward/{ward_id}/shift-codes", response_model=list[ShiftCodePublic])
+def get_ward_shift_codes_admin(
+    ward_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Get the requestable shift codes assigned to a ward (admin only)."""
+    if not user_has_role(session, current_user.email, "Admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    codes = _get_requestable_shift_codes(session, ward_id=ward_id)
+    return [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+
+
+@router.post("/admin/ward/{ward_id}/shift-codes/{shift_code}", status_code=204)
+def add_shift_to_ward(
+    ward_id: int,
+    shift_code: str,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> None:
+    """Assign a requestable shift code to a ward (admin only)."""
+    if not user_has_role(session, current_user.email, "Admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    ward = session.get(Ward, ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    normalized_shift_code = shift_code.strip().upper()
+    allowed_codes = set(_requestable_codes_for_hour_type(ward.wardhourtype))
+    if normalized_shift_code not in allowed_codes:
+        raise HTTPException(status_code=400, detail="Shift code is not valid for this ward hour type")
+
+    code = session.exec(
+        select(ShiftCode).where(ShiftCode.shiftcode == normalized_shift_code)
+    ).first()
+    if not code:
+        raise HTTPException(status_code=404, detail="Shift code not found")
+
+    from app.models.shifts import WardShiftCode
+
+    existing = session.exec(
+        select(WardShiftCode).where(
+            WardShiftCode.wardid == ward_id,
+            WardShiftCode.shiftcode == normalized_shift_code,
+        )
+    ).first()
+    if existing:
+        return None
+
+    session.add(WardShiftCode(wardid=ward_id, shiftcode=normalized_shift_code))
+    session.commit()
+    cache_delete(_shift_codes_cache_key(f"ward:{ward_id}"))
+
+
+@router.delete("/admin/ward/{ward_id}/shift-codes/{shift_code}", status_code=204)
+def remove_shift_from_ward(
+    ward_id: int,
+    shift_code: str,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> None:
+    """Remove a requestable shift code from a ward (admin only)."""
+    if not user_has_role(session, current_user.email, "Admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    normalized_shift_code = shift_code.strip().upper()
+    from app.models.shifts import WardShiftCode
+
+    mapping = session.exec(
+        select(WardShiftCode).where(
+            WardShiftCode.wardid == ward_id,
+            WardShiftCode.shiftcode == normalized_shift_code,
+        )
+    ).first()
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Shift not assigned to this ward")
+
+    session.delete(mapping)
+    session.commit()
+    cache_delete(_shift_codes_cache_key(f"ward:{ward_id}"))
 
 
 @router.patch("/nurses/{nurse_id}/shift-pattern", response_model=NursePublic)
