@@ -71,6 +71,25 @@ export interface Ward {
   wardType: string;
   campus: string;
   managerId?: number | null;
+  am_total?: number | null;
+  am_rn?: number | null;
+  am_en_na_min?: number | null;
+  am_en_na_max?: number | null;
+  am_hca_min?: number | null;
+  am_hca_max?: number | null;
+  pm_total?: number | null;
+  pm_rn?: number | null;
+  pm_en_na_min?: number | null;
+  pm_en_na_max?: number | null;
+  pm_hca_min?: number | null;
+  pm_hca_max?: number | null;
+  nd_total?: number | null;
+  nd_rn?: number | null;
+  nd_en_na_min?: number | null;
+  nd_en_na_max?: number | null;
+  nd_hca_min?: number | null;
+  nd_hca_max?: number | null;
+  staffingJson?: string | null;
 }
 
 // Roster period information

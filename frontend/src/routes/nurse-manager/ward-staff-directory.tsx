@@ -37,9 +37,11 @@ type DirectoryRow = {
   email: string;
   contactNumber: string;
   employmentType: string;
-  shiftPattern: ShiftPattern;
+  shiftPattern: "A_ONLY" | "P_ONLY" | null;
   isActive: boolean;
 };
+
+type DirectoryShiftPattern = DirectoryRow["shiftPattern"];
 
 type FilterMenuProps = {
   title: string;
@@ -58,8 +60,8 @@ type FilterMenuProps = {
 
 const SHIFT_PATTERN_OPTIONS = [
   { label: "No permanent pattern", value: "NONE" },
-  { label: "AM only (4 on / 3 off)", value: "AM_ONLY" },
-  { label: "PM only (4 on / 3 off)", value: "PM_ONLY" },
+  { label: "A only (4 on / 3 off)", value: "A_ONLY" },
+  { label: "P only (4 on / 3 off)", value: "P_ONLY" },
 ];
 
 const shiftPatternCollection = createListCollection({
@@ -229,6 +231,30 @@ function getErrorMessage(error: unknown) {
   return "Please try again.";
 }
 
+function normalizeShiftPatternForDirectory(value: unknown): DirectoryShiftPattern {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (normalized === "AM_ONLY" || normalized === "A_ONLY") {
+    return "A_ONLY";
+  }
+  if (normalized === "PM_ONLY" || normalized === "P_ONLY") {
+    return "P_ONLY";
+  }
+  return null;
+}
+
+function toApiShiftPattern(value: string | undefined): ShiftPattern {
+  if (!value || value === "NONE") {
+    return null;
+  }
+  if (value === "A_ONLY") {
+    return "AM_ONLY";
+  }
+  if (value === "P_ONLY") {
+    return "PM_ONLY";
+  }
+  return value as ShiftPattern;
+}
+
 function WardStaffDirectoryPage() {
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [nameFilterOpen, setNameFilterOpen] = useState(false);
@@ -289,7 +315,11 @@ function WardStaffDirectoryPage() {
         email: nurse.email,
         contactNumber: nurse.contactNumber,
         employmentType: nurse.employmentType,
-        shiftPattern: nurse.shiftPattern ?? null,
+        shiftPattern: normalizeShiftPatternForDirectory(
+          nurse.shiftPattern ??
+            (nurse as { shift_pattern?: unknown }).shift_pattern ??
+            (nurse as { shiftpattern?: unknown }).shiftpattern,
+        ),
         isActive: nurse.isActive,
       })),
     [statistics],
@@ -382,7 +412,7 @@ function WardStaffDirectoryPage() {
     nurseId: number,
     nextValue: string | undefined,
   ) => {
-    const shiftPattern = (nextValue === "NONE" ? null : nextValue) as ShiftPattern;
+    const shiftPattern = toApiShiftPattern(nextValue);
     setSavingPatternNurseId(nurseId);
     try {
       await updateShiftPattern.mutateAsync({ nurseId, shiftPattern });
@@ -418,7 +448,7 @@ function WardStaffDirectoryPage() {
             Ward Staff Directory
           </Text>
           <Text color="foreground" fontWeight="light">
-            Review live nurse records by ward and set permanent AM or PM-only
+            Review live nurse records by ward and set permanent A-only or P-only
             patterns for permanent staff.
           </Text>
         </VStack>
@@ -496,7 +526,7 @@ function WardStaffDirectoryPage() {
           borderColor="blackAlpha.100"
         >
           <Text fontSize="sm" color="foreground">
-            Permanent AM-only and PM-only patterns are configured here. Temporary
+            Permanent A-only and P-only patterns are configured here. Temporary
             no-night settings are now managed from roster planning for the selected
             roster period.
           </Text>

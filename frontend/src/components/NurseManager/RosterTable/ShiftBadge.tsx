@@ -18,27 +18,54 @@ interface ShiftBadgeProps {
   comment?: string;
   onCommentIconClick?: (e: React.MouseEvent) => void;
   shiftRequestOverlay?: ShiftRequestOverlay;
+  shiftDurationMap?: Map<string, number>;
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>;
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
 function formatTime(time: string): string {
-  const [hours, minutes] = time.split(":").map(Number);
+  const [hoursRaw, minutesRaw] = time.split(":");
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return time;
+  }
   const period = hours >= 12 ? "PM" : "AM";
   const displayHours = hours % 12 || 12;
   return `${displayHours}:${minutes.toString().padStart(2, "0")}${period}`;
 }
 
 // Get formatted time range for a shift
-function getTimeRange(shiftCode: ShiftCode): string | null {
+function getTimeRange(
+  shiftCode: ShiftCode,
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>,
+): string | null {
   const shiftInfo = SHIFT_CODE_MAP[shiftCode];
-  if (
-    !shiftInfo?.isWorking ||
-    !shiftInfo.defaultStart ||
-    !shiftInfo.defaultEnd
-  ) {
+  if (!shiftInfo?.isWorking) {
     return null;
   }
-  return `${formatTime(shiftInfo.defaultStart)}-${formatTime(shiftInfo.defaultEnd)}`;
+  const timeInfo = shiftTimeMap?.get(shiftCode);
+  const start = timeInfo?.start ?? shiftInfo.defaultStart;
+  const end = timeInfo?.end ?? shiftInfo.defaultEnd;
+  if (!start || !end) {
+    return null;
+  }
+  return `${formatTime(start)}-${formatTime(end)}`;
+}
+
+function getDurationHours(
+  shiftCode: ShiftCode,
+  shiftDurationMap?: Map<string, number>,
+): number | null {
+  const shiftInfo = SHIFT_CODE_MAP[shiftCode];
+  if (!shiftInfo?.isWorking) {
+    return null;
+  }
+  const mapValue = shiftDurationMap?.get(shiftCode);
+  if (typeof mapValue === "number") {
+    return mapValue;
+  }
+  return shiftInfo?.durationHours ?? null;
 }
 
 export function ShiftBadge({
@@ -50,6 +77,8 @@ export function ShiftBadge({
   comment,
   onCommentIconClick,
   shiftRequestOverlay,
+  shiftDurationMap,
+  shiftTimeMap,
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
@@ -85,7 +114,8 @@ export function ShiftBadge({
   const bgColor = SHIFT_COLOR_MAP[shiftCode];
   const shiftInfo = SHIFT_CODE_MAP[shiftCode];
   const isWorkingShift = shiftInfo?.isWorking ?? true;
-  const timeRange = getTimeRange(shiftCode);
+  const timeRange = getTimeRange(shiftCode, shiftTimeMap);
+  const durationHours = getDurationHours(shiftCode, shiftDurationMap);
   const isWeekView = viewMode === "week";
   const hasComment = !!comment;
 
@@ -227,11 +257,27 @@ export function ShiftBadge({
       </Box>
     );
 
+    if (durationHours != null) {
+      return (
+        <Tooltip
+          content={
+            <Text fontSize="xs" color="whiteAlpha.900" py={1}>
+              {durationHours}h
+            </Text>
+          }
+          showArrow
+        >
+          {weekBadge}
+        </Tooltip>
+      );
+    }
+
     return weekBadge;
   }
 
   // 2-week view - compact badges with tooltip on hover
   const showShiftTooltip = viewMode === "twoWeeks" && timeRange;
+  const showDurationTooltip = durationHours != null;
 
   const twoWeekBadge = (
     <Box position="relative" display="inline-block">
@@ -293,7 +339,27 @@ export function ShiftBadge({
             <Text fontSize="xs" color="whiteAlpha.800">
               {timeRange}
             </Text>
+            {showDurationTooltip && (
+              <Text fontSize="xs" color="whiteAlpha.800">
+                {durationHours}h
+              </Text>
+            )}
           </VStack>
+        }
+        showArrow
+      >
+        {twoWeekBadge}
+      </Tooltip>
+    );
+  }
+
+  if (showDurationTooltip) {
+    return (
+      <Tooltip
+        content={
+          <Text fontSize="xs" color="whiteAlpha.900" py={1}>
+            {durationHours}h
+          </Text>
         }
         showArrow
       >

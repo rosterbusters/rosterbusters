@@ -31,6 +31,7 @@ from app.utils import (
     send_email,
 )
 from app.core.config import settings
+from app.cache import cache_get_json, cache_set_json
 from app.rbac import get_rbac_user_by_email, user_has_role
 from app.services.roster_period_service import (
     ensure_roster_period_window,
@@ -40,6 +41,12 @@ from app.services.roster_period_service import (
 
 import logging
 logger = logging.getLogger(__name__)
+
+CACHE_TTL_SHIFT_CODES_SECONDS = 300
+
+
+def _shift_codes_cache_key(scope: str) -> str:
+    return f"shift:codes:{scope}"
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -252,14 +259,28 @@ def get_my_shifts(
 @router.get("/shift-codes", response_model=list[ShiftCodePublic])
 def get_all_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all shift codes."""
-    return list(session.exec(select(ShiftCode)).all())
+    cache_key = _shift_codes_cache_key("all")
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
+    codes = list(session.exec(select(ShiftCode)).all())
+    payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+    cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
+    return payload
 
 
 @router.get("/shift-codes/working", response_model=list[ShiftCodePublic])
 def get_working_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     """Get all shift codes where isworking is true."""
+    cache_key = _shift_codes_cache_key("working")
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
     statement = select(ShiftCode).where(ShiftCode.isworking == True)  # noqa: E712
-    return list(session.exec(statement).all())
+    codes = list(session.exec(statement).all())
+    payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+    cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
+    return payload
 
 
 @router.get("/shift-codes/ward/{ward_id}", response_model=list[ShiftCodePublic])
@@ -269,6 +290,10 @@ def get_shift_codes_by_ward(
     current_user: CurrentUser,
 ) -> Any:
     """Get applicable shift codes for a ward, falling back to all working codes."""
+    cache_key = _shift_codes_cache_key(f"ward:{ward_id}")
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
     try:
         from app.models.shifts import WardShiftCode  # noqa: F401
         statement = (
@@ -279,12 +304,17 @@ def get_shift_codes_by_ward(
         )
         codes = list(session.exec(statement).all())
         if codes:
-            return codes
+            payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+            cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
+            return payload
     except Exception:
         pass
 
     statement = select(ShiftCode).where(ShiftCode.isworking == True)  # noqa: E712
-    return list(session.exec(statement).all())
+    codes = list(session.exec(statement).all())
+    payload = [ShiftCodePublic.model_validate(code).model_dump() for code in codes]
+    cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
+    return payload
 
 
 # ─────────────────────────────────────────────
@@ -615,6 +645,7 @@ def update_nurse_shift_pattern(
     if not (
         user_has_role(session, current_user.email, "NurseManager")
         or user_has_role(session, current_user.email, "Admin")
+        or current_user.managerid is not None
     ):
         raise HTTPException(status_code=403, detail="Not authorized to update nurse patterns")
 
@@ -625,11 +656,6 @@ def update_nurse_shift_pattern(
     shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
     if shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
         raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
-
-    if not user_has_role(session, current_user.email, "Admin"):
-        managed_ward_ids = _get_managed_ward_ids(session, current_user.userid)
-        if nurse.wardid not in managed_ward_ids:
-            raise HTTPException(status_code=403, detail="Not authorized to manage this nurse")
 
     nurse.shiftpattern = shift_pattern
     session.add(nurse)
