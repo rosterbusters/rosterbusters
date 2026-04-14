@@ -730,9 +730,21 @@ def publish_ward_roster(
     nurses = session.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
+    nurse_ids = [nurse.nurseid for nurse in nurses if nurse.nurseid is not None]
+    existing_release_recipient_ids = set(
+        session.exec(
+            select(NotificationQueue.recipientid).where(
+                NotificationQueue.recipienttype == "Nurse",
+                NotificationQueue.notificationtype == NotificationType.ROSTER_RELEASE.value,
+                NotificationQueue.relatedentitytype == "RosterPeriod",
+                NotificationQueue.relatedentityid == period.periodid,
+                NotificationQueue.recipientid.in_(nurse_ids),
+            )
+        ).all()
+    ) if nurse_ids else set()
 
     for nurse in nurses:
-        if not nurse.nurseid:
+        if not nurse.nurseid or nurse.nurseid in existing_release_recipient_ids:
             continue
         crud.create_notification(
             session,
