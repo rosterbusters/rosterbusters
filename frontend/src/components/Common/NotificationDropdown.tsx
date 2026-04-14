@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   notificationTypeLabels,
-  notificationTypeBadgeVariant,
+  notificationTypeBadgeStyles,
   getNotificationRoute,
   type NotificationItem,
   type NotificationType,
@@ -26,27 +26,22 @@ function formatNotificationDate(dateString: string): string {
   return `${day}/${month}/${year}`;
 }
 
-// Map the generic color names from notificationTypeBadgeVariant → Tailwind bg classes
-const colorClassMap: Record<string, string> = {
-  blue:   "bg-[#3B82F6]",  // blue.500
-  cyan:   "bg-[#06B6D4]",  // cyan.500
-  yellow: "bg-[#EAB308]",  // yellow.500
-  green:  "bg-[#22C55E]",  // green.500
-  purple: "bg-[#A855F7]",  // purple.500
-  orange: "bg-[#F97316]",  // orange.500
-  gray:   "bg-[#6B7280]",  // gray.500
-  red:    "bg-[#EF4444]",  // red.500
-};
-
-// Badge component — colour driven by notificationTypeBadgeVariant from types/notifications
 function NotificationBadge({ type }: { type: NotificationType }) {
-  const colorName = notificationTypeBadgeVariant[type] ?? "gray";
+  const badgeStyle = notificationTypeBadgeStyles[type] ?? {
+    background: "#6B7280",
+    text: "#FFFFFF",
+  };
+
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center rounded px-2 py-0.5 text-xs font-medium text-white whitespace-nowrap w-fit",
-        colorClassMap[colorName] ?? "bg-[#6B7280]"
+        "inline-flex items-center justify-center rounded px-2 py-0.5 text-xs font-medium whitespace-nowrap w-fit"
       )}
+      style={{
+        backgroundColor: badgeStyle.background,
+        color: badgeStyle.text,
+        borderColor: badgeStyle.border,
+      }}
     >
       {notificationTypeLabels[type] ?? type}
     </span>
@@ -69,13 +64,11 @@ function NotificationDropdown({ role }: { role?: "nurse" | "manager" }) {
     refetchInterval: 60000,
   });
 
-  // Map API response: use subject as the display description
   const notifications: NotificationItem[] = (data?.notifications ?? []).map((n) => ({
     ...n,
     description: n.messagebody,
   }));
 
-  // Sort notifications by date (most recent first)
   const sortedNotifications = [...notifications].sort(
     (a, b) => new Date(b.createdat ?? 0).getTime() - new Date(a.createdat ?? 0).getTime()
   );
@@ -101,14 +94,12 @@ function NotificationDropdown({ role }: { role?: "nurse" | "manager" }) {
         className="w-[520px] rounded-lg border border-[#E6E6E6] bg-white p-0 shadow-lg"
         sideOffset={8}
       >
-        {/* Table Header */}
         <div className="grid grid-cols-[100px_1fr_100px] border-b border-[#E6E6E6] bg-white">
           <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">Type</div>
           <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">Notification</div>
           <div className="px-4 py-2 text-sm font-semibold text-[#4A4A4A]">Date</div>
         </div>
 
-        {/* Scrollable Table Body */}
         <div className="overflow-y-auto" style={{ maxHeight: `${MAX_VISIBLE_HEIGHT}px` }}>
           {sortedNotifications.length === 0 ? (
             <div className="flex items-center justify-center text-sm text-[#737373]" style={{ height: `${ROW_HEIGHT * 2}px` }}>
