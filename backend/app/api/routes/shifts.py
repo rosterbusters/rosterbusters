@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 from sqlmodel import or_, select
 
@@ -47,6 +47,39 @@ CACHE_TTL_SHIFT_CODES_SECONDS = 300
 
 def _shift_codes_cache_key(scope: str) -> str:
     return f"shift:codes:{scope}"
+
+
+def _send_shift_request_review_email_task(
+    email_to: str,
+    nurse_name: str,
+    roster_period: str,
+    status: str,
+    rejection_reason: str | None,
+) -> None:
+    try:
+        if status == "Approved":
+            email_data = generate_shift_request_approved_email(
+                email_to=email_to,
+                roster_period=roster_period,
+                nurse_name=nurse_name,
+            )
+        else:
+            email_data = generate_shift_request_rejected_email(
+                email_to=email_to,
+                roster_period=roster_period,
+                nurse_name=nurse_name,
+                rejection_reason=rejection_reason,
+            )
+        send_email(
+            email_to=email_to,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send shift request review email to %s",
+            email_to,
+        )
 
 # Main router — generates ShiftRequestsService in the client
 router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -505,6 +538,7 @@ def update_shift_request(
 @router.patch("/{request_id}/review", response_model=ShiftRequestPublic)
 def review_shift_request(
     request_id: int,
+    background_tasks: BackgroundTasks,
     session: SessionDep,
     current_user: CurrentUser,
     review_in: ShiftRequestReview,
@@ -541,30 +575,14 @@ def review_shift_request(
             if settings.emails_enabled:
                 nurse = session.get(Nurse, shift_request.nurseid)
                 if nurse and nurse.email:
-                    try:
-                        if review_in.status == "Approved":
-                            email_data = generate_shift_request_approved_email(
-                                email_to=nurse.email,
-                                roster_period=period.name,
-                                nurse_name=nurse.name,
-                            )
-                        else:
-                            email_data = generate_shift_request_rejected_email(
-                                email_to=nurse.email,
-                                roster_period=period.name,
-                                nurse_name=nurse.name,
-                                rejection_reason=review_in.rejectionreason,
-                            )
-                        send_email(
-                            email_to=nurse.email,
-                            subject=email_data.subject,
-                            html_content=email_data.html_content,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Failed to send shift request review email to nurse %s",
-                            shift_request.nurseid,
-                        )
+                    background_tasks.add_task(
+                        _send_shift_request_review_email_task,
+                        nurse.email,
+                        nurse.name,
+                        period.name,
+                        review_in.status,
+                        review_in.rejectionreason,
+                    )
 
     session.commit()
     session.refresh(shift_request)

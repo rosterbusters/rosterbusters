@@ -74,11 +74,11 @@ HARDCODED_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 16", date(2026, 3, 31), "AL", "leave_request"),
     RequestSeed("Nurse 17", date(2026, 3, 25), "A", "shift_request"),
     # RN (8)
-    RequestSeed("Nurse 1", date(2026, 3, 30), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 3, 31), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 4, 1), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 4, 2), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 4, 3), "AL", "leave_request"),
+    RequestSeed("Mary", date(2026, 3, 30), "AL", "leave_request"),
+    RequestSeed("Mary", date(2026, 3, 31), "AL", "leave_request"),
+    RequestSeed("Mary", date(2026, 4, 1), "AL", "leave_request"),
+    RequestSeed("Mary", date(2026, 4, 2), "AL", "leave_request"),
+    RequestSeed("Mary", date(2026, 4, 3), "AL", "leave_request"),
     RequestSeed("Nurse 2", date(2026, 3, 23), "AL", "leave_request"),
     RequestSeed("Nurse 2", date(2026, 3, 24), "AL", "leave_request"),
     RequestSeed("Nurse 3", date(2026, 4, 2), "P", "shift_request"),
@@ -153,11 +153,11 @@ APR_MAY_2026_WARD_6_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 36", date(2026, 4, 25), "OFF", "shift_request", "Pending"),
 ]
 
-TEST_MANAGER_USERNAME = "manager"
+TEST_MANAGER_USERNAME = "NurseManager"
 TEST_MANAGER_EMAIL = "manager@example.com"
 TEST_MANAGER_PASSWORD = "manager123"
 TEST_NURSE_USERNAME = "nurse1"
-TEST_NURSE_NAME = "Nurse 1"
+TEST_NURSE_NAME = "Mary"
 TEST_NURSE_PASSWORD = "nurse123"
 
 
@@ -228,7 +228,7 @@ ANON_DESIGNATIONS: dict[str, str] = {
     # EN: 4 (Enrolled Nurse I/II), SEN: 1 (Snr Enrolled Nurse I),
     # NA: 4 (Nursing Aide I/II), HCA1: 2 (Healthcare Asst I),
     # HCA3: 6 (Healthcare Asst III). PSA excluded per request.
-    "Nurse 1": "SN",
+    "Mary": "SN",
     "Nurse 2": "SN",
     "Nurse 3": "SN",
     "Nurse 4": "SN",
@@ -289,8 +289,8 @@ FEASIBLE_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 7", date(2026, 3, 27), "A", "shift_request"),
     RequestSeed("Nurse 8", date(2026, 3, 28), "A", "shift_request"),
     # Keep a small amount of approved leave so the solver still has real hard constraints.
-    RequestSeed("Nurse 1", date(2026, 3, 30), "AL", "leave_request"),
-    RequestSeed("Nurse 1", date(2026, 3, 31), "AL", "leave_request"),
+    RequestSeed("Mary", date(2026, 3, 30), "AL", "leave_request"),
+    RequestSeed("Mary", date(2026, 3, 31), "AL", "leave_request"),
     RequestSeed("Nurse 2", date(2026, 3, 23), "AL", "leave_request"),
     RequestSeed("Nurse 4", date(2026, 3, 25), "AL", "leave_request"),
     RequestSeed("Nurse 9", date(2026, 4, 3), "HOL", "leave_request"),
@@ -298,7 +298,7 @@ FEASIBLE_REQUESTS: list[RequestSeed] = [
 
 
 APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
-    "Nurse 1": "SN",
+    "Mary": "SN",
     "Nurse 2": "SN",
     "Nurse 3": "SN",
     "Nurse 4": "SN",

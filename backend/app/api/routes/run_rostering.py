@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import MetaData, Table, inspect as sa_inspect
@@ -118,6 +118,26 @@ class RosterUpsertRequest(BaseModel):
     period_id: int
     shift_date: date
     shift_code: str
+
+
+def _send_roster_release_email_task(
+    email_to: str,
+    roster_period_label: str,
+    ward_name: str,
+) -> None:
+    try:
+        email_data = generate_roster_release_email(
+            email_to=email_to,
+            roster_period=roster_period_label,
+            ward_name=ward_name,
+        )
+        send_email(
+            email_to=email_to,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception:
+        logger.warning("Failed to send roster release email to %s", email_to)
     comment: Optional[str] = None
     status: str = "Pending"
     assignment_method: str = "Manual"
@@ -671,6 +691,7 @@ def bulk_upsert_roster_entries(
 def publish_ward_roster(
     ward_id: int,
     period_id: int,
+    background_tasks: BackgroundTasks,
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Any:
@@ -729,22 +750,12 @@ def publish_ward_roster(
         for nurse in nurses:
             if not nurse.email:
                 continue
-            try:
-                email_data = generate_roster_release_email(
-                    email_to=nurse.email,
-                    roster_period=roster_period_label,
-                    ward_name=ward.wardname,
-                )
-                send_email(
-                    email_to=nurse.email,
-                    subject=email_data.subject,
-                    html_content=email_data.html_content,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to send roster release email to %s",
-                    nurse.email,
-                )
+            background_tasks.add_task(
+                _send_roster_release_email_task,
+                nurse.email,
+                roster_period_label,
+                ward.wardname,
+            )
     else:
         logger.info("Email notifications skipped: email settings not configured.")
 
