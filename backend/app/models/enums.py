@@ -23,9 +23,9 @@ class NotificationType(str, Enum):
         "ShiftRequestPeriodOpen",
         "Shift Request Period ({roster_period}) is Now Open.",
     )
-    SHIFT_REQUEST_PERIOD_CLOSED = (
-        "ShiftRequestPeriodClosed",
-        "Shift Request Period ({roster_period}) is Now Closed.",
+    SHIFT_REQUEST_PERIOD_CLOSING_SOON = (
+        "ShiftRequestPeriodClosingSoon",
+        "Reminder: Shift request period closing in 12h for {roster_period}.",
     )
     ROSTER_RELEASE = (
         "RosterRelease",
@@ -66,6 +66,14 @@ class NotificationType(str, Enum):
         "RosterFinalisation",
         "Reminder: Publish Roster due {roster_planning_end_date}.",
     )
+    HRIS_PORTAL_OPEN = (
+        "HRISPortalOpen",
+        "Reminder: Export Roster to HRIS system for {roster_period}.",
+    )
+    HRIS_PORTAL_CLOSING_SOON = (
+        "HRISPortalClosingSoon",
+        "Reminder: HRIS Export Portal closing in 12h for {roster_period}.",
+    )
     HRIS_REMINDER = (
         "HRISReminder",
         "Reminder: Export Roster to HRIS system by {roster_end_date}.",
@@ -77,6 +85,10 @@ class NotificationType(str, Enum):
     SHIFT_REQUEST_REVIEW_OPEN = (
         "ShiftRequestReviewOpen",
         "Shift Requests Review for {roster_period} is Open.",
+    )
+    SHIFT_REQUEST_REVIEW_CLOSING_SOON = (
+        "ShiftRequestReviewClosingSoon",
+        "Shift Requests Review for {roster_period} is Closing Soon (12h).",
     )
     SHIFT_REQUEST_REVIEW_CLOSED = (
         "ShiftRequestReviewClosed",

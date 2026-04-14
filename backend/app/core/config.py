@@ -150,6 +150,7 @@ class Settings(BaseSettings):
 
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     REDIS_URL: str = "redis://redis:6379/0"
+    NOTIFICATION_TIMEZONE_OFFSET_HOURS: int = 8  # UTC+8 (SGT)
 
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str

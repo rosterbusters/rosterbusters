@@ -22,6 +22,21 @@ from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
 
+@celery_app.task(name="tasks.check_roster_period_notifications")
+def check_roster_period_notifications_task() -> None:
+    """
+    Scheduled hourly to run ensure_roster_period_window to trigger time-sensitive notifications (e.g., 12h, 24h triggers).
+    """
+    logger.info("Running scheduled check for roster period notifications.")
+    try:
+        from app.services.roster_period_service import ensure_roster_period_window
+        with Session(engine) as db:
+            ensure_roster_period_window(db)
+        logger.info("Successfully ran scheduled check for roster period notifications.")
+    except Exception as exc:
+        logger.exception("Failed to run scheduled check for roster period notifications: %s", exc)
+
+
 SHIFT_CODE_TO_DB = {
     "AM": "A",
     "PM": "P",
