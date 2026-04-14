@@ -734,6 +734,12 @@ export const WardSchema = {
             ],
             title: 'Wardtype'
         },
+        wardhourtype: {
+            type: 'string',
+            maxLength: 20,
+            title: 'Wardhourtype',
+            default: '8_HOURS'
+        },
         location: {
             anyOf: [
                 {

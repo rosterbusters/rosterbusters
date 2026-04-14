@@ -1,7 +1,7 @@
 """add shift pattern and nurse period constraints
 
-Revision ID: r8s9t0u1v2w3
-Revises: q7r8s9t0u1v2
+Revision ID: s9t0u1v2w3x4
+Revises: r8s9t0u1v2w3
 Create Date: 2026-04-04
 
 """
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import inspect
 
-revision: str = "r8s9t0u1v2w3"
-down_revision: Union[str, None] = "q7r8s9t0u1v2"
+revision: str = "s9t0u1v2w3x4"
+down_revision: Union[str, None] = "r8s9t0u1v2w3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
