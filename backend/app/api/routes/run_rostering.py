@@ -118,6 +118,9 @@ class RosterUpsertRequest(BaseModel):
     period_id: int
     shift_date: date
     shift_code: str
+    comment: Optional[str] = None
+    status: str = "Pending"
+    assignment_method: str = "Manual"
 
 
 def _send_roster_release_email_task(
@@ -138,9 +141,6 @@ def _send_roster_release_email_task(
         )
     except Exception:
         logger.warning("Failed to send roster release email to %s", email_to)
-    comment: Optional[str] = None
-    status: str = "Pending"
-    assignment_method: str = "Manual"
 
 
 class BulkRosterUpsertRequest(BaseModel):
