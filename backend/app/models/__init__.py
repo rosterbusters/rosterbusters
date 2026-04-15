@@ -39,6 +39,7 @@ from app.models.enums import NotificationType
 from app.models.roster import (
     NursePeriodConstraint,
     NursePeriodConstraintPublic,
+    NotificationPreference,
     NotificationQueue,
     Roster,
     RosterChangeLog,
@@ -72,6 +73,8 @@ from app.models.shifts import (
 # Notification models
 from app.models.notification_models import (
     MarkNotificationReadRequest,
+    NotificationPreferencesResponse,
+    NotificationPreferencesUpdate,
     NotificationResponse,
     NotificationsListResponse,
     NotificationStatsResponse,
@@ -98,7 +101,8 @@ __all__ = [
     "NotificationType",
     # Roster
     "NursePeriodConstraint", "NursePeriodConstraintPublic",
-    "NotificationQueue", "Roster", "RosterChangeLog", "RosterChangeLogPublic",
+    "NotificationPreference", "NotificationQueue",
+    "Roster", "RosterChangeLog", "RosterChangeLogPublic",
     "RosterPeriod", "RosterPeriodPublic", "RosterPeriodWindowPublic", "Ward",
     # Leave
     "LeaveRequest", "LeaveRequestCreate", "LeaveRequestPublic", "LeaveRequestUpdate",
@@ -106,6 +110,7 @@ __all__ = [
     "ShiftCode", "ShiftCodePublic", "ShiftRequest", "ShiftRequestCreate",
     "ShiftRequestPublic", "ShiftRequestReview", "ShiftRequestUpdate", "WardShiftCode",
     # Notifications
-    "MarkNotificationReadRequest", "NotificationResponse",
+    "MarkNotificationReadRequest", "NotificationPreferencesResponse",
+    "NotificationPreferencesUpdate", "NotificationResponse",
     "NotificationsListResponse", "NotificationStatsResponse",
 ]

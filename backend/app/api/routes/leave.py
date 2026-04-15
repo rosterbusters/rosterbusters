@@ -18,6 +18,7 @@ from app.utils import (
 )
 from app.core.config import settings
 from app.rbac import get_rbac_user_by_email, user_has_role
+from app.api.routes.notifications import get_email_enabled
 
 import logging
 logger = logging.getLogger(__name__)
@@ -236,26 +237,27 @@ def review_leave_request(
         )
 
         if settings.emails_enabled and nurse.email:
-            try:
-                email_data = generate_leave_review_nurse_email(
-                    email_to=nurse.email,
-                    nurse_name=nurse.name,
-                    leave_code=leave_request.leavetype,
-                    start_date=str(leave_request.startdate),
-                    end_date=str(leave_request.enddate),
-                    status=status,
-                    rejection_reason=leave_request.rejectionreason,
-                )
-                send_email(
-                    email_to=nurse.email,
-                    subject=email_data.subject,
-                    html_content=email_data.html_content,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to send leave review email to nurse %s",
-                    leave_request.nurseid,
-                )
+            if get_email_enabled(session, "Nurse", leave_request.nurseid, ntype.value):
+                try:
+                    email_data = generate_leave_review_nurse_email(
+                        email_to=nurse.email,
+                        nurse_name=nurse.name,
+                        leave_code=leave_request.leavetype,
+                        start_date=str(leave_request.startdate),
+                        end_date=str(leave_request.enddate),
+                        status=status,
+                        rejection_reason=leave_request.rejectionreason,
+                    )
+                    send_email(
+                        email_to=nurse.email,
+                        subject=email_data.subject,
+                        html_content=email_data.html_content,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to send leave review email to nurse %s",
+                        leave_request.nurseid,
+                    )
 
     session.commit()
     session.refresh(leave_request)

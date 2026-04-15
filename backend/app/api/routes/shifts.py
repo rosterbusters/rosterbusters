@@ -30,6 +30,7 @@ from app.utils import (
     generate_shift_request_rejected_email,
     send_email,
 )
+from app.api.routes.notifications import get_email_enabled
 from app.core.config import settings
 from app.cache import cache_delete, cache_get_json, cache_set_json
 from app.rbac import get_rbac_user_by_email, user_has_role
@@ -660,30 +661,31 @@ def review_shift_request(
             if settings.emails_enabled:
                 nurse = session.get(Nurse, shift_request.nurseid)
                 if nurse and nurse.email:
-                    try:
-                        if review_in.status == "Approved":
-                            email_data = generate_shift_request_approved_email(
+                    if get_email_enabled(session, "Nurse", shift_request.nurseid, ntype.value):
+                        try:
+                            if review_in.status == "Approved":
+                                email_data = generate_shift_request_approved_email(
+                                    email_to=nurse.email,
+                                    roster_period=period.name,
+                                    nurse_name=nurse.name,
+                                )
+                            else:
+                                email_data = generate_shift_request_rejected_email(
+                                    email_to=nurse.email,
+                                    roster_period=period.name,
+                                    nurse_name=nurse.name,
+                                    rejection_reason=review_in.rejectionreason,
+                                )
+                            send_email(
                                 email_to=nurse.email,
-                                roster_period=period.name,
-                                nurse_name=nurse.name,
+                                subject=email_data.subject,
+                                html_content=email_data.html_content,
                             )
-                        else:
-                            email_data = generate_shift_request_rejected_email(
-                                email_to=nurse.email,
-                                roster_period=period.name,
-                                nurse_name=nurse.name,
-                                rejection_reason=review_in.rejectionreason,
+                        except Exception:
+                            logger.exception(
+                                "Failed to send shift request review email to nurse %s",
+                                shift_request.nurseid,
                             )
-                        send_email(
-                            email_to=nurse.email,
-                            subject=email_data.subject,
-                            html_content=email_data.html_content,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Failed to send shift request review email to nurse %s",
-                            shift_request.nurseid,
-                        )
 
     session.commit()
     session.refresh(shift_request)

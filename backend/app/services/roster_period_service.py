@@ -24,6 +24,7 @@ from app.utils import (
 )
 
 from app.models import RosterPeriod
+from app.api.routes.notifications import get_email_enabled
 
 ROSTER_CYCLE_ANCHOR = date(2026, 3, 9)
 PERIOD_LENGTH_DAYS = 14
@@ -327,6 +328,10 @@ def _queue_roster_period_notifications(
                 )
 
                 if settings.emails_enabled and target.email:
+                    tid = target.nurseid if phase["recipient_type"] == "Nurse" else target.managerid
+                    if not get_email_enabled(session, phase["recipient_type"], tid, phase["type"].value):
+                        created += 1
+                        continue
                     try:
                         email_func = phase["email_func"]
                         if email_func:

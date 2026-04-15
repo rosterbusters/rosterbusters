@@ -120,6 +120,27 @@ class NotificationQueue(SQLModel, table=True):
     createdat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class NotificationPreference(SQLModel, table=True):
+    """
+    Per-user email notification opt-out preferences.
+
+    A row represents a user's explicit preference for a notification type.
+    If no row exists for a (recipienttype, recipientid, notificationtype) triple,
+    the default is email_enabled=True (always-on).
+
+    Only a specific subset of notification types are toggleable (see Settings page);
+    all other types are implicitly always-on and will never have rows here.
+    """
+    __tablename__ = "notificationpreference"
+
+    preferenceid: Optional[int] = Field(default=None, primary_key=True)
+    recipienttype: str = Field(max_length=20)   # "Nurse" | "NurseManager"
+    recipientid: int
+    notificationtype: str = Field(max_length=50)  # NotificationType.value
+    email_enabled: bool = Field(default=True)
+    updatedat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class RosterPeriodPublic(SQLModel):
     periodid: int
     name: str

@@ -48,6 +48,7 @@ from app.services.algorithm_lock_service import (
     release_ward_algorithm_lock,
 )
 from app.utils import generate_roster_release_email, generate_shift_updated_email, send_email
+from app.api.routes.notifications import get_email_enabled
 import app.crud as crud
 from app.rostering.algo_scheduler import generate_roster
 
@@ -727,7 +728,9 @@ def publish_ward_roster(
 
     if settings.emails_enabled:
         for nurse in nurses:
-            if not nurse.email:
+            if not nurse.email or not nurse.nurseid:
+                continue
+            if not get_email_enabled(session, "Nurse", nurse.nurseid, "RosterRelease"):
                 continue
             try:
                 email_data = generate_roster_release_email(
