@@ -1774,7 +1774,7 @@ function RosterPlanningPage() {
                       borderColor="#E6E6E6"
                       color="#4A4A4A"
                       _hover={{ bg: "gray.50" }}
-                      onClick={() => navigate({ to: "/nurse-manager/home" })}
+                      onClick={() => navigate({ to: "/nurse-manager/home", search: { periodId: effectiveSelectedPeriod?.periodId } })}
                     >
                       <HStack gap={2}>
                         <Eye className="h-4 w-4" />
