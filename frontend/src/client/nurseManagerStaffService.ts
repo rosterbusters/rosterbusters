@@ -57,7 +57,7 @@ export interface NurseManagerStaffCreate {
   username?: string
   name: string
   email?: string
-  employee_id: string
+  employee_id?: string
   designation: string
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string

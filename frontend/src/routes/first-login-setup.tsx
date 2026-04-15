@@ -26,6 +26,12 @@ import { UsersService } from "@/client"
 import type { CurrentUser } from "@/hooks/useAuth"
 import { passwordRules } from "@/utils"
 
+const normalizeEmail = (value: string | undefined | null) =>
+  (value ?? "").trim().toLowerCase()
+
+const normalizeVerificationCode = (value: string | undefined | null) =>
+  (value ?? "").replace(/\D/g, "").slice(0, 6)
+
 export const Route = createFileRoute("/first-login-setup")({
   component: FirstLoginSetup,
   beforeLoad: async () => {
@@ -109,7 +115,7 @@ function FirstLoginSetup() {
   }, [currentUser?.employee_id, getValues, setValue])
 
   const sendVerificationCode = async () => {
-    const email = getValues("email")?.trim()
+    const email = normalizeEmail(getValues("email"))
     
     if (!email) {
       showErrorToast("Please enter an email address first")
@@ -130,7 +136,7 @@ function FirstLoginSetup() {
     try {
       await UsersService.sendEmailVerificationCode({
         requestBody: {
-          email: email,
+          email,
         },
       })
       showSuccessToast("Verification code sent to your email!")
@@ -147,8 +153,8 @@ function FirstLoginSetup() {
   }
 
   const confirmVerificationCode = async () => {
-    const email = getValues("email")?.trim()
-    const code = verificationCode.trim()
+    const email = normalizeEmail(getValues("email"))
+    const code = normalizeVerificationCode(verificationCode)
     
     if (!code || code.length !== 6) {
       setCodeError("Please enter a 6-digit code")
@@ -161,10 +167,12 @@ function FirstLoginSetup() {
     try {
       await UsersService.verifyEmailCode({
         requestBody: {
-          email: email,
-          code: code,
+          email,
+          code,
         },
       })
+      const refreshedUser = (await UsersService.readUserMe()) as unknown as CurrentUser
+      queryClient.setQueryData(["currentUser"], refreshedUser)
       showSuccessToast("Email verified successfully!")
       setEmailVerificationStep("verified")
     } catch (err: any) {
@@ -200,8 +208,8 @@ function FirstLoginSetup() {
   })
 
   const onSubmit: SubmitHandler<SetupFormData> = (data) => {
-    const submittedEmail = data.email.trim().toLowerCase()
-    const verifiedAccountEmail = (currentUser?.email ?? "").trim().toLowerCase()
+    const submittedEmail = normalizeEmail(data.email)
+    const verifiedAccountEmail = normalizeEmail(currentUser?.email)
     const isUsingAlreadyVerifiedEmail =
       submittedEmail.length > 0 && submittedEmail === verifiedAccountEmail
 
@@ -212,7 +220,7 @@ function FirstLoginSetup() {
 
     mutation.mutate({
       new_password: data.new_password,
-      email: data.email,
+      email: submittedEmail,
       employee_id: data.employee_id?.trim() || undefined,
     })
   }
@@ -303,8 +311,8 @@ function FirstLoginSetup() {
                             message: "Invalid email address",
                           },
                           onChange: (e) => {
-                            const typedEmail = String(e.target.value ?? "").trim().toLowerCase()
-                            const verifiedAccountEmail = (currentUser?.email ?? "").trim().toLowerCase()
+                            const typedEmail = normalizeEmail(e.target.value)
+                            const verifiedAccountEmail = normalizeEmail(currentUser?.email)
 
                             if (typedEmail && verifiedAccountEmail && typedEmail === verifiedAccountEmail) {
                               setEmailVerificationStep("verified")
@@ -374,17 +382,27 @@ function FirstLoginSetup() {
                         placeholder="Enter 6-digit code"
                         value={verificationCode}
                         onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, "").slice(0, 6)
+                          const val = normalizeVerificationCode(e.target.value)
+                          setVerificationCode(val)
+                          setCodeError("")
+                        }}
+                        onPaste={(event) => {
+                          event.preventDefault()
+                          const val = normalizeVerificationCode(
+                            event.clipboardData.getData("text"),
+                          )
                           setVerificationCode(val)
                           setCodeError("")
                         }}
                         maxLength={6}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
                         size="md"
                         variant="subtle"
                         bg="gray.50"
                         textAlign="center"
                         fontSize="lg"
-                        letter-spacing="2px"
+                        letterSpacing="2px"
                       />
                       <Flex gap={2} flexDirection={{ base: "column", sm: "row" }}>
                         <Button
@@ -392,6 +410,10 @@ function FirstLoginSetup() {
                           variant="solid"
                           size="sm"
                           loading={isLoadingVerifyCode}
+                          disabled={
+                            isLoadingVerifyCode ||
+                            normalizeVerificationCode(verificationCode).length !== 6
+                          }
                           colorScheme="blue"
                           flex={1}
                         >
@@ -443,7 +465,9 @@ function FirstLoginSetup() {
                     <Input
                       {...register("employee_id", {
                         validate: (value) =>
-                          !requiresEmployeeId || value.trim().length > 0 || "Employee ID is required",
+                          !requiresEmployeeId ||
+                          value.trim().length > 0 ||
+                          "Employee ID is required",
                       })}
                       placeholder="Enter your employee ID"
                       type="text"

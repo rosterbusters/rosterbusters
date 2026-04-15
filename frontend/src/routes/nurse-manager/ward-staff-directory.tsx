@@ -699,25 +699,25 @@ function WardStaffDirectoryPage() {
       showErrorToast("Username is required.");
       return;
     }
-    if (!staffForm.employeeId.trim()) {
-      showErrorToast("Employee ID is required.");
-      return;
-    }
     if (!staffForm.designation.trim()) {
       showErrorToast("Designation is required.");
       return;
     }
 
+    const employeeId = staffForm.employeeId.trim();
+
     if (editingStaff) {
       const payload: NurseManagerStaffUpdate = {
         name: staffForm.name.trim(),
         username: staffForm.username.trim(),
-        employee_id: staffForm.employeeId.trim(),
         designation: staffForm.designation.trim(),
         email: staffForm.email.trim() || null,
         is_active: staffForm.isActive,
         ward_id: selectedWardId,
       };
+      if (employeeId) {
+        payload.employee_id = employeeId;
+      }
       if (staffForm.password.trim()) {
         payload.password = staffForm.password.trim();
       }
@@ -731,12 +731,14 @@ function WardStaffDirectoryPage() {
 
     const payload: NurseManagerStaffCreate = {
       name: staffForm.name.trim(),
-      employee_id: staffForm.employeeId.trim(),
       designation: staffForm.designation.trim(),
       email: staffForm.email.trim() || undefined,
       is_active: staffForm.isActive,
       ward_id: selectedWardId,
     };
+    if (employeeId) {
+      payload.employee_id = employeeId;
+    }
     if (staffForm.username.trim()) {
       payload.username = staffForm.username.trim();
     }
@@ -1665,13 +1667,15 @@ function WardStaffDirectoryPage() {
 
               <HStack gap={3} align="start">
                 <Box flex="1">
-                  <Text fontSize="sm" mb={1} color="gray.700">Employee ID</Text>
+                  <Text fontSize="sm" mb={1} color="gray.700">
+                    Employee ID (optional)
+                  </Text>
                   <Input
                     value={staffForm.employeeId}
                     onChange={(event) =>
                       setStaffForm((prev) => ({ ...prev, employeeId: event.target.value }))
                     }
-                    placeholder="EMP00123"
+                    placeholder="Employee can enter on first login"
                   />
                 </Box>
                 <Box flex="1">

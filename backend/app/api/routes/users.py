@@ -88,7 +88,7 @@ class NurseManagerStaffCreate(SQLModel):
     username: Optional[str] = Field(default=None, min_length=1, max_length=255)
     name: str = Field(min_length=1, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
-    employee_id: str = Field(min_length=1, max_length=100)
+    employee_id: Optional[str] = Field(default=None, max_length=100)
     designation: str = Field(min_length=1, max_length=100)
     shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
@@ -313,21 +313,22 @@ def create_nurse_manager_staff(
     if body.email and session.exec(select(RBACUser).where(RBACUser.email == body.email)).first():
         raise HTTPException(status_code=409, detail="Email already in use.")
 
-    employee_id = body.employee_id.strip()
-    dup_nurse = session.exec(select(Nurse).where(Nurse.employeeid == employee_id)).first()
-    if dup_nurse:
-        raise HTTPException(
-            status_code=409,
-            detail="This employee ID is already assigned to a nurse.",
-        )
-    dup_manager = session.exec(
-        select(NurseManager).where(NurseManager.employeeid == employee_id)
-    ).first()
-    if dup_manager:
-        raise HTTPException(
-            status_code=409,
-            detail="This employee ID is already assigned to a nurse manager.",
-        )
+    employee_id = body.employee_id.strip() if body.employee_id else None
+    if employee_id:
+        dup_nurse = session.exec(select(Nurse).where(Nurse.employeeid == employee_id)).first()
+        if dup_nurse:
+            raise HTTPException(
+                status_code=409,
+                detail="This employee ID is already assigned to a nurse.",
+            )
+        dup_manager = session.exec(
+            select(NurseManager).where(NurseManager.employeeid == employee_id)
+        ).first()
+        if dup_manager:
+            raise HTTPException(
+                status_code=409,
+                detail="This employee ID is already assigned to a nurse manager.",
+            )
 
     shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
     if body.shift_pattern is not None and shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
@@ -633,21 +634,9 @@ def first_login_setup(
                     detail="This employee ID is already assigned to a nurse.",
                 )
 
-        if nurse:
-            nurse.employeeid = employee_id
-            session.add(nurse)
-        if manager:
-            manager.employeeid = employee_id
-            session.add(manager)
-
-    # Set new password
-    current_user.passwordhash = get_password_hash(body.new_password)
-    current_user.must_change_password = False
-    current_user.default_password_encrypted = None
-
     # Require email to be verified first via /users/me/verify-email-code.
-    submitted_email = body.email.strip() if body.email else ""
-    current_email = current_user.email.strip() if current_user.email else ""
+    submitted_email = body.email.strip().lower() if body.email else ""
+    current_email = current_user.email.strip().lower() if current_user.email else ""
     bypass_verification = should_bypass_verification(current_user)
     if submitted_email:
         existing_user = session.exec(
@@ -682,6 +671,14 @@ def first_login_setup(
             detail="Email verification is required before completing setup.",
         )
 
+    # Apply linked staff updates only after all setup validation passes.
+    if nurse and employee_id:
+        nurse.employeeid = employee_id
+        session.add(nurse)
+    if manager and employee_id:
+        manager.employeeid = employee_id
+        session.add(manager)
+
     # Keep linked nurse/manager email in sync with the verified account email.
     if nurse and current_email and nurse.email != current_email:
         nurse.email = current_email
@@ -689,6 +686,11 @@ def first_login_setup(
     if manager and current_email and manager.email != current_email:
         manager.email = current_email
         session.add(manager)
+
+    # Set the new password only after email and employee ID checks pass.
+    current_user.passwordhash = get_password_hash(body.new_password)
+    current_user.must_change_password = False
+    current_user.default_password_encrypted = None
 
     session.add(current_user)
     session.commit()
@@ -706,7 +708,7 @@ def send_email_verification_code(
     """
     Send an email verification code to the provided email address.
     """
-    email = body.email.strip()
+    email = body.email.strip().lower()
     
     # Check if email is already in use by another user
     existing_user = session.exec(
@@ -746,8 +748,8 @@ def verify_email_code_endpoint(
     """
     Verify the email verification code and confirm the email.
     """
-    email = body.email.strip()
-    code = body.code.strip()
+    email = body.email.strip().lower()
+    code = "".join(ch for ch in body.code if ch.isdigit())
     
     # Verify the code
     if not verify_email_code(email, code, current_user.userid):
