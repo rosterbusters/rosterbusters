@@ -1680,25 +1680,13 @@ function WardStaffDirectoryPage() {
                 </Box>
                 <Box flex="1">
                   <Text fontSize="sm" mb={1} color="gray.700">Designation</Text>
-                  <Box
-                    as="select"
+                  <select
                     value={staffForm.designation}
                     onChange={(event) =>
                       setStaffForm((prev) => ({ ...prev, designation: event.target.value }))
                     }
-                    w="full"
-                    h="40px"
-                    px={3}
-                    rounded="md"
-                    borderWidth="1px"
-                    borderColor="gray.200"
-                    color={staffForm.designation ? "gray.900" : "gray.500"}
-                    bg="white"
-                    _focus={{
-                      borderColor: "#4B8798",
-                      boxShadow: "0 0 0 1px #4B8798",
-                      outline: "none",
-                    }}
+                    className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 focus:border-[#4B8798] focus:shadow-[0_0_0_1px_#4B8798] focus:outline-none"
+                    style={{ color: staffForm.designation ? "#111827" : "#6B7280" }}
                   >
                     <option value="">Select designation</option>
                     {designationOptions.map((designation) => (
@@ -1713,7 +1701,7 @@ function WardStaffDirectoryPage() {
                           {staffForm.designation}
                         </option>
                       )}
-                  </Box>
+                  </select>
                 </Box>
               </HStack>
 
