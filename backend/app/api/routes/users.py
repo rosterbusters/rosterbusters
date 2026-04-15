@@ -1,3 +1,4 @@
+import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -6,19 +7,26 @@ from sqlmodel import select
 
 from app.api.deps import (
     CurrentUser,
+    NurseManagerUser,
     SessionDep,
 )
 from app.core.security import get_password_hash, should_bypass_verification, verify_password
+from app.core.security import decrypt_default_password, encrypt_default_password, generate_random_password
+from app.designation_mapping import canonical_designation_from_value, load_designation_rank_map
 from app.models import (
     Message,
+    Designation,
     Nurse,
     NurseManager,
     RBACUser,
     RBACUserPublic,
+    Role,
     UpdatePassword,
     SQLModel,
+    UserRole,
 )
 from app.models.roster import Ward
+from app.rbac import get_user_roles_by_userid
 from app.utils import (
     store_email_verification_code,
     verify_email_code,
@@ -44,6 +52,487 @@ class SendEmailVerificationCode(SQLModel):
 class VerifyEmailCode(SQLModel):
     email: EmailStr
     code: str = Field(min_length=6, max_length=6)
+
+
+class WardInfo(SQLModel):
+    ward_id: int
+    ward_name: str
+
+
+class NurseManagerStaffPublic(SQLModel):
+    userid: int
+    nurseid: int
+    username: str
+    name: str
+    email: Optional[str] = None
+    employee_id: Optional[str] = None
+    designation: Optional[str] = None
+    shift_pattern: Optional[str] = None
+    isactive: bool
+    must_change_password: bool = False
+    ward: Optional[WardInfo] = None
+    generated_password: Optional[str] = None
+
+
+class NurseManagerPasswordResetResponse(SQLModel):
+    username: str
+    generated_password: str
+
+
+class DesignationOption(SQLModel):
+    designation: str
+    rank: str
+
+
+class NurseManagerStaffCreate(SQLModel):
+    username: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=255)
+    email: Optional[EmailStr] = Field(default=None, max_length=255)
+    employee_id: str = Field(min_length=1, max_length=100)
+    designation: str = Field(min_length=1, max_length=100)
+    shift_pattern: Optional[str] = Field(default=None, max_length=20)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    is_active: bool = True
+    ward_id: int
+
+
+class NurseManagerStaffUpdate(SQLModel):
+    username: Optional[str] = Field(default=None, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[EmailStr] = Field(default=None, max_length=255)
+    employee_id: Optional[str] = Field(default=None, max_length=100)
+    designation: Optional[str] = Field(default=None, max_length=100)
+    shift_pattern: Optional[str] = Field(default=None, max_length=20)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    is_active: Optional[bool] = None
+    ward_id: Optional[int] = None
+
+
+def _slugify_username(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", ".", value.lower()).strip(".")
+    return re.sub(r"\.+", ".", slug)
+
+
+def _generate_unique_username(session: SessionDep, seed: str) -> str:
+    base = _slugify_username(seed) or "nurse"
+    candidate = base
+    suffix = 2
+    while session.exec(select(RBACUser).where(RBACUser.username == candidate)).first():
+        candidate = f"{base}{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _username_seed_from_name(value: str) -> str:
+    return " ".join(value.strip().split()[:2])
+
+
+def _managed_wards(session: SessionDep, manager_id: int) -> list[Ward]:
+    return list(
+        session.exec(
+            select(Ward).where(
+                Ward.managerid == manager_id,
+                Ward.isactive == True,  # noqa: E712
+            )
+        ).all()
+    )
+
+
+def _managed_ward_ids(session: SessionDep, manager_id: int) -> set[int]:
+    return {ward.wardid for ward in _managed_wards(session, manager_id)}
+
+
+def _normalize_designation(session: SessionDep, raw: str) -> str:
+    rank_map = load_designation_rank_map(session)
+    canonical = canonical_designation_from_value(raw)
+    if not canonical or canonical.upper() not in rank_map:
+        raise HTTPException(status_code=400, detail=f"Unknown designation: {raw}")
+    return canonical
+
+
+def _build_staff_public(
+    session: SessionDep,
+    user: RBACUser,
+    nurse: Nurse,
+) -> NurseManagerStaffPublic:
+    ward = session.get(Ward, nurse.wardid) if nurse.wardid else None
+    ward_info = None
+    if ward:
+        ward_info = WardInfo(ward_id=ward.wardid, ward_name=ward.wardname)
+
+    generated_password = None
+    if user.must_change_password and user.default_password_encrypted:
+        generated_password = decrypt_default_password(user.default_password_encrypted)
+
+    return NurseManagerStaffPublic(
+        userid=user.userid,
+        nurseid=nurse.nurseid,
+        username=user.username,
+        name=nurse.name,
+        email=user.email,
+        employee_id=nurse.employeeid,
+        designation=nurse.designation,
+        shift_pattern=nurse.shiftpattern,
+        isactive=user.isactive,
+        must_change_password=user.must_change_password,
+        ward=ward_info,
+        generated_password=generated_password,
+    )
+
+
+def _get_managed_nurse_target(
+    session: SessionDep,
+    current_user: NurseManagerUser,
+    userid: int,
+) -> tuple[RBACUser, Nurse]:
+    user = session.get(RBACUser, userid)
+    if not user or not user.nurseid:
+        raise HTTPException(status_code=404, detail="Nurse account not found")
+
+    nurse = session.get(Nurse, user.nurseid)
+    if not nurse:
+        raise HTTPException(status_code=404, detail="Nurse record not found")
+
+    roles = set(get_user_roles_by_userid(session, user.userid))
+    if "Nurse" not in roles or "Admin" in roles or "NurseManager" in roles:
+        raise HTTPException(
+            status_code=403,
+            detail="Nurse managers can only manage nurse accounts.",
+        )
+
+    if not current_user.managerid:
+        raise HTTPException(status_code=403, detail="Nurse manager profile not found")
+
+    managed_ids = _managed_ward_ids(session, current_user.managerid)
+    if nurse.wardid not in managed_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only manage nurses in your assigned wards.",
+        )
+
+    return user, nurse
+
+
+@router.get("/nurse-manager/designations", response_model=list[DesignationOption])
+def list_nurse_manager_designations(
+    *,
+    session: SessionDep,
+    current_user: NurseManagerUser,
+) -> Any:
+    """List designation options for nurse managers creating ward staff."""
+    if not current_user.managerid:
+        raise HTTPException(status_code=403, detail="Nurse manager profile not found")
+
+    rows = session.exec(
+        select(Designation).order_by(Designation.rank, Designation.designation)
+    ).all()
+    return [
+        DesignationOption(designation=row.designation, rank=row.rank)
+        for row in rows
+    ]
+
+
+@router.get("/nurse-manager/staff", response_model=list[NurseManagerStaffPublic])
+def list_nurse_manager_staff(
+    *,
+    session: SessionDep,
+    current_user: NurseManagerUser,
+    ward_id: Optional[int] = None,
+) -> Any:
+    """List nurse accounts in wards managed by the current nurse manager."""
+    if not current_user.managerid:
+        raise HTTPException(status_code=403, detail="Nurse manager profile not found")
+
+    managed_ids = _managed_ward_ids(session, current_user.managerid)
+    if not managed_ids:
+        return []
+
+    if ward_id is not None and ward_id not in managed_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only view staff in your assigned wards.",
+        )
+
+    query = select(Nurse).where(Nurse.wardid.in_(managed_ids))  # type: ignore[arg-type]
+    if ward_id is not None:
+        query = query.where(Nurse.wardid == ward_id)
+    nurses = list(session.exec(query).all())
+
+    if not nurses:
+        return []
+
+    nurse_ids = [n.nurseid for n in nurses]
+    users = list(
+        session.exec(select(RBACUser).where(RBACUser.nurseid.in_(nurse_ids))).all()  # type: ignore[arg-type]
+    )
+    users_by_nurse_id = {u.nurseid: u for u in users if u.nurseid is not None}
+
+    results: list[NurseManagerStaffPublic] = []
+    for nurse in nurses:
+        user = users_by_nurse_id.get(nurse.nurseid)
+        if not user:
+            continue
+
+        roles = set(get_user_roles_by_userid(session, user.userid))
+        if "Nurse" not in roles or "Admin" in roles or "NurseManager" in roles:
+            continue
+
+        results.append(_build_staff_public(session, user, nurse))
+
+    results.sort(key=lambda item: item.name.lower())
+    return results
+
+
+@router.post("/nurse-manager/staff", response_model=NurseManagerStaffPublic, status_code=201)
+def create_nurse_manager_staff(
+    *,
+    session: SessionDep,
+    current_user: NurseManagerUser,
+    body: NurseManagerStaffCreate,
+) -> Any:
+    """Create a nurse account in one of the manager's wards."""
+    if not current_user.managerid:
+        raise HTTPException(status_code=403, detail="Nurse manager profile not found")
+
+    managed_ids = _managed_ward_ids(session, current_user.managerid)
+    if body.ward_id not in managed_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only create nurses in your assigned wards.",
+        )
+
+    requested_username = body.username.strip() if body.username else ""
+    username = requested_username or _generate_unique_username(
+        session,
+        _username_seed_from_name(body.name) or (body.email.split("@")[0] if body.email else ""),
+    )
+
+    if session.exec(select(RBACUser).where(RBACUser.username == username)).first():
+        raise HTTPException(status_code=409, detail="Username already in use.")
+
+    if body.email and session.exec(select(RBACUser).where(RBACUser.email == body.email)).first():
+        raise HTTPException(status_code=409, detail="Email already in use.")
+
+    employee_id = body.employee_id.strip()
+    dup_nurse = session.exec(select(Nurse).where(Nurse.employeeid == employee_id)).first()
+    if dup_nurse:
+        raise HTTPException(
+            status_code=409,
+            detail="This employee ID is already assigned to a nurse.",
+        )
+    dup_manager = session.exec(
+        select(NurseManager).where(NurseManager.employeeid == employee_id)
+    ).first()
+    if dup_manager:
+        raise HTTPException(
+            status_code=409,
+            detail="This employee ID is already assigned to a nurse manager.",
+        )
+
+    shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
+    if body.shift_pattern is not None and shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
+        raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
+
+    designation = _normalize_designation(session, body.designation.strip())
+
+    nurse_role = session.exec(select(Role).where(Role.rolename == "Nurse")).first()
+    if not nurse_role:
+        raise HTTPException(status_code=500, detail="Nurse role is not configured.")
+
+    raw_password = body.password if body.password else generate_random_password()
+
+    user = RBACUser(
+        username=username,
+        email=body.email,
+        passwordhash=get_password_hash(raw_password),
+        isactive=body.is_active,
+        must_change_password=True,
+        default_password_encrypted=encrypt_default_password(raw_password),
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    nurse = Nurse(
+        name=body.name.strip(),
+        employeeid=employee_id,
+        designation=designation,
+        email=body.email or "",
+        contactnumber="",
+        wardid=body.ward_id,
+        employmenttype="Full-time",
+        shiftpattern=shift_pattern,
+        isactive=body.is_active,
+    )
+    session.add(nurse)
+    session.commit()
+    session.refresh(nurse)
+
+    user.nurseid = nurse.nurseid
+    session.add(user)
+
+    user_role = UserRole(
+        userid=user.userid,
+        roleid=nurse_role.roleid,
+        isactive=True,
+    )
+    session.add(user_role)
+    session.commit()
+    session.refresh(user)
+
+    result = _build_staff_public(session, user, nurse)
+    if not body.password:
+        result.generated_password = raw_password
+    return result
+
+
+@router.patch("/nurse-manager/staff/{userid}", response_model=NurseManagerStaffPublic)
+def update_nurse_manager_staff(
+    *,
+    session: SessionDep,
+    current_user: NurseManagerUser,
+    userid: int,
+    body: NurseManagerStaffUpdate,
+) -> Any:
+    """Update a managed nurse account."""
+    user, nurse = _get_managed_nurse_target(session, current_user, userid)
+
+    if body.ward_id is not None:
+        if not current_user.managerid:
+            raise HTTPException(status_code=403, detail="Nurse manager profile not found")
+        managed_ids = _managed_ward_ids(session, current_user.managerid)
+        if body.ward_id not in managed_ids:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only assign nurses to your assigned wards.",
+            )
+
+    email_provided = "email" in body.model_fields_set
+    if email_provided and body.email is not None and body.email != user.email:
+        dup_email = session.exec(
+            select(RBACUser).where(RBACUser.email == body.email, RBACUser.userid != user.userid)
+        ).first()
+        if dup_email:
+            raise HTTPException(status_code=409, detail="Email already in use.")
+
+    if body.username is not None and body.username != user.username:
+        requested_username = body.username.strip()
+        if not requested_username:
+            raise HTTPException(status_code=400, detail="Username cannot be empty.")
+        dup_username = session.exec(
+            select(RBACUser).where(RBACUser.username == requested_username, RBACUser.userid != user.userid)
+        ).first()
+        if dup_username:
+            raise HTTPException(status_code=409, detail="Username already in use.")
+        user.username = requested_username
+
+    if body.employee_id is not None:
+        employee_id = body.employee_id.strip()
+        if not employee_id:
+            raise HTTPException(status_code=400, detail="Employee ID cannot be empty.")
+
+        dup_nurse = session.exec(
+            select(Nurse).where(Nurse.employeeid == employee_id, Nurse.nurseid != nurse.nurseid)
+        ).first()
+        if dup_nurse:
+            raise HTTPException(
+                status_code=409,
+                detail="This employee ID is already assigned to another nurse.",
+            )
+        dup_manager = session.exec(
+            select(NurseManager).where(NurseManager.employeeid == employee_id)
+        ).first()
+        if dup_manager:
+            raise HTTPException(
+                status_code=409,
+                detail="This employee ID is already assigned to a nurse manager.",
+            )
+        nurse.employeeid = employee_id
+
+    if body.designation is not None:
+        designation_value = body.designation.strip()
+        if not designation_value:
+            raise HTTPException(status_code=400, detail="Designation cannot be empty.")
+        nurse.designation = _normalize_designation(session, designation_value)
+
+    if body.shift_pattern is not None:
+        shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
+        if shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
+            raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
+        nurse.shiftpattern = shift_pattern
+
+    if body.name is not None:
+        nurse.name = body.name.strip() or user.username
+
+    if email_provided:
+        user.email = body.email
+        nurse.email = body.email or ""
+
+    if body.password is not None:
+        user.passwordhash = get_password_hash(body.password)
+        user.default_password_encrypted = None
+
+    if body.is_active is not None:
+        user.isactive = body.is_active
+        nurse.isactive = body.is_active
+
+    if body.ward_id is not None:
+        nurse.wardid = body.ward_id
+
+    session.add(user)
+    session.add(nurse)
+    session.commit()
+    session.refresh(user)
+    session.refresh(nurse)
+
+    return _build_staff_public(session, user, nurse)
+
+
+@router.post(
+    "/nurse-manager/staff/{userid}/reset-password",
+    response_model=NurseManagerPasswordResetResponse,
+)
+def reset_nurse_manager_staff_password(
+    *,
+    session: SessionDep,
+    current_user: NurseManagerUser,
+    userid: int,
+) -> Any:
+    """Generate a new temporary password for a managed nurse account."""
+    user, _nurse = _get_managed_nurse_target(session, current_user, userid)
+
+    raw_password = generate_random_password()
+    user.passwordhash = get_password_hash(raw_password)
+    user.must_change_password = True
+    user.default_password_encrypted = encrypt_default_password(raw_password)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return NurseManagerPasswordResetResponse(
+        username=user.username,
+        generated_password=raw_password,
+    )
+
+
+@router.delete("/nurse-manager/staff/{userid}", response_model=Message)
+def delete_nurse_manager_staff(
+    *,
+    session: SessionDep,
+    current_user: NurseManagerUser,
+    userid: int,
+) -> Any:
+    """Delete a managed nurse account."""
+    user, nurse = _get_managed_nurse_target(session, current_user, userid)
+
+    user_roles = session.exec(select(UserRole).where(UserRole.userid == user.userid)).all()
+    for user_role in user_roles:
+        session.delete(user_role)
+
+    session.delete(user)
+    session.delete(nurse)
+    session.commit()
+    return Message(message="User deleted successfully")
 
 
 @router.patch("/me/password", response_model=Message)

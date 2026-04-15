@@ -20,6 +20,7 @@ from sqlmodel import Session, select, delete
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.core.config import settings
+from app.core.security import decrypt_default_password
 from app.cache import cache_delete, cache_get_json, cache_set_json
 from app.models.enums import NotificationType
 from app.designation_mapping import (
@@ -29,7 +30,7 @@ from app.designation_mapping import (
     staffing_role_to_roster_rank,
 )
 from app.models.enums import NotificationType
-from app.models.rbac import Nurse, NurseManager, Role, UserRole
+from app.models.rbac import Nurse, NurseManager, RBACUser, Role, UserRole
 from app.models.roster import (
     NursePeriodConstraint,
     NursePeriodConstraintPublic,
@@ -394,8 +395,15 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Ward not found")
 
     nurses = db.exec(
-        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+        select(Nurse)
+        .where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+        .order_by(Nurse.name, Nurse.nurseid)
     ).all()
+    nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
+    users = db.exec(
+        select(RBACUser).where(RBACUser.nurseid.in_(nurse_ids))  # type: ignore[arg-type]
+    ).all() if nurse_ids else []
+    users_by_nurse_id = {u.nurseid: u for u in users if u.nurseid is not None}
     rank_map = load_designation_rank_map(db)
 
     return {
@@ -404,6 +412,25 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
             {
                 "nurseId": n.nurseid,
                 "name": n.name,
+                "userId": users_by_nurse_id[n.nurseid].userid
+                if n.nurseid in users_by_nurse_id
+                else None,
+                "username": users_by_nurse_id[n.nurseid].username
+                if n.nurseid in users_by_nurse_id
+                else None,
+                "mustChangePassword": users_by_nurse_id[n.nurseid].must_change_password
+                if n.nurseid in users_by_nurse_id
+                else False,
+                "defaultPassword": decrypt_default_password(
+                    users_by_nurse_id[n.nurseid].default_password_encrypted
+                )
+                if (
+                    n.nurseid in users_by_nurse_id
+                    and users_by_nurse_id[n.nurseid].must_change_password
+                    and users_by_nurse_id[n.nurseid].default_password_encrypted
+                )
+                else None,
+                "employeeId": n.employeeid,
                 "designation": n.designation,
                 "email": n.email,
                 "contactNumber": n.contactnumber or "",
