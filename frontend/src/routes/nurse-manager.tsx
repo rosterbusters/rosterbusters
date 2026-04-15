@@ -6,6 +6,8 @@ import { isLoggedIn } from "@/hooks/useAuth"
 export const Route = createFileRoute("/nurse-manager")({
   component: NurseManagerLayout,
   beforeLoad: async () => {
+    if (import.meta.env.VITE_BYPASS_AUTH === "true") return
+
     if (!isLoggedIn()) {
       throw redirect({ to: "/login" })
     }

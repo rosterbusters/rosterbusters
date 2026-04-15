@@ -29,11 +29,12 @@ export interface NotificationStatsResponse {
   recent: NotificationItem[]
 }
 
-export type NotificationType = "Roster" | "ShiftRequest" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "HRISReminder" | "System" | "Probation"
+export type NotificationType = "Roster" | "ShiftRequest" | "ShiftRequestPeriodOpen" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "HRISReminder" | "System" | "Probation"
 
 export const notificationTypeLabels: Record<string, string> = {
   Roster: "Roster",
   ShiftRequest: "Shift Request",
+  ShiftRequestPeriodOpen: "ShiftRequestPeriodOpen",
   LeaveRequest: "Leave Request",
   ShiftUpdate: "Roster",
   SwapRequest: "Shift Swap",
@@ -48,6 +49,7 @@ export const notificationTypeLabels: Record<string, string> = {
 export const notificationTypeBadgeVariant: Record<string, string> = {
   Roster: "blue",
   ShiftRequest: "yellow",
+  ShiftRequestPeriodOpen: "yellow",
   LeaveRequest: "green",
   ShiftUpdate: "blue",
   SwapRequest: "purple",
@@ -106,11 +108,11 @@ export const getNotificationRoute = (type: string): string => {
 
 // Hardcoded data for dropdown (until migrated to API)
 export const nurseManagerNotifications: NotificationItem[] = [
-  { notificationid: 1, notificationtype: "Roster", description: "Start Planning Roster for 10 Nov - 21 Nov", date: "1/11/2001" },
-  { notificationid: 2, notificationtype: "RosterRelease", description: "Reminder: Publish Roster due 7 Nov 2001", date: "1/11/2001" },
-  { notificationid: 3, notificationtype: "HRISReminder", description: "Reminder: Export Roster to HRIS system by 21 Nov 2001", date: "1/11/2001" },
-  { notificationid: 4, notificationtype: "LeaveRequest", description: "Tony Quek applied for AL for 31 Dec 2001", date: "1/11/2001" },
-  { notificationid: 5, notificationtype: "ShiftRequest", description: "Shift Requests Review for 10 Nov - 21 Nov is open", date: "1/11/2001" },
+  { notificationid: 1, notificationtype: "ShiftRequestPeriodOpen", description: "Shift Request Period (10 Nov - 21 Nov) is Now Open.", date: "1/11/2001" },
+  { notificationid: 2, notificationtype: "Roster", description: "Start Planning Roster for 10 Nov - 21 Nov", date: "1/11/2001" },
+  { notificationid: 3, notificationtype: "RosterRelease", description: "Reminder: Publish Roster due 7 Nov 2001", date: "1/11/2001" },
+  { notificationid: 4, notificationtype: "HRISReminder", description: "Reminder: Export Roster to HRIS system by 21 Nov 2001 hello byebye", date: "1/11/2001" },
+  { notificationid: 5, notificationtype: "LeaveRequest", description: "Tony Quek applied for AL for 31 Dec 2001", date: "1/11/2001" },
   { notificationid: 6, notificationtype: "ShiftRequest", description: "Shift Requests Review for 10 Nov - 21 Nov is closed", date: "1/11/2001" },
 ]
 
