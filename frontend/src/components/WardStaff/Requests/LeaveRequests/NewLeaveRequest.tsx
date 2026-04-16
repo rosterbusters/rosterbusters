@@ -15,6 +15,7 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService, ShiftRequestsService } from "@/client";
+import type { DateRange } from "react-day-picker";
 
 interface NewLeaveRequestProps {
   isOpen: boolean;
@@ -33,8 +34,8 @@ export const NewLeaveRequest = ({
 }: NewLeaveRequestProps) => {
   const [leaveType, setLeaveType] = useState<string[]>([]);
   const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
-  const [requestDate, setRequestDate] = useState<Date | undefined>(
-    selectedDate ?? undefined,
+  const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>(
+    selectedDate ? { from: selectedDate, to: undefined } : undefined,
   );
   const queryClient = useQueryClient();
 
@@ -93,7 +94,9 @@ export const NewLeaveRequest = ({
 
   useEffect(() => {
     if (isOpen) {
-      setRequestDate(selectedDate ?? undefined);
+      setRequestDateRange(
+        selectedDate ? { from: selectedDate, to: undefined } : undefined,
+      );
       setLeaveType([]);
       setSelectedNurse([]);
     }
@@ -104,8 +107,8 @@ export const NewLeaveRequest = ({
       showErrorToast("Please select a leave type.");
       return;
     }
-    if (!requestDate) {
-      showErrorToast("Please select a date.");
+    if (!requestDateRange?.from || !requestDateRange?.to) {
+      showErrorToast("Please select a start and end date.");
       return;
     }
     if (allowNurseOverride && selectedNurse.length === 0) {
@@ -113,12 +116,13 @@ export const NewLeaveRequest = ({
       return;
     }
 
-    const dateStr = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`;
+    const toDateStr = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
     mutation.mutate({
       nurseid: allowNurseOverride ? Number(selectedNurse[0]) : undefined,
-      startdate: dateStr,
-      enddate: dateStr,
+      startdate: toDateStr(requestDateRange.from),
+      enddate: toDateStr(requestDateRange.to),
       leavetype: leaveType[0],
     });
   };
@@ -129,6 +133,12 @@ export const NewLeaveRequest = ({
       motionPreset="slide-in-bottom"
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault();
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />
@@ -207,8 +217,10 @@ export const NewLeaveRequest = ({
                 <VStack alignItems="start">
                   <Text fontWeight="medium">Dates Requesting</Text>
                   <DatePickerDemo
-                    selected={requestDate}
-                    onSelect={(date) => setRequestDate(date)}
+                    mode="range"
+                    selected={requestDateRange}
+                    onSelect={(range) => setRequestDateRange(range)}
+                    placeholder="Pick a date range"
                   />
                 </VStack>
               </VStack>
