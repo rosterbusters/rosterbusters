@@ -13,7 +13,7 @@ import {
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
+
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
 
@@ -182,11 +182,12 @@ export const EditLeaveRequest = ({
                       <Select.Content>
                         {leaveCollection.items.map((code) => (
                           <Select.Item item={code.value} key={code.value}>
-                            <Tooltip content={code.description}>
+                            <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
                                 {code.value}
                               </Badge>
-                            </Tooltip>
+                              <Text fontSize="sm">{code.description}</Text>
+                            </HStack>
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}

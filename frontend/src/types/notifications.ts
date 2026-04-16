@@ -32,33 +32,71 @@ export interface NotificationStatsResponse {
 export type NotificationType = "Roster" | "ShiftRequest" | "ShiftRequestPeriodOpen" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "HRISReminder" | "System" | "Probation"
 
 export const notificationTypeLabels: Record<string, string> = {
+  // Legacy keys (backward-compat with hardcoded data)
   Roster: "Roster",
   ShiftRequest: "Shift Request",
-  ShiftRequestPeriodOpen: "ShiftRequestPeriodOpen",
-  LeaveRequest: "Leave Request",
-  ShiftUpdate: "Roster",
+  LeaveUpdate: "Leave Status",
+  ShiftUpdate: "Shift Update",
   SwapRequest: "Shift Swap",
   LeaveApproval: "Leave Status",
   LeaveReminder: "Leave Reminder",
-  RosterRelease: "Roster Release",
-  HRISReminder: "HRIS Reminder",
   System: "System",
-  Probation: "Probation"
+  Probation: "Probation",
+  // Shift Request group
+  ShiftRequestPeriodOpen: "Shift Request",
+  ShiftRequestPeriodClosed: "Shift Request",
+  ShiftRequestReviewOpen: "Shift Request",
+  ShiftRequestReviewClosed: "Shift Request",
+  ShiftRequestApproved: "Shift Request",
+  ShiftRequestRejected: "Shift Request",
+  ShiftUpdated: "Shift Request",
+  // Leave group
+  LeaveRequest: "Leave",
+  LeaveApproved: "Leave",
+  LeaveRejected: "Leave",
+  // Roster group
+  RosterPlanning: "Roster",
+  RosterFinalisation: "Roster",
+  RosterRelease: "Roster",
+  // Algorithm group
+  AlgorithmGeneration: "Algorithm",
+  AlgorithmInProgress: "Algorithm",
+  // Admin
+  HRISReminder: "HRIS Reminder",
 }
 
 export const notificationTypeBadgeVariant: Record<string, string> = {
-  Roster: "blue",
-  ShiftRequest: "yellow",
-  ShiftRequestPeriodOpen: "yellow",
-  LeaveRequest: "green",
+  // Legacy keys (backward-compat with hardcoded data)
+  Roster: "purple",
+  ShiftRequest: "blue",
+  LeaveUpdate: "green",
   ShiftUpdate: "blue",
-  SwapRequest: "purple",
+  SwapRequest: "blue",
   LeaveApproval: "green",
-  LeaveReminder: "orange",
-  RosterRelease: "cyan",
-  HRISReminder: "orange",
+  LeaveReminder: "green",
   System: "gray",
-  Probation: "red"
+  Probation: "red",
+  // Shift Request group → blue
+  ShiftRequestPeriodOpen: "blue",
+  ShiftRequestPeriodClosed: "blue",
+  ShiftRequestReviewOpen: "blue",
+  ShiftRequestReviewClosed: "blue",
+  ShiftRequestApproved: "blue",
+  ShiftRequestRejected: "blue",
+  ShiftUpdated: "blue",
+  // Leave group → green
+  LeaveRequest: "green",
+  LeaveApproved: "green",
+  LeaveRejected: "green",
+  // Roster group → purple
+  RosterPlanning: "purple",
+  RosterFinalisation: "purple",
+  RosterRelease: "purple",
+  // Algorithm group → teal
+  AlgorithmGeneration: "teal",
+  AlgorithmInProgress: "teal",
+  // Admin → orange
+  HRISReminder: "orange",
 }
 
 export const priorityBadgeVariant: Record<string, string> = {

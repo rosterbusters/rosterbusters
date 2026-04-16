@@ -7,17 +7,18 @@ import {
   Portal,
   Select,
   Badge,
+  HStack,
   Text,
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
+
 import { AssignableStatus } from "./AssignableStatus";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import { getActiveShiftRequestPeriod } from "./activePeriod";
-import { formatShiftCodeLabel } from "@/utils"
+
 
 interface NewShiftRequestProps {
   isOpen: boolean;
@@ -152,12 +153,12 @@ export const NewShiftRequest = ({
                       <Select.Content>
                         {shiftCollection.items.map((code) => (
                           <Select.Item item={code.value} key={code.value}>
-                            <Tooltip content={code.description}>
+                            <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
-                                {formatShiftCodeLabel(code.value)}
+                                {code.value}
                               </Badge>
-                            </Tooltip>
-
+                              <Text fontSize="sm">{code.description}</Text>
+                            </HStack>
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}

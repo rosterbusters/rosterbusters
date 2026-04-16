@@ -30,14 +30,15 @@ function formatNotificationDate(dateString: string): string {
 
 // Map the generic color names from notificationTypeBadgeVariant → Tailwind bg classes
 const colorClassMap: Record<string, string> = {
-  blue: "bg-[#3B82F6]", // blue.500
-  cyan: "bg-[#06B6D4]", // cyan.500
-  yellow: "bg-[#EAB308]", // yellow.500
-  green: "bg-[#22C55E]", // green.500
-  purple: "bg-[#A855F7]", // purple.500
-  orange: "bg-[#F97316]", // orange.500
-  gray: "bg-[#6B7280]", // gray.500
-  red: "bg-[#EF4444]", // red.500
+  blue: "bg-[#164E63]",   // Shift Request
+  green: "bg-[#0E7490]",  // Leave
+  purple: "bg-[#5993BF]", // Roster
+  teal: "bg-[#8CB2C0]",   // Algorithm
+  orange: "bg-[#50BEBE]", // Admin
+  cyan: "bg-[#06B6D4]",   // (unused, kept as fallback)
+  yellow: "bg-[#EAB308]", // (unused, kept as fallback)
+  gray: "bg-[#9E9E9E]",   // Slate Grey — System/Probation
+  red: "bg-[#EF4444]",    // red-500 — Probation/Urgent
 };
 
 // Badge component — colour driven by notificationTypeBadgeVariant from types/notifications
