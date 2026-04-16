@@ -150,6 +150,8 @@ export const EditLeaveRequest = ({
     <Dialog.Root
       placement="center"
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {
