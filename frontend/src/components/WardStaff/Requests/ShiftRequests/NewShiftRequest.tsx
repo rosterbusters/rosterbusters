@@ -17,6 +17,7 @@ import { AssignableStatus } from "./AssignableStatus";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import { getActiveShiftRequestPeriod } from "./activePeriod";
+import { formatShiftCodeLabel } from "@/utils"
 
 interface NewShiftRequestProps {
   isOpen: boolean;
@@ -42,12 +43,12 @@ export const NewShiftRequest = ({
     queryFn: () => ShiftRequestsService.getRosterPeriods(),
   });
 
-  const { data: workingShiftCodes } = useQuery({
+  const { data: shiftCodes } = useQuery({
     queryKey: ["shift-codes", wardId ?? "default"],
     queryFn: () =>
       wardId != null
         ? ShiftRequestsService.getShiftCodesByWard({ wardId })
-        : ShiftRequestsService.getWorkingShiftCodes(),
+        : ShiftRequestsService.getAllShiftCodes(),
   });
 
   const { data: leaveCodes } = useQuery({
@@ -55,28 +56,18 @@ export const NewShiftRequest = ({
     queryFn: () => ShiftRequestsService.getLeaveCodes(),
   });
 
-  const shiftCodes = useMemo(() => {
-    const base = [...(workingShiftCodes ?? [])];
-    const hasDO = base.some((sc) => sc.shiftcode === "DO");
-    if (!hasDO) {
-      base.push({
-        shiftcode: "DO",
-        description: "Day Off",
-      } as (typeof base)[number]);
-    }
-    return base;
-  }, [workingShiftCodes]);
+  const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: shiftCodes.map((sc) => ({
+        items: requestableShiftCodes.map((sc) => ({
           value: sc.shiftcode,
           label: sc.shiftcode,
           description: sc.description,
         })),
       }),
-    [shiftCodes],
+    [requestableShiftCodes],
   );
 
   const mutation = useMutation({
@@ -163,7 +154,7 @@ export const NewShiftRequest = ({
                           <Select.Item item={code.value} key={code.value}>
                             <Tooltip content={code.description}>
                               <Badge variant={`${code.value}Shift` as any}>
-                                {code.value}
+                                {formatShiftCodeLabel(code.value)}
                               </Badge>
                             </Tooltip>
 

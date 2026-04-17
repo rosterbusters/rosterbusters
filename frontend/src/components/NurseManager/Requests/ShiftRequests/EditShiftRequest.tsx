@@ -53,6 +53,7 @@ export const EditShiftRequest = ({
   isOpen,
   onClose,
   requests,
+  wardId,
   selectedRequestId,
 }: EditShiftRequestProps) => {
   const active = useMemo(
@@ -78,16 +79,17 @@ export const EditShiftRequest = ({
   const queryClient = useQueryClient();
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", "all"],
-    queryFn: () => ShiftRequestsService.getAllShiftCodes(),
+    queryKey: ["shift-codes", wardId ?? "default"],
+    queryFn: () =>
+      wardId != null
+        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
+        : ShiftRequestsService.getAllShiftCodes(),
   });
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: (shiftCodes ?? [])
-          .filter((sc) => sc.shiftcode !== "MC")
-          .map((sc) => ({
+        items: (shiftCodes ?? []).map((sc) => ({
             value: sc.shiftcode,
             label: sc.shiftcode,
             description: sc.description,

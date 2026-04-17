@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -1 /c/Users/pecki/OneDrive/Documents/GitHub/rosterbusters/backend/app/alembic/versions/*.py)"
+    ]
+  }
+}

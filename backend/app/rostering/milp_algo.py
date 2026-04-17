@@ -566,12 +566,23 @@ def _debug_milp_feasibility(
 # ---------------------------------------------------------------------------
 # Output formatter
 # ---------------------------------------------------------------------------
-def _apply_do_rd_pattern(schedule: list) -> list:
+def _has_permanent_shift_pattern(nurse_info: dict | None) -> bool:
+    if not nurse_info:
+        return False
+    normalized = str(
+        nurse_info.get("shift_pattern", nurse_info.get("shiftpattern", ""))
+    ).strip().upper()
+    return normalized in {"AM_ONLY", "PM_ONLY"}
+
+
+def _apply_do_rd_pattern(schedule: list, *, keep_all_do: bool = False) -> list:
     """Relabel every 2nd DO (OFF) as RD across the schedule in day order.
     Produces the DO → RD → DO → RD alternating rest-day pattern.
     Leave days and working shifts are left unchanged.
     """
     result = list(schedule)
+    if keep_all_do:
+        return ["OFF" if code == "OFF" else code for code in result]
     off_count = 0
     for i, code in enumerate(result):
         if code == "OFF":
@@ -608,7 +619,10 @@ def _format_output(nurses, roster_rn, roster_en, roster_hca, num_days, solver_st
                 code = str(roster_df.loc[nurse_name, f"Day {day}"])
                 schedule.append(_milp_to_sched.get(code, code))
 
-            schedule = _apply_do_rd_pattern(schedule)
+            schedule = _apply_do_rd_pattern(
+                schedule,
+                keep_all_do=_has_permanent_shift_pattern(nurse_info),
+            )
 
             stats = {
                 "total_shifts": sum(1 for s in schedule if s in ("AM", "PM", "NIGHT")),

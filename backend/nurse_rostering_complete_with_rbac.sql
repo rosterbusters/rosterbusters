@@ -77,6 +77,7 @@ CREATE TABLE Ward (
   WardID SERIAL PRIMARY KEY,
   WardName VARCHAR(100) NOT NULL,
   WardType VARCHAR(50), -- ICU / General / Pediatric
+  WardHourType VARCHAR(20) NOT NULL DEFAULT '8_HOURS', -- 8_HOURS / 12_HOURS
   Location VARCHAR(100), -- Floor / block
   ManagerID INTEGER,
   
@@ -128,6 +129,8 @@ CREATE TABLE Ward (
 
   CONSTRAINT fk_ward_manager FOREIGN KEY (ManagerID)
     REFERENCES NurseManager(ManagerID) ON DELETE SET NULL,
+
+  CONSTRAINT chk_ward_hour_type CHECK (WardHourType IN ('8_HOURS', '12_HOURS')),
 
   CONSTRAINT chk_ward_staffing_positive CHECK (
     Morning_RN_Required >= 0 AND Morning_StaffNurse_Required >= 0 AND

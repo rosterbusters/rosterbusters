@@ -31,9 +31,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def infer_ward_hour_type_from_name(ward_name: str) -> str:
+    """Infer ward hour type from ward name.
+
+    Rule:
+    - Names containing numbers (e.g. "Ward 1") => 8_HOURS
+    - Names with no numbers (e.g. "Cedar Ward") => 12_HOURS
+    """
+    return "8_HOURS" if any(ch.isdigit() for ch in ward_name) else "12_HOURS"
+
+
 def _get_guidelines(name: str, guidelines: dict) -> dict:
     return {
         "wardtype": guidelines["wardtype"],
+        "wardhourtype": infer_ward_hour_type_from_name(name),
         "am_total": guidelines["am_total"],
         "am_rn": guidelines["am_rn"],
         "am_en_na_min": guidelines["am_en_na_min"],
@@ -87,18 +98,34 @@ def seed_wards_from_dataset(session: Session, wards_data: list[dict], label: str
     wards: list[Ward] = []
 
     for ward_data in wards_data:
+        inferred_hour_type = infer_ward_hour_type_from_name(ward_data["wardname"])
         existing = session.exec(
             select(Ward).where(Ward.wardname == ward_data["wardname"])
         ).first()
 
         if existing:
-            logger.info("  Ward '%s' already exists, skipping", ward_data["wardname"])
+            updated = False
+            if existing.wardhourtype != inferred_hour_type:
+                existing.wardhourtype = inferred_hour_type
+                updated = True
+            if updated:
+                session.add(existing)
+                session.commit()
+                session.refresh(existing)
+                logger.info(
+                    "  Updated ward '%s' hour type to %s",
+                    ward_data["wardname"],
+                    inferred_hour_type,
+                )
+            else:
+                logger.info("  Ward '%s' already exists, skipping", ward_data["wardname"])
             wards.append(existing)
             continue
 
         ward = Ward(
             wardname=ward_data["wardname"],
             wardtype=ward_data["wardtype"],
+            wardhourtype=inferred_hour_type,
             location=ward_data["location"],
             isactive=True,
             am_total=ward_data["am_total"],
@@ -132,14 +159,15 @@ def seed_wards_from_dataset(session: Session, wards_data: list[dict], label: str
 def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     """Seed ward-specific shift code mappings for core seed data."""
     logger.info("Seeding ward shift code mappings (core)...")
-    default_base_working = {"A", "P", "N"}
-    special_base_working = {"D", "N-12", "N", "A", "P"}
-    special_ward_types = {"CH", "TCF"}
-    leave_codes = {sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]}
+    eight_hour_base_working = {"A", "P", "N", "DO"}
+    twelve_hour_base_working = {"A-12", "N-12", "DO"}
 
     for ward in wards:
-        base_working = special_base_working if ward.wardtype in special_ward_types else default_base_working
-        ward_codes = base_working | leave_codes | {"DO"}
+        ward_codes = (
+            twelve_hour_base_working
+            if (ward.wardhourtype or "8_HOURS") == "12_HOURS"
+            else eight_hour_base_working
+        )
 
         for shiftcode in sorted(ward_codes):
             existing = session.exec(

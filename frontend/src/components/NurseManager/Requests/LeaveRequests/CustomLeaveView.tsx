@@ -15,6 +15,12 @@ interface CustomMonthViewProps {
   [key: string]: unknown;
 }
 
+interface BlockedRange {
+  requestId: number;
+  startDate: string;
+  endDate: string;
+}
+
 interface CustomMonthViewComponent {
   (props: CustomMonthViewProps): JSX.Element;
   range: (date: Date, options: { localizer: DateLocalizer }) => Date[];
@@ -90,6 +96,29 @@ function getLeaveRequestsFromEvent(event: Event) {
   ];
 }
 
+function getBlockedRanges(events: Event[]): BlockedRange[] {
+  const uniqueRanges = new Map<number, BlockedRange>();
+
+  events
+    .flatMap(getLeaveRequestsFromEvent)
+    .forEach((request) => {
+      if (
+        request.requestId != null &&
+        request.startDate &&
+        request.endDate &&
+        !uniqueRanges.has(request.requestId)
+      ) {
+        uniqueRanges.set(request.requestId, {
+          requestId: request.requestId,
+          startDate: request.startDate,
+          endDate: request.endDate,
+        });
+      }
+    });
+
+  return Array.from(uniqueRanges.values());
+}
+
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
@@ -128,6 +157,8 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
     }
     return result;
   }, [currRange]);
+
+  const blockedRanges = useMemo(() => getBlockedRanges(events), [events]);
 
   const currentMonth = moment(date).month();
 
@@ -277,6 +308,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
           nurseName={selectedRequest.nurseName}
           currentStatus={selectedRequest.status}
           requests={selectedRequest.requests}
+          blockedRanges={blockedRanges}
         />
       )}
 
@@ -285,6 +317,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         onClose={() => setNewLeaveDate(null)}
         selectedDate={newLeaveDate}
         wardId={wardId}
+        blockedRanges={blockedRanges}
       />
     </>
   );

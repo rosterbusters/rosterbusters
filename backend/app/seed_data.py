@@ -52,6 +52,8 @@ SHIFT_CODES_DATA = [
     # Working shifts - AM
     {"shiftcode": "A", "description": "0700-1530 (AM SHIFT)", "isworking": True,
      "defaultstart": time(7, 0), "defaultend": time(15, 30), "shiftdurationhours": Decimal("8.50")},
+    {"shiftcode": "A-12", "description": "0700-1900 (12-HOUR DAY SHIFT)", "isworking": True,
+     "defaultstart": time(7, 0), "defaultend": time(19, 0), "shiftdurationhours": Decimal("12.00")},
     {"shiftcode": "A-ADD", "description": "0700-1630 (AM SHIFT)", "isworking": True,
      "defaultstart": time(7, 0), "defaultend": time(16, 30), "shiftdurationhours": Decimal("9.50")},
     {"shiftcode": "A-O", "description": "0700-1530 (AM SHIFT) W OT", "isworking": True,
@@ -179,48 +181,56 @@ WARDS_DATA = [
     # SACH Simei wards
     {
         "wardname": "Ward 4", "wardtype": "Dementia", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
         "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
         "nd_total": 4, "nd_rn": 1, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         "wardname": "Ward 5", "wardtype": "Rehab", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
         "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
         "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         "wardname": "Ward 6", "wardtype": "Rehab", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
         "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
         "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         "wardname": "Ward 7", "wardtype": "Rehab", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
         "pm_total": 7, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 5, "pm_hca_min": 0, "pm_hca_max": 2,
         "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         "wardname": "Ward 8", "wardtype": "Subacute", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
         "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
         "nd_total": 5, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         "wardname": "Ward 9", "wardtype": "Subacute", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
         "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
         "nd_total": 5, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 3, "nd_hca_min": 0, "nd_hca_max": 1,
     },
     {
         "wardname": "Ward 10", "wardtype": "Paying Class", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 7, "am_rn": 2, "am_en_na_min": 4, "am_en_na_max": 4, "am_hca_min": 1, "am_hca_max": 1,
         "pm_total": 6, "pm_rn": 2, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 1,
         "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 2, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 0,
     },
     {
         "wardname": "Ward 11", "wardtype": "Palliative", "location": "Simei",
+        "wardhourtype": "8_HOURS",
         "am_total": 8, "am_rn": 3, "am_en_na_min": 3, "am_en_na_max": 5, "am_hca_min": 0, "am_hca_max": 2,
         "pm_total": 7, "pm_rn": 3, "pm_en_na_min": 2, "pm_en_na_max": 4, "pm_hca_min": 0, "pm_hca_max": 2,
         "nd_total": 4, "nd_rn": 2, "nd_en_na_min": 1, "nd_en_na_max": 2, "nd_hca_min": 0, "nd_hca_max": 1,
@@ -228,10 +238,12 @@ WARDS_DATA = [
     # SACH Bedok wards
     {
         "wardname": "CH", "wardtype": "Community Hospital", "location": "Bedok",
+        "wardhourtype": "12_HOURS",
         **CH_GUIDELINES,
     },
     {
         "wardname": "TCF", "wardtype": "Transitional Care", "location": "Bedok",
+        "wardhourtype": "12_HOURS",
         **TCF_GUIDELINES,
     },
 ]
@@ -437,6 +449,7 @@ def seed_wards(session: Session) -> list[Ward]:
             ward = Ward(
                 wardname=ward_data["wardname"],
                 wardtype=ward_data["wardtype"],
+                wardhourtype=ward_data.get("wardhourtype", "8_HOURS"),
                 location=ward_data["location"],
                 isactive=True,
                 # AM shift staffing requirements
@@ -1275,9 +1288,6 @@ def seed_notifications(
         (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},          "Normal"),
         (NotificationType.SHIFT_REQUEST_REJECTED,      {"roster_period": period_name},          "Normal"),
         (NotificationType.SHIFT_REQUEST_PERIOD_CLOSED, {"roster_period": period_name},          "Urgent"),
-        (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},          "Normal"),
-        (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},          "Normal"),
-        (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},          "Normal"),
         (NotificationType.SHIFT_UPDATED,               {"start_date": recent_shift_date},       "Normal"),
     ]
     
@@ -1377,23 +1387,21 @@ def seed_notifications(
 def seed_ward_shiftcodes(session: Session, wards: list[Ward]) -> None:
     """Seed ward-specific shift code mappings.
 
-    All wards are mapped to: D, N, A, P plus all leave codes (isworking=False).
+    8-hour wards: A, P, N, DO
+    12-hour wards: A-12, N-12, DO
     """
     logger.info("Seeding ward shift code mappings...")
-    DEFAULT_BASE_WORKING = {"A", "P", "N"}
-    SPECIAL_BASE_WORKING = {"D", "N-12", "N", "A", "P"}
-    SPECIAL_WARD_NAMES = {"CH", "TCF"}
-    leave_codes = {
-        sc["shiftcode"] for sc in SHIFT_CODES_DATA if not sc["isworking"]
-    }
+    EIGHT_HOUR_BASE_WORKING = {"A", "P", "N", "DO"}
+    TWELVE_HOUR_BASE_WORKING = {"A-12", "N-12", "DO"}
 
     for ward in wards:
-        if ward.wardname in SPECIAL_WARD_NAMES:
-            base_working = SPECIAL_BASE_WORKING
-        else:
-            base_working = DEFAULT_BASE_WORKING
-        
-        ward_codes = base_working | leave_codes
+        base_working = (
+            TWELVE_HOUR_BASE_WORKING
+            if (ward.wardhourtype or "8_HOURS") == "12_HOURS"
+            else EIGHT_HOUR_BASE_WORKING
+        )
+
+        ward_codes = base_working
         for shiftcode in sorted(ward_codes):
             existing = session.exec(
                 select(WardShiftCode).where(

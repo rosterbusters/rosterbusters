@@ -1,5 +1,35 @@
 <img width="1080" height="324" alt="Banners" src="https://github.com/user-attachments/assets/c1ac96e4-8c46-4763-bcaa-9b008f642681" />
 
+# RosterBusters
+
+RosterBusters is a full-stack hospital nurse rostering application for **SACH (St Andrew's Community Hospital)**. It automates bi-weekly shift scheduling for ward nursing staff, combining nurse preference requests with constraint-based optimisation algorithms (MILP and AB-Ratio/CP-SAT), and provides a full workflow for managers to review, edit, and publish rosters.
+
+## Architecture at a Glance
+
+| Service | Technology | Local URL |
+|---------|-----------|-----------|
+| **Frontend** | React 19 + Vite (served via Nginx in prod) | `http://localhost:5173` |
+| **Backend** | FastAPI (Python 3.12) | `http://localhost:8000` |
+| **Database** | PostgreSQL 18 | `localhost:5432` |
+| **Redis** | redis:7-alpine | `localhost:6379` |
+| **Celery Worker** | Python (Celery 5) — roster algorithm runner | — |
+| **Adminer** | Web DB client | `http://localhost:8080` |
+| **Mailcatcher** | Local SMTP email capture | `http://localhost:1080` |
+| **Traefik** | Reverse proxy + TLS termination | — |
+
+## User Roles
+
+| Role | Capabilities |
+|------|-------------|
+| **Admin** | Manage all users, wards, and system configuration |
+| **NurseManager** | Review requests, trigger roster generation, edit and publish rosters |
+| **Nurse (WardStaff)** | Submit shift/leave requests, view published roster |
+
+## Developer Reference
+
+For a comprehensive guide to the codebase — directory structure, all API endpoints, database models, algorithms, frontend pages, CI/CD pipelines, and developer workflows — see **[CODEBASE.md](CODEBASE.md)**.
+
+---
 
 # Setup
 1. Place .env file in root directory
@@ -203,7 +233,7 @@ docker compose exec backend python app/test_algo.py --ward-id 1
 
 Options:
 - `--ward-id` — Ward ID to generate requests for (required)
-- `--mode` � `deterministic` (default), `hardcoded`, `anonymized`, `anonymized-feasible`, or `anonymized-apr-2026`
+- `--mode` � `deterministic` (default), `hardcoded`, `anonymized`, `anonymized-feasible`, or `anonymized-apr-2026`
 
 Other modes:
 

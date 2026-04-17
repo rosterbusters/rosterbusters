@@ -15,6 +15,7 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { ShiftRequestsService } from "@/client";
+import { formatShiftCodeLabel } from "@/utils"
 
 interface EditShiftRequestProps {
   isOpen: boolean;
@@ -61,19 +62,21 @@ export const EditShiftRequest = ({
     queryFn: () =>
       wardId != null
         ? ShiftRequestsService.getShiftCodesByWard({ wardId })
-        : ShiftRequestsService.getWorkingShiftCodes(),
+        : ShiftRequestsService.getAllShiftCodes(),
   });
+
+  const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: (shiftCodes ?? []).map((sc) => ({
+        items: requestableShiftCodes.map((sc) => ({
           value: sc.shiftcode,
           label: sc.shiftcode,
           description: sc.description,
         })),
       }),
-    [shiftCodes],
+    [requestableShiftCodes],
   );
 
   useEffect(() => {
@@ -167,7 +170,7 @@ export const EditShiftRequest = ({
                           <Select.Item item={code.value} key={code.value}>
                             <Tooltip content={code.description}>
                               <Badge variant={`${code.value}Shift` as any}>
-                                {code.value}
+                                {formatShiftCodeLabel(code.value)}
                               </Badge>
                             </Tooltip>
                             <Select.ItemIndicator />

@@ -164,6 +164,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
               requestId={selectedRequest.requestId}
               initialShiftType={selectedRequest.shiftType}
               initialDate={selectedRequest.preferredDate}
+              wardId={(user as any)?.wardid}
             />
           )}
         </>
