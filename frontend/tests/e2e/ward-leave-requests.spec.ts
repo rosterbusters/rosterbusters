@@ -146,6 +146,11 @@ test("ward staff can create a leave request from the calendar", async ({
       ),
       dialog.getByRole("button", { name: "Create" }).click(),
     ])
+    const createPayload = createResponse.request().postDataJSON() as
+      | { startdate?: string; enddate?: string }
+      | undefined
+    expect(createPayload?.startdate).toBe(dateKey)
+    expect(createPayload?.enddate).toBe(dateKey)
 
     const created = (await createResponse.json()) as { leaveid?: number }
     createdLeaveId = created.leaveid ?? null
