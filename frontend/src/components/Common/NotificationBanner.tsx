@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { NotificationResponse } from "@/client/NotificationsService";
 import {
   notificationTypeLabels,
-  notificationTypeBadgeVariant,
+  notificationTypeBadgeStyles,
   getNotificationRoute,
 } from "@/types/notifications";
 
@@ -30,6 +30,12 @@ export default function NotificationBanner({ items, role }: NotificationBannerPr
   const navigate = useNavigate();
   const prefix = rolePrefix[role] ?? "";
 
+  const getBadgeStyle = (type: string) =>
+    notificationTypeBadgeStyles[type] ?? {
+      background: "#6B7280",
+      text: "#FFFFFF",
+    };
+
   return (
     <Stack width="full" gap="5">
       <Table.ScrollArea maxHeight="216px">
@@ -42,7 +48,10 @@ export default function NotificationBanner({ items, role }: NotificationBannerPr
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {items.map((item) => (
+            {items.map((item) => {
+              const badgeStyle = getBadgeStyle(item.notificationtype);
+
+              return (
               <Table.Row
                 lineHeight="36px"
                 key={item.notificationid}
@@ -52,8 +61,10 @@ export default function NotificationBanner({ items, role }: NotificationBannerPr
                 <Table.Cell lineHeight="36px">
                   <Badge
                     width="fit-content"
-                    colorPalette={notificationTypeBadgeVariant[item.notificationtype] ?? "gray"}
                     variant="subtle"
+                    bg={badgeStyle.background}
+                    color={badgeStyle.text}
+                    borderColor={badgeStyle.border}
                   >
                     {notificationTypeLabels[item.notificationtype] ?? item.notificationtype}
                   </Badge>
@@ -65,7 +76,8 @@ export default function NotificationBanner({ items, role }: NotificationBannerPr
                   {formatDate(item.createdat)}
                 </Table.Cell>
               </Table.Row>
-            ))}
+              );
+            })}
           </Table.Body>
         </Table.Root>
       </Table.ScrollArea>

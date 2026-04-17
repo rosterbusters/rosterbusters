@@ -29,7 +29,7 @@ export interface NotificationStatsResponse {
   recent: NotificationItem[]
 }
 
-export type NotificationType = "Roster" | "ShiftRequest" | "ShiftRequestPeriodOpen" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "HRISReminder" | "System" | "Probation"
+export type NotificationType = "Roster" | "ShiftRequest" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "HRISReminder" | "System" | "Probation" | "AlgorithmGeneration" | "AlgorithmInProgress" | "ShiftRequestPeriodOpen" | "ShiftRequestPeriodClosed" | "ShiftRequestReviewOpen" | "ShiftRequestReviewClosed" | "ShiftRequestApproved" | "ShiftRequestRejected" | "RosterPlanning" | "RosterFinalisation"
 
 export const notificationTypeLabels: Record<string, string> = {
   // Legacy keys (backward-compat with hardcoded data)
@@ -132,12 +132,22 @@ export const getNotificationRoute = (type: string): string => {
   const routeMap: Record<string, string> = {
     Roster: "/staffrosterschedule",
     ShiftRequest: "/request-application",
+    ShiftRequestPeriodOpen: "/request-application",
+    ShiftRequestPeriodClosed: "/request-application",
+    ShiftRequestReviewOpen: "/request-application",
+    ShiftRequestReviewClosed: "/request-application",
+    ShiftRequestApproved: "/request-application",
+    ShiftRequestRejected: "/request-application",
     LeaveRequest: "/request-application",
     ShiftUpdate: "/staffrosterschedule",
     SwapRequest: "/request-overview",
     LeaveApproval: "/request-application",
     LeaveReminder: "/request-application",
     RosterRelease: "/staffrosterschedule",
+    RosterPlanning: "/roster-planning",
+    RosterFinalisation: "/roster-planning",
+    AlgorithmGeneration: "/roster-planning",
+    AlgorithmInProgress: "/roster-planning",
     System: "/system",
     Probation: "/probation",
   }

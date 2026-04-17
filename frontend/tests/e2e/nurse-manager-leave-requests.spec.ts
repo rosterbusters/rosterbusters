@@ -252,6 +252,11 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
       ),
       createDialog.getByRole("button", { name: "Create" }).click(),
     ])
+    const createPayload = createResponse.request().postDataJSON() as
+      | { startdate?: string; enddate?: string }
+      | undefined
+    expect(createPayload?.startdate).toBe(newRequestDateKey)
+    expect(createPayload?.enddate).toBe(newRequestDateKey)
 
     const created = (await createResponse.json()) as { leaveid?: number }
     if (!created.leaveid) {
