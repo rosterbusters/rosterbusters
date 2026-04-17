@@ -25,6 +25,15 @@ interface NewLeaveRequestProps {
   allowNurseOverride?: boolean;
 }
 
+function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
+  return selectedDate
+    ? {
+        from: selectedDate,
+        to: selectedDate,
+      }
+    : undefined;
+}
+
 export const NewLeaveRequest = ({
   isOpen,
   onClose,
@@ -35,7 +44,7 @@ export const NewLeaveRequest = ({
   const [leaveType, setLeaveType] = useState<string[]>([]);
   const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
   const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>(
-    selectedDate ? { from: selectedDate, to: undefined } : undefined,
+    buildInitialRange(selectedDate),
   );
   const queryClient = useQueryClient();
 
@@ -94,9 +103,7 @@ export const NewLeaveRequest = ({
 
   useEffect(() => {
     if (isOpen) {
-      setRequestDateRange(
-        selectedDate ? { from: selectedDate, to: undefined } : undefined,
-      );
+      setRequestDateRange(buildInitialRange(selectedDate));
       setLeaveType([]);
       setSelectedNurse([]);
     }

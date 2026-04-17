@@ -32,6 +32,15 @@ interface NewLeaveRequestProps {
   }>;
 }
 
+function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
+  return selectedDate
+    ? {
+        from: selectedDate,
+        to: selectedDate,
+      }
+    : undefined;
+}
+
 function toLocalDate(value: string) {
   const [year, month, day] = value.split("-");
   if (year && month && day) {
@@ -50,7 +59,7 @@ export const NewLeaveRequest = ({
   const [leaveType, setLeaveType] = useState<string[]>([]);
   const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
   const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>(
-    selectedDate ? { from: selectedDate, to: undefined } : undefined,
+    buildInitialRange(selectedDate),
   );
   const [localComment, setLocalComment] = useState("");
   const queryClient = useQueryClient();
@@ -132,9 +141,7 @@ export const NewLeaveRequest = ({
 
   useEffect(() => {
     if (isOpen) {
-      setRequestDateRange(
-        selectedDate ? { from: selectedDate, to: undefined } : undefined,
-      );
+      setRequestDateRange(buildInitialRange(selectedDate));
       setLeaveType([]);
       setSelectedNurse([]);
       setLocalComment("");
