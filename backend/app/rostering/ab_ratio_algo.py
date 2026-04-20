@@ -1178,12 +1178,13 @@ def _format_output(
             if 0 <= day_idx < num_days:
                 schedule_labels[day_idx] = leave_code
 
-        off_count = 0
-        for day_idx, label in enumerate(schedule_labels):
-            if label == "OFF":
-                off_count += 1
-                if off_count % 2 == 0:
-                    schedule_labels[day_idx] = "RD"
+        if _get_shift_pattern(nurse_info) is None:
+            off_count = 0
+            for day_idx, label in enumerate(schedule_labels):
+                if label == "OFF":
+                    off_count += 1
+                    if off_count % 2 == 0:
+                        schedule_labels[day_idx] = "RD"
 
         output_nurses.append(
             {
