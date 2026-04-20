@@ -145,6 +145,11 @@ const useAuth = () => {
     },
   })
 
+  const cancelEmail2faChallenge = () => {
+    setEmail2faChallenge(null)
+    setError(null)
+  }
+
   
   const logout = () => {
     // Cancel in-flight queries before removing the token to avoid 401s
@@ -162,6 +167,7 @@ const useAuth = () => {
     verifyEmail2faMutation,
     resendEmail2faMutation,
     email2faChallenge,
+    cancelEmail2faChallenge,
     logout,
     user,
     error,

@@ -1,6 +1,6 @@
 import { Box, Container, Flex, Heading, Image, Text, VStack, IconButton } from "@chakra-ui/react"
 import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
-import { FiLock, FiUser, FiEye, FiEyeOff } from "react-icons/fi"
+import { FiLock, FiUser, FiEye, FiEyeOff, FiArrowLeft } from "react-icons/fi"
 import { FcGoogle } from "react-icons/fc"
 import { useEffect, useState } from "react"; 
 import { useForm, SubmitHandler } from 'react-hook-form';
@@ -44,6 +44,7 @@ function Login() {
     verifyEmail2faMutation,
     resendEmail2faMutation,
     email2faChallenge,
+    cancelEmail2faChallenge,
     error,
     resetError,
   } = useAuth()
@@ -105,6 +106,12 @@ function Login() {
     } catch {
       // handled through hook error flow
     }
+  }
+
+  const handleBackToLogin = () => {
+    cancelEmail2faChallenge()
+    setVerificationCode("")
+    setResendCooldown(0)
   }
 
   const handleGoogleLogin = () => {
@@ -250,25 +257,30 @@ function Login() {
                   <Field
                     label="Verification Code"
                   >
-                    <Input
-                      value={verificationCode}
-                      onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="6-digit code"
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      size="md"
-                      variant="subtle"
-                      bg="gray.50"
-                    />
-                    <Text fontSize="sm" color="gray.500" mt={2}>
-                      Enter the 6-digit code sent to your email.
-                    </Text>
-                    <Flex justify="space-between" mt={2} gap={2} direction={{ base: "column", sm: "row" }}>
+                    <Flex gap={2} w="100%" direction={{ base: "column", sm: "row" }} align="stretch">
+                      <Input
+                        value={verificationCode}
+                        onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        onPaste={(event) => {
+                          event.preventDefault()
+                          setVerificationCode(
+                            event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6),
+                          )
+                        }}
+                        placeholder="6-digit code"
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        size="md"
+                        variant="subtle"
+                        bg="gray.50"
+                        flex="1"
+                      />
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
+                        size="md"
+                        minW={{ base: "100%", sm: "140px" }}
                         onClick={async () => {
                           try {
                             await resendEmail2faMutation.mutateAsync()
@@ -281,6 +293,23 @@ function Login() {
                         disabled={resendCooldown > 0 || resendEmail2faMutation.isPending}
                       >
                         {resendCooldown > 0 ? `Resend (${resendCooldown}s)` : "Resend Code"}
+                      </Button>
+                    </Flex>
+                    <Text fontSize="sm" color="gray.500" mt={2}>
+                      Enter the 6-digit code sent to your email.
+                    </Text>
+                    <Flex justify="center" mt={2} w="100%">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        mx="auto"
+                        onClick={handleBackToLogin}
+                      >
+                        <Flex align="center" gap={2}>
+                          <FiArrowLeft />
+                          Back to Login
+                        </Flex>
                       </Button>
                     </Flex>
                   </Field>
