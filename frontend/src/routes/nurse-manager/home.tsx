@@ -41,8 +41,8 @@ import { Ward } from "@/client/types.gen";
 
 export const Route = createFileRoute("/nurse-manager/home")({
   component: NurseManagerHome,
-  validateSearch: (search: Record<string, unknown>) => ({
-    periodId: search.periodId != null ? Number(search.periodId) : undefined,
+  validateSearch: (search: Record<string, unknown>): { periodId?: number } => ({
+    ...(search.periodId != null ? { periodId: Number(search.periodId) } : {}),
   }),
 });
 
