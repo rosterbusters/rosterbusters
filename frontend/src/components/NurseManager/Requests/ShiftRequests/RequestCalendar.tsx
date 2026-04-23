@@ -135,10 +135,26 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
     return new Map(wardNurses.map((n) => [n.nurseid, n.name]));
   }, [wardNurses]);
 
+  // ─── Demo: paired requests with mixed statuses ────────────────────────────
+  const demoEvents: Event[] = useMemo(() => {
+    const today = moment().startOf("day");
+    const d = (offset: number) => today.clone().add(offset, "days").toDate();
+    return [
+      // AM shift today: Hazel rejected, Sein May approved
+      { title: "A", start: d(0), end: d(0), allDay: true, resource: { nurseName: "Hazel Pareja LAMIS", isOwn: false, requestId: -901, preferredDate: d(0).toISOString(), shiftType: "A", status: "Rejected", reason: "Understaffed on this day" } },
+      { title: "A", start: d(0), end: d(0), allDay: true, resource: { nurseName: "Sein May", isOwn: true, requestId: -902, preferredDate: d(0).toISOString(), shiftType: "A", status: "Approved", reason: "Request fits schedule" } },
+      // DO shift tomorrow: one approved, one rejected
+      { title: "DO", start: d(1), end: d(1), allDay: true, resource: { nurseName: "Alice Tan", isOwn: false, requestId: -903, preferredDate: d(1).toISOString(), shiftType: "DO", status: "Approved", reason: "Adequate day-off coverage" } },
+      { title: "DO", start: d(1), end: d(1), allDay: true, resource: { nurseName: "Ben Lim", isOwn: false, requestId: -904, preferredDate: d(1).toISOString(), shiftType: "DO", status: "Rejected", reason: "Too many staff off on this day" } },
+      // N shift in 2 days: all pending (should show plain text, no outlines)
+      { title: "N", start: d(2), end: d(2), allDay: true, resource: { nurseName: "Clara Wong", isOwn: false, requestId: -905, preferredDate: d(2).toISOString(), shiftType: "N", status: "Pending", reason: null } },
+      { title: "N", start: d(2), end: d(2), allDay: true, resource: { nurseName: "David Ng", isOwn: false, requestId: -906, preferredDate: d(2).toISOString(), shiftType: "N", status: "Pending", reason: null } },
+    ];
+  }, []);
+
   // ─── Map shift requests → calendar events ─────────────────────────────────
   const events: Event[] = useMemo(() => {
-    if (!shiftRequests) return [];
-    return shiftRequests.map((sr) => ({
+    const real = shiftRequests ? shiftRequests.map((sr) => ({
       title: sr.preferredshifttype,
       start: new Date(sr.preferreddate),
       end: new Date(sr.preferreddate),
@@ -152,8 +168,9 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         status: sr.status,
         reason: sr.reason,
       },
-    }));
-  }, [shiftRequests, nurseMap, currentNurseId]);
+    })) : [];
+    return [...real, ...demoEvents];
+  }, [shiftRequests, nurseMap, currentNurseId, demoEvents]);
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {

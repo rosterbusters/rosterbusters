@@ -11,7 +11,7 @@ import {
   VStack,
   Spinner,
 } from "@chakra-ui/react";
-import { Check, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
 import { LeaveRequestsService } from "@/client/LeaveRequestsService";
 import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
@@ -24,50 +24,91 @@ const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
     id: -101,
     type: "ShiftRequest",
     requestTypeName: "Night Shift",
-    requestedDates: "31/10/2025",
+    shiftCode: "N",
+    requestedDates: "14/05/2026",
     status: "Pending",
-    applicationDate: "1/09/2025",
-    comments: null,
+    applicationDate: "14/05/2026",
+    comments: "Prefer night coverage this week",
     nurseName: "Alice Tan",
   },
   {
     id: -102,
     type: "ShiftRequest",
-    requestTypeName: "Rest Day",
-    requestedDates: "31/10/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
+    requestTypeName: "Day Off",
+    shiftCode: "DO",
+    requestedDates: "09/05/2026",
+    status: "Pending",
+    applicationDate: "09/05/2026",
     comments: null,
-    nurseName: "Ben Lim",
+    nurseName: "Sein May",
   },
   {
     id: -103,
-    type: "ShiftRequest",
-    requestTypeName: "Day Shift",
-    requestedDates: "31/10/2025",
-    status: "Rejected",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Clara Wong",
+    type: "LeaveRequest",
+    requestTypeName: "Annual Leave",
+    requestedDates: "20/05/2026 – 22/05/2026",
+    rawStartDate: "2026-05-20",
+    rawEndDate: "2026-05-22",
+    status: "Pending",
+    applicationDate: "10/05/2026",
+    comments: "Family trip",
+    nurseName: "Ben Lim",
   },
   {
     id: -104,
     type: "ShiftRequest",
-    requestTypeName: "PM Shift",
-    requestedDates: "31/10/2025",
+    requestTypeName: "12-Hour Day Shift",
+    shiftCode: "D",
+    requestedDates: "07/05/2026",
     status: "Approved",
-    applicationDate: "1/09/2025",
+    applicationDate: "07/05/2026",
     comments: null,
-    nurseName: "David Ng",
+    nurseName: "Sein May",
   },
   {
     id: -105,
+    type: "LeaveRequest",
+    requestTypeName: "Medical Certificate",
+    requestedDates: "05/05/2026",
+    rawStartDate: "2026-05-05",
+    rawEndDate: "2026-05-05",
+    status: "Approved",
+    applicationDate: "05/05/2026",
+    comments: "Doctor visit",
+    nurseName: "Clara Wong",
+  },
+  {
+    id: -106,
+    type: "ShiftRequest",
+    requestTypeName: "Night Shift",
+    shiftCode: "N-12",
+    requestedDates: "14/05/2026",
+    status: "Approved",
+    applicationDate: "14/05/2026",
+    comments: null,
+    nurseName: "Sein May",
+  },
+  {
+    id: -107,
     type: "ShiftRequest",
     requestTypeName: "AM Shift",
-    requestedDates: "31/10/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
+    shiftCode: "A",
+    requestedDates: "03/05/2026",
+    status: "Rejected",
+    applicationDate: "03/05/2026",
+    comments: "Understaffed on that day",
+    nurseName: "David Ng",
+  },
+  {
+    id: -108,
+    type: "LeaveRequest",
+    requestTypeName: "Childcare Leave",
+    requestedDates: "01/05/2026",
+    rawStartDate: "2026-05-01",
+    rawEndDate: "2026-05-01",
+    status: "Rejected",
+    applicationDate: "28/04/2026",
+    comments: "Quota exceeded",
     nurseName: "Eva Chan",
   },
 ];
@@ -123,10 +164,42 @@ function StatusCell({ status }: { status: RequestStatus }) {
     );
   }
   if (status === "Approved") {
-    return <Check className="h-4 w-4 text-green-500 mx-auto" />;
+    return (
+      <Flex justify="center">
+        <Badge
+          bg="#DDF2D1"
+          color="#14532d"
+          fontWeight="medium"
+          fontSize="xs"
+          px={3}
+          py={0.5}
+          rounded="full"
+          textTransform="none"
+          display="inline-flex"
+        >
+          Approved
+        </Badge>
+      </Flex>
+    );
   }
   if (status === "Rejected") {
-    return <X className="h-4 w-4 text-red-500 mx-auto" />;
+    return (
+      <Flex justify="center">
+        <Badge
+          bg="#F3cFce"
+          color="#7f1d1d"
+          fontWeight="medium"
+          fontSize="xs"
+          px={3}
+          py={0.5}
+          rounded="full"
+          textTransform="none"
+          display="inline-flex"
+        >
+          Rejected
+        </Badge>
+      </Flex>
+    );
   }
   return (
     <Text fontSize="xs" color="gray.400">
@@ -292,7 +365,8 @@ export function RequestsOverviewTable({
 
   const { data: leaveRequests = [], isLoading: leaveLoading } = useQuery({
     queryKey: ["ward-leave-requests", wardId],
-    queryFn: () => LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
+    queryFn: () =>
+      LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 30_000,
   });
@@ -473,7 +547,10 @@ export function RequestsOverviewTable({
         gap={4}
         wrap={{ base: "wrap", md: "nowrap" }}
       >
-        <Box minW={{ base: "0", md: "160px" }} flex={{ base: "1 1 auto", md: "0 0 160px" }} />
+        <Box
+          minW={{ base: "0", md: "160px" }}
+          flex={{ base: "1 1 auto", md: "0 0 160px" }}
+        />
         <HStack
           gap={0}
           rounded="full"
@@ -692,8 +769,7 @@ export function RequestsOverviewTable({
                     {/* Comments */}
                     <Table.Cell py={2} px={4} maxW="160px">
                       {(() => {
-                        const displayComment =
-                          req.comments ?? null;
+                        const displayComment = req.comments ?? null;
                         return displayComment ? (
                           <Text
                             fontSize="sm"
@@ -829,8 +905,14 @@ export function RequestsOverviewTable({
           onClose={() => setSelectedShiftRequest(null)}
           requestId={selectedShiftRequest.id}
           nurseName={selectedShiftRequest.nurseName ?? null}
-          shiftCode={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
-          date={selectedShiftRequest.rawPreferredDate ?? selectedShiftRequest.requestedDates}
+          shiftCode={
+            selectedShiftRequest.shiftCode ??
+            selectedShiftRequest.requestTypeName
+          }
+          date={
+            selectedShiftRequest.rawPreferredDate ??
+            selectedShiftRequest.requestedDates
+          }
           status={selectedShiftRequest.status}
           comment={selectedShiftRequest.comments}
           wardId={wardId}
@@ -845,8 +927,15 @@ export function RequestsOverviewTable({
           requestId={selectedLeaveRequest.id}
           nurseName={selectedLeaveRequest.nurseName ?? ""}
           leaveType={selectedLeaveRequest.requestTypeName}
-          startDate={selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
-          endDate={selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
+          startDate={
+            selectedLeaveRequest.rawStartDate ??
+            selectedLeaveRequest.requestedDates
+          }
+          endDate={
+            selectedLeaveRequest.rawEndDate ??
+            selectedLeaveRequest.rawStartDate ??
+            selectedLeaveRequest.requestedDates
+          }
           currentStatus={selectedLeaveRequest.status}
           requests={competingLeaveRequests}
         />

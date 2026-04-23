@@ -75,6 +75,7 @@ function getLeaveRequestsFromEvent(event: Event) {
       startDate: request.startDate ?? event.resource?.startDate ?? "",
       endDate: request.endDate ?? event.resource?.endDate ?? "",
       status: request.status ?? event.resource?.status ?? "Pending",
+      reason: request.reason ?? null,
     }));
   }
 
@@ -86,6 +87,7 @@ function getLeaveRequestsFromEvent(event: Event) {
       startDate: event.resource?.startDate ?? "",
       endDate: event.resource?.endDate ?? "",
       status: event.resource?.status ?? "Pending",
+      reason: event.resource?.reason ?? null,
     },
   ];
 }
@@ -198,11 +200,13 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                       })
                       .map(([leaveType, groupEvents]) => {
                         const isOwn = groupEvents.some((event) => event.resource?.isOwn);
-                        const nurseNames = groupEvents
-                          .map((event) => event.resource?.nurseName ?? "")
-                          .filter(Boolean)
-                          .join(", ");
                         const requests = groupEvents.flatMap(getLeaveRequestsFromEvent);
+                        const nurseStatuses = requests.map((r) => ({
+                          name: r.nurseName,
+                          status: r.status,
+                          reason: r.reason ?? null,
+                        })).filter((n) => n.name);
+                        const nurseNames = nurseStatuses.map((n) => n.name).join(", ");
                         const leadRequest = requests[0];
 
                         if (!leadRequest) {
@@ -224,6 +228,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                             <CalendarRequestBlock
                               shift={leaveType}
                               nurseName={nurseNames}
+                              nurseStatuses={nurseStatuses}
                               owned={isOwn}
                               onClick={() =>
                                 setSelectedRequest(() => {
