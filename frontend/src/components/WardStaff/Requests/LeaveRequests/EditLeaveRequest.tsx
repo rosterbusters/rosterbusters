@@ -16,6 +16,7 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService } from "@/client";
+import type { DateRange } from "react-day-picker";
 
 export interface LeaveRequestEntry {
   requestId: number;
@@ -56,15 +57,20 @@ export const EditLeaveRequest = ({
   );
 
   const [leaveType, setLeaveType] = useState<string[]>([active?.initialLeaveType ?? ""]);
-  const [requestDate, setRequestDate] = useState<Date | undefined>(
-    active ? parseRequestDate(active.startDate) : undefined,
+  const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>(
+    active
+      ? { from: parseRequestDate(active.startDate), to: parseRequestDate(active.endDate) }
+      : undefined,
   );
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (active) {
       setLeaveType([active.initialLeaveType]);
-      setRequestDate(parseRequestDate(active.startDate));
+      setRequestDateRange({
+        from: parseRequestDate(active.startDate),
+        to: parseRequestDate(active.endDate),
+      });
     }
   }, [active]);
 
@@ -96,8 +102,8 @@ export const EditLeaveRequest = ({
       LeaveRequestsService.updateLeaveRequest({
         leaveId: active.requestId,
         leavetype: leaveType[0],
-        startdate: requestDate ? toDateStr(requestDate) : undefined,
-        enddate: requestDate ? toDateStr(requestDate) : undefined,
+        startdate: requestDateRange?.from ? toDateStr(requestDateRange.from) : undefined,
+        enddate: requestDateRange?.to ? toDateStr(requestDateRange.to) : undefined,
       }),
     onSuccess: () => {
       showSuccessToast("Leave request updated!");
@@ -131,8 +137,8 @@ export const EditLeaveRequest = ({
       showErrorToast("Please select a leave type.");
       return;
     }
-    if (!requestDate) {
-      showErrorToast("Please select a date.");
+    if (!requestDateRange?.from || !requestDateRange?.to) {
+      showErrorToast("Please select a start and end date.");
       return;
     }
     updateMutation.mutate();
@@ -144,8 +150,16 @@ export const EditLeaveRequest = ({
     <Dialog.Root
       placement="center"
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault();
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />
@@ -196,10 +210,12 @@ export const EditLeaveRequest = ({
                   </Portal>
                 </Select.Root>
                 <VStack alignItems="start">
-                  <Text fontWeight="medium">Date Requesting</Text>
+                  <Text fontWeight="medium">Dates Requesting</Text>
                   <DatePickerDemo
-                    selected={requestDate}
-                    onSelect={(date) => setRequestDate(date)}
+                    mode="range"
+                    selected={requestDateRange}
+                    onSelect={(range) => setRequestDateRange(range)}
+                    placeholder="Pick a date range"
                   />
                 </VStack>
               </VStack>

@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   notificationTypeLabels,
-  notificationTypeBadgeVariant,
+  notificationTypeBadgeStyles,
   getNotificationRoute,
   nurseManagerNotifications,
   wardStaffNotifications,
@@ -43,13 +43,22 @@ const colorClassMap: Record<string, string> = {
 
 // Badge component — colour driven by notificationTypeBadgeVariant from types/notifications
 function NotificationBadge({ type }: { type: NotificationType }) {
-  const colorName = notificationTypeBadgeVariant[type] ?? "gray";
+  const badgeStyle = notificationTypeBadgeStyles[type] ?? {
+    background: "#6B7280",
+    text: "#FFFFFF",
+  };
+
   return (
     <span
       className={cn(
         "inline-flex items-center justify-center rounded px-2 py-0.5 text-xs font-medium text-white whitespace-nowrap w-fit",
         colorClassMap[colorName] ?? "bg-[#6B7280]",
       )}
+      style={{
+        backgroundColor: badgeStyle.background,
+        color: badgeStyle.text,
+        borderColor: badgeStyle.border,
+      }}
     >
       {notificationTypeLabels[type] ?? type}
     </span>
@@ -83,7 +92,6 @@ function NotificationDropdown({ role }: { role?: "nurse" | "manager" }) {
         description: n.messagebody,
       }));
 
-  // Sort notifications by date (most recent first)
   const sortedNotifications = [...notifications].sort(
     (a, b) =>
       new Date(b.createdat ?? 0).getTime() -
