@@ -7,12 +7,13 @@ import {
   Portal,
   Select,
   Badge,
+  HStack,
   Text,
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
+
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { LeaveRequestsService, ShiftRequestsService } from "@/client";
 import type { DateRange } from "react-day-picker";
@@ -210,12 +211,13 @@ export const NewLeaveRequest = ({
                     <Select.Positioner>
                       <Select.Content>
                         {leaveCollection.items.map((code) => (
-                          <Select.Item item={code.value} key={code.value}>
-                            <Tooltip content={code.description}>
+                          <Select.Item item={code.value} key={code.value} data-testid={`leave-type-option-${code.value}`}>
+                            <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
                                 {code.value}
                               </Badge>
-                            </Tooltip>
+                              <Text fontSize="sm">{code.description}</Text>
+                            </HStack>
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}

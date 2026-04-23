@@ -15,7 +15,7 @@ import {
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
+
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import moment from "moment";
 import {
@@ -25,7 +25,7 @@ import {
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import type { NursePublic } from "@/client/types.gen";
 import { Trash2 } from "lucide-react";
-import { formatShiftCodeLabel } from "@/utils"
+
 
 const MAX_REQUESTS = 3;
 
@@ -284,12 +284,12 @@ export const NewShiftRequest = ({
                       <Select.Content>
                         {shiftCollection.items.map((code) => (
                           <Select.Item item={code.value} key={code.value}>
-                            <Tooltip content={code.description}>
+                            <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
-                                {formatShiftCodeLabel(code.value)}
+                                {code.value}
                               </Badge>
-                            </Tooltip>
-
+                              <Text fontSize="sm">{code.description}</Text>
+                            </HStack>
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}

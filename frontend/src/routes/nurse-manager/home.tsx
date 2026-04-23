@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Flex, Stack, Box } from "@chakra-ui/react";import moment from "moment";
 
 import {
@@ -41,6 +41,9 @@ import { Ward } from "@/client/types.gen";
 
 export const Route = createFileRoute("/nurse-manager/home")({
   component: NurseManagerHome,
+  validateSearch: (search: Record<string, unknown>): { periodId?: number } => ({
+    ...(search.periodId != null ? { periodId: Number(search.periodId) } : {}),
+  }),
 });
 
 interface UndoRedoItem {
@@ -127,6 +130,8 @@ const INITIAL_EDIT_HISTORY: EditHistoryEntry[] = [
 
 function NurseManagerHome() {
   const { user } = useAuth();
+  const { periodId: initialPeriodId } = Route.useSearch();
+  const navigate = useNavigate();
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
     moment().startOf("isoWeek").toDate()
@@ -205,6 +210,9 @@ function NurseManagerHome() {
   useEffect(() => {
     if (visiblePeriods.length > 0 && !selectedPeriod) {
       const initialPeriod =
+        (initialPeriodId != null
+          ? visiblePeriods.find((period) => period.periodId === initialPeriodId)
+          : null) ??
         (currentPeriod
           ? visiblePeriods.find((period) => period.periodId === currentPeriod.periodId)
           : null) ??
@@ -213,8 +221,11 @@ function NurseManagerHome() {
         ) ??
         visiblePeriods[Math.floor(visiblePeriods.length / 2)];
       setSelectedPeriod(initialPeriod);
+      if (initialPeriodId != null) {
+        navigate({ to: "/nurse-manager/home", search: {}, replace: true });
+      }
     }
-  }, [currentPeriod, selectedPeriod, visiblePeriods]);
+  }, [currentPeriod, initialPeriodId, navigate, selectedPeriod, visiblePeriods]);
 
   useEffect(() => {
     if (!selectedPeriod || visiblePeriods.some((period) => period.periodId === selectedPeriod.periodId)) {
