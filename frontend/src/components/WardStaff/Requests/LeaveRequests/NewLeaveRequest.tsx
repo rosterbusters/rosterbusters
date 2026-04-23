@@ -211,7 +211,7 @@ export const NewLeaveRequest = ({
                     <Select.Positioner>
                       <Select.Content>
                         {leaveCollection.items.map((code) => (
-                          <Select.Item item={code.value} key={code.value}>
+                          <Select.Item item={code.value} key={code.value} data-testid={`leave-type-option-${code.value}`}>
                             <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
                                 {code.value}

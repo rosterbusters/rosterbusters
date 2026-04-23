@@ -123,20 +123,13 @@ test("ward staff can create a leave request from the calendar", async ({
       .click()
 
     for (const code of expectedCodes) {
-      const option = page.locator("div").filter({
-        hasText: new RegExp(`^${escapeRegExp(code)}$`),
-      })
-      await expect(option.first()).toBeVisible()
+      await expect(page.getByTestId(`leave-type-option-${code}`)).toBeVisible()
     }
 
-    await expect(page.locator("div").filter({ hasText: /^MV$/i })).toHaveCount(0)
-    await expect(page.locator("div").filter({ hasText: /^DO$/i })).toHaveCount(0)
+    await expect(page.getByTestId("leave-type-option-MV")).toHaveCount(0)
+    await expect(page.getByTestId("leave-type-option-DO")).toHaveCount(0)
 
-    await page
-      .locator("div")
-      .filter({ hasText: new RegExp(`^${escapeRegExp(expectedCodes[0])}$`) })
-      .first()
-      .click()
+    await page.getByTestId(`leave-type-option-${expectedCodes[0]}`).click()
 
     const [createResponse] = await Promise.all([
       page.waitForResponse(

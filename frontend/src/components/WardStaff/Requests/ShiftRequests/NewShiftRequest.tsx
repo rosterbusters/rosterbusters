@@ -152,7 +152,7 @@ export const NewShiftRequest = ({
                     <Select.Positioner>
                       <Select.Content>
                         {shiftCollection.items.map((code) => (
-                          <Select.Item item={code.value} key={code.value}>
+                          <Select.Item item={code.value} key={code.value} data-testid={`shift-type-option-${code.value}`}>
                             <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
                                 {code.value}
