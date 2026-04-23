@@ -65,6 +65,36 @@ export const notificationTypeLabels: Record<string, string> = {
   HRISReminder: "HRIS Reminder",
 }
 
+export interface NotificationBadgeStyle {
+  background: string
+  text: string
+  border?: string
+}
+
+export const notificationTypeBadgeStyles: Record<string, NotificationBadgeStyle> = {
+  ShiftRequest: { background: "#14B8A6", text: "#FFFFFF" },
+  ShiftRequestPeriodOpen: { background: "#14B8A6", text: "#FFFFFF" },
+  ShiftRequestReviewOpen: { background: "#0D9488", text: "#FFFFFF" },
+  ShiftRequestPeriodClosed: { background: "#0F766E", text: "#FFFFFF" },
+  ShiftRequestReviewClosed: { background: "#115E59", text: "#FFFFFF" },
+  ShiftRequestApproved: { background: "#0D9488", text: "#FFFFFF" },
+  ShiftRequestRejected: { background: "#134E4A", text: "#FFFFFF" },
+  LeaveRequest: { background: "#0F766E", text: "#FFFFFF" },
+  LeaveApproval: { background: "#115E59", text: "#FFFFFF" },
+  LeaveReminder: { background: "#134E4A", text: "#FFFFFF" },
+  Roster: { background: "#0891B2", text: "#FFFFFF" },
+  RosterPlanning: { background: "#0891B2", text: "#FFFFFF" },
+  RosterFinalisation: { background: "#0E7490", text: "#FFFFFF" },
+  ShiftUpdate: { background: "#0E7490", text: "#FFFFFF" },
+  RosterRelease: { background: "#0F5F78", text: "#FFFFFF" },
+  HRISReminder: { background: "#164E63", text: "#FFFFFF" },
+  AlgorithmGeneration: { background: "#0D9488", text: "#FFFFFF" },
+  AlgorithmInProgress: { background: "#0F766E", text: "#FFFFFF" },
+  SwapRequest: { background: "#7C3AED", text: "#FFFFFF" },
+  System: { background: "#6B7280", text: "#FFFFFF" },
+  Probation: { background: "#B45309", text: "#FFFFFF" },
+}
+
 export const notificationTypeBadgeVariant: Record<string, string> = {
   // Legacy keys (backward-compat with hardcoded data)
   Roster: "purple",

@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   notificationTypeLabels,
-  notificationTypeBadgeStyles,
+  notificationTypeBadgeVariant,
   getNotificationRoute,
   nurseManagerNotifications,
   wardStaffNotifications,
@@ -43,22 +43,14 @@ const colorClassMap: Record<string, string> = {
 
 // Badge component — colour driven by notificationTypeBadgeVariant from types/notifications
 function NotificationBadge({ type }: { type: NotificationType }) {
-  const badgeStyle = notificationTypeBadgeStyles[type] ?? {
-    background: "#6B7280",
-    text: "#FFFFFF",
-  };
+  const colorVariant = notificationTypeBadgeVariant[type] ?? "gray";
 
   return (
     <span
       className={cn(
         "inline-flex items-center justify-center rounded px-2 py-0.5 text-xs font-medium text-white whitespace-nowrap w-fit",
-        colorClassMap[colorName] ?? "bg-[#6B7280]",
+        colorClassMap[colorVariant] ?? "bg-[#6B7280]",
       )}
-      style={{
-        backgroundColor: badgeStyle.background,
-        color: badgeStyle.text,
-        borderColor: badgeStyle.border,
-      }}
     >
       {notificationTypeLabels[type] ?? type}
     </span>
