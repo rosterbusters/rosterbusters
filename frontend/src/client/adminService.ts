@@ -46,6 +46,7 @@ export interface AdminUser {
   email: string | null
   employee_id: string | null
   designation: string | null
+  shift_pattern: "AM_ONLY" | "PM_ONLY" | null
   isactive: boolean
   nurseid: number | null
   managerid: number | null
@@ -71,6 +72,7 @@ export interface AdminUserCreate {
   email?: string
   employee_id?: string
   designation?: string
+  shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
   is_active?: boolean
   role?: string
@@ -83,6 +85,7 @@ export interface AdminUserUpdate {
   email?: string | null
   employee_id?: string
   designation?: string
+  shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
   is_active?: boolean
   ward_ids?: number[]

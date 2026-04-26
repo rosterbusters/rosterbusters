@@ -67,6 +67,7 @@ interface ParsedImportRow {
   email?: string
   employee_id?: string
   designation?: string
+  shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
   is_active: boolean
   role: string
@@ -169,6 +170,47 @@ const inferRole = (value: string): "Admin" | "NurseManager" | "Nurse" => {
 const parseActiveValue = (value: string) => {
   void value
   return true
+}
+
+const parseShiftPatternValue = (
+  value: string,
+): "AM_ONLY" | "PM_ONLY" | null | undefined => {
+  const normalized = normalizeHeader(value)
+  if (!normalized) return undefined
+
+  if (
+    [
+      "amonly",
+      "aonly",
+      "morningonly",
+      "dayonly",
+      "permanentam",
+      "permanenta",
+    ].includes(normalized)
+  ) {
+    return "AM_ONLY"
+  }
+
+  if (
+    [
+      "pmonly",
+      "ponly",
+      "afternoononly",
+      "eveningonly",
+      "permanentpm",
+      "permanentp",
+    ].includes(normalized)
+  ) {
+    return "PM_ONLY"
+  }
+
+  if (["none", "nil", "na", "n/a", "nopermanentpattern"].includes(normalized)) {
+    return null
+  }
+
+  throw new Error(
+    `Unsupported shift pattern "${value}". Use AM_ONLY or PM_ONLY.`,
+  )
 }
 
 const parseWardIds = (value: string, wards: WardOption[]) => {
@@ -274,6 +316,16 @@ const parseExactStaffWorkbook = (
       const name = textValue(row["EMP NAME"])
       const occupation = textValue(row["OCCUPATION"])
       const department = textValue(row["DEPARTMENT CODE"])
+      const email = findCellValue(row, ["email", "email address", "e-mail"])
+      const shiftPattern = parseShiftPatternValue(
+        findCellValue(row, [
+          "shift pattern",
+          "shift_pattern",
+          "shift",
+          "permanent shift",
+          "permanent shift pattern",
+        ]),
+      )
       const role = parseWorkbookRole(occupation)
 
       if (!name) {
@@ -299,9 +351,10 @@ const parseExactStaffWorkbook = (
           rowNumber: index + 2,
           username: buildImportedUsername(name, index + 2),
           name: name || undefined,
-          email: undefined,
+          email: email || undefined,
           employee_id: employeeId || undefined,
           designation: occupation || undefined,
+          shift_pattern: shiftPattern,
           is_active: true,
           role,
           ward_ids: wardIds,
@@ -327,6 +380,16 @@ const parseExactStaffWorkbook = (
       const name = textValue(row.Name)
       const position = textValue(row.Position)
       const department = textValue(row.Department)
+      const email = findCellValue(row, ["email", "email address", "e-mail"])
+      const shiftPattern = parseShiftPatternValue(
+        findCellValue(row, [
+          "shift pattern",
+          "shift_pattern",
+          "shift",
+          "permanent shift",
+          "permanent shift pattern",
+        ]),
+      )
       const role = parseWorkbookRole(position)
 
       if (!name) {
@@ -354,9 +417,10 @@ const parseExactStaffWorkbook = (
           rowNumber: index + 2,
           username: buildImportedUsername(name, index + 2),
           name: name || undefined,
-          email: undefined,
+          email: email || undefined,
           employee_id: undefined,
           designation: position || undefined,
+          shift_pattern: shiftPattern,
           is_active: true,
           role,
           ward_ids: wardIds,
@@ -459,6 +523,15 @@ async function parseStaffWorkbook(
       "unit",
     ])
     const password = findCellValue(row, ["password", "temporary password"])
+    const shiftPattern = parseShiftPatternValue(
+      findCellValue(row, [
+        "shift pattern",
+        "shift_pattern",
+        "shift",
+        "permanent shift",
+        "permanent shift pattern",
+      ]),
+    )
     const isActive = parseActiveValue(
       findCellValue(row, ["active", "is active", "status"]),
     )
@@ -478,6 +551,7 @@ async function parseStaffWorkbook(
       email: email || undefined,
       employee_id: employeeId || undefined,
       designation: designation || undefined,
+      shift_pattern: shiftPattern,
       password: password || undefined,
       is_active: isActive,
       role,
@@ -1161,6 +1235,7 @@ function AdminUsers() {
           email: row.email,
           employee_id: row.employee_id,
           designation: row.designation,
+          shift_pattern: row.shift_pattern,
           password: row.password,
           is_active: row.is_active,
           role: row.role,
@@ -1199,6 +1274,9 @@ function AdminUsers() {
             if (row.employee_id) updatePayload.employee_id = row.employee_id
             if (row.role === "Nurse" && row.designation) {
               updatePayload.designation = row.designation
+            }
+            if (row.shift_pattern !== undefined) {
+              updatePayload.shift_pattern = row.shift_pattern
             }
 
             await AdminService.updateUser(existingUser.userid, updatePayload)
