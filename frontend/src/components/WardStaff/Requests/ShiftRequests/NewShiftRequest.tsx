@@ -16,6 +16,7 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 import { AssignableStatus } from "./AssignableStatus";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import { getActiveShiftRequestPeriod } from "./activePeriod";
 
@@ -52,11 +53,6 @@ export const NewShiftRequest = ({
         : ShiftRequestsService.getAllShiftCodes(),
   });
 
-  const { data: leaveCodes } = useQuery({
-    queryKey: ["leave-codes"],
-    queryFn: () => ShiftRequestsService.getLeaveCodes(),
-  });
-
   const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
 
   const shiftCollection = useMemo(
@@ -89,8 +85,19 @@ export const NewShiftRequest = ({
     if (isOpen) {
       setRequestDate(selectedDate ?? undefined);
       setShiftType([]);
+      return;
     }
-  }, [isOpen]);
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, selectedDate]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
 
   const handleSubmit = () => {
     const activePeriod = getActiveShiftRequestPeriod(periods);
@@ -118,8 +125,16 @@ export const NewShiftRequest = ({
     <Dialog.Root
       placement={"center"}
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault();
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />

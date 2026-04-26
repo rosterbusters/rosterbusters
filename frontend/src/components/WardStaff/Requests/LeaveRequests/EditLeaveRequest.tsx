@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { LeaveRequestsService } from "@/client";
 import type { DateRange } from "react-day-picker";
 
@@ -73,6 +74,22 @@ export const EditLeaveRequest = ({
       });
     }
   }, [active]);
+
+  useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],

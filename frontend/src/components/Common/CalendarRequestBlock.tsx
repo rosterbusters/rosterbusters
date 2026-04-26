@@ -61,7 +61,7 @@ export function CalendarRequestBlock({
               <Box
                 position="relative"
                 display="inline-block"
-                px={1}
+                px={3}
                 py="1px"
                 borderRadius="2px"
                 outline={`2px solid ${config.outlineColor}`}

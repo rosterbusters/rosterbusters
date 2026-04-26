@@ -50,7 +50,9 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
 }: CustomMonthViewProps) {
   const locked = Boolean(isLocked);
   const [selectedRequests, setSelectedRequests] = useState<LeaveRequestEntry[] | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
+  const [isNewLeaveOpen, setIsNewLeaveOpen] = useState(false);
 
   const currRange = useMemo(
     () => CustomMonthView.range(date, { localizer }),
@@ -66,6 +68,16 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   }, [currRange]);
 
   const currentMonth = moment(date).month();
+
+  const handleEditClose = () => {
+    setIsEditOpen(false);
+    window.setTimeout(() => setSelectedRequests(null), 0);
+  };
+
+  const handleNewLeaveClose = () => {
+    setIsNewLeaveOpen(false);
+    window.setTimeout(() => setNewLeaveDate(null), 0);
+  };
 
   return (
     <>
@@ -117,7 +129,14 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                   borderColor="border"
                   borderWidth="1px"
                   cursor={locked ? "default" : "pointer"}
-                  onClick={locked ? undefined : () => setNewLeaveDate(day)}
+                  onClick={
+                    locked
+                      ? undefined
+                      : () => {
+                          setNewLeaveDate(day);
+                          setIsNewLeaveOpen(true);
+                        }
+                  }
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
@@ -157,6 +176,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                                           endDate: e.resource.endDate,
                                         }));
                                       setSelectedRequests(ownedForDay);
+                                      setIsEditOpen(true);
                                     }
                                   : undefined
                               }
@@ -173,16 +193,16 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
 
       {!locked && selectedRequests && (
         <EditLeaveRequest
-          isOpen={!!selectedRequests}
-          onClose={() => setSelectedRequests(null)}
+          isOpen={isEditOpen}
+          onClose={handleEditClose}
           requests={selectedRequests}
         />
       )}
 
-      {!locked && (
+      {!locked && newLeaveDate && (
         <NewLeaveRequest
-          isOpen={!!newLeaveDate}
-          onClose={() => setNewLeaveDate(null)}
+          isOpen={isNewLeaveOpen}
+          onClose={handleNewLeaveClose}
           selectedDate={newLeaveDate}
         />
       )}

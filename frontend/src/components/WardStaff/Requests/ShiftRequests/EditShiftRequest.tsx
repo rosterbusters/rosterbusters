@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { ShiftRequestsService } from "@/client";
 
 
@@ -85,6 +86,22 @@ export const EditShiftRequest = ({
     setRequestDate(parseRequestDate(initialDate));
   }, [initialShiftType, initialDate]);
 
+  useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
+
   const updateMutation = useMutation({
     mutationFn: () =>
       ShiftRequestsService.updateShiftRequest({
@@ -135,8 +152,16 @@ export const EditShiftRequest = ({
     <Dialog.Root
       placement={"center"}
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault();
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />
