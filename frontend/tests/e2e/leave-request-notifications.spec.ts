@@ -129,15 +129,21 @@ async function fetchMailCatcherMessage(request: APIRequestContext, id: number) {
 async function waitForEmail(
   request: APIRequestContext,
   recipient: string,
+  subjectIncludes?: string,
   timeoutMs = 20_000,
 ) {
   const started = Date.now()
   const expectedRecipient = recipient.toLowerCase()
+  const expectedSubject = subjectIncludes?.toLowerCase()
 
   while (Date.now() - started < timeoutMs) {
     const messages = await fetchMailCatcherMessages(request)
 
     for (const message of messages) {
+      const subject = (message.subject || "").toLowerCase()
+      if (expectedSubject && !subject.includes(expectedSubject)) {
+        continue
+      }
       const recipients = (message.recipients || []).map((value) =>
         value.trim().replace(/^<|>$/g, "").toLowerCase(),
       )
@@ -148,6 +154,10 @@ async function waitForEmail(
 
     for (const message of messages) {
       const fullMessage = await fetchMailCatcherMessage(request, message.id)
+      const subject = (fullMessage.subject || "").toLowerCase()
+      if (expectedSubject && !subject.includes(expectedSubject)) {
+        continue
+      }
       const combinedBody = [
         fullMessage.body,
         fullMessage.body_html,
@@ -279,7 +289,11 @@ test.describe("leave request notifications", () => {
         ),
       ).toBe(1)
 
-      const email = await waitForEmail(request, managerEmail)
+      const email = await waitForEmail(
+        request,
+        managerEmail,
+        "New leave request from",
+      )
       expect(email.subject || "").toContain("New leave request from")
       const emailBody = [email.body, email.body_html, email.body_text]
         .filter(Boolean)

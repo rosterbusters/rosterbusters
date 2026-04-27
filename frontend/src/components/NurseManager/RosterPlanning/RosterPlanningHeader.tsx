@@ -31,6 +31,10 @@ import {
   MenuTrigger,
   MenuContent,
   MenuItem,
+  MenuRadioItem,
+  MenuRadioItemGroup,
+  MenuSeparator,
+  MenuItemGroup,
 } from "@/components/ui/menu";
 import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge";
 
@@ -113,8 +117,8 @@ export function RosterPlanningHeader({
   onSeedApr2026PreviewRequests,
   isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
-  // TODO: Hide algorithm controls for prod and staging once feature gating is ready.
-  const showAlgorithmControls = true;
+  const showAlgorithmControls =
+    !import.meta.env.PROD || import.meta.env.MODE === "staging";
   const normalizedGenerationProgress = Math.min(
     100,
     Math.max(0, Math.round(Number.isFinite(generationProgress) ? generationProgress : 0)),
@@ -310,6 +314,46 @@ export function RosterPlanningHeader({
               </IconButton>
             </MenuTrigger>
             <MenuContent>
+              {showAlgorithmControls && !isAlgorithmGenerated && (
+                <>
+                  <MenuItemGroup title="Algorithm">
+                    <MenuRadioItemGroup
+                      value={algorithmType ?? "AUTO"}
+                      onValueChange={(details) => {
+                        const nextValue = details.value;
+                        onAlgorithmTypeChange?.(
+                          nextValue === "AUTO"
+                            ? null
+                            : (nextValue as "MILP" | "AB-RATIO"),
+                        );
+                      }}
+                    >
+                      <MenuRadioItem
+                        value="AUTO"
+                        disabled={isGenerating}
+                        cursor={isGenerating ? "not-allowed" : "pointer"}
+                      >
+                        Auto
+                      </MenuRadioItem>
+                      <MenuRadioItem
+                        value="MILP"
+                        disabled={isGenerating}
+                        cursor={isGenerating ? "not-allowed" : "pointer"}
+                      >
+                        MILP
+                      </MenuRadioItem>
+                      <MenuRadioItem
+                        value="AB-RATIO"
+                        disabled={isGenerating}
+                        cursor={isGenerating ? "not-allowed" : "pointer"}
+                      >
+                        CP-SAT
+                      </MenuRadioItem>
+                    </MenuRadioItemGroup>
+                  </MenuItemGroup>
+                  <MenuSeparator />
+                </>
+              )}
               <MenuItem
                 value="publish"
                 onClick={onPublishRoster}
@@ -577,57 +621,6 @@ export function RosterPlanningHeader({
               // Generate + Mock Data row
               <Flex direction="column" align="center" gap={2} w="full">
                 <HStack gap={4} flexWrap="wrap" justify="center">
-                {/* Algorithm type toggle */}
-                <HStack
-                  gap={0}
-                  borderRadius="lg"
-                  border="1px solid #E6E6E6"
-                  overflow="hidden"
-                >
-                  <Button
-                    size="sm"
-                    variant={"outlinegrey" as any}
-                    fontWeight="normal"
-                    onClick={() => onAlgorithmTypeChange?.(null)}
-                    bg={algorithmType == null ? "#4B8798" : "transparent"}
-                    color={algorithmType == null ? "white" : "foreground"}
-                    _hover={{ bg: algorithmType == null ? "#4B8798" : "#F8FAFC" }}
-                    borderRadius={0}
-                    px={4}
-                    disabled={isGenerating}
-                  >
-                    Auto
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={"outlinegrey" as any}
-                    fontWeight="normal"
-                    onClick={() => onAlgorithmTypeChange?.("MILP")}
-                    bg={algorithmType === "MILP" ? "#4B8798" : "transparent"}
-                    color={algorithmType === "MILP" ? "white" : "foreground"}
-                    _hover={{ bg: algorithmType === "MILP" ? "#4B8798" : "#F8FAFC" }}
-                    borderRadius={0}
-                    px={4}
-                    disabled={isGenerating}
-                  >
-                    MILP
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={"outlinegrey" as any}
-                    fontWeight="normal"
-                    onClick={() => onAlgorithmTypeChange?.("AB-RATIO")}
-                    bg={algorithmType === "AB-RATIO" ? "#4B8798" : "transparent"}
-                    color={algorithmType === "AB-RATIO" ? "white" : "foreground"}
-                    _hover={{ bg: algorithmType === "AB-RATIO" ? "#4B8798" : "#F8FAFC" }}
-                    borderRadius={0}
-                    px={4}
-                    disabled={isGenerating}
-                  >
-                    CP-SAT
-                  </Button>
-                </HStack>
-
                 <Button
                   size="md"
                   bg="#4B8798"

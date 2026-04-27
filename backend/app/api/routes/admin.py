@@ -5,14 +5,16 @@ All endpoints require the Admin role.
 """
 
 from datetime import datetime, timezone
+import logging
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel, func, or_, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
+from app.core.config import settings
 from app.core.security import (
     decrypt_default_password,
     encrypt_default_password,
@@ -27,12 +29,19 @@ from app.models import Designation, Message, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Ward
 from app.rbac import get_user_roles, get_user_roles_by_userid
+from app.utils import (
+    generate_first_login_setup_email,
+    generate_first_login_setup_token,
+    send_email,
+)
 
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
     dependencies=[Depends(get_current_active_superuser)],
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +256,11 @@ def get_user(session: SessionDep, userid: int) -> Any:
 
 
 @router.post("/users", response_model=AdminUserPublic, status_code=201)
-def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
+def create_user(
+    session: SessionDep,
+    body: AdminUserCreate,
+    background_tasks: BackgroundTasks,
+) -> Any:
     """Create a new RBACUser and assign a role."""
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = _truncate_name(body.name.strip()) if body.name else None
@@ -410,6 +423,26 @@ def create_user(session: SessionDep, body: AdminUserCreate) -> Any:
     # Return the generated password so admin can share it with the user
     if not body.password:
         result.generated_password = raw_password
+
+    if user.email and user.must_change_password and settings.emails_enabled:
+        try:
+            first_login_token = generate_first_login_setup_token(user.userid)
+            email_data = generate_first_login_setup_email(
+                email_to=user.email,
+                username=result.name or user.username,
+                token=first_login_token,
+            )
+            background_tasks.add_task(
+                send_email,
+                email_to=user.email,
+                subject=email_data.subject,
+                html_content=email_data.html_content,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to queue first-login email for user %s", user.userid
+            )
+
     return result
 
 

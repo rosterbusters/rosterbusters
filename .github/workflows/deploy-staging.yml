@@ -52,6 +52,7 @@ jobs:
           ENVIRONMENT=staging
           PROJECT_NAME=SACH Duby
           FRONTEND_HOST=https://dashboard.${{ secrets.DOMAIN_STAGING }}
+          FIRST_LOGIN_SETUP_HOST=https://dashboard.${{ secrets.DOMAIN_STAGING }}
           DOMAIN=${{ secrets.DOMAIN_STAGING }}
           STACK_NAME=${{ secrets.STACK_NAME_STAGING }}
           SECRET_KEY=${{ secrets.SECRET_KEY }}

@@ -6,8 +6,8 @@ Modes:
   - hardcoded: seeds the sample request list into a given ward/period
   - anonymized: creates a test ward with "Nurse 1..N" and seeds requests into the upcoming period
   - anonymized-feasible: same as anonymized, but with added EN/SEN manpower sized for MILP feasibility
-  - anonymized-apr-2026: creates a separate test ward for the Apr 06 - Apr 19 2026 preview data
-  - anonymized-apr-may-2026: creates a separate test ward for the Apr 20 - May 03 2026 preview data
+  - anonymized-apr-2026: seeds the Apr 2026 preview data onto the period that is upcoming from today
+  - anonymized-apr-may-2026: seeds the Apr 20 - May 03 2026 preview data onto the period that is upcoming from today
 
 Usage:
     docker compose exec backend python app/test_algo.py --ward-id 1 --mode deterministic
@@ -21,7 +21,7 @@ import argparse
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import inspect
+from sqlalchemy import delete, inspect
 from sqlmodel import Session, select
 
 from app.core.db import engine
@@ -153,8 +153,8 @@ APR_MAY_2026_WARD_6_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 36", date(2026, 4, 25), "OFF", "shift_request", "Pending"),
 ]
 
-TEST_MANAGER_USERNAME = "NurseManager"
-TEST_MANAGER_EMAIL = "manager@example.com"
+TEST_MANAGER_USERNAME = "testmanager"
+TEST_MANAGER_EMAIL = "testmanager@example.com"
 TEST_MANAGER_PASSWORD = "manager123"
 TEST_NURSE_USERNAME = "nurse1"
 TEST_NURSE_NAME = "Mary"
@@ -694,6 +694,32 @@ def _seed_previous_period_roster(
     return _seed_roster_for_period(db, ward_id, previous_period, nurses)
 
 
+def _delete_seeded_confirmed_roster(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod | None,
+) -> int:
+    """
+    Remove the bootstrap roster rows created by this seed script.
+
+    These rows are inserted as Auto + Confirmed so the app treats them as
+    published and refuses to clear them. Limit cleanup to the exact signature
+    used by the seed helper so we do not wipe manual edits or algorithm output.
+    """
+    if not period:
+        return 0
+
+    deleted = db.exec(
+        delete(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period.periodid,
+            Roster.assignmentmethod == "Auto",
+            Roster.status == "Confirmed",
+        )
+    ).rowcount or 0
+    return deleted
+
+
 def _clear_previous_period_last_day_nights(
     db: Session,
     ward_id: int,
@@ -1207,14 +1233,19 @@ def seed_apr_2026_ward_6_preview(
     ward_name: str = "Test Ward Requests Apr 2026",
 ) -> int:
     """
-    Seed a separate anonymized ward for the Apr 06 - Apr 19 2026 Ward 6 preview.
-    This preserves the older anonymized seed path and keeps the new roster case isolated.
+    Seed the Apr 06 - Apr 19 2026 Ward 6 preview onto the period that is upcoming
+    from today. This keeps the legacy Apr dataset usable without depending on the
+    original 2026-04-06 roster period still being upcoming.
+
+    This preview seeds requests only. Older versions of this helper also created
+    Auto + Confirmed roster rows, which the clear-roster API treats as already
+    published. We now scrub those bootstrap rows on rerun.
     """
     periods = ensure_roster_period_window(db)
-    target_start = date(2026, 4, 6)
-    period = next((p for p in periods if p.startdate == target_start), None)
+    current_period, upcoming_period, _ = get_period_window(periods)
+    period = upcoming_period or current_period
     if not period:
-        raise SystemExit("Roster period starting 2026-04-06 not found.")
+        raise SystemExit("No current or upcoming roster period found.")
 
     ward = db.exec(select(Ward).where(Ward.wardname == ward_name)).first()
     if not ward:
@@ -1271,20 +1302,39 @@ def seed_apr_2026_ward_6_preview(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
-    current_roster_created = _seed_roster_for_period(db, ward.wardid, period, nurses)
-    previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
-    nurse_by_name = {n.name: n for n in nurses}
-    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
-        db, period.periodid, [n.nurseid for n in nurses]
+    current_roster_deleted = _delete_seeded_confirmed_roster(db, ward.wardid, period)
+    previous_roster_deleted = _delete_seeded_confirmed_roster(
+        db, ward.wardid, _get_previous_period(db, period)
     )
+    nurse_by_name = {n.name: n for n in nurses}
+    nurse_ids = [n.nurseid for n in nurses]
+    # Replace any prior preview seed for this ward/period so reruns correct stale dates.
+    existing_requests = list(
+        db.exec(
+            select(ShiftRequest).where(
+                ShiftRequest.periodid == period.periodid,
+                ShiftRequest.nurseid.in_(nurse_ids),
+            )
+        ).all()
+    )
+    for existing in existing_requests:
+        db.delete(existing)
+    db.flush()
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, nurse_ids
+    )
+    base_start = min(req.date for req in APR_2026_WARD_6_REQUESTS)
 
     created = 0
     for req in APR_2026_WARD_6_REQUESTS:
-        nurse = nurse_by_name.get(req.name)
+        shifted = _shift_to_upcoming_period(req, base_start, period)
+        if not shifted:
+            continue
+        nurse = nurse_by_name.get(shifted.name)
         if not nurse:
             continue
 
-        key = (nurse.nurseid, req.date)
+        key = (nurse.nurseid, shifted.date)
         if key in existing_dates:
             continue
 
@@ -1292,12 +1342,12 @@ def seed_apr_2026_ward_6_preview(
             ShiftRequest(
                 nurseid=nurse.nurseid,
                 periodid=period.periodid,
-                preferreddate=req.date,
-                preferredshifttype=_normalize_shift_request_code(req.code),
+                preferreddate=shifted.date,
+                preferredshifttype=_normalize_shift_request_code(shifted.code),
                 requestnumber=_claim_shift_request_number(
                     used_numbers_by_nurse, nurse.nurseid
                 ),
-                status=req.status,
+                status=shifted.status,
                 timestamp=datetime.now(timezone.utc),
             )
         )
@@ -1307,13 +1357,14 @@ def seed_apr_2026_ward_6_preview(
     db.commit()
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
-    if current_roster_created:
-        print(f"  Seeded {current_roster_created} current-period roster entries.")
-    if previous_roster_created:
-        print(f"  Seeded {previous_roster_created} previous-period roster entries.")
+    if current_roster_deleted:
+        print(f"  Cleared {current_roster_deleted} legacy current-period seeded roster entries.")
+    if previous_roster_deleted:
+        print(f"  Cleared {previous_roster_deleted} legacy previous-period seeded roster entries.")
     print(
         f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) "
-        f"for Apr 06 - Apr 19 2026 preview."
+        f"for Apr 06 - Apr 19 2026 preview on roster period "
+        f"({period.startdate} - {period.enddate})."
     )
     return created
 
@@ -1618,6 +1669,7 @@ def main() -> None:
             "anonymized",
             "anonymized-feasible",
             "anonymized-apr-2026",
+            "anonymized-apr-may-2026",
         ],
         help="Use deterministic seed logic, hardcoded sample requests, or anonymized test ward seeding.",
     )

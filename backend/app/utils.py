@@ -113,6 +113,23 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
     return EmailData(html_content=html_content, subject=subject)
 
 
+def generate_first_login_setup_email(email_to: str, username: str, token: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Set up your account"
+    link = f"{settings.first_login_setup_host}/first-login-setup?token={token}"
+    html_content = render_email_template(
+        template_name="first_login_setup.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "username": username,
+            "email": email_to,
+            "valid_hours": settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS,
+            "link": link,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
 def generate_new_account_email(
     email_to: str, username: str, password: str
 ) -> EmailData:
@@ -152,7 +169,34 @@ def verify_password_reset_token(token: str) -> str | None:
         return str(decoded_token["sub"])
     except InvalidTokenError:
         return None
-    
+
+
+def generate_first_login_setup_token(user_id: int) -> str:
+    delta = timedelta(hours=settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS)
+    return security.create_access_token(
+        subject=str(user_id),
+        expires_delta=delta,
+        token_use="first_login_setup",
+    )
+
+
+def verify_first_login_setup_token(token: str) -> int | None:
+    try:
+        decoded_token = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+    except InvalidTokenError:
+        return None
+
+    if decoded_token.get("token_use") != "first_login_setup":
+        return None
+
+    try:
+        return int(decoded_token["sub"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def generate_password_changed_email(email_to: str, username: str) -> EmailData:
     project_name = settings.PROJECT_NAME
     subject = f"{project_name} - Password changed successfully"

@@ -36,6 +36,8 @@ def parse_csv_list(v: Any) -> list[str] | str:
 DEFAULT_VERIFICATION_BYPASS_IDENTIFIERS = {
     "manager",
     "manager@example.com",
+    "testmanager",
+    "testmanager@example.com",
     "nurse1",
 }
 
@@ -56,6 +58,7 @@ class Settings(BaseSettings):
 
     BACKEND_HOST: str = "http://localhost:8000"
     FRONTEND_HOST: str = "http://localhost:5173"
+    FIRST_LOGIN_SETUP_HOST: str | None = None
 
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
@@ -70,6 +73,11 @@ class Settings(BaseSettings):
         return [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS] + [
             self.FRONTEND_HOST
         ]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def first_login_setup_host(self) -> str:
+        return (self.FIRST_LOGIN_SETUP_HOST or self.FRONTEND_HOST).rstrip("/")
 
     PROJECT_NAME: str
     SENTRY_DSN: HttpUrl | None = None

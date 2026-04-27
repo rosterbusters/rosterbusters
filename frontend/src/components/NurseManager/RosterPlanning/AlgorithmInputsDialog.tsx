@@ -175,7 +175,7 @@ export function AlgorithmInputsDialog({
                     Ward: {wardName ?? "—"} • Period: {periodName ?? "—"}
                   </Text>
                   <Text fontSize="sm" color="gray.600">
-                    Algorithm: {algorithmType ?? "Auto"}
+                    Algorithm: {algorithmType === "AB-RATIO" ? "CP-SAT" : (algorithmType ?? "Auto")}
                   </Text>
                   <Text fontSize="sm" color="gray.600">
                     Last run: {formattedLastRun} • Duration: {formattedDuration}
