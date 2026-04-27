@@ -42,3 +42,19 @@ class NotificationStatsResponse(BaseModel):
     unread: int
     by_type: dict[str, int]
     recent: list[NotificationResponse]
+
+
+class NotificationPreferencesResponse(BaseModel):
+    """
+    Maps each toggleable notification type to whether email is enabled.
+    Types not present are always-on and not user-configurable.
+    """
+    preferences: dict[str, bool]
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    """
+    Partial update for notification preferences.
+    Only include the types you want to change; omitted types are left unchanged.
+    """
+    preferences: dict[str, bool]

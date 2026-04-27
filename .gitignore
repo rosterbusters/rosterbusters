@@ -12,3 +12,4 @@ CLAUDE.md
 .cursor/
 gurobi.lic
 traefik/certs/
+*.txt

@@ -7,6 +7,7 @@ Modes:
   - anonymized: creates a test ward with "Nurse 1..N" and seeds requests into the upcoming period
   - anonymized-feasible: same as anonymized, but with added EN/SEN manpower sized for MILP feasibility
   - anonymized-apr-2026: seeds the Apr 2026 preview data onto the period that is upcoming from today
+  - anonymized-apr-2026-12hr: seeds the Apr 2026 12-hour preview data onto the period that is upcoming from today
   - anonymized-apr-may-2026: seeds the Apr 20 - May 03 2026 preview data onto the period that is upcoming from today
 
 Usage:
@@ -15,6 +16,7 @@ Usage:
     docker compose exec backend python app/test_algo.py --mode anonymized
     docker compose exec backend python app/test_algo.py --mode anonymized-feasible
     docker compose exec backend python app/test_algo.py --mode anonymized-apr-2026
+    docker compose exec backend python app/test_algo.py --mode anonymized-apr-2026-12hr
     docker compose exec backend python app/test_algo.py --mode anonymized-apr-may-2026
 """
 import argparse
@@ -28,7 +30,7 @@ from app.core.db import engine
 from app.core.security import get_password_hash
 from app.models import RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
-from app.models.roster import Roster, RosterPeriod, Ward
+from app.models.roster import NursePeriodConstraint, Roster, RosterPeriod, Ward
 from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest, WardShiftCode
 from app.services.roster_period_service import ensure_roster_period_window, get_period_window
@@ -127,6 +129,52 @@ APR_2026_WARD_6_REQUESTS: list[RequestSeed] = [
 ]
 
 
+APR_2026_12HR_WARD_REQUESTS: list[RequestSeed] = [
+    # Derived from the anonymized Apr 06 - Apr 19 2026 12-hour preview tab.
+    RequestSeed("Nurse 1", date(2026, 4, 11), "DO", "shift_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 17), "N-12", "shift_request"),
+    RequestSeed("Nurse 2", date(2026, 4, 10), "A-12", "shift_request"),
+    RequestSeed("Nurse 2", date(2026, 4, 15), "DO", "shift_request"),
+    RequestSeed("Nurse 3", date(2026, 4, 10), "DO", "shift_request"),
+    RequestSeed("Nurse 3", date(2026, 4, 11), "PH4", "leave_request"),
+    RequestSeed("Nurse 3", date(2026, 4, 12), "RD", "shift_request"),
+    RequestSeed("Nurse 4", date(2026, 4, 11), "RD", "shift_request"),
+    RequestSeed("Nurse 4", date(2026, 4, 12), "A-12", "shift_request"),
+    RequestSeed("Nurse 5", date(2026, 4, 12), "N-12", "shift_request"),
+    RequestSeed("Nurse 5", date(2026, 4, 19), "RD", "shift_request"),
+    RequestSeed("Nurse 6", date(2026, 4, 15), "DO", "shift_request"),
+    RequestSeed("Nurse 7", date(2026, 4, 12), "DO", "shift_request"),
+    RequestSeed("Nurse 8", date(2026, 4, 9), "DO", "shift_request"),
+    RequestSeed("Nurse 8", date(2026, 4, 10), "RD", "shift_request"),
+    RequestSeed("Nurse 8", date(2026, 4, 11), "N-12", "shift_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 18), "DO", "shift_request"),
+    RequestSeed("Nurse 10", date(2026, 4, 14), "DO", "shift_request"),
+    RequestSeed("Nurse 10", date(2026, 4, 15), "RD", "shift_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 9), "AL", "leave_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 10), "DO", "shift_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 11), "DO", "shift_request"),
+    RequestSeed("Nurse 12", date(2026, 4, 7), "INHT", "leave_request"),
+    RequestSeed("Nurse 12", date(2026, 4, 8), "ITE", "leave_request"),
+    RequestSeed("Nurse 13", date(2026, 4, 15), "DO", "shift_request"),
+    RequestSeed("Nurse 13", date(2026, 4, 14), "A-12", "shift_request"),
+    RequestSeed("Nurse 13", date(2026, 4, 16), "RD", "shift_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 11), "DO", "shift_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 12), "RD", "shift_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 17), "N-12", "shift_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 18), "N-12", "shift_request"),
+    RequestSeed("Nurse 15", date(2026, 4, 8), "HOL", "leave_request"),
+    RequestSeed("Nurse 15", date(2026, 4, 9), "BDL", "leave_request"),
+    RequestSeed("Nurse 16", date(2026, 4, 10), "DO", "shift_request"),
+    RequestSeed("Nurse 17", date(2026, 4, 11), "DO", "shift_request"),
+    RequestSeed("Nurse 17", date(2026, 4, 14), "RD", "shift_request"),
+    RequestSeed("Nurse 18", date(2026, 4, 15), "DO", "shift_request"),
+    RequestSeed("Nurse 18", date(2026, 4, 18), "RD", "shift_request"),
+    RequestSeed("Nurse 19", date(2026, 4, 10), "DO", "shift_request"),
+    RequestSeed("Nurse 19", date(2026, 4, 15), "RD", "shift_request"),
+    RequestSeed("Nurse 20", date(2026, 4, 11), "DO", "shift_request"),
+]
+
+
 APR_MAY_2026_WARD_6_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 17", date(2026, 4, 20), "AL", "leave_request"),
     RequestSeed("Nurse 17", date(2026, 4, 21), "AL", "leave_request"),
@@ -186,6 +234,32 @@ def _normalize_shift_request_code(code: str) -> str:
     if upper.endswith("_R") or upper.endswith("-R"):
         return upper[:-2]
     return upper
+
+
+def _normalize_leave_request_code(code: str) -> str | None:
+    upper = code.strip().upper()
+    if upper.startswith("PH"):
+        return "HOL"
+
+    allowed_leave_types = {
+        "AL",
+        "MC",
+        "CCL",
+        "ML",
+        "EML",
+        "MAR",
+        "FCL",
+        "SPL",
+        "CL",
+        "BDL",
+        "HOL",
+        "SD",
+        "FD",
+    }
+    if upper in allowed_leave_types:
+        return "Mar" if upper == "MAR" else upper
+
+    return None
 
 
 def _prepare_shift_request_seed_state(
@@ -336,6 +410,30 @@ APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
 }
 
 
+APR_2026_12HR_WARD_ANON_DESIGNATIONS: dict[str, str] = {
+    "Nurse 1": "SSN",
+    "Nurse 2": "SSN",
+    "Nurse 3": "SN",
+    "Nurse 4": "SN",
+    "Nurse 5": "SN",
+    "Nurse 6": "SN",
+    "Nurse 7": "EN",
+    "Nurse 8": "EN",
+    "Nurse 9": "EN",
+    "Nurse 10": "EN",
+    "Nurse 11": "EN",
+    "Nurse 12": "EN",
+    "Nurse 13": "EN",
+    "Nurse 14": "NA",
+    "Nurse 15": "NA",
+    "Nurse 16": "HCA1",
+    "Nurse 17": "HCA1",
+    "Nurse 18": "HCA1",
+    "Nurse 19": "HCA1",
+    "Nurse 20": "HCA1",
+}
+
+
 APR_MAY_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
     "Nurse 7": "EN",
     "Nurse 8": "SN",
@@ -397,7 +495,7 @@ def _ensure_shift_codes(db: Session, codes: set[str]) -> None:
     for code in sorted(codes):
         if code in existing:
             continue
-        is_working = code in {"A", "P", "N"}
+        is_working = code in {"A", "P", "N", "A-12", "N-12"}
         db.add(
             ShiftCode(
                 shiftcode=code,
@@ -585,6 +683,29 @@ APR_2026_WARD_6_REQUIREMENTS = {
 }
 
 
+APR_2026_12HR_WARD_REQUIREMENTS = {
+    # 12-hour wards map day coverage into AM and night coverage into ND.
+    "am_total": 7,
+    "am_rn": 2,
+    "am_en_na_min": 2,
+    "am_en_na_max": 5,
+    "am_hca_min": 0,
+    "am_hca_max": 2,
+    "pm_total": None,
+    "pm_rn": None,
+    "pm_en_na_min": None,
+    "pm_en_na_max": None,
+    "pm_hca_min": None,
+    "pm_hca_max": None,
+    "nd_total": 7,
+    "nd_rn": 2,
+    "nd_en_na_min": 1,
+    "nd_en_na_max": 5,
+    "nd_hca_min": 0,
+    "nd_hca_max": 2,
+}
+
+
 APR_MAY_2026_WARD_6_REQUIREMENTS = {
     "am_total": 7,
     "am_rn": 2,
@@ -607,7 +728,7 @@ APR_MAY_2026_WARD_6_REQUIREMENTS = {
 }
 
 
-def _apply_ward_requirements(ward: Ward, requirements: dict[str, int]) -> None:
+def _apply_ward_requirements(ward: Ward, requirements: dict[str, int | None]) -> None:
     for field_name, value in requirements.items():
         setattr(ward, field_name, value)
 
@@ -818,25 +939,11 @@ def seed_test_ward_with_anonymized_requests(
     # Leave types (AL, MC, HOL, …) are not shift codes. Modifier suffixes (-R/_R) are
     # normalized away so the base code (A, P, DO, …) is what gets seeded.
     # If a request uses a non-leave code, seed it as a shift code.
-    allowed_leave_types = {
-        "AL",
-        "MC",
-        "CCL",
-        "ML",
-        "EML",
-        "Mar",
-        "FCL",
-        "SPL",
-        "CL",
-        "BDL",
-        "HOL",
-        "SD",
-        "FD",
-    }
     codes = {
         _normalize_shift_request_code(req.code)
         for req in HARDCODED_REQUESTS
-        if req.request_type == "shift_request" or req.code not in allowed_leave_types
+        if req.request_type == "shift_request"
+        or _normalize_leave_request_code(req.code) is None
     } | {"A", "P", "N"}
     _ensure_shift_codes(db, codes)
 
@@ -869,28 +976,14 @@ def seed_test_ward_with_anonymized_requests(
         if not nurse:
             continue
 
-        allowed_leave_types = {
-            "AL",
-            "MC",
-            "CCL",
-            "ML",
-            "EML",
-            "Mar",
-            "FCL",
-            "SPL",
-            "CL",
-            "BDL",
-            "HOL",
-            "SD",
-            "FD",
-        }
-        if shifted.request_type == "leave_request" and shifted.code in allowed_leave_types:
+        normalized_leave_code = _normalize_leave_request_code(shifted.code)
+        if shifted.request_type == "leave_request" and normalized_leave_code:
             existing = db.exec(
                 select(LeaveRequest).where(
                     LeaveRequest.nurseid == nurse.nurseid,
                     LeaveRequest.startdate == shifted.date,
                     LeaveRequest.enddate == shifted.date,
-                    LeaveRequest.leavetype == shifted.code,
+                    LeaveRequest.leavetype == normalized_leave_code,
                 )
             ).first()
             if existing:
@@ -900,7 +993,7 @@ def seed_test_ward_with_anonymized_requests(
                     nurseid=nurse.nurseid,
                     startdate=shifted.date,
                     enddate=shifted.date,
-                    leavetype=shifted.code,
+                    leavetype=normalized_leave_code,
                     leavecategory="PreApproved",
                     submittedduringperiod="BeforeRoster",
                     status="Approved",
@@ -995,25 +1088,11 @@ def seed_test_ward_with_feasible_anonymized_requests(
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
 
-    allowed_leave_types = {
-        "AL",
-        "MC",
-        "CCL",
-        "ML",
-        "EML",
-        "Mar",
-        "FCL",
-        "SPL",
-        "CL",
-        "BDL",
-        "HOL",
-        "SD",
-        "FD",
-    }
     codes = {
         _normalize_shift_request_code(req.code)
         for req in FEASIBLE_REQUESTS
-        if req.request_type == "shift_request" or req.code not in allowed_leave_types
+        if req.request_type == "shift_request"
+        or _normalize_leave_request_code(req.code) is None
     } | {"A", "P", "N"}
     _ensure_shift_codes(db, codes)
 
@@ -1048,13 +1127,14 @@ def seed_test_ward_with_feasible_anonymized_requests(
         if not nurse:
             continue
 
-        if shifted.request_type == "leave_request" and shifted.code in allowed_leave_types:
+        normalized_leave_code = _normalize_leave_request_code(shifted.code)
+        if shifted.request_type == "leave_request" and normalized_leave_code:
             existing = db.exec(
                 select(LeaveRequest).where(
                     LeaveRequest.nurseid == nurse.nurseid,
                     LeaveRequest.startdate == shifted.date,
                     LeaveRequest.enddate == shifted.date,
-                    LeaveRequest.leavetype == shifted.code,
+                    LeaveRequest.leavetype == normalized_leave_code,
                 )
             ).first()
             if existing:
@@ -1064,7 +1144,7 @@ def seed_test_ward_with_feasible_anonymized_requests(
                     nurseid=nurse.nurseid,
                     startdate=shifted.date,
                     enddate=shifted.date,
-                    leavetype=shifted.code,
+                    leavetype=normalized_leave_code,
                     leavecategory="PreApproved",
                     submittedduringperiod="BeforeRoster",
                     status="Approved",
@@ -1143,22 +1223,6 @@ def seed_requests_from_list(
         ).all()
     }
 
-    allowed_leave_types = {
-        "AL",
-        "MC",
-        "CCL",
-        "ML",
-        "EML",
-        "Mar",
-        "FCL",
-        "SPL",
-        "CL",
-        "BDL",
-        "HOL",
-        "SD",
-        "FD",
-    }
-
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
         db, period.periodid, [n.nurseid for n in nurses]
     )
@@ -1173,13 +1237,14 @@ def seed_requests_from_list(
             print(f"  ! Skip: date out of period: {req.date} ({req.name})")
             continue
 
-        if req.request_type == "leave_request" and req.code in allowed_leave_types:
+        normalized_leave_code = _normalize_leave_request_code(req.code)
+        if req.request_type == "leave_request" and normalized_leave_code:
             existing = db.exec(
                 select(LeaveRequest).where(
                     LeaveRequest.nurseid == nurse.nurseid,
                     LeaveRequest.startdate == req.date,
                     LeaveRequest.enddate == req.date,
-                    LeaveRequest.leavetype == req.code,
+                    LeaveRequest.leavetype == normalized_leave_code,
                 )
             ).first()
             if existing:
@@ -1189,7 +1254,7 @@ def seed_requests_from_list(
                     nurseid=nurse.nurseid,
                     startdate=req.date,
                     enddate=req.date,
-                    leavetype=req.code,
+                    leavetype=normalized_leave_code,
                     leavecategory="PreApproved",
                     submittedduringperiod="BeforeRoster",
                     status="Approved",
@@ -1369,6 +1434,162 @@ def seed_apr_2026_ward_6_preview(
     return created
 
 
+def seed_apr_2026_12hr_ward_preview(
+    db: Session,
+    ward_name: str = "Test Ward Requests Apr 2026 12HR",
+) -> int:
+    """
+    Seed the anonymized Apr 06 - Apr 19 2026 12-hour preview onto the period
+    that is upcoming from today.
+
+    This preview seeds a dedicated 12-hour test ward with anonymized nurses,
+    12-hour ward requirements, and request/leave data only.
+    """
+    periods = ensure_roster_period_window(db)
+    current_period, upcoming_period, _ = get_period_window(periods)
+    period = upcoming_period or current_period
+    if not period:
+        raise SystemExit("No current or upcoming roster period found.")
+
+    ward = db.exec(select(Ward).where(Ward.wardname == ward_name)).first()
+    if not ward:
+        ward = Ward(
+            wardname=ward_name,
+            wardtype="Test",
+            wardhourtype="12_HOURS",
+            location="Seeded",
+        )
+        db.add(ward)
+        db.flush()
+    ward.wardhourtype = "12_HOURS"
+    _apply_ward_requirements(ward, APR_2026_12HR_WARD_REQUIREMENTS)
+    db.add(ward)
+    _ensure_test_manager(db, ward)
+
+    unique_names = sorted(APR_2026_12HR_WARD_ANON_DESIGNATIONS.keys(), key=_nurse_sort_key)
+    existing_nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
+    existing_by_name = {n.name: n for n in existing_nurses}
+
+    for anonymized in unique_names:
+        designation = APR_2026_12HR_WARD_ANON_DESIGNATIONS[anonymized]
+        existing = existing_by_name.get(anonymized)
+        if existing:
+            existing.designation = designation
+            existing.isactive = True
+            db.add(existing)
+            continue
+        db.add(
+            Nurse(
+                name=anonymized,
+                employeeid=f"APR26-12H-{anonymized.split()[-1]}",
+                designation=designation,
+                email=f"{anonymized.replace(' ', '').lower()}.apr202612hr@example.com",
+                contactnumber="00000000",
+                wardid=ward.wardid,
+                employmenttype="FullTime",
+                isactive=True,
+            )
+        )
+
+    db.flush()
+    nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
+    nurse_by_name = {n.name: n for n in nurses}
+    test_nurse = min(
+        (n for n in nurses if n.nurseid is not None),
+        key=lambda n: n.nurseid,
+        default=None,
+    )
+    if test_nurse:
+        _ensure_test_nurse_user(db, test_nurse)
+
+    shift_codes_needed = {
+        _normalize_shift_request_code(req.code)
+        for req in APR_2026_12HR_WARD_REQUESTS
+        if req.request_type == "shift_request"
+        or _normalize_leave_request_code(req.code) is None
+    } | {"A-12", "N-12", "DO"}
+    _ensure_shift_codes(db, shift_codes_needed)
+
+    existing_wsc = {
+        row.shiftcode
+        for row in db.exec(
+            select(WardShiftCode).where(WardShiftCode.wardid == ward.wardid)
+        ).all()
+    }
+    for code in sorted(shift_codes_needed - existing_wsc):
+        db.add(WardShiftCode(wardid=ward.wardid, shiftcode=code))
+
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, [n.nurseid for n in nurses]
+    )
+    base_start = min(req.date for req in APR_2026_12HR_WARD_REQUESTS)
+
+    created = 0
+    for req in APR_2026_12HR_WARD_REQUESTS:
+        shifted = _shift_to_upcoming_period(req, base_start, period)
+        if not shifted:
+            continue
+        nurse = nurse_by_name.get(shifted.name)
+        if not nurse:
+            continue
+
+        normalized_leave_code = _normalize_leave_request_code(shifted.code)
+        if shifted.request_type == "leave_request" and normalized_leave_code:
+            existing = db.exec(
+                select(LeaveRequest).where(
+                    LeaveRequest.nurseid == nurse.nurseid,
+                    LeaveRequest.startdate == shifted.date,
+                    LeaveRequest.enddate == shifted.date,
+                    LeaveRequest.leavetype == normalized_leave_code,
+                )
+            ).first()
+            if existing:
+                continue
+            db.add(
+                LeaveRequest(
+                    nurseid=nurse.nurseid,
+                    startdate=shifted.date,
+                    enddate=shifted.date,
+                    leavetype=normalized_leave_code,
+                    leavecategory="PreApproved",
+                    submittedduringperiod="BeforeRoster",
+                    status="Approved",
+                    impactsroster=True,
+                )
+            )
+            created += 1
+            continue
+
+        key = (nurse.nurseid, shifted.date)
+        if key in existing_dates:
+            continue
+        db.add(
+            ShiftRequest(
+                nurseid=nurse.nurseid,
+                periodid=period.periodid,
+                preferreddate=shifted.date,
+                preferredshifttype=_normalize_shift_request_code(shifted.code),
+                requestnumber=_claim_shift_request_number(
+                    used_numbers_by_nurse, nurse.nurseid
+                ),
+                status=shifted.status,
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        existing_dates.add(key)
+        created += 1
+
+    db.commit()
+    if test_nurse:
+        print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
+    print(
+        f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) "
+        f"for Apr 06 - Apr 19 2026 12HR preview on roster period "
+        f"({period.startdate} - {period.enddate})."
+    )
+    return created
+
+
 def seed_apr_may_2026_ward_6_preview(
     db: Session,
     ward_name: str = "Test Ward Requests Apr-May 2026",
@@ -1486,13 +1707,14 @@ def seed_apr_may_2026_ward_6_preview(
         if not nurse:
             continue
 
-        if shifted.request_type == "leave_request":
+        normalized_leave_code = _normalize_leave_request_code(shifted.code)
+        if shifted.request_type == "leave_request" and normalized_leave_code:
             existing = db.exec(
                 select(LeaveRequest).where(
                     LeaveRequest.nurseid == nurse.nurseid,
                     LeaveRequest.startdate == shifted.date,
                     LeaveRequest.enddate == shifted.date,
-                    LeaveRequest.leavetype == shifted.code,
+                    LeaveRequest.leavetype == normalized_leave_code,
                 )
             ).first()
             if existing:
@@ -1502,7 +1724,7 @@ def seed_apr_may_2026_ward_6_preview(
                     nurseid=nurse.nurseid,
                     startdate=shifted.date,
                     enddate=shifted.date,
-                    leavetype=shifted.code,
+                    leavetype=normalized_leave_code,
                     leavecategory="PreApproved",
                     submittedduringperiod="BeforeRoster",
                     status="Approved",
@@ -1669,6 +1891,7 @@ def main() -> None:
             "anonymized",
             "anonymized-feasible",
             "anonymized-apr-2026",
+            "anonymized-apr-2026-12hr",
             "anonymized-apr-may-2026",
         ],
         help="Use deterministic seed logic, hardcoded sample requests, or anonymized test ward seeding.",
@@ -1703,6 +1926,9 @@ def main() -> None:
         elif args.mode == "anonymized-apr-2026":
             created = seed_apr_2026_ward_6_preview(db)
             print(f"✓ {created} Apr 2026 preview requests saved.")
+        elif args.mode == "anonymized-apr-2026-12hr":
+            created = seed_apr_2026_12hr_ward_preview(db)
+            print(f"✓ {created} Apr 2026 12HR preview requests saved.")
         elif args.mode == "anonymized-apr-may-2026":
             created = seed_apr_may_2026_ward_6_preview(db)
             print(f"✓ {created} Apr-May 2026 preview requests saved.")
