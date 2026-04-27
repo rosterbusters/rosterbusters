@@ -239,6 +239,9 @@ jobs:
           echo "=== APP COMPOSE CONFIG ==="
           app_compose config
 
+          echo "=== RUN ONE-OFF DB MIGRATION ==="
+          app_compose run --rm prestart bash -lc "uv run alembic upgrade head"
+
           app_compose up -d --remove-orphans || {
             echo "=== APP STATUS AFTER FAILED START ==="
             app_compose ps || true
