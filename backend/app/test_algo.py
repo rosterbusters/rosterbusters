@@ -236,6 +236,32 @@ def _normalize_shift_request_code(code: str) -> str:
     return upper
 
 
+def _normalize_leave_request_code(code: str) -> str | None:
+    upper = code.strip().upper()
+    if upper.startswith("PH"):
+        return "HOL"
+
+    allowed_leave_types = {
+        "AL",
+        "MC",
+        "CCL",
+        "ML",
+        "EML",
+        "MAR",
+        "FCL",
+        "SPL",
+        "CL",
+        "BDL",
+        "HOL",
+        "SD",
+        "FD",
+    }
+    if upper in allowed_leave_types:
+        return "Mar" if upper == "MAR" else upper
+
+    return None
+
+
 def _prepare_shift_request_seed_state(
     db: Session, period_id: int, nurse_ids: list[int]
 ) -> tuple[set[tuple[int, date]], dict[int, set[int]]]:
@@ -1536,6 +1562,7 @@ def seed_apr_2026_12hr_ward_preview(
         _normalize_shift_request_code(req.code)
         for req in APR_2026_12HR_WARD_REQUESTS
         if req.request_type == "shift_request"
+        or _normalize_leave_request_code(req.code) is None
     } | {"A-12", "N-12", "DO"}
     _ensure_shift_codes(db, shift_codes_needed)
 
@@ -1548,11 +1575,6 @@ def seed_apr_2026_12hr_ward_preview(
     for code in sorted(shift_codes_needed - existing_wsc):
         db.add(WardShiftCode(wardid=ward.wardid, shiftcode=code))
 
-    allowed_leave_types = {"AL", "HOL", "MC", "CL", "CCL", "ML", "EML", "BDL", "INHT", "ITE"} | {
-        req.code
-        for req in APR_2026_12HR_WARD_REQUESTS
-        if req.code.upper().startswith("PH")
-    }
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
         db, period.periodid, [n.nurseid for n in nurses]
     )
@@ -1567,13 +1589,14 @@ def seed_apr_2026_12hr_ward_preview(
         if not nurse:
             continue
 
-        if shifted.request_type == "leave_request" and shifted.code in allowed_leave_types:
+        normalized_leave_code = _normalize_leave_request_code(shifted.code)
+        if shifted.request_type == "leave_request" and normalized_leave_code:
             existing = db.exec(
                 select(LeaveRequest).where(
                     LeaveRequest.nurseid == nurse.nurseid,
                     LeaveRequest.startdate == shifted.date,
                     LeaveRequest.enddate == shifted.date,
-                    LeaveRequest.leavetype == shifted.code,
+                    LeaveRequest.leavetype == normalized_leave_code,
                 )
             ).first()
             if existing:
@@ -1583,7 +1606,7 @@ def seed_apr_2026_12hr_ward_preview(
                     nurseid=nurse.nurseid,
                     startdate=shifted.date,
                     enddate=shifted.date,
-                    leavetype=shifted.code,
+                    leavetype=normalized_leave_code,
                     leavecategory="PreApproved",
                     submittedduringperiod="BeforeRoster",
                     status="Approved",

@@ -7,6 +7,7 @@ import {
   completeFirstLoginSetup,
   getAdminToken,
   getAnyWard,
+  withCleanupRequest,
 } from "./admin-helpers"
 
 async function loginToken(
@@ -26,9 +27,6 @@ async function loginToken(
 
 const formatDateKey = (value: Date) =>
   `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
-
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 test("ward staff can create a leave request from the calendar", async ({
   page,
@@ -114,6 +112,14 @@ test("ward staff can create a leave request from the calendar", async ({
     targetDate.setDate(targetDate.getDate() + 1)
     const dateKey = formatDateKey(targetDate)
 
+    const now = new Date()
+    const needsNextMonth =
+      targetDate.getFullYear() !== now.getFullYear() ||
+      targetDate.getMonth() !== now.getMonth()
+    if (needsNextMonth) {
+      await page.getByRole("button", { name: "Next" }).click()
+    }
+
     await page.getByTestId(`leave-request-calendar-cell-${dateKey}`).click()
     await expect(page.getByText("Create Leave Request")).toBeVisible()
 
@@ -155,13 +161,15 @@ test("ward staff can create a leave request from the calendar", async ({
       page.getByTestId(`leave-request-${createdLeaveId}`),
     ).toBeVisible()
   } finally {
-    if (createdLeaveId && nurseToken) {
-      await request.delete(`${API_BASE_URL}/api/v1/leave/${createdLeaveId}`, {
-        headers: { Authorization: `Bearer ${nurseToken}` },
-      })
-    }
-    for (const userid of createdUserIds.reverse()) {
-      await deleteUser(request, adminToken, userid)
-    }
+    await withCleanupRequest(async (cleanupRequest) => {
+      if (createdLeaveId && nurseToken) {
+        await cleanupRequest.delete(`${API_BASE_URL}/api/v1/leave/${createdLeaveId}`, {
+          headers: { Authorization: `Bearer ${nurseToken}` },
+        })
+      }
+      for (const userid of createdUserIds.reverse()) {
+        await deleteUser(cleanupRequest, adminToken, userid)
+      }
+    })
   }
 })
