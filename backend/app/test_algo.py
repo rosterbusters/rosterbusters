@@ -1275,17 +1275,34 @@ def seed_apr_2026_ward_6_preview(
     current_roster_created = _seed_roster_for_period(db, ward.wardid, period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
-    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
-        db, period.periodid, [n.nurseid for n in nurses]
+    nurse_ids = [n.nurseid for n in nurses]
+    # Replace any prior preview seed for this ward/period so reruns correct stale dates.
+    existing_requests = list(
+        db.exec(
+            select(ShiftRequest).where(
+                ShiftRequest.periodid == period.periodid,
+                ShiftRequest.nurseid.in_(nurse_ids),
+            )
+        ).all()
     )
+    for existing in existing_requests:
+        db.delete(existing)
+    db.flush()
+    existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
+        db, period.periodid, nurse_ids
+    )
+    base_start = min(req.date for req in APR_2026_WARD_6_REQUESTS)
 
     created = 0
     for req in APR_2026_WARD_6_REQUESTS:
-        nurse = nurse_by_name.get(req.name)
+        shifted = _shift_to_upcoming_period(req, base_start, period)
+        if not shifted:
+            continue
+        nurse = nurse_by_name.get(shifted.name)
         if not nurse:
             continue
 
-        key = (nurse.nurseid, req.date)
+        key = (nurse.nurseid, shifted.date)
         if key in existing_dates:
             continue
 
@@ -1293,12 +1310,12 @@ def seed_apr_2026_ward_6_preview(
             ShiftRequest(
                 nurseid=nurse.nurseid,
                 periodid=period.periodid,
-                preferreddate=req.date,
-                preferredshifttype=_normalize_shift_request_code(req.code),
+                preferreddate=shifted.date,
+                preferredshifttype=_normalize_shift_request_code(shifted.code),
                 requestnumber=_claim_shift_request_number(
                     used_numbers_by_nurse, nurse.nurseid
                 ),
-                status=req.status,
+                status=shifted.status,
                 timestamp=datetime.now(timezone.utc),
             )
         )

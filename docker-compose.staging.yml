@@ -32,6 +32,7 @@ services:
       dockerfile: Dockerfile
       args:
         - VITE_API_URL=https://api.${DOMAIN?Variable not set}
+        - VITE_MODE=staging
         - NODE_ENV=production
     labels:
       traefik.enable: "true"
