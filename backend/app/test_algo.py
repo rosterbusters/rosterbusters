@@ -21,7 +21,7 @@ import argparse
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import inspect
+from sqlalchemy import delete, inspect
 from sqlmodel import Session, select
 
 from app.core.db import engine
