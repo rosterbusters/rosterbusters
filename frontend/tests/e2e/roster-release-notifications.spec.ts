@@ -220,15 +220,21 @@ async function fetchMailCatcherMessage(
 async function waitForEmail(
   request: APIRequestContext,
   recipient: string,
+  subjectIncludes?: string,
   timeoutMs = 20_000,
 ) {
   const started = Date.now()
   const expectedRecipient = recipient.toLowerCase()
+  const expectedSubject = subjectIncludes?.toLowerCase()
 
   while (Date.now() - started < timeoutMs) {
     const messages = await fetchMailCatcherMessages(request)
 
     for (const message of messages) {
+      const subject = (message.subject || "").toLowerCase()
+      if (expectedSubject && !subject.includes(expectedSubject)) {
+        continue
+      }
       const recipients = (message.recipients || []).map((value) =>
         value.trim().replace(/^<|>$/g, "").toLowerCase(),
       )
@@ -239,6 +245,10 @@ async function waitForEmail(
 
     for (const message of messages) {
       const fullMessage = await fetchMailCatcherMessage(request, message.id)
+      const subject = (fullMessage.subject || "").toLowerCase()
+      if (expectedSubject && !subject.includes(expectedSubject)) {
+        continue
+      }
       const combinedBody = [
         fullMessage.body,
         fullMessage.body_html,
@@ -351,7 +361,11 @@ test.describe("roster release notifications", () => {
           relatedentityid: period.periodid,
         })
 
-      const message = await waitForEmail(request, nurseEmail)
+      const message = await waitForEmail(
+        request,
+        nurseEmail,
+        `${period.name} Roster Released.`,
+      )
       expect(message.subject || "").toMatch(
         new RegExp(`${escapeRegExp(`${period.name} Roster Released.`)}$`),
       )

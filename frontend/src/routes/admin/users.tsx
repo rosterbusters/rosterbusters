@@ -1253,16 +1253,31 @@ function AdminUsers() {
         const isDuplicateUsername =
           detail.toLowerCase().includes("username already exists") ||
           detail.toLowerCase().includes("this username already exists")
+        const isDuplicateEmail =
+          detail.toLowerCase().includes("email already in use") ||
+          detail.toLowerCase().includes("a user with this email already exists")
 
-        if (isDuplicateUsername) {
+        if (isDuplicateUsername || isDuplicateEmail) {
           try {
-            const existingPage = await AdminService.listUsers(0, 20, row.username)
-            const existingUser = existingPage.data.find(
-              (user) => user.username === row.username,
+            const searchTerms = [row.username, row.email].filter(
+              (value): value is string => !!value?.trim(),
             )
+            let existingUser: AdminUser | undefined
+
+            for (const searchTerm of searchTerms) {
+              const existingPage = await AdminService.listUsers(0, 20, searchTerm)
+              existingUser = existingPage.data.find(
+                (user) =>
+                  user.username === row.username ||
+                  (!!row.email && user.email === row.email),
+              )
+              if (existingUser) {
+                break
+              }
+            }
 
             if (!existingUser) {
-              throw new Error("Existing user not found for username collision.")
+              throw new Error("Existing user not found for duplicate import row.")
             }
 
             const updatePayload: AdminUserUpdate = {
