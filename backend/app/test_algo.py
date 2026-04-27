@@ -400,11 +400,11 @@ APR_2026_12HR_WARD_ANON_DESIGNATIONS: dict[str, str] = {
     "Nurse 13": "EN",
     "Nurse 14": "NA",
     "Nurse 15": "NA",
-    "Nurse 16": "HCA",
-    "Nurse 17": "HCA",
-    "Nurse 18": "HCA",
-    "Nurse 19": "HCA",
-    "Nurse 20": "HCA",
+    "Nurse 16": "HCA1",
+    "Nurse 17": "HCA1",
+    "Nurse 18": "HCA1",
+    "Nurse 19": "HCA1",
+    "Nurse 20": "HCA1",
 }
 
 
