@@ -29,6 +29,8 @@ from app.models.roster import Ward
 from app.rbac import get_user_roles_by_userid
 from app.utils import (
     generate_email_verification_email,
+    generate_first_login_setup_email,
+    generate_first_login_setup_token,
     send_email,
     store_email_verification_code,
     verify_email_code,
@@ -218,13 +220,6 @@ def _get_managed_nurse_target(
     if not current_user.managerid:
         raise HTTPException(status_code=403, detail="Nurse manager profile not found")
 
-    managed_ids = _managed_ward_ids(session, current_user.managerid)
-    if nurse.wardid not in managed_ids:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only manage nurses in your assigned wards.",
-        )
-
     return user, nurse
 
 
@@ -355,21 +350,11 @@ def list_nurse_manager_staff(
     current_user: NurseManagerUser,
     ward_id: Optional[int] = None,
 ) -> Any:
-    """List nurse accounts in wards managed by the current nurse manager."""
+    """List nurse accounts for any ward."""
     if not current_user.managerid:
         raise HTTPException(status_code=403, detail="Nurse manager profile not found")
 
-    managed_ids = _managed_ward_ids(session, current_user.managerid)
-    if not managed_ids:
-        return []
-
-    if ward_id is not None and ward_id not in managed_ids:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only view staff in your assigned wards.",
-        )
-
-    query = select(Nurse).where(Nurse.wardid.in_(managed_ids))  # type: ignore[arg-type]
+    query = select(Nurse)
     if ward_id is not None:
         query = query.where(Nurse.wardid == ward_id)
     nurses = list(session.exec(query).all())
@@ -403,19 +388,16 @@ def list_nurse_manager_staff(
 def create_nurse_manager_staff(
     *,
     session: SessionDep,
+    background_tasks: BackgroundTasks,
     current_user: NurseManagerUser,
     body: NurseManagerStaffCreate,
 ) -> Any:
-    """Create a nurse account in one of the manager's wards."""
+    """Create a nurse account in any ward."""
     if not current_user.managerid:
         raise HTTPException(status_code=403, detail="Nurse manager profile not found")
-
-    managed_ids = _managed_ward_ids(session, current_user.managerid)
-    if body.ward_id not in managed_ids:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only create nurses in your assigned wards.",
-        )
+    ward = session.get(Ward, body.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
 
     requested_username = body.username.strip() if body.username else ""
     username = requested_username or _generate_unique_username(
@@ -500,6 +482,21 @@ def create_nurse_manager_staff(
     result = _build_staff_public(session, user, nurse)
     if not body.password:
         result.generated_password = raw_password
+
+    if user.email and user.must_change_password:
+        first_login_token = generate_first_login_setup_token(user.userid)
+        email_data = generate_first_login_setup_email(
+            email_to=user.email,
+            username=result.name or user.username,
+            token=first_login_token,
+        )
+        background_tasks.add_task(
+            send_email,
+            email_to=user.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+
     return result
 
 
@@ -511,18 +508,13 @@ def update_nurse_manager_staff(
     userid: int,
     body: NurseManagerStaffUpdate,
 ) -> Any:
-    """Update a managed nurse account."""
+    """Update a nurse account."""
     user, nurse = _get_managed_nurse_target(session, current_user, userid)
 
     if body.ward_id is not None:
-        if not current_user.managerid:
-            raise HTTPException(status_code=403, detail="Nurse manager profile not found")
-        managed_ids = _managed_ward_ids(session, current_user.managerid)
-        if body.ward_id not in managed_ids:
-            raise HTTPException(
-                status_code=403,
-                detail="You can only assign nurses to your assigned wards.",
-            )
+        ward = session.get(Ward, body.ward_id)
+        if not ward:
+            raise HTTPException(status_code=404, detail="Ward not found")
 
     email_provided = "email" in body.model_fields_set
     if email_provided and body.email is not None and body.email != user.email:

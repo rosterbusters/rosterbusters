@@ -15,7 +15,7 @@ import {
   VStack,
   createListCollection,
 } from "@chakra-ui/react";
-import { Download, Filter, KeyRound, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Filter, KeyRound, Mail, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { WardsService, type Ward } from "@/client";
 import {
@@ -48,7 +48,6 @@ type DirectoryRow = {
   shiftPattern: "A_ONLY" | "P_ONLY" | null;
   isActive: boolean;
   mustChangePassword: boolean;
-  defaultPassword: string | null;
 };
 
 type StaffFormState = {
@@ -308,11 +307,6 @@ function WardStaffDirectoryPage() {
   const [generatedPasswordInfo, setGeneratedPasswordInfo] =
     useState<GeneratedPasswordInfo | null>(null);
   const [passwordCopied, setPasswordCopied] = useState(false);
-  const [copiedDefaultPasswordUserId, setCopiedDefaultPasswordUserId] =
-    useState<number | null>(null);
-  const [knownDefaultPasswords, setKnownDefaultPasswords] = useState<
-    Record<number, string>
-  >({});
   const [staffForm, setStaffForm] = useState<StaffFormState>({
     name: "",
     username: "",
@@ -378,10 +372,6 @@ function WardStaffDirectoryPage() {
     onSuccess: (result) => {
       showSuccessToast("User created successfully.");
       if (result.generated_password) {
-        setKnownDefaultPasswords((previous) => ({
-          ...previous,
-          [result.userid]: result.generated_password!,
-        }));
         setGeneratedPasswordInfo({
           userId: result.userid,
           username: result.username,
@@ -446,10 +436,6 @@ function WardStaffDirectoryPage() {
       NurseManagerStaffService.resetStaffPassword(userId),
     onSuccess: (result) => {
       if (resetPasswordStaff?.userId) {
-        setKnownDefaultPasswords((previous) => ({
-          ...previous,
-          [resetPasswordStaff.userId!]: result.generated_password,
-        }));
         setGeneratedPasswordInfo({
           userId: resetPasswordStaff.userId,
           username: result.username,
@@ -459,6 +445,17 @@ function WardStaffDirectoryPage() {
       setResetPasswordStaff(null);
       showSuccessToast("Temporary password generated.");
       invalidateDirectoryData();
+    },
+    onError: (error: unknown) => {
+      showErrorToast(getErrorMessage(error));
+    },
+  });
+
+  const resendFirstLoginSetupMutation = useMutation({
+    mutationFn: (userId: number) =>
+      NurseManagerStaffService.resendFirstLoginSetup(userId),
+    onSuccess: () => {
+      showSuccessToast("First-login setup email sent.");
     },
     onError: (error: unknown) => {
       showErrorToast(getErrorMessage(error));
@@ -478,24 +475,6 @@ function WardStaffDirectoryPage() {
     setSelectedWard(restoredWard ?? wards[0]);
   }, [selectedWard, wards]);
 
-  useEffect(() => {
-    if (staffUsers.length === 0) {
-      return;
-    }
-
-    setKnownDefaultPasswords((previous) => {
-      const next = { ...previous };
-      let changed = false;
-      staffUsers.forEach((staff) => {
-        if (staff.generated_password && !next[staff.userid]) {
-          next[staff.userid] = staff.generated_password;
-          changed = true;
-        }
-      });
-      return changed ? next : previous;
-    });
-  }, [staffUsers]);
-
   const wardCollection = useMemo(
     () =>
       createListCollection({
@@ -511,50 +490,57 @@ function WardStaffDirectoryPage() {
       const staffByNurseId = new Map<number, NurseManagerStaffUser>(
         staffUsers.map((staff) => [staff.nurseid, staff]),
       );
+      const statisticsByNurseId = new Map(
+        (statistics?.nurses ?? []).map((nurse) => [nurse.nurseId, nurse] as const),
+      );
+      const nurseIds = new Set<number>([
+        ...staffUsers.map((staff) => staff.nurseid),
+        ...(statistics?.nurses ?? []).map((nurse) => nurse.nurseId),
+      ]);
 
-      return (statistics?.nurses ?? [])
-        .map((nurse) => {
-          const linkedStaff = staffByNurseId.get(nurse.nurseId);
+      return Array.from(nurseIds)
+        .map((nurseId) => {
+          const linkedStaff = staffByNurseId.get(nurseId);
+          const nurse = statisticsByNurseId.get(nurseId);
+          if (!linkedStaff && !nurse) {
+            return null;
+          }
           const statisticsUserId =
-            nurse.userId ??
-            (nurse as { userid?: number | null }).userid ??
+            nurse?.userId ??
+            (nurse as { userid?: number | null } | undefined)?.userid ??
             null;
           const statisticsMustChangePassword =
-            nurse.mustChangePassword ??
-            (nurse as { must_change_password?: boolean }).must_change_password ??
+            nurse?.mustChangePassword ??
+            (nurse as { must_change_password?: boolean } | undefined)
+              ?.must_change_password ??
             false;
-          const statisticsDefaultPassword =
-            nurse.defaultPassword ??
-            (nurse as { generated_password?: string | null }).generated_password ??
-            (nurse as { default_password?: string | null }).default_password ??
-            null;
           return {
             userId: linkedStaff?.userid ?? statisticsUserId,
-            nurseId: nurse.nurseId,
-            name: linkedStaff?.name ?? nurse.name,
+            nurseId,
+            name: linkedStaff?.name ?? nurse?.name ?? "",
             username:
               linkedStaff?.username?.trim() ||
-              nurse.username?.trim() ||
+              nurse?.username?.trim() ||
               "",
             employeeId:
               linkedStaff?.employee_id?.trim() ||
-              nurse.employeeId?.trim() ||
-              ((nurse as { employee_id?: string | null }).employee_id?.trim() ??
+              nurse?.employeeId?.trim() ||
+              ((nurse as { employee_id?: string | null } | undefined)?.employee_id?.trim() ??
                 ""),
-            designation: linkedStaff?.designation ?? nurse.designation,
-            email: linkedStaff?.email ?? nurse.email,
+            designation: linkedStaff?.designation ?? nurse?.designation ?? "",
+            email: linkedStaff?.email ?? nurse?.email ?? "",
             mustChangePassword:
               linkedStaff?.must_change_password ?? statisticsMustChangePassword,
-            defaultPassword:
-              linkedStaff?.generated_password ?? statisticsDefaultPassword,
             shiftPattern: normalizeShiftPatternForDirectory(
-              nurse.shiftPattern ??
-                (nurse as { shift_pattern?: unknown }).shift_pattern ??
-                (nurse as { shiftpattern?: unknown }).shiftpattern,
+              linkedStaff?.shift_pattern ??
+                nurse?.shiftPattern ??
+                (nurse as { shift_pattern?: unknown } | undefined)?.shift_pattern ??
+                (nurse as { shiftpattern?: unknown } | undefined)?.shiftpattern,
             ),
-            isActive: nurse.isActive,
+            isActive: linkedStaff?.isactive ?? nurse?.isActive ?? true,
           };
         })
+        .filter((row): row is DirectoryRow => row !== null)
         .sort(
           (left, right) =>
             left.name.localeCompare(right.name) || left.nurseId - right.nurseId,
@@ -818,19 +804,6 @@ function WardStaffDirectoryPage() {
     }
   };
 
-  const handleCopyDefaultPassword = (userId: number, password: string) => {
-    copyPassword(password, () => {
-      setCopiedDefaultPasswordUserId(userId);
-      setTimeout(
-        () =>
-          setCopiedDefaultPasswordUserId((previous) =>
-            previous === userId ? null : previous,
-          ),
-        1500,
-      );
-    });
-  };
-
   const handleCopyGeneratedPassword = () => {
     const password = generatedPasswordInfo?.generatedPassword;
     if (!password) {
@@ -842,71 +815,6 @@ function WardStaffDirectoryPage() {
       setPasswordCopied(true);
       setTimeout(() => setPasswordCopied(false), 1500);
     });
-  };
-
-  const handleExportDefaultPasswords = () => {
-    if (!selectedWard) {
-      showErrorToast("Select a ward to export default passwords.");
-      return;
-    }
-
-    const exportRows = rows
-      .filter((row) => {
-        if (!row.userId || !row.mustChangePassword) {
-          return false;
-        }
-        return Boolean(knownDefaultPasswords[row.userId] || row.defaultPassword);
-      })
-      .map((row) => ({
-        name: row.name,
-        username: row.username,
-        ward: selectedWard.wardname,
-        password:
-          (row.userId ? knownDefaultPasswords[row.userId] : undefined) ||
-          row.defaultPassword ||
-          "",
-      }));
-
-    if (exportRows.length === 0) {
-      showErrorToast("No default passwords found for the selected ward.");
-      return;
-    }
-
-    const escapeCsv = (value: string) => {
-      const safe = value.replace(/"/g, '""');
-      return /[",\n]/.test(safe) ? `"${safe}"` : safe;
-    };
-
-    const header = ["Name", "Username", "Ward", "Default Password"];
-    const lines = [
-      header.join(","),
-      ...exportRows.map((row) =>
-        [
-          escapeCsv(row.name),
-          escapeCsv(row.username),
-          escapeCsv(row.ward),
-          escapeCsv(row.password),
-        ].join(","),
-      ),
-    ];
-
-    const blob = new Blob([lines.join("\n")], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const dateStamp = new Date().toISOString().slice(0, 10);
-    const wardName = selectedWard.wardname
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    link.href = url;
-    link.download = `default-passwords-${wardName || "ward"}-${dateStamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
   };
 
   const isLoading = wardsLoading || (!!selectedWard && (isStaffLoading || isStatisticsLoading));
@@ -1013,34 +921,6 @@ function WardStaffDirectoryPage() {
               <Plus size={14} />
               Add User
             </Box>
-            <Box
-              as="button"
-              display="inline-flex"
-              alignItems="center"
-              gap={2}
-              px={3}
-              py={2}
-              rounded="md"
-              bg="white"
-              color="gray.700"
-              borderWidth="1px"
-              borderColor="gray.200"
-              fontSize="sm"
-              fontWeight="medium"
-              _hover={{ bg: "gray.50" }}
-              aria-disabled={!selectedWard}
-              opacity={!selectedWard ? 0.6 : 1}
-              cursor={!selectedWard ? "not-allowed" : "pointer"}
-              onClick={() => {
-                if (!selectedWard) {
-                  return;
-                }
-                handleExportDefaultPasswords();
-              }}
-            >
-              <Download size={14} />
-              Export Default Passwords
-            </Box>
             <Text fontSize="sm">
               Nurses:{" "}
               <Box as="span" color="primary" fontWeight="semibold">
@@ -1082,7 +962,7 @@ function WardStaffDirectoryPage() {
             <Flex justify="center" align="center" minH="320px">
               <Spinner color="primary" size="lg" />
             </Flex>
-          ) : isStaffError || isStatisticsError ? (
+          ) : isStaffError ? (
             <Flex justify="center" align="center" minH="320px" px={6}>
               <Text color="foreground" textAlign="center">
                 Unable to load ward staff data right now.
@@ -1373,18 +1253,7 @@ function WardStaffDirectoryPage() {
                     Status
                   </Table.ColumnHeader>
                   <Table.ColumnHeader
-                    minW="220px"
-                    py={4}
-                    px={4}
-                    borderBottom="1px solid"
-                    borderColor="blackAlpha.100"
-                    color="foreground"
-                    fontWeight="medium"
-                  >
-                    Default Password
-                  </Table.ColumnHeader>
-                  <Table.ColumnHeader
-                    minW="120px"
+                    minW="160px"
                     py={4}
                     px={4}
                     borderBottom="1px solid"
@@ -1400,13 +1269,13 @@ function WardStaffDirectoryPage() {
               <Table.Body>
                 {!selectedWard ? (
                   <Table.Row>
-                    <Table.Cell colSpan={9} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={8} textAlign="center" py={12} color="foreground">
                       Select a ward to view staff.
                     </Table.Cell>
                   </Table.Row>
                 ) : filteredRows.length === 0 ? (
                   <Table.Row>
-                    <Table.Cell colSpan={9} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={8} textAlign="center" py={12} color="foreground">
                       {rows.length === 0
                         ? "No nurses were found for this ward."
                         : "No staff match the selected filters."}
@@ -1415,6 +1284,12 @@ function WardStaffDirectoryPage() {
                 ) : (
                   filteredRows.map((row) => {
                     const isSavingPattern = savingPatternNurseId === row.nurseId;
+                    const hasLinkedAccount = row.userId != null;
+                    const canResendFirstLoginSetup =
+                      hasLinkedAccount &&
+                      row.mustChangePassword &&
+                      Boolean(row.email) &&
+                      !resendFirstLoginSetupMutation.isPending;
 
                     return (
                       <Table.Row key={row.nurseId} bg="white" _hover={{ bg: "gray.50" }}>
@@ -1491,74 +1366,49 @@ function WardStaffDirectoryPage() {
                           </Box>
                         </Table.Cell>
                         <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                          {row.userId &&
-                          row.mustChangePassword &&
-                          (knownDefaultPasswords[row.userId] || row.defaultPassword) ? (
-                            <HStack
-                              gap={2}
-                              display="inline-flex"
-                              borderWidth="1px"
-                              borderColor="gray.200"
-                              bg="gray.50"
-                              px={2}
-                              py={1}
-                              rounded="md"
-                            >
-                              <Text fontSize="xs" color="black" fontFamily="mono">
-                                {knownDefaultPasswords[row.userId] || row.defaultPassword}
-                              </Text>
+                          <HStack justify="flex-end" gap={1}>
+                            {hasLinkedAccount && row.mustChangePassword && row.email ? (
                               <Box
                                 as="button"
-                                fontSize="xs"
-                                px={2}
-                                py={0.5}
-                                rounded="sm"
-                                borderWidth="1px"
-                                borderColor="gray.300"
-                                color="gray.600"
-                                _hover={{ bg: "white" }}
-                                onClick={() =>
-                                  handleCopyDefaultPassword(
-                                    row.userId!,
-                                    knownDefaultPasswords[row.userId!] ||
-                                      row.defaultPassword ||
-                                      "",
-                                  )
+                                p={2}
+                                rounded="md"
+                                color="gray.500"
+                                opacity={resendFirstLoginSetupMutation.isPending ? 0.6 : 1}
+                                cursor={
+                                  resendFirstLoginSetupMutation.isPending
+                                    ? "not-allowed"
+                                    : "pointer"
                                 }
+                                _hover={
+                                  resendFirstLoginSetupMutation.isPending
+                                    ? undefined
+                                    : { color: "teal.600", bg: "teal.50" }
+                                }
+                                onClick={() => {
+                                  if (!canResendFirstLoginSetup) {
+                                    return;
+                                  }
+                                  resendFirstLoginSetupMutation.mutate(row.userId!);
+                                }}
+                                title="Resend first-login setup email"
                               >
-                                {copiedDefaultPasswordUserId === row.userId
-                                  ? "Copied!"
-                                  : "Copy"}
+                                <Mail size={14} />
                               </Box>
-                            </HStack>
-                          ) : (
-                            <Text
-                              fontSize="xs"
-                              color={
-                                row.userId && row.mustChangePassword
-                                  ? "amber.700"
-                                  : "gray.400"
-                              }
-                              fontStyle="italic"
-                            >
-                              {!row.userId || row.mustChangePassword
-                                ? "Not set"
-                                : "Password changed"}
-                            </Text>
-                          )}
-                        </Table.Cell>
-                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
-                          <HStack justify="flex-end" gap={1}>
+                            ) : null}
                             <Box
                               as="button"
                               p={2}
                               rounded="md"
                               color="gray.500"
-                              opacity={row.userId ? 1 : 0.4}
-                              _hover={{ color: "orange.600", bg: "orange.50" }}
+                              opacity={hasLinkedAccount ? 1 : 0.4}
+                              cursor={hasLinkedAccount ? "pointer" : "not-allowed"}
+                              _hover={
+                                hasLinkedAccount
+                                  ? { color: "orange.600", bg: "orange.50" }
+                                  : undefined
+                              }
                               onClick={() => {
-                                if (!row.userId) {
-                                  showErrorToast("This nurse does not have a linked account yet.");
+                                if (!hasLinkedAccount) {
                                   return;
                                 }
                                 setResetPasswordStaff(row);
@@ -1572,11 +1422,15 @@ function WardStaffDirectoryPage() {
                               p={2}
                               rounded="md"
                               color="gray.500"
-                              opacity={row.userId ? 1 : 0.4}
-                              _hover={{ color: "blue.600", bg: "blue.50" }}
+                              opacity={hasLinkedAccount ? 1 : 0.4}
+                              cursor={hasLinkedAccount ? "pointer" : "not-allowed"}
+                              _hover={
+                                hasLinkedAccount
+                                  ? { color: "blue.600", bg: "blue.50" }
+                                  : undefined
+                              }
                               onClick={() => {
-                                if (!row.userId) {
-                                  showErrorToast("This nurse does not have a linked account yet.");
+                                if (!hasLinkedAccount) {
                                   return;
                                 }
                                 openEditStaffDialog(row);
@@ -1590,11 +1444,15 @@ function WardStaffDirectoryPage() {
                               p={2}
                               rounded="md"
                               color="gray.500"
-                              opacity={row.userId ? 1 : 0.4}
-                              _hover={{ color: "red.600", bg: "red.50" }}
+                              opacity={hasLinkedAccount ? 1 : 0.4}
+                              cursor={hasLinkedAccount ? "pointer" : "not-allowed"}
+                              _hover={
+                                hasLinkedAccount
+                                  ? { color: "red.600", bg: "red.50" }
+                                  : undefined
+                              }
                               onClick={() => {
-                                if (!row.userId) {
-                                  showErrorToast("This nurse does not have a linked account yet.");
+                                if (!hasLinkedAccount) {
                                   return;
                                 }
                                 setDeletingStaff(row);

@@ -197,15 +197,19 @@ export const badgeRecipe = defineRecipe({
       "A-OShiftSolid": { bgColor: "#6A8A9E", color: "white" },
       "A-OShiftOutline": { bgColor: "white", borderColor: "#6A8A9E", borderWidth: "3px", color: "#6A8A9E" },
 
+      "A-12Shift": { bgColor: "cyan.500", color: "white" },
+      "A-12ShiftSolid": { bgColor: "cyan.500", color: "white" },
+      "A-12ShiftOutline": { bgColor: "white", borderColor: "cyan.500", borderWidth: "3px", color: "cyan.500" },
+
       // --- PM shift variant ---
       "P-ADDShift": { bgColor: "#607D8B", color: "white" },
       "P-ADDShiftSolid": { bgColor: "#607D8B", color: "white" },
       "P-ADDShiftOutline": { bgColor: "white", borderColor: "#607D8B", borderWidth: "3px", color: "#607D8B" },
 
       // --- Night shift variants ---
-      "N-12Shift": { bgColor: "#2D3748", color: "white" },
-      "N-12ShiftSolid": { bgColor: "#2D3748", color: "white" },
-      "N-12ShiftOutline": { bgColor: "white", borderColor: "#2D3748", borderWidth: "3px", color: "#2D3748" },
+      "N-12Shift": { bgColor: "#164E63", color: "white" },
+      "N-12ShiftSolid": { bgColor: "#164E63", color: "white" },
+      "N-12ShiftOutline": { bgColor: "white", borderColor: "#164E63", borderWidth: "3px", color: "#164E63" },
 
       "N-OTShift": { bgColor: "#3A4A5C", color: "white" },
       "N-OTShiftSolid": { bgColor: "#3A4A5C", color: "white" },

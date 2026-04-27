@@ -111,4 +111,10 @@ export const NurseManagerStaffService = {
       method: "POST",
     })
   },
+
+  resendFirstLoginSetup(userid: number): Promise<{ message: string }> {
+    return request(`/api/v1/users/nurse-manager/staff/${userid}/resend-first-login-setup`, {
+      method: "POST",
+    })
+  },
 }

@@ -133,12 +133,18 @@ async function fetchMailCatcherMessage(
 async function waitForResetEmail(
   request: APIRequestContext,
   email: string,
+  subjectIncludes = "password recovery",
   timeoutMs = 15_000,
 ) {
   const started = Date.now()
+  const expectedSubject = subjectIncludes.toLowerCase()
   while (Date.now() - started < timeoutMs) {
     const messages = await fetchMailCatcherMessages(request)
     for (const msg of messages) {
+      const subject = (msg.subject || "").toLowerCase()
+      if (!subject.includes(expectedSubject)) {
+        continue
+      }
       const recipients = msg.recipients || []
       const normalizedRecipients = recipients.map((recipient) =>
         recipient.trim().replace(/^<|>$/g, "").toLowerCase(),
@@ -152,6 +158,10 @@ async function waitForResetEmail(
     // Fall back to scanning message bodies for the target email.
     for (const msg of messages) {
       const full = await fetchMailCatcherMessage(request, msg.id)
+      const subject = (full.subject || "").toLowerCase()
+      if (!subject.includes(expectedSubject)) {
+        continue
+      }
       if ((full.body || "").toLowerCase().includes(email.toLowerCase())) {
         return full
       }

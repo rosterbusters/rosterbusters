@@ -6,8 +6,8 @@ Modes:
   - hardcoded: seeds the sample request list into a given ward/period
   - anonymized: creates a test ward with "Nurse 1..N" and seeds requests into the upcoming period
   - anonymized-feasible: same as anonymized, but with added EN/SEN manpower sized for MILP feasibility
-  - anonymized-apr-2026: creates a separate test ward for the Apr 06 - Apr 19 2026 preview data
-  - anonymized-apr-may-2026: creates a separate test ward for the Apr 20 - May 03 2026 preview data
+  - anonymized-apr-2026: seeds the Apr 2026 preview data onto the period that is upcoming from today
+  - anonymized-apr-may-2026: seeds the Apr 20 - May 03 2026 preview data onto the period that is upcoming from today
 
 Usage:
     docker compose exec backend python app/test_algo.py --ward-id 1 --mode deterministic
@@ -153,8 +153,8 @@ APR_MAY_2026_WARD_6_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 36", date(2026, 4, 25), "OFF", "shift_request", "Pending"),
 ]
 
-TEST_MANAGER_USERNAME = "NurseManager"
-TEST_MANAGER_EMAIL = "manager@example.com"
+TEST_MANAGER_USERNAME = "testmanager"
+TEST_MANAGER_EMAIL = "testmanager@example.com"
 TEST_MANAGER_PASSWORD = "manager123"
 TEST_NURSE_USERNAME = "nurse1"
 TEST_NURSE_NAME = "Mary"
@@ -1207,14 +1207,15 @@ def seed_apr_2026_ward_6_preview(
     ward_name: str = "Test Ward Requests Apr 2026",
 ) -> int:
     """
-    Seed a separate anonymized ward for the Apr 06 - Apr 19 2026 Ward 6 preview.
-    This preserves the older anonymized seed path and keeps the new roster case isolated.
+    Seed the Apr 06 - Apr 19 2026 Ward 6 preview onto the period that is upcoming
+    from today. This keeps the legacy Apr dataset usable without depending on the
+    original 2026-04-06 roster period still being upcoming.
     """
     periods = ensure_roster_period_window(db)
-    target_start = date(2026, 4, 6)
-    period = next((p for p in periods if p.startdate == target_start), None)
+    current_period, upcoming_period, _ = get_period_window(periods)
+    period = upcoming_period or current_period
     if not period:
-        raise SystemExit("Roster period starting 2026-04-06 not found.")
+        raise SystemExit("No current or upcoming roster period found.")
 
     ward = db.exec(select(Ward).where(Ward.wardname == ward_name)).first()
     if not ward:
@@ -1313,7 +1314,8 @@ def seed_apr_2026_ward_6_preview(
         print(f"  Seeded {previous_roster_created} previous-period roster entries.")
     print(
         f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) "
-        f"for Apr 06 - Apr 19 2026 preview."
+        f"for Apr 06 - Apr 19 2026 preview on roster period "
+        f"({period.startdate} - {period.enddate})."
     )
     return created
 
@@ -1618,6 +1620,7 @@ def main() -> None:
             "anonymized",
             "anonymized-feasible",
             "anonymized-apr-2026",
+            "anonymized-apr-may-2026",
         ],
         help="Use deterministic seed logic, hardcoded sample requests, or anonymized test ward seeding.",
     )
