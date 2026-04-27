@@ -10,8 +10,9 @@ RUN npm ci
 COPY ./ /app/
 
 ARG VITE_API_URL=${VITE_API_URL}
+ARG VITE_MODE=production
 
-RUN npm run build
+RUN npm run build -- --mode ${VITE_MODE}
 
 
 # Stage 1, based on Nginx, to have only the compiled app, ready for production with Nginx
