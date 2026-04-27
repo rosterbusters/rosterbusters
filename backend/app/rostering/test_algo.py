@@ -21,11 +21,12 @@ import argparse
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
+from sqlalchemy import inspect
 from sqlmodel import Session, select
 
 from app.core.db import engine
 from app.core.security import get_password_hash
-from app.models import RBACUser, Role, UserRole
+from app.models import NursePeriodConstraint, RBACUser, Role, UserRole
 from app.models.rbac import Nurse, NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.models.leave import LeaveRequest
@@ -123,6 +124,36 @@ APR_2026_WARD_6_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 29", date(2026, 4, 8), "A", "shift_request", "Pending"),
     RequestSeed("Nurse 36", date(2026, 4, 11), "N", "shift_request", "Pending"),
     RequestSeed("Nurse 36", date(2026, 4, 14), "P", "shift_request", "Pending"),
+    # One Class A nurse on AL for the entire period.
+    RequestSeed("Nurse 13", date(2026, 4, 6), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 7), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 8), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 9), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 10), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 11), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 12), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 13), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 14), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 15), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 16), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 17), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 18), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 19), "AL", "leave_request", "Approved"),
+    # One Class B nurse on AL for the entire period.
+    RequestSeed("Nurse 21", date(2026, 4, 6), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 7), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 8), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 9), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 10), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 11), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 12), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 13), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 14), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 15), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 16), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 17), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 18), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 19), "AL", "leave_request", "Approved"),
 ]
 
 TWELVE_HR_WARD_REQUESTS: list[RequestSeed] = [
@@ -366,6 +397,17 @@ APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
 }
 
 
+APR_2026_WARD_6_SHIFT_PATTERNS: dict[str, str] = {
+    "Nurse 10": "PM_ONLY",
+}
+
+
+APR_2026_WARD_6_PERIOD_CONSTRAINTS: dict[str, list[tuple[str, str, str]]] = {
+    "Nurse 11": [("NO_NIGHT", "true", "Apr 2026 preview no night shift")],
+    "Nurse 16": [("NO_NIGHT", "true", "Apr 2026 preview no night shift")],
+}
+
+
 def _shift_to_upcoming_period(
     req: RequestSeed, base_start: date, period: RosterPeriod
 ) -> RequestSeed | None:
@@ -572,6 +614,17 @@ APR_2026_WARD_6_REQUIREMENTS = {
 def _apply_ward_requirements(ward: Ward, requirements: dict[str, int]) -> None:
     for field_name, value in requirements.items():
         setattr(ward, field_name, value)
+
+
+def _table_exists(db: Session, table_name: str) -> bool:
+    inspector = inspect(db.connection())
+    return table_name in inspector.get_table_names()
+
+
+def _column_exists(db: Session, table_name: str, column_name: str) -> bool:
+    inspector = inspect(db.connection())
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
+    return column_name in columns
 
 
 def _get_previous_period(db: Session, period: RosterPeriod) -> RosterPeriod | None:
@@ -1180,23 +1233,32 @@ def seed_apr_2026_ward_6_preview(
 
     existing_nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
     existing_by_name = {n.name: n for n in existing_nurses}
+    shiftpattern_supported = _column_exists(db, "nurse", "shiftpattern")
 
     for anonymized in unique_names:
-        if anonymized in existing_by_name:
-            continue
         designation = APR_2026_WARD_6_ANON_DESIGNATIONS.get(anonymized, "SN")
-        db.add(
-            Nurse(
-                name=anonymized,
-                employeeid=f"APR26-{anonymized.split()[-1]}",
-                designation=designation,
-                email=f"{anonymized.replace(' ', '').lower()}.apr2026@example.com",
-                contactnumber="00000000",
-                wardid=ward.wardid,
-                employmenttype="FullTime",
-                isactive=True,
-            )
+        shift_pattern = APR_2026_WARD_6_SHIFT_PATTERNS.get(anonymized)
+        existing = existing_by_name.get(anonymized)
+        if existing:
+            existing.designation = designation
+            if shiftpattern_supported:
+                existing.shiftpattern = shift_pattern
+            existing.isactive = True
+            db.add(existing)
+            continue
+        nurse = Nurse(
+            name=anonymized,
+            employeeid=f"APR26-{anonymized.split()[-1]}",
+            designation=designation,
+            email=f"{anonymized.replace(' ', '').lower()}.apr2026@example.com",
+            contactnumber="00000000",
+            wardid=ward.wardid,
+            employmenttype="FullTime",
+            isactive=True,
         )
+        if shiftpattern_supported:
+            nurse.shiftpattern = shift_pattern
+        db.add(nurse)
 
     db.flush()
     nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
@@ -1204,10 +1266,54 @@ def seed_apr_2026_ward_6_preview(
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
 
+    if _table_exists(db, "nurseperiodconstraint"):
+        for nurse_name, constraints in APR_2026_WARD_6_PERIOD_CONSTRAINTS.items():
+            nurse = nurse_by_name.get(nurse_name)
+            if not nurse:
+                continue
+            existing_constraints = db.exec(
+                select(NursePeriodConstraint).where(
+                    NursePeriodConstraint.nurseid == nurse.nurseid,
+                    NursePeriodConstraint.periodid == period.periodid,
+                )
+            ).all()
+            existing_keys = {
+                (row.constrainttype, row.value, row.reason or "")
+                for row in existing_constraints
+            }
+            for constraint_type, value, reason in constraints:
+                key = (constraint_type, value, reason)
+                if key in existing_keys:
+                    continue
+                db.add(
+                    NursePeriodConstraint(
+                        nurseid=nurse.nurseid,
+                        periodid=period.periodid,
+                        constrainttype=constraint_type,
+                        value=value,
+                        reason=reason,
+                    )
+                )
+
+    allowed_leave_types = {
+        "AL",
+        "MC",
+        "CCL",
+        "ML",
+        "EML",
+        "Mar",
+        "FCL",
+        "SPL",
+        "CL",
+        "BDL",
+        "HOL",
+        "SD",
+        "FD",
+    }
     codes = {
         _normalize_shift_request_code(req.code)
         for req in APR_2026_WARD_6_REQUESTS
-        if req.request_type == "shift_request"
+        if req.request_type == "shift_request" or req.code not in allowed_leave_types
     } | {"A", "P", "N"}
     _ensure_shift_codes(db, codes)
 
@@ -1225,14 +1331,66 @@ def seed_apr_2026_ward_6_preview(
     current_roster_created = _seed_roster_for_period(db, ward.wardid, period, nurses)
     previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
     nurse_by_name = {n.name: n for n in nurses}
+    nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
+
+    existing_requests = list(
+        db.exec(
+            select(ShiftRequest).where(
+                ShiftRequest.periodid == period.periodid,
+                ShiftRequest.nurseid.in_(nurse_ids),
+            )
+        ).all()
+    )
+    for existing in existing_requests:
+        db.delete(existing)
+
+    existing_leave_requests = list(
+        db.exec(
+            select(LeaveRequest).where(
+                LeaveRequest.nurseid.in_(nurse_ids),
+                LeaveRequest.startdate >= period.startdate,
+                LeaveRequest.enddate <= period.enddate,
+            )
+        ).all()
+    )
+    for existing in existing_leave_requests:
+        db.delete(existing)
+
+    db.flush()
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
-        db, period.periodid, [n.nurseid for n in nurses]
+        db, period.periodid, nurse_ids
     )
 
     created = 0
     for req in APR_2026_WARD_6_REQUESTS:
         nurse = nurse_by_name.get(req.name)
         if not nurse:
+            continue
+
+        if req.request_type == "leave_request" and req.code in allowed_leave_types:
+            existing = db.exec(
+                select(LeaveRequest).where(
+                    LeaveRequest.nurseid == nurse.nurseid,
+                    LeaveRequest.startdate == req.date,
+                    LeaveRequest.enddate == req.date,
+                    LeaveRequest.leavetype == req.code,
+                )
+            ).first()
+            if existing:
+                continue
+            db.add(
+                LeaveRequest(
+                    nurseid=nurse.nurseid,
+                    startdate=req.date,
+                    enddate=req.date,
+                    leavetype=req.code,
+                    leavecategory="PreApproved",
+                    submittedduringperiod="BeforeRoster",
+                    status="Approved",
+                    impactsroster=True,
+                )
+            )
+            created += 1
             continue
 
         key = (nurse.nurseid, req.date)
