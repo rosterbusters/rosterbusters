@@ -21,7 +21,7 @@ import argparse
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import inspect
+from sqlalchemy import delete, inspect
 from sqlmodel import Session, select
 
 from app.core.db import engine
@@ -694,6 +694,32 @@ def _seed_previous_period_roster(
     return _seed_roster_for_period(db, ward_id, previous_period, nurses)
 
 
+def _delete_seeded_confirmed_roster(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod | None,
+) -> int:
+    """
+    Remove the bootstrap roster rows created by this seed script.
+
+    These rows are inserted as Auto + Confirmed so the app treats them as
+    published and refuses to clear them. Limit cleanup to the exact signature
+    used by the seed helper so we do not wipe manual edits or algorithm output.
+    """
+    if not period:
+        return 0
+
+    deleted = db.exec(
+        delete(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period.periodid,
+            Roster.assignmentmethod == "Auto",
+            Roster.status == "Confirmed",
+        )
+    ).rowcount or 0
+    return deleted
+
+
 def _clear_previous_period_last_day_nights(
     db: Session,
     ward_id: int,
@@ -1210,6 +1236,10 @@ def seed_apr_2026_ward_6_preview(
     Seed the Apr 06 - Apr 19 2026 Ward 6 preview onto the period that is upcoming
     from today. This keeps the legacy Apr dataset usable without depending on the
     original 2026-04-06 roster period still being upcoming.
+
+    This preview seeds requests only. Older versions of this helper also created
+    Auto + Confirmed roster rows, which the clear-roster API treats as already
+    published. We now scrub those bootstrap rows on rerun.
     """
     periods = ensure_roster_period_window(db)
     current_period, upcoming_period, _ = get_period_window(periods)
@@ -1272,8 +1302,10 @@ def seed_apr_2026_ward_6_preview(
     test_nurse = min((n for n in nurses if n.nurseid is not None), key=lambda n: n.nurseid, default=None)
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
-    current_roster_created = _seed_roster_for_period(db, ward.wardid, period, nurses)
-    previous_roster_created = _seed_previous_period_roster(db, ward.wardid, period, nurses)
+    current_roster_deleted = _delete_seeded_confirmed_roster(db, ward.wardid, period)
+    previous_roster_deleted = _delete_seeded_confirmed_roster(
+        db, ward.wardid, _get_previous_period(db, period)
+    )
     nurse_by_name = {n.name: n for n in nurses}
     nurse_ids = [n.nurseid for n in nurses]
     # Replace any prior preview seed for this ward/period so reruns correct stale dates.
@@ -1325,10 +1357,10 @@ def seed_apr_2026_ward_6_preview(
     db.commit()
     if test_nurse:
         print(f"  Nurse login: {test_nurse.email} / {TEST_NURSE_PASSWORD}")
-    if current_roster_created:
-        print(f"  Seeded {current_roster_created} current-period roster entries.")
-    if previous_roster_created:
-        print(f"  Seeded {previous_roster_created} previous-period roster entries.")
+    if current_roster_deleted:
+        print(f"  Cleared {current_roster_deleted} legacy current-period seeded roster entries.")
+    if previous_roster_deleted:
+        print(f"  Cleared {previous_roster_deleted} legacy previous-period seeded roster entries.")
     print(
         f"\n✓ Seeded ward '{ward.wardname}' (id={ward.wardid}) "
         f"for Apr 06 - Apr 19 2026 preview on roster period "
