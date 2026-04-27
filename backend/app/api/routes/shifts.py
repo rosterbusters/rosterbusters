@@ -30,6 +30,7 @@ from app.utils import (
     generate_shift_request_rejected_email,
     send_email,
 )
+from app.api.routes.notifications import get_email_enabled
 from app.core.config import settings
 from app.cache import cache_delete, cache_get_json, cache_set_json
 from app.rbac import get_rbac_user_by_email, user_has_role
@@ -692,16 +693,17 @@ def review_shift_request(
             )
 
             if settings.emails_enabled:
-                nurse = session.get(Nurse, shift_request.nurseid)
-                if nurse and nurse.email:
-                    background_tasks.add_task(
-                        _send_shift_request_review_email_task,
-                        nurse.email,
-                        nurse.name,
-                        period.name,
-                        review_in.status,
-                        review_in.rejectionreason,
-                    )
+              nurse = session.get(Nurse, shift_request.nurseid)
+              if nurse and nurse.email:
+                  if get_email_enabled(session, "Nurse", shift_request.nurseid, ntype.value):
+                      background_tasks.add_task(
+                          _send_shift_request_review_email_task,
+                          nurse.email,
+                          nurse.name,
+                          period.name,
+                          review_in.status,
+                          review_in.rejectionreason,
+                      )
 
     session.commit()
     session.refresh(shift_request)

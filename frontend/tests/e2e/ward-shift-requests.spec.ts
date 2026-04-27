@@ -1,6 +1,9 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
-import { completeFirstLoginSetup } from "./admin-helpers"
+import {
+  completeFirstLoginSetup,
+  withCleanupRequest,
+} from "./admin-helpers"
 import { loginForE2E } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
@@ -75,8 +78,68 @@ const getWardShiftCodes = (wardId: number) => {
   return parseCodes(fallbackCodes)
 }
 
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+async function pickRosterPeriod(request: APIRequestContext, token: string) {
+  const periodRes = await request.get(
+    `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!periodRes.ok()) {
+    const body = await periodRes.text()
+    throw new Error(
+      `Failed to fetch roster period window: ${periodRes.status()} ${body}`,
+    )
+  }
+  const periodWindow = (await periodRes.json()) as {
+    request_open_period?: { periodid: number; startdate: string }
+    current_period?: { periodid: number; startdate: string }
+    upcoming_period?: { periodid: number; startdate: string }
+  }
+
+  const activePeriod =
+    periodWindow.request_open_period ||
+    periodWindow.upcoming_period ||
+    periodWindow.current_period
+  if (activePeriod) {
+    return activePeriod
+  }
+
+  const periodsRes = await request.get(`${API_BASE_URL}/api/v1/shift-requests/periods`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!periodsRes.ok()) {
+    const body = await periodsRes.text()
+    throw new Error(`Failed to fetch roster periods: ${periodsRes.status()} ${body}`)
+  }
+
+  const periods = (await periodsRes.json()) as Array<{
+    periodid: number
+    startdate: string
+    enddate: string
+    status?: string
+    requestopendate?: string | null
+    requestclosedate?: string | null
+  }>
+  const today = new Date().toISOString().slice(0, 10)
+  const sorted = [...periods].sort((a, b) => a.startdate.localeCompare(b.startdate))
+  const fallbackPeriod =
+    sorted.find(
+      (period) =>
+        !!period.requestopendate &&
+        !!period.requestclosedate &&
+        period.requestopendate <= today &&
+        period.requestclosedate >= today,
+    ) ||
+    sorted.find((period) => period.status === "RequestOpen") ||
+    sorted.find((period) => period.startdate > today) ||
+    sorted.find((period) => period.startdate <= today && period.enddate >= today) ||
+    sorted[0]
+
+  if (!fallbackPeriod) {
+    throw new Error("No roster period found for shift request creation.")
+  }
+
+  return fallbackPeriod
+}
 
 async function loginToken(
   request: APIRequestContext,
@@ -211,33 +274,7 @@ test("ward staff can create a shift request from the calendar", async ({
       employee_id: nurseEmployeeId,
     })
 
-    const periodRes = await request.get(
-      `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,
-      { headers: { Authorization: `Bearer ${nurseToken}` } },
-    )
-    if (!periodRes.ok()) {
-      const body = await periodRes.text()
-      throw new Error(
-        `Failed to fetch roster period window: ${periodRes.status()} ${body}`,
-      )
-    }
-    const periodWindow = (await periodRes.json()) as {
-      request_open_period?: { periodid: number; startdate: string }
-      upcoming_period?: { periodid: number; startdate: string }
-    }
-
-    const requestOpen = periodWindow.request_open_period
-    const upcoming = periodWindow.upcoming_period
-    if (!requestOpen || !upcoming) {
-      throw new Error(
-        "No request-open period found. Adjust roster period dates for local dev.",
-      )
-    }
-    if (requestOpen.periodid !== upcoming.periodid) {
-      throw new Error(
-        "Request-open period does not match upcoming period. Adjust roster period dates for local dev.",
-      )
-    }
+    const activePeriod = await pickRosterPeriod(request, nurseToken)
 
     await page.addInitScript((value) => {
       localStorage.setItem("access_token", value)
@@ -253,7 +290,7 @@ test("ward staff can create a shift request from the calendar", async ({
     ).toBeVisible()
 
     await page
-      .getByTestId(`request-calendar-cell-${requestOpen.startdate}`)
+      .getByTestId(`request-calendar-cell-${activePeriod.startdate}`)
       .click()
 
     await expect(page.getByText("Create Shift Request")).toBeVisible()
@@ -292,11 +329,13 @@ test("ward staff can create a shift request from the calendar", async ({
       page.getByTestId(`shift-request-${createdRequestId}`),
     ).toBeVisible()
   } finally {
-    if (createdRequestId && nurseToken) {
-      await deleteShiftRequest(request, nurseToken, createdRequestId)
-    }
-    for (const userid of createdUserIds.reverse()) {
-      await deleteUser(request, adminToken, userid)
-    }
+    await withCleanupRequest(async (cleanupRequest) => {
+      if (createdRequestId && nurseToken) {
+        await deleteShiftRequest(cleanupRequest, nurseToken, createdRequestId)
+      }
+      for (const userid of createdUserIds.reverse()) {
+        await deleteUser(cleanupRequest, adminToken, userid)
+      }
+    })
   }
 })

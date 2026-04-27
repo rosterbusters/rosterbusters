@@ -439,6 +439,77 @@ def generate_shift_request_period_closed_email(email_to: str, roster_period: str
     return EmailData(html_content=html_content, subject=subject)
 
 
+def generate_shift_request_period_closing_soon_email(email_to: str, roster_period: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Shift request period closing in 12h"
+    html_content = render_email_template(
+        template_name="shift_request_closing_soon_12h.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "roster_period": roster_period,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_shift_request_review_open_email(email_to: str, roster_period: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Shift request review is open"
+    html_content = render_email_template(
+        template_name="shift_request_review_open.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "roster_period": roster_period,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_shift_request_review_closing_soon_email(email_to: str, roster_period: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Shift request review closing in 12h"
+    html_content = render_email_template(
+        template_name="shift_request_review_closing_soon.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "roster_period": roster_period,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_hris_portal_open_email(email_to: str, roster_period: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - HRIS export portal is open"
+    html_content = render_email_template(
+        template_name="hris_portal_open.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "roster_period": roster_period,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_hris_portal_closing_soon_email(email_to: str, roster_period: str) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - HRIS export portal closing in 12h"
+    html_content = render_email_template(
+        template_name="hris_portal_closing_soon.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "roster_period": roster_period,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+
 def generate_shift_request_approved_email(
     email_to: str,
     roster_period: str,
