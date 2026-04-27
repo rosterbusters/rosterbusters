@@ -195,9 +195,13 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
       page.getByText("Click on a date to create/edit leave request."),
     ).toBeVisible()
 
-    await page
-      .getByTestId(`leave-request-calendar-cell-${groupedDateKey}`)
-      .getByText(nurseOneName)
+    const groupedRequestCell = page.getByTestId(
+      `leave-request-calendar-cell-${groupedDateKey}`,
+    )
+    await expect(groupedRequestCell).toBeVisible()
+    await groupedRequestCell
+      .locator('[data-testid^="leave-request-"]')
+      .first()
       .click()
 
     const editDialog = page.getByRole("dialog")
