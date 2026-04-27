@@ -117,8 +117,8 @@ export function RosterPlanningHeader({
   onSeedApr2026PreviewRequests,
   isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
-  // TODO: Hide algorithm controls for prod and staging once feature gating is ready.
-  const showAlgorithmControls = true;
+  const showAlgorithmControls =
+    !import.meta.env.PROD || import.meta.env.MODE === "staging";
   const normalizedGenerationProgress = Math.min(
     100,
     Math.max(0, Math.round(Number.isFinite(generationProgress) ? generationProgress : 0)),
