@@ -1,4 +1,9 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import {
+  expect,
+  request as playwrightRequest,
+  test,
+  type APIRequestContext,
+} from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 import {
   API_BASE_URL,
@@ -266,13 +271,18 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
 
     await expect(page.getByTestId(`leave-request-${created.leaveid}`)).toBeVisible()
   } finally {
-    for (const leaveId of createdLeaveIds.reverse()) {
-      if (managerToken) {
-        await deleteLeaveRequest(request, managerToken, leaveId)
+    const cleanupRequest = await playwrightRequest.newContext()
+    try {
+      for (const leaveId of createdLeaveIds.reverse()) {
+        if (managerToken) {
+          await deleteLeaveRequest(cleanupRequest, managerToken, leaveId)
+        }
       }
-    }
-    for (const userid of createdUserIds.reverse()) {
-      await deleteUser(request, adminToken, userid)
+      for (const userid of createdUserIds.reverse()) {
+        await deleteUser(cleanupRequest, adminToken, userid)
+      }
+    } finally {
+      await cleanupRequest.dispose()
     }
   }
 })
