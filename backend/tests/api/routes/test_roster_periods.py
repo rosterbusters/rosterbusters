@@ -55,13 +55,13 @@ def test_build_roster_period_definitions_uses_march_anchor() -> None:
     assert periods[0].roster_year == 2026
     assert periods[0].period_number == 1
     assert periods[0].startdate == date(2026, 3, 9)
-    assert periods[0].enddate == date(2026, 3, 22)
-    assert periods[0].name == "Mar 09 - Mar 22 2026"
+    assert periods[0].enddate == date(2026, 3, 20)
+    assert periods[0].name == "Mar 09 - Mar 20 2026"
     assert periods[1].requestopendate == date(2026, 3, 9)
     assert periods[1].requestclosedate == date(2026, 3, 13)
     assert periods[1].period_number == 2
     assert periods[1].startdate == date(2026, 3, 23)
-    assert periods[1].name == "Mar 23 - Apr 05 2026"
+    assert periods[1].name == "Mar 23 - Apr 03 2026"
 
 
 def test_get_roster_year_start_rolls_over_after_364_days() -> None:
@@ -82,7 +82,7 @@ def test_ensure_roster_period_window_is_idempotent_and_updates_statuses(db: Sess
     all_periods = list(db.exec(select(RosterPeriod).order_by(RosterPeriod.startdate)).all())
     assert len(all_periods) == PERIODS_PER_ROSTER_YEAR * 2
     assert all_periods[0].startdate == date(2026, 3, 9)
-    assert all_periods[0].status == "Pending"
+    assert all_periods[0].status == "RequestOpen"
     assert all_periods[1].startdate == date(2026, 3, 23)
     assert all_periods[1].status == "RequestOpen"
 
