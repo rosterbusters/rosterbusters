@@ -1,4 +1,7 @@
-import type { APIRequestContext } from "@playwright/test"
+import {
+  request as playwrightRequest,
+  type APIRequestContext,
+} from "@playwright/test"
 import * as XLSX from "xlsx"
 import os from "os"
 import path from "path"
@@ -150,6 +153,17 @@ export async function deleteUser(
   await request.delete(`${API_BASE_URL}/api/v1/admin/users/${userid}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+export async function withCleanupRequest<T>(
+  callback: (request: APIRequestContext) => Promise<T>,
+) {
+  const cleanupRequest = await playwrightRequest.newContext()
+  try {
+    return await callback(cleanupRequest)
+  } finally {
+    await cleanupRequest.dispose()
+  }
 }
 
 export async function completeFirstLoginSetup(
