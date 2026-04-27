@@ -1,21 +1,17 @@
 services:
   db:
-    profiles: []  # override prod, re-enable db for staging
+    profiles: []  # keep service available because other prod services still inherit db dependencies
     restart: unless-stopped
   adminer:
-    profiles: []  # ensure adminer can find db
+    profiles: []  # keep adminer aligned with the local db service when enabled in prod
     restart: unless-stopped
   prestart:
-    depends_on:
-      db:
-        condition: service_started
+    depends_on: {}
     environment:
       - POSTGRES_SERVER=${POSTGRES_SERVER}
 
   backend:
     depends_on:
-      db:
-        condition: service_started
       prestart:
         condition: service_completed_successfully
     volumes: []

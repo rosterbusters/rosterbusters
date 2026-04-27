@@ -3,6 +3,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useQuery } from "@tanstack/react-query"
 import { useForm, type SubmitHandler } from "react-hook-form"
+import { z } from "zod"
 import { FiLock, FiMail, FiEye, FiEyeOff, FiCheck } from "react-icons/fi"
 import {
   Box,
@@ -21,7 +22,10 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"
-import { AdminService } from "@/client/adminService"
+import {
+  AdminService,
+  type FirstLoginSetupContext as PublicFirstLoginSetupContext,
+} from "@/client/adminService"
 import { UsersService } from "@/client"
 import type { CurrentUser } from "@/hooks/useAuth"
 import { passwordRules } from "@/utils"
@@ -32,10 +36,15 @@ const normalizeEmail = (value: string | undefined | null) =>
 const normalizeVerificationCode = (value: string | undefined | null) =>
   (value ?? "").replace(/\D/g, "").slice(0, 6)
 
+const firstLoginSearchSchema = z.object({
+  token: z.string().optional(),
+})
+
 export const Route = createFileRoute("/first-login-setup")({
   component: FirstLoginSetup,
-  beforeLoad: async () => {
-    if (!isLoggedIn()) {
+  validateSearch: (search) => firstLoginSearchSchema.parse(search),
+  beforeLoad: async ({ search }) => {
+    if (!search.token && !isLoggedIn()) {
       throw redirect({ to: "/login" })
     }
   },
@@ -49,8 +58,10 @@ interface SetupFormData {
 }
 
 function FirstLoginSetup() {
+  const { token } = Route.useSearch()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const isTokenMode = Boolean(token)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [emailVerificationStep, setEmailVerificationStep] = useState<"idle" | "code-sent" | "verified">("idle")
@@ -63,8 +74,21 @@ function FirstLoginSetup() {
   const { data: currentUser } = useQuery<CurrentUser>({
     queryKey: ["currentUser"],
     queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
+    enabled: !isTokenMode,
   })
-  const requiresEmployeeId = !!(currentUser?.nurseid || currentUser?.managerid)
+
+  const {
+    data: publicSetupContext,
+    isLoading: isLoadingSetupContext,
+    isError: isSetupContextError,
+  } = useQuery<PublicFirstLoginSetupContext>({
+    queryKey: ["public-first-login-setup", token],
+    queryFn: () => AdminService.getPublicFirstLoginSetupContext(token!),
+    enabled: isTokenMode,
+  })
+  const requiresEmployeeId = isTokenMode
+    ? !!publicSetupContext?.requires_employee_id
+    : !!(currentUser?.nurseid || currentUser?.managerid)
 
   const {
     register,
@@ -94,6 +118,7 @@ function FirstLoginSetup() {
   }, [resendCooldown])
 
   useEffect(() => {
+    if (isTokenMode) return
     const existingEmail = currentUser?.email?.trim()
     if (!existingEmail) return
 
@@ -106,13 +131,30 @@ function FirstLoginSetup() {
   }, [currentUser?.email, getValues, setValue])
 
   useEffect(() => {
-    const existingEmployeeId = currentUser?.employee_id?.trim()
+    const existingEmployeeId = isTokenMode
+      ? publicSetupContext?.employee_id?.trim()
+      : currentUser?.employee_id?.trim()
     if (!existingEmployeeId) return
 
     if (!getValues("employee_id")) {
       setValue("employee_id", existingEmployeeId)
     }
-  }, [currentUser?.employee_id, getValues, setValue])
+  }, [
+    currentUser?.employee_id,
+    getValues,
+    isTokenMode,
+    publicSetupContext?.employee_id,
+    setValue,
+  ])
+
+  useEffect(() => {
+    if (!isTokenMode) return
+    if (!publicSetupContext?.email) return
+    if (!getValues("email")) {
+      setValue("email", publicSetupContext.email)
+    }
+    setEmailVerificationStep("verified")
+  }, [getValues, isTokenMode, publicSetupContext?.email, setValue])
 
   const sendVerificationCode = async () => {
     const email = normalizeEmail(getValues("email"))
@@ -186,15 +228,25 @@ function FirstLoginSetup() {
 
   const mutation = useMutation({
     mutationFn: (data: { new_password: string; email?: string; employee_id?: string }) =>
-      AdminService.firstLoginSetup(data),
+      isTokenMode
+        ? AdminService.completePublicFirstLoginSetup({
+            token: token!,
+            new_password: data.new_password,
+            employee_id: data.employee_id,
+          })
+        : AdminService.firstLoginSetup(data),
     onSuccess: async () => {
       showSuccessToast("Account setup completed! Redirecting...")
-      // Refetch user to get updated info and redirect normally
-      const currentUser = (await UsersService.readUserMe()) as unknown as CurrentUser
-      queryClient.setQueryData(["currentUser"], currentUser)
-      if (currentUser.is_superuser) {
+      if (isTokenMode) {
+        navigate({ to: "/login" })
+        return
+      }
+
+      const refreshedUser = (await UsersService.readUserMe()) as unknown as CurrentUser
+      queryClient.setQueryData(["currentUser"], refreshedUser)
+      if (refreshedUser.is_superuser) {
         navigate({ to: "/admin/dashboard" })
-      } else if (currentUser.managerid) {
+      } else if (refreshedUser.managerid) {
         navigate({ to: "/nurse-manager/home" })
       } else {
         navigate({ to: "/ward-staff/home" })
@@ -208,6 +260,14 @@ function FirstLoginSetup() {
   })
 
   const onSubmit: SubmitHandler<SetupFormData> = (data) => {
+    if (isTokenMode) {
+      mutation.mutate({
+        new_password: data.new_password,
+        employee_id: data.employee_id?.trim() || undefined,
+      })
+      return
+    }
+
     const submittedEmail = normalizeEmail(data.email)
     const verifiedAccountEmail = normalizeEmail(currentUser?.email)
     const isUsingAlreadyVerifiedEmail =
@@ -274,6 +334,23 @@ function FirstLoginSetup() {
         pb={4}
       >
         <Container maxW="md" w="100%" px={6}>
+          {isTokenMode && isLoadingSetupContext ? (
+            <VStack gap={4} align="center" py={10}>
+              <Spinner size="lg" color="teal.500" />
+              <Text color="gray.600">Loading your setup link...</Text>
+            </VStack>
+          ) : isTokenMode && isSetupContextError ? (
+            <VStack gap={5} align="stretch">
+              <VStack gap={1} align="center">
+                <Heading as="h1" size="lg" fontWeight="700" color="teal.700" textAlign="center">
+                  Invalid or expired link
+                </Heading>
+                <Text color="gray.500" fontSize="sm" textAlign="center">
+                  This setup link is no longer valid. Please contact your administrator for a new invitation.
+                </Text>
+              </VStack>
+            </VStack>
+          ) : (
           <VStack gap={3} align="stretch">
 
             {/* Header */}
@@ -287,7 +364,9 @@ function FirstLoginSetup() {
                 Welcome! Set Up Your Account
               </Heading>
               <Text color="gray.500" fontSize="sm">
-                Please set a new password and link your email to complete setup.
+                {isTokenMode
+                  ? "Please set your password to complete your Duby account setup."
+                  : "Please set a new password and link your email to complete setup."}
               </Text>
             </VStack>
 
@@ -328,10 +407,10 @@ function FirstLoginSetup() {
                         size="md"
                         variant="subtle"
                         bg="gray.50"
-                        disabled={emailVerificationStep === "verified"}
+                        disabled={emailVerificationStep === "verified" || isTokenMode}
                       />
                     </InputGroup>
-                    {emailVerificationStep !== "verified" && (
+                    {!isTokenMode && emailVerificationStep !== "verified" && (
                       <Button
                         onClick={sendVerificationCode}
                         variant="outline"
@@ -372,7 +451,7 @@ function FirstLoginSetup() {
                     )}
                   </Flex>
 
-                  {emailVerificationStep === "code-sent" && (
+                  {!isTokenMode && emailVerificationStep === "code-sent" && (
                     <VStack align="stretch" mt={3} gap={2}>
                       <Text fontSize="sm" color="blue.600" fontWeight="500">
                         Enter the verification code sent to your email
@@ -564,6 +643,7 @@ function FirstLoginSetup() {
             </Box>
 
           </VStack>
+          )}
         </Container>
       </Flex>
     </Flex>

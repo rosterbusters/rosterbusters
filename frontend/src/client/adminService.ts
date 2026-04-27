@@ -105,6 +105,14 @@ export interface DesignationOption {
   rank: string
 }
 
+export interface FirstLoginSetupContext {
+  email: string
+  username: string
+  name?: string | null
+  employee_id?: string | null
+  requires_employee_id: boolean
+}
+
 // ---------------------------------------------------------------------------
 //  Service
 // ---------------------------------------------------------------------------
@@ -159,6 +167,22 @@ export const AdminService = {
 
   firstLoginSetup(data: { new_password: string; email?: string; employee_id?: string }): Promise<{ message: string }> {
     return request(`/api/v1/users/me/first-login-setup`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  },
+
+  getPublicFirstLoginSetupContext(token: string): Promise<FirstLoginSetupContext> {
+    const params = new URLSearchParams({ token })
+    return request(`/api/v1/users/first-login-setup?${params.toString()}`)
+  },
+
+  completePublicFirstLoginSetup(data: {
+    token: string
+    new_password: string
+    employee_id?: string
+  }): Promise<{ message: string }> {
+    return request(`/api/v1/users/first-login-setup`, {
       method: "POST",
       body: JSON.stringify(data),
     })

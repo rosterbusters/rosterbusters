@@ -18,22 +18,24 @@ export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
     if (isLoggedIn()) {
-      let to: "/admin/dashboard" | "/nurse-manager/home" | "/ward-staff/home" | "/first-login-setup" = "/ward-staff/home"
+      let user: any
       try {
-        const user = await UsersService.readUserMe() as any
-        if (user.must_change_password) {
-          to = "/first-login-setup"
-        } else if (user.is_superuser) {
-          to = "/admin/dashboard"
-        } else if (user.managerid) {
-          to = "/nurse-manager/home"
-        }
+        user = await UsersService.readUserMe() as any
       } catch {
         // Invalid/expired token — clear it and let the user log in again
         localStorage.removeItem("access_token")
         return
       }
-      throw redirect({ to })
+      if (user.must_change_password) {
+        throw redirect({ to: "/first-login-setup" })
+      }
+      if (user.is_superuser) {
+        throw redirect({ to: "/admin/dashboard" })
+      }
+      if (user.managerid) {
+        throw redirect({ to: "/nurse-manager/home" })
+      }
+      throw redirect({ to: "/ward-staff/home" })
     }
   },
 })
