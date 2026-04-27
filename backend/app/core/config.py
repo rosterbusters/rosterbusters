@@ -36,6 +36,8 @@ def parse_csv_list(v: Any) -> list[str] | str:
 DEFAULT_VERIFICATION_BYPASS_IDENTIFIERS = {
     "manager",
     "manager@example.com",
+    "testmanager",
+    "testmanager@example.com",
     "nurse1",
 }
 
