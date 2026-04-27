@@ -192,6 +192,11 @@ export interface WardRosterResponse {
 export interface NurseInfo {
   nurseId: number;
   name: string;
+  userId?: number | null;
+  username?: string | null;
+  mustChangePassword?: boolean;
+  defaultPassword?: string | null;
+  employeeId?: string | null;
   designation: string;
   staffing_role?: StaffRole | null;
   roster_rank?: "A" | "B" | "C" | null;

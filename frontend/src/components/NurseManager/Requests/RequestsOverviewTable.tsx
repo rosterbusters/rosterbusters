@@ -11,66 +11,12 @@ import {
   VStack,
   Spinner,
 } from "@chakra-ui/react";
-import { Check, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
 import { LeaveRequestsService } from "@/client/LeaveRequestsService";
 import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
 import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
 import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
-
-// ─── Mock shift request data (used when no wardId / no API data) ─────────────
-const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
-  {
-    id: -101,
-    type: "ShiftRequest",
-    requestTypeName: "Night Shift",
-    requestedDates: "31/10/2025",
-    status: "Pending",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Alice Tan",
-  },
-  {
-    id: -102,
-    type: "ShiftRequest",
-    requestTypeName: "Rest Day",
-    requestedDates: "31/10/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Ben Lim",
-  },
-  {
-    id: -103,
-    type: "ShiftRequest",
-    requestTypeName: "Day Shift",
-    requestedDates: "31/10/2025",
-    status: "Rejected",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Clara Wong",
-  },
-  {
-    id: -104,
-    type: "ShiftRequest",
-    requestTypeName: "PM Shift",
-    requestedDates: "31/10/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "David Ng",
-  },
-  {
-    id: -105,
-    type: "ShiftRequest",
-    requestTypeName: "AM Shift",
-    requestedDates: "31/10/2025",
-    status: "Approved",
-    applicationDate: "1/09/2025",
-    comments: null,
-    nurseName: "Eva Chan",
-  },
-];
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 type TabFilter = "all" | "shift" | "leave";
@@ -91,14 +37,6 @@ function formatDate(dateStr: string): string {
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
   return `${day}/${month < 10 ? "0" + month : month}/${year}`;
-}
-
-function normalizeLeaveDateRange(dateValue: string) {
-  const parts = dateValue.split("–").map((part) => part.trim());
-  return {
-    startDate: parts[0] ?? dateValue,
-    endDate: parts[1] ?? parts[0] ?? dateValue,
-  };
 }
 
 // ─── Status cell ─────────────────────────────────────────────────────────────
@@ -123,10 +61,42 @@ function StatusCell({ status }: { status: RequestStatus }) {
     );
   }
   if (status === "Approved") {
-    return <Check className="h-4 w-4 text-green-500 mx-auto" />;
+    return (
+      <Flex justify="center">
+        <Badge
+          bg="#DDF2D1"
+          color="#14532d"
+          fontWeight="medium"
+          fontSize="xs"
+          px={3}
+          py={0.5}
+          rounded="full"
+          textTransform="none"
+          display="inline-flex"
+        >
+          Approved
+        </Badge>
+      </Flex>
+    );
   }
   if (status === "Rejected") {
-    return <X className="h-4 w-4 text-red-500 mx-auto" />;
+    return (
+      <Flex justify="center">
+        <Badge
+          bg="#F3cFce"
+          color="#7f1d1d"
+          fontWeight="medium"
+          fontSize="xs"
+          px={3}
+          py={0.5}
+          rounded="full"
+          textTransform="none"
+          display="inline-flex"
+        >
+          Rejected
+        </Badge>
+      </Flex>
+    );
   }
   return (
     <Text fontSize="xs" color="gray.400">
@@ -292,7 +262,8 @@ export function RequestsOverviewTable({
 
   const { data: leaveRequests = [], isLoading: leaveLoading } = useQuery({
     queryKey: ["ward-leave-requests", wardId],
-    queryFn: () => LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
+    queryFn: () =>
+      LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 30_000,
   });
@@ -326,7 +297,6 @@ export function RequestsOverviewTable({
 
   // ── Build unified list ────────────────────────────────────────────────────
   const allRequests: UnifiedRequest[] = useMemo(() => {
-    // Use real API shift data when wardId is set, otherwise fall back to mock
     const fromShift: UnifiedRequest[] = wardId
       ? shiftRequests.map((sr) => ({
           id: sr.requestid,
@@ -341,7 +311,7 @@ export function RequestsOverviewTable({
           comments: sr.reason,
           nurseName: nurseMap.get(sr.nurseid) ?? null,
         }))
-      : MOCK_SHIFT_REQUESTS;
+      : [];
 
     const fromLeave: UnifiedRequest[] = wardId
       ? leaveRequests.map((lr) => ({
@@ -473,7 +443,10 @@ export function RequestsOverviewTable({
         gap={4}
         wrap={{ base: "wrap", md: "nowrap" }}
       >
-        <Box minW={{ base: "0", md: "160px" }} flex={{ base: "1 1 auto", md: "0 0 160px" }} />
+        <Box
+          minW={{ base: "0", md: "160px" }}
+          flex={{ base: "1 1 auto", md: "0 0 160px" }}
+        />
         <HStack
           gap={0}
           rounded="full"
@@ -692,8 +665,7 @@ export function RequestsOverviewTable({
                     {/* Comments */}
                     <Table.Cell py={2} px={4} maxW="160px">
                       {(() => {
-                        const displayComment =
-                          req.comments ?? null;
+                        const displayComment = req.comments ?? null;
                         return displayComment ? (
                           <Text
                             fontSize="sm"
@@ -829,8 +801,14 @@ export function RequestsOverviewTable({
           onClose={() => setSelectedShiftRequest(null)}
           requestId={selectedShiftRequest.id}
           nurseName={selectedShiftRequest.nurseName ?? null}
-          shiftCode={selectedShiftRequest.shiftCode ?? selectedShiftRequest.requestTypeName}
-          date={selectedShiftRequest.rawPreferredDate ?? selectedShiftRequest.requestedDates}
+          shiftCode={
+            selectedShiftRequest.shiftCode ??
+            selectedShiftRequest.requestTypeName
+          }
+          date={
+            selectedShiftRequest.rawPreferredDate ??
+            selectedShiftRequest.requestedDates
+          }
           status={selectedShiftRequest.status}
           comment={selectedShiftRequest.comments}
           wardId={wardId}
@@ -845,8 +823,15 @@ export function RequestsOverviewTable({
           requestId={selectedLeaveRequest.id}
           nurseName={selectedLeaveRequest.nurseName ?? ""}
           leaveType={selectedLeaveRequest.requestTypeName}
-          startDate={selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
-          endDate={selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate ?? selectedLeaveRequest.requestedDates}
+          startDate={
+            selectedLeaveRequest.rawStartDate ??
+            selectedLeaveRequest.requestedDates
+          }
+          endDate={
+            selectedLeaveRequest.rawEndDate ??
+            selectedLeaveRequest.rawStartDate ??
+            selectedLeaveRequest.requestedDates
+          }
           currentStatus={selectedLeaveRequest.status}
           requests={competingLeaveRequests}
         />

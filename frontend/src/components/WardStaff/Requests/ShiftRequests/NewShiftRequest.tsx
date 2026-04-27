@@ -7,17 +7,19 @@ import {
   Portal,
   Select,
   Badge,
+  HStack,
   Text,
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
+
 import { AssignableStatus } from "./AssignableStatus";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
 import { getActiveShiftRequestPeriod } from "./activePeriod";
-import { formatShiftCodeLabel } from "@/utils"
+
 
 interface NewShiftRequestProps {
   isOpen: boolean;
@@ -49,11 +51,6 @@ export const NewShiftRequest = ({
       wardId != null
         ? ShiftRequestsService.getShiftCodesByWard({ wardId })
         : ShiftRequestsService.getAllShiftCodes(),
-  });
-
-  const { data: leaveCodes } = useQuery({
-    queryKey: ["leave-codes"],
-    queryFn: () => ShiftRequestsService.getLeaveCodes(),
   });
 
   const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
@@ -88,8 +85,19 @@ export const NewShiftRequest = ({
     if (isOpen) {
       setRequestDate(selectedDate ?? undefined);
       setShiftType([]);
+      return;
     }
-  }, [isOpen]);
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, selectedDate]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
 
   const handleSubmit = () => {
     const activePeriod = getActiveShiftRequestPeriod(periods);
@@ -117,8 +125,16 @@ export const NewShiftRequest = ({
     <Dialog.Root
       placement={"center"}
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault();
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />
@@ -151,13 +167,13 @@ export const NewShiftRequest = ({
                     <Select.Positioner>
                       <Select.Content>
                         {shiftCollection.items.map((code) => (
-                          <Select.Item item={code.value} key={code.value}>
-                            <Tooltip content={code.description}>
+                          <Select.Item item={code.value} key={code.value} data-testid={`shift-type-option-${code.value}`}>
+                            <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
-                                {formatShiftCodeLabel(code.value)}
+                                {code.value}
                               </Badge>
-                            </Tooltip>
-
+                              <Text fontSize="sm">{code.description}</Text>
+                            </HStack>
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}

@@ -203,6 +203,10 @@ def generate_login_2fa_code() -> str:
     return generate_email_verification_code()
 
 
+def _email_verification_key(email: str, user_id: int) -> str:
+    return f"{user_id}:{email.strip().lower()}"
+
+
 def store_email_verification_code(email: str, user_id: int) -> str:
     """
     Generate and store a verification code for an email.
@@ -211,9 +215,13 @@ def store_email_verification_code(email: str, user_id: int) -> str:
     code = generate_email_verification_code()
     expiry = datetime.now(timezone.utc) + timedelta(minutes=10)  # 10 minute expiry
     
-    _email_verification_codes[email] = {
+    normalized_email = email.strip().lower()
+    verification_key = _email_verification_key(normalized_email, user_id)
+
+    _email_verification_codes[verification_key] = {
         "code": code,
         "user_id": user_id,
+        "email": normalized_email,
         "expiry": expiry,
     }
     
@@ -226,30 +234,34 @@ def verify_email_code(email: str, code: str, user_id: int) -> bool:
     Verify if the provided code matches the stored code for the email.
     Checks expiry and cleans up on success or expiry.
     """
-    if email not in _email_verification_codes:
+    normalized_email = email.strip().lower()
+    normalized_code = "".join(ch for ch in code if ch.isdigit())
+    verification_key = _email_verification_key(normalized_email, user_id)
+
+    if verification_key not in _email_verification_codes:
         return False
     
-    stored_data = _email_verification_codes[email]
+    stored_data = _email_verification_codes[verification_key]
     
     # Check if code has expired
     if datetime.now(timezone.utc) > stored_data["expiry"]:
-        del _email_verification_codes[email]
-        logger.warning(f"Verification code for {email} has expired")
+        del _email_verification_codes[verification_key]
+        logger.warning(f"Verification code for {normalized_email} has expired")
         return False
     
     # Check if user_id matches
     if stored_data["user_id"] != user_id:
-        logger.warning(f"User ID mismatch for email verification: {email}")
+        logger.warning(f"User ID mismatch for email verification: {normalized_email}")
         return False
     
     # Check if code matches
-    if stored_data["code"] != code:
-        logger.warning(f"Invalid verification code for {email}")
+    if stored_data["code"] != normalized_code:
+        logger.warning(f"Invalid verification code for {normalized_email}")
         return False
     
     # Code is valid, clean up
-    del _email_verification_codes[email]
-    logger.info(f"Email verification successful for: {email}")
+    del _email_verification_codes[verification_key]
+    logger.info(f"Email verification successful for: {normalized_email}")
     return True
 
 

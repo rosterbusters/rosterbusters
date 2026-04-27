@@ -7,15 +7,17 @@ import {
   Portal,
   Select,
   Badge,
+  HStack,
   Text,
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
+
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { LeaveRequestsService, ShiftRequestsService } from "@/client";
-import type { DateRange } from "react-day-picker";
+import type { DateRange, Matcher } from "react-day-picker";
 
 interface NewLeaveRequestProps {
   isOpen: boolean;
@@ -47,6 +49,10 @@ export const NewLeaveRequest = ({
     buildInitialRange(selectedDate),
   );
   const queryClient = useQueryClient();
+  const disabledDates = useMemo<Matcher[]>(
+    () => [{ before: new Date(new Date().setHours(0, 0, 0, 0)) }],
+    [],
+  );
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
@@ -106,16 +112,34 @@ export const NewLeaveRequest = ({
       setRequestDateRange(buildInitialRange(selectedDate));
       setLeaveType([]);
       setSelectedNurse([]);
+      return;
     }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
   }, [isOpen, selectedDate]);
 
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
+
   const handleSubmit = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     if (leaveType.length === 0) {
       showErrorToast("Please select a leave type.");
       return;
     }
     if (!requestDateRange?.from || !requestDateRange?.to) {
       showErrorToast("Please select a start and end date.");
+      return;
+    }
+    if (requestDateRange.from < today || requestDateRange.to < today) {
+      showErrorToast("Leave requests cannot start or end before today.");
       return;
     }
     if (allowNurseOverride && selectedNurse.length === 0) {
@@ -210,12 +234,13 @@ export const NewLeaveRequest = ({
                     <Select.Positioner>
                       <Select.Content>
                         {leaveCollection.items.map((code) => (
-                          <Select.Item item={code.value} key={code.value}>
-                            <Tooltip content={code.description}>
+                          <Select.Item item={code.value} key={code.value} data-testid={`leave-type-option-${code.value}`}>
+                            <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
                                 {code.value}
                               </Badge>
-                            </Tooltip>
+                              <Text fontSize="sm">{code.description}</Text>
+                            </HStack>
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}
@@ -230,6 +255,7 @@ export const NewLeaveRequest = ({
                     selected={requestDateRange}
                     onSelect={(range) => setRequestDateRange(range)}
                     placeholder="Pick a date range"
+                    disabled={disabledDates}
                   />
                 </VStack>
               </VStack>
