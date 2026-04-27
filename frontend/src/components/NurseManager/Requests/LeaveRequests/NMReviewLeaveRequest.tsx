@@ -16,8 +16,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { LeaveRequestsService } from "@/client";
 import { Trash2 } from "lucide-react";
+import type { DateRange, Matcher } from "react-day-picker";
 
 function parseRequestDate(value: string) {
   const normalized = value.split("–")[0]?.trim() ?? value;
@@ -47,6 +49,19 @@ interface NMReviewLeaveRequestProps {
   nurseName: string;
   currentStatus: string;
   requests?: LeaveRequestOption[];
+  blockedRanges?: Array<{
+    requestId: number;
+    startDate: string;
+    endDate: string;
+  }>;
+}
+
+function toLocalDate(value: string) {
+  const [year, month, day] = value.split("-");
+  if (year && month && day) {
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  return new Date(value);
 }
 
 export const NMReviewLeaveRequest = ({
@@ -59,6 +74,7 @@ export const NMReviewLeaveRequest = ({
   nurseName,
   currentStatus,
   requests,
+  blockedRanges,
 }: NMReviewLeaveRequestProps) => {
   const requestOptions = useMemo(
     () =>
@@ -82,9 +98,10 @@ export const NMReviewLeaveRequest = ({
   const [selectedLeaveType, setSelectedLeaveType] = useState<string[]>([
     activeRequest?.leaveType ?? leaveType,
   ]);
-  const [requestDate, setRequestDate] = useState<Date | undefined>(
-    parseRequestDate(activeRequest?.startDate ?? startDate),
-  );
+  const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>({
+    from: parseRequestDate(activeRequest?.startDate ?? startDate),
+    to: parseRequestDate(activeRequest?.endDate ?? endDate),
+  });
   const [localComment, setLocalComment] = useState("");
   const queryClient = useQueryClient();
 
@@ -117,22 +134,57 @@ export const NMReviewLeaveRequest = ({
     [requestOptions],
   );
 
+  const disabledDates = useMemo<Matcher[]>(
+    () => [
+      { before: new Date(new Date().setHours(0, 0, 0, 0)) },
+      ...(blockedRanges ?? [])
+        .filter((range) => range.requestId !== activeRequest?.requestId)
+        .map((range) => ({
+          from: toLocalDate(range.startDate),
+          to: toLocalDate(range.endDate),
+        })),
+    ],
+    [activeRequest?.requestId, blockedRanges],
+  );
+
   useEffect(() => {
     if (!isOpen) return;
 
     setSelectedIdx(0);
     setSelectedLeaveType([requestOptions[0]?.leaveType ?? leaveType]);
-    setRequestDate(parseRequestDate(requestOptions[0]?.startDate ?? startDate));
+    setRequestDateRange({
+      from: parseRequestDate(requestOptions[0]?.startDate ?? startDate),
+      to: parseRequestDate(requestOptions[0]?.endDate ?? endDate),
+    });
     setLocalComment("");
-  }, [isOpen, leaveType, requestOptions, startDate]);
+  }, [endDate, isOpen, leaveType, requestOptions, startDate]);
 
   useEffect(() => {
     if (!activeRequest) return;
 
     setSelectedLeaveType([activeRequest.leaveType]);
-    setRequestDate(parseRequestDate(activeRequest.startDate));
+    setRequestDateRange({
+      from: parseRequestDate(activeRequest.startDate),
+      to: parseRequestDate(activeRequest.endDate),
+    });
     setLocalComment("");
   }, [activeRequest]);
+
+  useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
 
   const toDateStr = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -142,8 +194,8 @@ export const NMReviewLeaveRequest = ({
       LeaveRequestsService.updateLeaveRequest({
         leaveId: activeRequest.requestId,
         leavetype: selectedLeaveType[0],
-        startdate: requestDate ? toDateStr(requestDate) : undefined,
-        enddate: requestDate ? toDateStr(requestDate) : undefined,
+        startdate: requestDateRange?.from ? toDateStr(requestDateRange.from) : undefined,
+        enddate: requestDateRange?.to ? toDateStr(requestDateRange.to) : undefined,
       }),
     onSuccess: () => {
       showSuccessToast("Leave request updated!");
@@ -175,8 +227,8 @@ export const NMReviewLeaveRequest = ({
       showErrorToast("Please select a leave type.");
       return;
     }
-    if (!requestDate) {
-      showErrorToast("Please select a date.");
+    if (!requestDateRange?.from || !requestDateRange?.to) {
+      showErrorToast("Please select a start and end date.");
       return;
     }
     updateMutation.mutate();
@@ -186,8 +238,16 @@ export const NMReviewLeaveRequest = ({
     <Dialog.Root
       placement="center"
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault();
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />
@@ -265,10 +325,13 @@ export const NMReviewLeaveRequest = ({
                 </Select.Root>
 
                 <VStack alignItems="start">
-                  <Text fontWeight="medium">Date Requesting</Text>
+                  <Text fontWeight="medium">Dates Requesting</Text>
                   <DatePickerDemo
-                    selected={requestDate}
-                    onSelect={(date) => setRequestDate(date)}
+                    mode="range"
+                    selected={requestDateRange}
+                    onSelect={(range) => setRequestDateRange(range)}
+                    placeholder="Pick a date range"
+                    disabled={disabledDates}
                   />
                 </VStack>
 

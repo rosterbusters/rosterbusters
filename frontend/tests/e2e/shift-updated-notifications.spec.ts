@@ -150,14 +150,23 @@ async function fetchMailCatcherMessage(id: number) {
   return message
 }
 
-async function waitForEmail(recipient: string, timeoutMs = 20_000) {
+async function waitForEmail(
+  recipient: string,
+  subjectIncludes?: string,
+  timeoutMs = 20_000,
+) {
   const started = Date.now()
   const expectedRecipient = recipient.toLowerCase()
+  const expectedSubject = subjectIncludes?.toLowerCase()
 
   while (Date.now() - started < timeoutMs) {
     const messages = await fetchMailCatcherMessages()
 
     for (const message of messages) {
+      const subject = (message.subject || "").toLowerCase()
+      if (expectedSubject && !subject.includes(expectedSubject)) {
+        continue
+      }
       const recipients = (message.recipients || []).map((value) =>
         value.trim().replace(/^<|>$/g, "").toLowerCase(),
       )
@@ -168,6 +177,10 @@ async function waitForEmail(recipient: string, timeoutMs = 20_000) {
 
     for (const message of messages) {
       const fullMessage = await fetchMailCatcherMessage(message.id)
+      const subject = (fullMessage.subject || "").toLowerCase()
+      if (expectedSubject && !subject.includes(expectedSubject)) {
+        continue
+      }
       const combinedBody = [
         fullMessage.body,
         fullMessage.body_html,
@@ -329,7 +342,10 @@ test.describe("shift updated notifications", () => {
         ),
       ).toBe(1)
 
-      const email = await waitForEmail(nurseEmail)
+      const email = await waitForEmail(
+        nurseEmail,
+        "Your shift has been updated",
+      )
       expect(email.subject || "").toContain("Your shift has been updated")
       const emailBody = [email.body, email.body_html, email.body_text]
         .filter(Boolean)

@@ -46,6 +46,7 @@ export interface AdminUser {
   email: string | null
   employee_id: string | null
   designation: string | null
+  shift_pattern: "AM_ONLY" | "PM_ONLY" | null
   isactive: boolean
   nurseid: number | null
   managerid: number | null
@@ -71,6 +72,7 @@ export interface AdminUserCreate {
   email?: string
   employee_id?: string
   designation?: string
+  shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
   is_active?: boolean
   role?: string
@@ -83,6 +85,7 @@ export interface AdminUserUpdate {
   email?: string | null
   employee_id?: string
   designation?: string
+  shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
   is_active?: boolean
   ward_ids?: number[]
@@ -100,6 +103,14 @@ export interface WardOption {
 export interface DesignationOption {
   designation: string
   rank: string
+}
+
+export interface FirstLoginSetupContext {
+  email: string
+  username: string
+  name?: string | null
+  employee_id?: string | null
+  requires_employee_id: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +167,22 @@ export const AdminService = {
 
   firstLoginSetup(data: { new_password: string; email?: string; employee_id?: string }): Promise<{ message: string }> {
     return request(`/api/v1/users/me/first-login-setup`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  },
+
+  getPublicFirstLoginSetupContext(token: string): Promise<FirstLoginSetupContext> {
+    const params = new URLSearchParams({ token })
+    return request(`/api/v1/users/first-login-setup?${params.toString()}`)
+  },
+
+  completePublicFirstLoginSetup(data: {
+    token: string
+    new_password: string
+    employee_id?: string
+  }): Promise<{ message: string }> {
+    return request(`/api/v1/users/first-login-setup`, {
       method: "POST",
       body: JSON.stringify(data),
     })

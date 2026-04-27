@@ -16,6 +16,7 @@ import {
 } from "@chakra-ui/react";
 import { Trash2 } from "lucide-react";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { ShiftRequestsService } from "@/client";
 import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest";
 import {
@@ -153,6 +154,22 @@ export const ReviewShiftRequest = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen || isEditOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isEditOpen, isOpen]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
+
   const handleAction = (action: "Approved" | "Rejected") => {
     if (onAction) {
       onAction(activeRequest.requestId, action, localComment);
@@ -185,6 +202,8 @@ export const ReviewShiftRequest = ({
       <Dialog.Root
         placement="center"
         motionPreset="slide-in-bottom"
+        lazyMount
+        unmountOnExit
         open={isOpen}
         onOpenChange={(e) => !e.open && onClose()}
       >

@@ -52,6 +52,7 @@ jobs:
           ENVIRONMENT=production
           PROJECT_NAME=SACH Duby
           FRONTEND_HOST=https://${{ secrets.DOMAIN_PROD }}
+          FIRST_LOGIN_SETUP_HOST=https://${{ secrets.DOMAIN_PROD }}
           DOMAIN=${{ secrets.DOMAIN_PROD }}
           STACK_NAME=${{ secrets.STACK_NAME_PROD }}
           SECRET_KEY=${{ secrets.SECRET_KEY }}
@@ -212,6 +213,14 @@ jobs:
             echo "=== TRAEFIK LOGS ==="
             traefik_compose logs --tail=200 || true
             debug_traefik_tls
+            echo "=== APP STATUS ==="
+            app_compose ps || true
+            echo "=== PRESTART LOGS ==="
+            app_compose logs --tail=200 prestart || true
+            echo "=== BACKEND LOGS ==="
+            app_compose logs --tail=200 backend || true
+            echo "=== CELERY LOGS ==="
+            app_compose logs --tail=200 celery_worker || true
             echo "=== APP LOGS ==="
             app_compose logs --tail=200 || true
           }
@@ -227,9 +236,21 @@ jobs:
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
           app_compose build
 
+          echo "=== APP COMPOSE CONFIG ==="
+          app_compose config
+
+          echo "=== RUN ONE-OFF DB MIGRATION ==="
+          app_compose run --rm prestart bash -lc "uv run alembic upgrade head"
+
           app_compose up -d --remove-orphans || {
+            echo "=== APP STATUS AFTER FAILED START ==="
+            app_compose ps || true
             echo "=== PRESTART LOGS ==="
-            app_compose logs prestart
+            app_compose logs --tail=200 prestart || true
+            echo "=== BACKEND LOGS ==="
+            app_compose logs --tail=200 backend || true
+            echo "=== CELERY LOGS ==="
+            app_compose logs --tail=200 celery_worker || true
             exit 1
           }
 

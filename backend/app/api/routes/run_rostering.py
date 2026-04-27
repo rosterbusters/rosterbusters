@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import MetaData, Table, inspect as sa_inspect
@@ -20,6 +20,7 @@ from sqlmodel import Session, select, delete
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
 from app.core.config import settings
+from app.core.security import decrypt_default_password
 from app.cache import cache_delete, cache_get_json, cache_set_json
 from app.models.enums import NotificationType
 from app.designation_mapping import (
@@ -29,7 +30,7 @@ from app.designation_mapping import (
     staffing_role_to_roster_rank,
 )
 from app.models.enums import NotificationType
-from app.models.rbac import Nurse, NurseManager, Role, UserRole
+from app.models.rbac import Nurse, NurseManager, RBACUser, Role, UserRole
 from app.models.roster import (
     NursePeriodConstraint,
     NursePeriodConstraintPublic,
@@ -122,6 +123,26 @@ class RosterUpsertRequest(BaseModel):
     comment: Optional[str] = None
     status: str = "Pending"
     assignment_method: str = "Manual"
+
+
+def _send_roster_release_email_task(
+    email_to: str,
+    roster_period_label: str,
+    ward_name: str,
+) -> None:
+    try:
+        email_data = generate_roster_release_email(
+            email_to=email_to,
+            roster_period=roster_period_label,
+            ward_name=ward_name,
+        )
+        send_email(
+            email_to=email_to,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception:
+        logger.warning("Failed to send roster release email to %s", email_to)
 
 
 class BulkRosterUpsertRequest(BaseModel):
@@ -375,8 +396,15 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Ward not found")
 
     nurses = db.exec(
-        select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+        select(Nurse)
+        .where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
+        .order_by(Nurse.name, Nurse.nurseid)
     ).all()
+    nurse_ids = [n.nurseid for n in nurses if n.nurseid is not None]
+    users = db.exec(
+        select(RBACUser).where(RBACUser.nurseid.in_(nurse_ids))  # type: ignore[arg-type]
+    ).all() if nurse_ids else []
+    users_by_nurse_id = {u.nurseid: u for u in users if u.nurseid is not None}
     rank_map = load_designation_rank_map(db)
 
     return {
@@ -385,6 +413,25 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
             {
                 "nurseId": n.nurseid,
                 "name": n.name,
+                "userId": users_by_nurse_id[n.nurseid].userid
+                if n.nurseid in users_by_nurse_id
+                else None,
+                "username": users_by_nurse_id[n.nurseid].username
+                if n.nurseid in users_by_nurse_id
+                else None,
+                "mustChangePassword": users_by_nurse_id[n.nurseid].must_change_password
+                if n.nurseid in users_by_nurse_id
+                else False,
+                "defaultPassword": decrypt_default_password(
+                    users_by_nurse_id[n.nurseid].default_password_encrypted
+                )
+                if (
+                    n.nurseid in users_by_nurse_id
+                    and users_by_nurse_id[n.nurseid].must_change_password
+                    and users_by_nurse_id[n.nurseid].default_password_encrypted
+                )
+                else None,
+                "employeeId": n.employeeid,
                 "designation": n.designation,
                 "email": n.email,
                 "contactNumber": n.contactnumber or "",
@@ -672,6 +719,7 @@ def bulk_upsert_roster_entries(
 def publish_ward_roster(
     ward_id: int,
     period_id: int,
+    background_tasks: BackgroundTasks,
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Any:
@@ -710,9 +758,21 @@ def publish_ward_roster(
     nurses = session.exec(
         select(Nurse).where(Nurse.wardid == ward_id, Nurse.isactive == True)  # noqa: E712
     ).all()
+    nurse_ids = [nurse.nurseid for nurse in nurses if nurse.nurseid is not None]
+    existing_release_recipient_ids = set(
+        session.exec(
+            select(NotificationQueue.recipientid).where(
+                NotificationQueue.recipienttype == "Nurse",
+                NotificationQueue.notificationtype == NotificationType.ROSTER_RELEASE.value,
+                NotificationQueue.relatedentitytype == "RosterPeriod",
+                NotificationQueue.relatedentityid == period.periodid,
+                NotificationQueue.recipientid.in_(nurse_ids),
+            )
+        ).all()
+    ) if nurse_ids else set()
 
     for nurse in nurses:
-        if not nurse.nurseid:
+        if not nurse.nurseid or nurse.nurseid in existing_release_recipient_ids:
             continue
         crud.create_notification(
             session,
@@ -732,22 +792,12 @@ def publish_ward_roster(
                 continue
             if not get_email_enabled(session, "Nurse", nurse.nurseid, "RosterRelease"):
                 continue
-            try:
-                email_data = generate_roster_release_email(
-                    email_to=nurse.email,
-                    roster_period=roster_period_label,
-                    ward_name=ward.wardname,
-                )
-                send_email(
-                    email_to=nurse.email,
-                    subject=email_data.subject,
-                    html_content=email_data.html_content,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to send roster release email to %s",
-                    nurse.email,
-                )
+            background_tasks.add_task(
+                _send_roster_release_email_task,
+                nurse.email,
+                roster_period_label,
+                ward.wardname,
+            )
     else:
         logger.info("Email notifications skipped: email settings not configured.")
 
@@ -795,9 +845,6 @@ def clear_ward_roster(
             "deleted_count": 0,
             "status": "already_empty",
         }
-
-    if any(entry.status == "Confirmed" for entry in entries):
-        raise HTTPException(status_code=400, detail="Roster entries are already published")
 
     deleted = session.exec(
         delete(Roster).where(
@@ -1032,6 +1079,7 @@ def generate_roster_endpoint(
             hard_requests=generation_inputs["hard_requests"],
             soft_requests=generation_inputs["soft_requests"],
             prev_last_shift=generation_inputs["prev_last_shift"],
+            ward_hour_type=generation_inputs["ward_hour_type"],
             shift_hours=generation_inputs["shift_hours"],
             non_working_shift_codes=generation_inputs["non_working_shift_codes"],
             milp_config=generation_inputs["milp_config"],
@@ -1296,6 +1344,7 @@ def generate_roster_stream(
                 hard_requests=generation_inputs["hard_requests"],
                 soft_requests=generation_inputs["soft_requests"],
                 prev_last_shift=generation_inputs["prev_last_shift"],
+                ward_hour_type=generation_inputs["ward_hour_type"],
                 shift_hours=generation_inputs["shift_hours"],
                 non_working_shift_codes=generation_inputs["non_working_shift_codes"],
                 progress_callback=on_progress,
@@ -1728,6 +1777,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         "hard_requests": hard_requests,
         "soft_requests": soft_requests,
         "prev_last_shift": prev_last_shift,
+        "ward_hour_type": ward.wardhourtype,
         "shift_hours": _load_shift_hours(db),
         "non_working_shift_codes": _load_non_working_shift_codes(db),
         "period_constraints": period_constraints,

@@ -14,14 +14,40 @@ engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
 # otherwise, SQLModel might fail to initialize relationships properly
 # for more details: https://github.com/fastapi/full-stack-fastapi-template/issues/28
 
-def _ensure_user_auth_columns(session: Session) -> None:
-    """Heal legacy bootstrap schemas before ORM queries touch newer fields."""
+def ensure_bootstrap_schema(session: Session) -> None:
+    """Heal legacy schemas before bootstrap ORM queries touch newer fields."""
     bind = session.get_bind()
     inspector = inspect(bind)
     user_columns = {column["name"] for column in inspector.get_columns("User")}
+    ward_columns = {column["name"] for column in inspector.get_columns("ward")}
 
     if "defaultpassword" not in user_columns:
         session.exec(sa.text('ALTER TABLE "User" ADD COLUMN defaultpassword VARCHAR'))
+        session.commit()
+
+    if "wardhourtype" not in ward_columns:
+        session.exec(
+            sa.text(
+                "ALTER TABLE ward "
+                "ADD COLUMN wardhourtype VARCHAR(20) NOT NULL DEFAULT '8_HOURS'"
+            )
+        )
+        session.exec(
+            sa.text(
+                """
+                DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'chk_ward_wardhourtype'
+                  ) THEN
+                    ALTER TABLE ward
+                    ADD CONSTRAINT chk_ward_wardhourtype
+                    CHECK (wardhourtype IN ('8_HOURS', '12_HOURS'));
+                  END IF;
+                END $$;
+                """
+            )
+        )
         session.commit()
 
 
@@ -34,7 +60,7 @@ def init_db(session: Session) -> None:
     # This works because the models are already imported and registered from app.models
     # SQLModel.metadata.create_all(engine)
 
-    _ensure_user_auth_columns(session)
+    ensure_bootstrap_schema(session)
 
     # Ensure the first admin RBACUser exists
     from datetime import datetime, timezone

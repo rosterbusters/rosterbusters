@@ -8,22 +8,47 @@ import {
   Portal,
   Select,
   Badge,
+  HStack,
   Text,
   Textarea,
   VStack,
 } from "@chakra-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
+
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { LeaveRequestsService, ShiftRequestsService } from "@/client";
 import { Trash2 } from "lucide-react";
+import type { DateRange, Matcher } from "react-day-picker";
 
 interface NewLeaveRequestProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate?: Date | null;
   wardId?: number | null;
+  blockedRanges?: Array<{
+    requestId: number;
+    startDate: string;
+    endDate: string;
+  }>;
+}
+
+function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
+  return selectedDate
+    ? {
+        from: selectedDate,
+        to: selectedDate,
+      }
+    : undefined;
+}
+
+function toLocalDate(value: string) {
+  const [year, month, day] = value.split("-");
+  if (year && month && day) {
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  return new Date(value);
 }
 
 export const NewLeaveRequest = ({
@@ -31,11 +56,12 @@ export const NewLeaveRequest = ({
   onClose,
   selectedDate,
   wardId,
+  blockedRanges,
 }: NewLeaveRequestProps) => {
   const [leaveType, setLeaveType] = useState<string[]>([]);
   const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
-  const [requestDate, setRequestDate] = useState<Date | undefined>(
-    selectedDate ?? undefined,
+  const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>(
+    buildInitialRange(selectedDate),
   );
   const [localComment, setLocalComment] = useState("");
   const queryClient = useQueryClient();
@@ -79,6 +105,17 @@ export const NewLeaveRequest = ({
     [wardNurses],
   );
 
+  const disabledDates = useMemo<Matcher[]>(
+    () => [
+      { before: new Date(new Date().setHours(0, 0, 0, 0)) },
+      ...((blockedRanges ?? []).map((range) => ({
+        from: toLocalDate(range.startDate),
+        to: toLocalDate(range.endDate),
+      })) as Matcher[]),
+    ],
+    [blockedRanges],
+  );
+
   const selectedNurseId =
     selectedNurse.length > 0 ? Number(selectedNurse[0]) : null;
 
@@ -106,12 +143,23 @@ export const NewLeaveRequest = ({
 
   useEffect(() => {
     if (isOpen) {
-      setRequestDate(selectedDate ?? undefined);
+      setRequestDateRange(buildInitialRange(selectedDate));
       setLeaveType([]);
       setSelectedNurse([]);
       setLocalComment("");
+      return;
     }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
   }, [isOpen, selectedDate]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
 
   const handleSubmit = () => {
     if (selectedNurse.length === 0) {
@@ -126,17 +174,18 @@ export const NewLeaveRequest = ({
       showErrorToast("Please select a leave type.");
       return;
     }
-    if (!requestDate) {
-      showErrorToast("Please select a date.");
+    if (!requestDateRange?.from || !requestDateRange?.to) {
+      showErrorToast("Please select a start and end date.");
       return;
     }
 
-    const dateStr = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`;
+    const toDateStr = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
     mutation.mutate({
       nurseid: selectedNurseId,
-      startdate: dateStr,
-      enddate: dateStr,
+      startdate: toDateStr(requestDateRange.from),
+      enddate: toDateStr(requestDateRange.to),
       leavetype: leaveType[0],
       reason: localComment.trim() || undefined,
     });
@@ -146,6 +195,8 @@ export const NewLeaveRequest = ({
     <Dialog.Root
       placement="center"
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {
@@ -220,11 +271,12 @@ export const NewLeaveRequest = ({
                       <Select.Content>
                         {leaveCollection.items.map((code) => (
                           <Select.Item item={code.value} key={code.value}>
-                            <Tooltip content={code.description}>
+                            <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
                                 {code.value}
                               </Badge>
-                            </Tooltip>
+                              <Text fontSize="sm">{code.description}</Text>
+                            </HStack>
                             <Select.ItemIndicator />
                           </Select.Item>
                         ))}
@@ -234,10 +286,13 @@ export const NewLeaveRequest = ({
                 </Select.Root>
 
                 <VStack alignItems="start">
-                  <Text fontWeight="medium">Date Requesting</Text>
+                  <Text fontWeight="medium">Dates Requesting</Text>
                   <DatePickerDemo
-                    selected={requestDate}
-                    onSelect={(date) => setRequestDate(date)}
+                    mode="range"
+                    selected={requestDateRange}
+                    onSelect={(range) => setRequestDateRange(range)}
+                    placeholder="Pick a date range"
+                    disabled={disabledDates}
                   />
                 </VStack>
 

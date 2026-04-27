@@ -2,7 +2,6 @@ import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
 import { completeFirstLoginSetup } from "./admin-helpers"
 import { loginForE2E } from "../utils/auth"
-import { formatShiftCodeLabel } from "@/utils"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const ADMIN_EMAIL =
@@ -269,22 +268,10 @@ test("ward staff can create a shift request from the calendar", async ({
     }
 
     for (const code of expectedCodes) {
-      const label = formatShiftCodeLabel(code)
-      const option = page.locator("div").filter({
-        hasText: new RegExp(`^${escapeRegExp(label)}$`),
-      })
-      await expect(option.first()).toBeVisible()
+      await expect(page.getByTestId(`shift-type-option-${code}`)).toBeVisible()
     }
 
-    await page
-      .locator("div")
-      .filter({
-        hasText: new RegExp(
-          `^${escapeRegExp(formatShiftCodeLabel(expectedCodes[0]))}$`,
-        ),
-      })
-      .first()
-      .click()
+    await page.getByTestId(`shift-type-option-${expectedCodes[0]}`).click()
 
     const [createResponse] = await Promise.all([
       page.waitForResponse(

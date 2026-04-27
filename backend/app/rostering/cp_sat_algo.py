@@ -42,6 +42,15 @@ SHIFT_LABEL = {OFF: "OFF", AM: "AM", PM: "PM", NIGHT: "NIGHT", AL: "AL"}
 _LEAVE_CODES      = {"HOL", "MC", "URG", "CL", "UPL", "PH", "BCL", "CCL", "ML", "EML"}
 _OFF_REQUEST_CODES = {"OFF", "DO", "RD"}
 
+
+def _has_permanent_shift_pattern(nurse_info: dict | None) -> bool:
+    if not nurse_info:
+        return False
+    normalized = str(
+        nurse_info.get("shift_pattern", nurse_info.get("shiftpattern", ""))
+    ).strip().upper()
+    return normalized in {"AM_ONLY", "PM_ONLY"}
+
 # ─── Penalty weights ──────────────────────────────────────────────────────────
 # Mirrors the GA's penalty philosophy: "hard" violations carry huge weights so
 # the solver virtually never accepts them; soft preferences carry small weights
@@ -1210,13 +1219,17 @@ def _format_output(
                 if 0 <= day_idx < num_days:
                     sched[day_idx] = leave_code
 
-        # Alternate DO / RD: every 2nd OFF day becomes "RD" (mirrors GA output)
-        off_count = 0
-        for i, label in enumerate(sched):
-            if label == "OFF":
-                off_count += 1
-                if off_count % 2 == 0:
-                    sched[i] = "RD"
+        # Permanent AM/PM nurses should keep all off-days as DO in the output.
+        if _has_permanent_shift_pattern(nurse_info):
+            sched = ["OFF" if label == "OFF" else label for label in sched]
+        else:
+            # Alternate DO / RD: every 2nd OFF day becomes "RD" (mirrors GA output)
+            off_count = 0
+            for i, label in enumerate(sched):
+                if label == "OFF":
+                    off_count += 1
+                    if off_count % 2 == 0:
+                        sched[i] = "RD"
 
         stats = {
             "total_shifts":  sum(1 for s in sched if s not in ("OFF", "RD") and s not in _LEAVE_ALL),

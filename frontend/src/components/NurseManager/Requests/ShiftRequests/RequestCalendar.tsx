@@ -137,8 +137,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
 
   // ─── Map shift requests → calendar events ─────────────────────────────────
   const events: Event[] = useMemo(() => {
-    if (!shiftRequests) return [];
-    return shiftRequests.map((sr) => ({
+    return shiftRequests ? shiftRequests.map((sr) => ({
       title: sr.preferredshifttype,
       start: new Date(sr.preferreddate),
       end: new Date(sr.preferreddate),
@@ -152,7 +151,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         status: sr.status,
         reason: sr.reason,
       },
-    }));
+    })) : [];
   }, [shiftRequests, nurseMap, currentNurseId]);
 
   // ─── Calendar view setup ──────────────────────────────────────────────────

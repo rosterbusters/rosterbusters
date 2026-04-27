@@ -1291,6 +1291,7 @@ def seed_notifications(
         (NotificationType.ROSTER_RELEASE,              {"roster_period": period_name},          "Normal"),
         (NotificationType.SHIFT_REQUEST_APPROVED,      {"roster_period": period_name},          "Normal"),
         (NotificationType.SHIFT_REQUEST_PERIOD_OPEN,   {"roster_period": period_name},          "Normal"),
+        (NotificationType.SHIFT_REQUEST_PERIOD_CLOSED, {"roster_period": period_name},          "Urgent"),
         (NotificationType.SHIFT_UPDATED,               {"start_date": recent_shift_date},       "Normal"),
     ]
     

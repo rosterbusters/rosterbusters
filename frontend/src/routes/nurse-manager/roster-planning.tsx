@@ -1255,15 +1255,21 @@ function RosterPlanningPage() {
         periodId: effectiveSelectedPeriod.periodId,
       });
 
-      // Auto-approve/reject pending shift requests based on the published roster
-      await autoReviewShiftRequests.mutateAsync({
-        wardId: selectedWard.wardId,
-        periodId: effectiveSelectedPeriod.periodId,
-        rosterData,
-      });
-
       setIsPublishDialogOpen(false);
       setIsPublishSuccessDialogOpen(true);
+
+      // Continue auto-reviewing requests in the background so publish can
+      // return as soon as the roster itself is finalized.
+      void autoReviewShiftRequests
+        .mutateAsync({
+          wardId: selectedWard.wardId,
+          periodId: effectiveSelectedPeriod.periodId,
+          rosterData,
+        })
+        .catch((error) => {
+          console.error("Failed to auto-review shift requests after publish:", error);
+          showErrorToast("Roster published, but some request reviews may still be pending.");
+        });
     } catch (error) {
       console.error("Failed to publish roster:", error);
       const message =
@@ -1774,7 +1780,7 @@ function RosterPlanningPage() {
                       borderColor="#E6E6E6"
                       color="#4A4A4A"
                       _hover={{ bg: "gray.50" }}
-                      onClick={() => navigate({ to: "/nurse-manager/home" })}
+                      onClick={() => navigate({ to: "/nurse-manager/home", search: { periodId: effectiveSelectedPeriod?.periodId } })}
                     >
                       <HStack gap={2}>
                         <Eye className="h-4 w-4" />
@@ -1905,7 +1911,7 @@ function RosterPlanningPage() {
                     color="white"
                     _hover={{ bg: "#3d6f7d" }}
                     onClick={handleConfirmPublish}
-                    loading={publishRoster.isPending}
+                    loading={bulkUpsertRoster.isPending || publishRoster.isPending}
                   >
                     Publish Roster
                   </Button>

@@ -29,34 +29,104 @@ export interface NotificationStatsResponse {
   recent: NotificationItem[]
 }
 
-export type NotificationType = "Roster" | "ShiftRequest" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "HRISReminder" | "System" | "Probation"
+export type NotificationType = "Roster" | "ShiftRequest" | "LeaveRequest" | "ShiftUpdate" | "SwapRequest" | "LeaveApproval" | "LeaveReminder" | "RosterRelease" | "HRISReminder" | "System" | "Probation" | "AlgorithmGeneration" | "AlgorithmInProgress" | "ShiftRequestPeriodOpen" | "ShiftRequestPeriodClosed" | "ShiftRequestReviewOpen" | "ShiftRequestReviewClosed" | "ShiftRequestApproved" | "ShiftRequestRejected" | "RosterPlanning" | "RosterFinalisation"
 
 export const notificationTypeLabels: Record<string, string> = {
+  // Legacy keys (backward-compat with hardcoded data)
   Roster: "Roster",
   ShiftRequest: "Shift Request",
-  LeaveRequest: "Leave Request",
-  ShiftUpdate: "Roster",
+  LeaveUpdate: "Leave Status",
+  ShiftUpdate: "Shift Update",
   SwapRequest: "Shift Swap",
   LeaveApproval: "Leave Status",
   LeaveReminder: "Leave Reminder",
-  RosterRelease: "Roster Release",
-  HRISReminder: "HRIS Reminder",
   System: "System",
-  Probation: "Probation"
+  Probation: "Probation",
+  // Shift Request group
+  ShiftRequestPeriodOpen: "Shift Request",
+  ShiftRequestPeriodClosed: "Shift Request",
+  ShiftRequestReviewOpen: "Shift Request",
+  ShiftRequestReviewClosed: "Shift Request",
+  ShiftRequestApproved: "Shift Request",
+  ShiftRequestRejected: "Shift Request",
+  ShiftUpdated: "Shift Request",
+  // Leave group
+  LeaveRequest: "Leave",
+  LeaveApproved: "Leave",
+  LeaveRejected: "Leave",
+  // Roster group
+  RosterPlanning: "Roster",
+  RosterFinalisation: "Roster",
+  RosterRelease: "Roster",
+  // Algorithm group
+  AlgorithmGeneration: "Algorithm",
+  AlgorithmInProgress: "Algorithm",
+  // Admin
+  HRISReminder: "HRIS Reminder",
+}
+
+export interface NotificationBadgeStyle {
+  background: string
+  text: string
+  border?: string
+}
+
+export const notificationTypeBadgeStyles: Record<string, NotificationBadgeStyle> = {
+  ShiftRequest: { background: "#14B8A6", text: "#FFFFFF" },
+  ShiftRequestPeriodOpen: { background: "#14B8A6", text: "#FFFFFF" },
+  ShiftRequestReviewOpen: { background: "#0D9488", text: "#FFFFFF" },
+  ShiftRequestPeriodClosed: { background: "#0F766E", text: "#FFFFFF" },
+  ShiftRequestReviewClosed: { background: "#115E59", text: "#FFFFFF" },
+  ShiftRequestApproved: { background: "#0D9488", text: "#FFFFFF" },
+  ShiftRequestRejected: { background: "#134E4A", text: "#FFFFFF" },
+  LeaveRequest: { background: "#0F766E", text: "#FFFFFF" },
+  LeaveApproval: { background: "#115E59", text: "#FFFFFF" },
+  LeaveReminder: { background: "#134E4A", text: "#FFFFFF" },
+  Roster: { background: "#0891B2", text: "#FFFFFF" },
+  RosterPlanning: { background: "#0891B2", text: "#FFFFFF" },
+  RosterFinalisation: { background: "#0E7490", text: "#FFFFFF" },
+  ShiftUpdate: { background: "#0E7490", text: "#FFFFFF" },
+  RosterRelease: { background: "#0F5F78", text: "#FFFFFF" },
+  HRISReminder: { background: "#164E63", text: "#FFFFFF" },
+  AlgorithmGeneration: { background: "#0D9488", text: "#FFFFFF" },
+  AlgorithmInProgress: { background: "#0F766E", text: "#FFFFFF" },
+  SwapRequest: { background: "#7C3AED", text: "#FFFFFF" },
+  System: { background: "#6B7280", text: "#FFFFFF" },
+  Probation: { background: "#B45309", text: "#FFFFFF" },
 }
 
 export const notificationTypeBadgeVariant: Record<string, string> = {
-  Roster: "blue",
-  ShiftRequest: "yellow",
-  LeaveRequest: "green",
+  // Legacy keys (backward-compat with hardcoded data)
+  Roster: "purple",
+  ShiftRequest: "blue",
+  LeaveUpdate: "green",
   ShiftUpdate: "blue",
-  SwapRequest: "purple",
+  SwapRequest: "blue",
   LeaveApproval: "green",
-  LeaveReminder: "orange",
-  RosterRelease: "cyan",
-  HRISReminder: "orange",
+  LeaveReminder: "green",
   System: "gray",
-  Probation: "red"
+  Probation: "red",
+  // Shift Request group → blue
+  ShiftRequestPeriodOpen: "blue",
+  ShiftRequestPeriodClosed: "blue",
+  ShiftRequestReviewOpen: "blue",
+  ShiftRequestReviewClosed: "blue",
+  ShiftRequestApproved: "blue",
+  ShiftRequestRejected: "blue",
+  ShiftUpdated: "blue",
+  // Leave group → green
+  LeaveRequest: "green",
+  LeaveApproved: "green",
+  LeaveRejected: "green",
+  // Roster group → purple
+  RosterPlanning: "purple",
+  RosterFinalisation: "purple",
+  RosterRelease: "purple",
+  // Algorithm group → teal
+  AlgorithmGeneration: "teal",
+  AlgorithmInProgress: "teal",
+  // Admin → orange
+  HRISReminder: "orange",
 }
 
 export const priorityBadgeVariant: Record<string, string> = {
@@ -92,12 +162,22 @@ export const getNotificationRoute = (type: string): string => {
   const routeMap: Record<string, string> = {
     Roster: "/staffrosterschedule",
     ShiftRequest: "/request-application",
+    ShiftRequestPeriodOpen: "/request-application",
+    ShiftRequestPeriodClosed: "/request-application",
+    ShiftRequestReviewOpen: "/request-application",
+    ShiftRequestReviewClosed: "/request-application",
+    ShiftRequestApproved: "/request-application",
+    ShiftRequestRejected: "/request-application",
     LeaveRequest: "/request-application",
     ShiftUpdate: "/staffrosterschedule",
     SwapRequest: "/request-overview",
     LeaveApproval: "/request-application",
     LeaveReminder: "/request-application",
     RosterRelease: "/staffrosterschedule",
+    RosterPlanning: "/roster-planning",
+    RosterFinalisation: "/roster-planning",
+    AlgorithmGeneration: "/roster-planning",
+    AlgorithmInProgress: "/roster-planning",
     System: "/system",
     Probation: "/probation",
   }
@@ -106,11 +186,11 @@ export const getNotificationRoute = (type: string): string => {
 
 // Hardcoded data for dropdown (until migrated to API)
 export const nurseManagerNotifications: NotificationItem[] = [
-  { notificationid: 1, notificationtype: "Roster", description: "Start Planning Roster for 10 Nov - 21 Nov", date: "1/11/2001" },
-  { notificationid: 2, notificationtype: "RosterRelease", description: "Reminder: Publish Roster due 7 Nov 2001", date: "1/11/2001" },
-  { notificationid: 3, notificationtype: "HRISReminder", description: "Reminder: Export Roster to HRIS system by 21 Nov 2001", date: "1/11/2001" },
-  { notificationid: 4, notificationtype: "LeaveRequest", description: "Tony Quek applied for AL for 31 Dec 2001", date: "1/11/2001" },
-  { notificationid: 5, notificationtype: "ShiftRequest", description: "Shift Requests Review for 10 Nov - 21 Nov is open", date: "1/11/2001" },
+  { notificationid: 1, notificationtype: "ShiftRequestPeriodOpen", description: "Shift Request Period (10 Nov - 21 Nov) is Now Open.", date: "1/11/2001" },
+  { notificationid: 2, notificationtype: "Roster", description: "Start Planning Roster for 10 Nov - 21 Nov", date: "1/11/2001" },
+  { notificationid: 3, notificationtype: "RosterRelease", description: "Reminder: Publish Roster due 7 Nov 2001", date: "1/11/2001" },
+  { notificationid: 4, notificationtype: "HRISReminder", description: "Reminder: Export Roster to HRIS system by 21 Nov 2001 hello byebye", date: "1/11/2001" },
+  { notificationid: 5, notificationtype: "LeaveRequest", description: "Tony Quek applied for AL for 31 Dec 2001", date: "1/11/2001" },
   { notificationid: 6, notificationtype: "ShiftRequest", description: "Shift Requests Review for 10 Nov - 21 Nov is closed", date: "1/11/2001" },
 ]
 

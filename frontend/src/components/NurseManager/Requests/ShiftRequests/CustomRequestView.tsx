@@ -148,10 +148,14 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                     })
                     .map(([shiftCode, shiftEvents], idx) => {
                       const primaryEvent = shiftEvents[0];
-                      const nurseNames = shiftEvents
-                        .map((event) => event.resource?.nurseName ?? "")
-                        .filter(Boolean)
-                        .join(", ");
+                      const nurseStatuses = shiftEvents
+                        .map((event) => ({
+                          name: event.resource?.nurseName ?? "",
+                          status: event.resource?.status ?? "Pending",
+                          reason: event.resource?.reason ?? null,
+                        }))
+                        .filter((n) => n.name);
+                      const nurseNames = nurseStatuses.map((n) => n.name).join(", ");
                       const isOwn = shiftEvents.some((event) => event.resource?.isOwn);
 
                       return (
@@ -164,6 +168,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                         <CalendarRequestBlock
                           shift={shiftCode}
                           nurseName={nurseNames}
+                          nurseStatuses={nurseStatuses}
                           owned={isOwn}
                           onClick={() =>
                             setSelectedRequest({

@@ -6,7 +6,7 @@ import { WardsService, ShiftRequestsService } from "@/client"
 import type { Ward, ShiftCodePublic } from "@/client/types.gen"
 import type { ApiError } from "@/client/core/ApiError"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
-import { formatShiftCodeLabel } from "@/utils"
+
 import {
   Building2,
   Plus,
@@ -428,7 +428,7 @@ function WardFormDialog({
                                 className="rounded border-gray-300"
                               />
                               <span className="text-sm text-gray-700">
-                                {formatShiftCodeLabel(shift.shiftcode)} - {shift.description}
+                                {shift.shiftcode} - {shift.description}
                               </span>
                             </label>
                           )
