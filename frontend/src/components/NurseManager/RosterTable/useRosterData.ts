@@ -29,11 +29,35 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
       ...options.headers,
     },
   });
-  
+
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    let errorMessage = `API Error: ${response.status} ${response.statusText}`;
+
+    try {
+      const body = await response.clone().json();
+      const detail = body?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        errorMessage = detail;
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        const firstMessage = detail[0]?.msg;
+        if (typeof firstMessage === "string" && firstMessage.trim()) {
+          errorMessage = firstMessage;
+        }
+      }
+    } catch {
+      try {
+        const text = await response.text();
+        if (text.trim()) {
+          errorMessage = text;
+        }
+      } catch {
+        // Keep the fallback status-based message if the body cannot be parsed.
+      }
+    }
+
+    throw new Error(errorMessage);
   }
-  
+
   return response.json();
 }
 

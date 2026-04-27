@@ -843,9 +843,6 @@ def clear_ward_roster(
             "status": "already_empty",
         }
 
-    if any(entry.status == "Confirmed" for entry in entries):
-        raise HTTPException(status_code=400, detail="Roster entries are already published")
-
     deleted = session.exec(
         delete(Roster).where(
             Roster.wardid == ward_id,
