@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 import { DatePickerDemo } from "@/components/Common/DatePicker";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { LeaveRequestsService, ShiftRequestsService } from "@/client";
 import { Trash2 } from "lucide-react";
 import type { DateRange, Matcher } from "react-day-picker";
@@ -146,8 +147,19 @@ export const NewLeaveRequest = ({
       setLeaveType([]);
       setSelectedNurse([]);
       setLocalComment("");
+      return;
     }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
   }, [isOpen, selectedDate]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
 
   const handleSubmit = () => {
     if (selectedNurse.length === 0) {
@@ -183,6 +195,8 @@ export const NewLeaveRequest = ({
     <Dialog.Root
       placement="center"
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {

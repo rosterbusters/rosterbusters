@@ -18,101 +18,6 @@ import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
 import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
 import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
 
-// ─── Mock shift request data (used when no wardId / no API data) ─────────────
-const MOCK_SHIFT_REQUESTS: UnifiedRequest[] = [
-  {
-    id: -101,
-    type: "ShiftRequest",
-    requestTypeName: "Night Shift",
-    shiftCode: "N",
-    requestedDates: "14/05/2026",
-    status: "Pending",
-    applicationDate: "14/05/2026",
-    comments: "Prefer night coverage this week",
-    nurseName: "Alice Tan",
-  },
-  {
-    id: -102,
-    type: "ShiftRequest",
-    requestTypeName: "Day Off",
-    shiftCode: "DO",
-    requestedDates: "09/05/2026",
-    status: "Pending",
-    applicationDate: "09/05/2026",
-    comments: null,
-    nurseName: "Sein May",
-  },
-  {
-    id: -103,
-    type: "LeaveRequest",
-    requestTypeName: "Annual Leave",
-    requestedDates: "20/05/2026 – 22/05/2026",
-    rawStartDate: "2026-05-20",
-    rawEndDate: "2026-05-22",
-    status: "Pending",
-    applicationDate: "10/05/2026",
-    comments: "Family trip",
-    nurseName: "Ben Lim",
-  },
-  {
-    id: -104,
-    type: "ShiftRequest",
-    requestTypeName: "12-Hour Day Shift",
-    shiftCode: "D",
-    requestedDates: "07/05/2026",
-    status: "Approved",
-    applicationDate: "07/05/2026",
-    comments: null,
-    nurseName: "Sein May",
-  },
-  {
-    id: -105,
-    type: "LeaveRequest",
-    requestTypeName: "Medical Certificate",
-    requestedDates: "05/05/2026",
-    rawStartDate: "2026-05-05",
-    rawEndDate: "2026-05-05",
-    status: "Approved",
-    applicationDate: "05/05/2026",
-    comments: "Doctor visit",
-    nurseName: "Clara Wong",
-  },
-  {
-    id: -106,
-    type: "ShiftRequest",
-    requestTypeName: "Night Shift",
-    shiftCode: "N-12",
-    requestedDates: "14/05/2026",
-    status: "Approved",
-    applicationDate: "14/05/2026",
-    comments: null,
-    nurseName: "Sein May",
-  },
-  {
-    id: -107,
-    type: "ShiftRequest",
-    requestTypeName: "AM Shift",
-    shiftCode: "A",
-    requestedDates: "03/05/2026",
-    status: "Rejected",
-    applicationDate: "03/05/2026",
-    comments: "Understaffed on that day",
-    nurseName: "David Ng",
-  },
-  {
-    id: -108,
-    type: "LeaveRequest",
-    requestTypeName: "Childcare Leave",
-    requestedDates: "01/05/2026",
-    rawStartDate: "2026-05-01",
-    rawEndDate: "2026-05-01",
-    status: "Rejected",
-    applicationDate: "28/04/2026",
-    comments: "Quota exceeded",
-    nurseName: "Eva Chan",
-  },
-];
-
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 type TabFilter = "all" | "shift" | "leave";
 
@@ -132,14 +37,6 @@ function formatDate(dateStr: string): string {
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
   return `${day}/${month < 10 ? "0" + month : month}/${year}`;
-}
-
-function normalizeLeaveDateRange(dateValue: string) {
-  const parts = dateValue.split("–").map((part) => part.trim());
-  return {
-    startDate: parts[0] ?? dateValue,
-    endDate: parts[1] ?? parts[0] ?? dateValue,
-  };
 }
 
 // ─── Status cell ─────────────────────────────────────────────────────────────
@@ -400,7 +297,6 @@ export function RequestsOverviewTable({
 
   // ── Build unified list ────────────────────────────────────────────────────
   const allRequests: UnifiedRequest[] = useMemo(() => {
-    // Use real API shift data when wardId is set, otherwise fall back to mock
     const fromShift: UnifiedRequest[] = wardId
       ? shiftRequests.map((sr) => ({
           id: sr.requestid,
@@ -415,7 +311,7 @@ export function RequestsOverviewTable({
           comments: sr.reason,
           nurseName: nurseMap.get(sr.nurseid) ?? null,
         }))
-      : MOCK_SHIFT_REQUESTS;
+      : [];
 
     const fromLeave: UnifiedRequest[] = wardId
       ? leaveRequests.map((lr) => ({

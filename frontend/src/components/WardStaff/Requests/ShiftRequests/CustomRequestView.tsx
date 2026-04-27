@@ -59,17 +59,34 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     shiftType: string;
     preferredDate: string;
   } | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const currRange = useMemo(
     () => CustomWeekView.range(date, { localizer }),
     [date, localizer],
   );
   const handleDayClicked = (day: Date) => {
     setSelectedDay(day);
-    console.log(day)
-    setIsOpen(true); 
+    setIsOpen(true);
   };
 
-  
+  const handleOwnRequestClicked = (request: {
+    requestId: number;
+    shiftType: string;
+    preferredDate: string;
+  }) => {
+    setSelectedRequest(request);
+    setIsEditOpen(true);
+  };
+
+  const handleNewShiftClose = () => {
+    setIsOpen(false);
+    window.setTimeout(() => setSelectedDay(null), 350);
+  };
+
+  const handleEditShiftClose = () => {
+    setIsEditOpen(false);
+    window.setTimeout(() => setSelectedRequest(null), 350);
+  };
 
   return (
     <>
@@ -132,11 +149,16 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
                           shift={ev.title}
                           nurseName={ev.resource?.nurseName}
                           owned={ev.resource?.isOwn}
-                          onClick={ev.resource?.isOwn && !locked ? () => setSelectedRequest({
-                            requestId: ev.resource.requestId,
-                            shiftType: ev.resource.shiftType,
-                            preferredDate: ev.resource.preferredDate,
-                          }) : undefined}
+                          onClick={
+                            ev.resource?.isOwn && !locked
+                              ? () =>
+                                  handleOwnRequestClicked({
+                                    requestId: ev.resource.requestId,
+                                    shiftType: ev.resource.shiftType,
+                                    preferredDate: ev.resource.preferredDate,
+                                  })
+                              : undefined
+                          }
                         />
                       </Box>
                     ))
@@ -150,17 +172,19 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
 
       {!locked && (
         <>
-          <NewShiftRequest
-            isOpen={isOpen}
-            onClose={() => setIsOpen(false)}
-            selectedDate={selectedDay}
-            wardId={(user as any)?.wardid}
-          />
+          {selectedDay && (
+            <NewShiftRequest
+              isOpen={isOpen}
+              onClose={handleNewShiftClose}
+              selectedDate={selectedDay}
+              wardId={(user as any)?.wardid}
+            />
+          )}
 
           {selectedRequest && (
             <EditShiftRequest
-              isOpen={!!selectedRequest}
-              onClose={() => setSelectedRequest(null)}
+              isOpen={isEditOpen}
+              onClose={handleEditShiftClose}
               requestId={selectedRequest.requestId}
               initialShiftType={selectedRequest.shiftType}
               initialDate={selectedRequest.preferredDate}
