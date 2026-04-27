@@ -1,5 +1,6 @@
 import {
   expect,
+  type Page,
   request as playwrightRequest,
   test,
   type APIRequestContext,
@@ -31,6 +32,17 @@ async function loginToken(
 
 const formatDateKey = (value: Date) =>
   `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
+
+async function navigateLeaveCalendarToDate(page: Page, targetDate: Date) {
+  const toolbar = page.locator(".rbc-toolbar").first()
+  await expect(toolbar).toBeVisible()
+
+  await toolbar.locator("select").first().selectOption(String(targetDate.getMonth()))
+  await toolbar
+    .locator("select")
+    .nth(1)
+    .selectOption(String(targetDate.getFullYear()))
+}
 
 async function getLeaveCode(request: APIRequestContext, token: string) {
   const res = await request.get(`${API_BASE_URL}/api/v1/leave/leave-codes`, {
@@ -195,6 +207,8 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
       page.getByText("Click on a date to create/edit leave request."),
     ).toBeVisible()
 
+    await navigateLeaveCalendarToDate(page, groupedDate)
+
     const groupedRequestCell = page.getByTestId(
       `leave-request-calendar-cell-${groupedDateKey}`,
     )
@@ -231,6 +245,7 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     const newRequestCell = page.getByTestId(
       `leave-request-calendar-cell-${newRequestDateKey}`,
     )
+    await navigateLeaveCalendarToDate(page, newRequestDate)
     await expect(newRequestCell).toBeVisible()
     await newRequestCell.dispatchEvent("click")
     const createDialog = page.getByRole("dialog")
