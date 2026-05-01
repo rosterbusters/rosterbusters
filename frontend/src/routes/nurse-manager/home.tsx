@@ -36,7 +36,7 @@ import {
 import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer";
 import useAuth from "@/hooks/useAuth";
 import { WardsService } from "@/client";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ward } from "@/client/types.gen";
 
 export const Route = createFileRoute("/nurse-manager/home")({
@@ -132,6 +132,7 @@ function NurseManagerHome() {
   const { user } = useAuth();
   const { periodId: initialPeriodId } = Route.useSearch();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   // State management
   const [currentStartDate, setCurrentStartDate] = useState<Date>(
     moment().startOf("isoWeek").toDate()
@@ -537,14 +538,30 @@ function NurseManagerHome() {
         },
         body: JSON.stringify({ staffing_json: JSON.stringify(newGuidelines) }),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const detail =
+          typeof body?.detail === "string" && body.detail.trim()
+            ? body.detail
+            : "Failed to save staffing requirements";
+        throw new Error(detail);
+      }
+      return res.json();
     },
-    onSuccess: () =>
+    onSuccess: (updatedWard) => {
+      if (updatedWard?.wardid === selectedWard?.wardid) {
+        setSelectedWard(updatedWard);
+      }
+      queryClient.setQueryData<Ward[] | undefined>(["wards"], (prev) =>
+        prev?.map((ward) => (ward.wardid === updatedWard?.wardid ? updatedWard : ward)),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["wards"] });
       showSuccessToast("Staffing requirements saved for all future rosters", {
         title: "Staffing saved",
-      }),
-    onError: () =>
-      showErrorToast("Failed to save staffing requirements", {
+      });
+    },
+    onError: (error) =>
+      showErrorToast(error instanceof Error ? error.message : "Failed to save staffing requirements", {
         title: "Save failed",
       }),
   });
@@ -813,6 +830,7 @@ function NurseManagerHome() {
           data={displayRosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
+          wardHourType={selectedWard?.wardhourtype}
           isRosterGenerated={true}
           guidelines={guidelines}
           dateOverrides={dateOverrides}

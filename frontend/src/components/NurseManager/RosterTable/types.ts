@@ -93,6 +93,7 @@ export interface Ward {
   wardId: number;
   wardName: string;
   wardType: string;
+  wardHourType?: string | null;
   campus: string;
   managerId?: number | null;
   am_total?: number | null;

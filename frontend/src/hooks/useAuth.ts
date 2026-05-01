@@ -39,7 +39,10 @@ const useAuth = () => {
   const [email2faChallenge, setEmail2faChallenge] = useState<Email2FAChallenge | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { data: user } = useQuery<CurrentUser | null, Error>({
+  const { data: user, isLoading: isUserLoading } = useQuery<
+    CurrentUser | null,
+    Error
+  >({
     queryKey: ["currentUser"],
     queryFn: () => UsersService.readUserMe() as unknown as Promise<CurrentUser>,
     enabled: isLoggedIn(),
@@ -170,6 +173,7 @@ const useAuth = () => {
     cancelEmail2faChallenge,
     logout,
     user,
+    isUserLoading,
     error,
     resetError: () => setError(null),
   }

@@ -148,7 +148,7 @@ function generateEmptyRosterData(): RosterRow[] {
 }
 
 function RosterPlanningPage() {
-  const { user } = useAuth();
+  const { user, isUserLoading } = useAuth();
   const navigate = useNavigate();
 
   // State management
@@ -402,11 +402,16 @@ function RosterPlanningPage() {
 
   // Set default ward when there is no valid selection yet.
   useEffect(() => {
-    if (displayWards.length === 0) return;
+    if (displayWards.length === 0 || isUserLoading) return;
 
-    const designatedWard = user?.wardid
-      ? displayWards.find((ward) => ward.wardId === user.wardid) ?? null
-      : null;
+    const designatedWard =
+      (user?.wardid
+        ? displayWards.find((ward) => ward.wardId === user.wardid)
+        : undefined) ??
+      (user?.managerid
+        ? displayWards.find((ward) => ward.managerId === user.managerid)
+        : undefined) ??
+      null;
     const selectedWardStillAvailable = selectedWard
       ? displayWards.some((ward) => ward.wardId === selectedWard.wardId)
       : false;
@@ -417,7 +422,7 @@ function RosterPlanningPage() {
         setSelectedWard(fallbackWard);
       }
     }
-  }, [displayWards, getDefaultWard, selectedWard, user?.wardid]);
+  }, [displayWards, getDefaultWard, isUserLoading, selectedWard, user?.managerid, user?.wardid]);
 
   // Reset guidelines and per-date overrides when the selected ward changes
   useEffect(() => {
@@ -1661,6 +1666,7 @@ function RosterPlanningPage() {
           data={displayRosterData}
           viewMode={viewMode}
           currentStartDate={currentStartDate}
+          wardHourType={selectedWard?.wardHourType}
           isRosterGenerated={showAlgorithmGeneratedState}
           guidelines={guidelines}
           dateOverrides={dateOverrides}

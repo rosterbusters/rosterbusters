@@ -24,6 +24,7 @@ interface ShiftSummaryTableProps {
   data: RosterRow[];
   viewMode: ViewMode;
   currentStartDate: Date;
+  wardHourType?: string | null;
   guidelines?: DailyStaffingGuideline;
   /** Per-date overrides that take precedence over base guidelines for a specific day. */
   dateOverrides?: Record<string, DailyStaffingGuideline>;
@@ -163,10 +164,15 @@ const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
 /** All roles — used for total row calculation only. */
 const ALL_STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
 
+function getVisibleShiftTypes(wardHourType?: string | null): SummaryShiftType[] {
+  return wardHourType === "12_HOURS" ? ["A", "N"] : SHIFT_TYPES;
+}
+
 export function ShiftSummaryTable({
   data,
   viewMode,
   currentStartDate,
+  wardHourType,
   guidelines = MOCK_STAFFING_GUIDELINES,
   dateOverrides = {},
   originalGuidelines,
@@ -191,6 +197,10 @@ export function ShiftSummaryTable({
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate, viewMode),
     [currentStartDate, viewMode],
+  );
+  const visibleShiftTypes = useMemo(
+    () => getVisibleShiftTypes(wardHourType),
+    [wardHourType],
   );
 
   // Calculate shift counts
@@ -276,7 +286,7 @@ export function ShiftSummaryTable({
       overflow="hidden"
     >
       <Table.Root size="sm" w="100%" style={{ tableLayout: "fixed" }}>
-        {/* Header Row - Shift Type Labels (A, P, N) */}
+        {/* Header Row - Shift Type Labels */}
         <Table.Header>
           <Table.Row>
             {/* Empty cell for role label column */}
@@ -289,7 +299,7 @@ export function ShiftSummaryTable({
               bg="white"
             />
 
-            {/* Day columns with A, P, N sub-headers */}
+            {/* Day columns with shift sub-headers */}
             {dayColumns.map((col) => (
               <Table.ColumnHeader
                 key={col.field}
@@ -302,7 +312,7 @@ export function ShiftSummaryTable({
                 bg="white"
               >
                 <Flex justify="space-around">
-                  {SHIFT_TYPES.map((type) => (
+                  {visibleShiftTypes.map((type) => (
                     <Text
                       key={type}
                       fontSize="xs"
@@ -354,7 +364,7 @@ export function ShiftSummaryTable({
                     p={0}
                   >
                     <Flex>
-                      {SHIFT_TYPES.map((shiftType) => {
+                      {visibleShiftTypes.map((shiftType) => {
                         const count = getGroupedShiftCount(
                           dataWithoutPSA,
                           group.groupKey,
@@ -474,7 +484,7 @@ export function ShiftSummaryTable({
                   bg="menuactive"
                 >
                   <Flex>
-                    {SHIFT_TYPES.map((shiftType) => {
+                    {visibleShiftTypes.map((shiftType) => {
                       const total = getTotal(dateKey, shiftType);
                       return (
                         <Flex

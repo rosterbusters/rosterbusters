@@ -159,16 +159,16 @@ export function getRosterGroupKey(row: Pick<RosterRow, "designation" | "staffing
  * Returns null for non-working shifts.
  */
 export function mapShiftCodeToSummaryType(shiftCode: string): "A" | "P" | "N" | null {
-  switch (shiftCode) {
-    case "A":
-    case "D":
-      return "A";
-    case "P":
-      return "P";
-    case "N":
-    case "N-12":
-      return "N";
-    default:
-      return null;
+  const normalizedShiftCode = shiftCode.trim().toUpperCase();
+
+  if (
+    normalizedShiftCode === "D" ||
+    normalizedShiftCode === "A" ||
+    normalizedShiftCode.startsWith("A-")
+  ) {
+    return "A";
   }
+  if (normalizedShiftCode === "P") return "P";
+  if (normalizedShiftCode === "N" || normalizedShiftCode.startsWith("N-")) return "N";
+  return null;
 }

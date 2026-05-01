@@ -116,28 +116,30 @@ def run_main_timeline(session: Session):
     """Run the full 3-period timeline (A, B, C)."""
     print("\n" + "=" * 70)
     print("MAIN TIMELINE: Full 3-period notification cycle")
-    print("Period A = Mar 09-20 | Period B = Mar 23 - Apr 03 | Period C = Apr 06-17")
+    print("Period A = Mar 09-22 | Period B = Mar 23 - Apr 05 | Period C = Apr 06-19")
     print("=" * 70)
 
     phases = [
-        # Period B notifications (pre-processing during Period A)
-        ("Phase 1a - Window Opens",                       sgt(2026, 3, 9, 7),    "B"),
-        ("No Trigger - Early",                            sgt(2026, 3, 11, 7),   "B"),
-        ("Phase 1b - 12h Warning (Exact Time)",           sgt(2026, 3, 13, 12),  "B"),
-        ("Phase 1b - 12h Warning (If missed, same day)",  sgt(2026, 3, 13, 13),  "B"),
-        ("Phase 2a - Review Open",                        sgt(2026, 3, 14, 7),   "B"),
-        ("Phase 2b - Review Closing Soon",                sgt(2026, 3, 15, 12),  "B"),
-        ("Phase 3a - Roster Planning Reminder",           sgt(2026, 3, 16, 7),   "B"),
-        ("Phase 3b+4a - Finalisation + HRIS Open",        sgt(2026, 3, 20, 7),   "B, A"),
-        ("Phase 4b - HRIS Closing Soon (Period A)",       sgt(2026, 3, 22, 12),  "A"),
-        # Period C notifications (pre-processing during Period B)
-        ("Next 1a - Window Opens (C)",                    sgt(2026, 3, 23, 7),   "C"),
-        ("Next 1b - 12h Warning (C)",                     sgt(2026, 3, 27, 12),  "C"),
-        ("Next 2a - Review Open (C)",                     sgt(2026, 3, 28, 7),   "C"),
-        ("Next 2b - Review Closing Soon (C)",             sgt(2026, 3, 29, 12),  "C"),
-        ("Next 3a - Roster Planning (C)",                 sgt(2026, 3, 30, 7),   "C"),
-        ("Next 3b+4a - Finalisation (C) + HRIS Open (B)", sgt(2026, 4, 3, 7),   "C, B"),
-        ("Phase 4b - HRIS Closing Soon (Period B)",       sgt(2026, 4, 5, 12),   "B"),
+        # Period A notifications
+        ("Phase 1a - Window Opens",                       sgt(2026, 3, 9, 7),    "A"),
+        ("No Trigger - Early",                            sgt(2026, 3, 11, 7),   "A"),
+        ("Phase 1b - 12h Warning (Exact Time)",           sgt(2026, 3, 13, 12),  "A"),
+        ("Phase 1b - 12h Warning (If missed, same day)",  sgt(2026, 3, 13, 13),  "A"),
+        ("Phase 2a - Review Open",                        sgt(2026, 3, 14, 7),   "A"),
+        ("Phase 2b - Review Closing Soon",                sgt(2026, 3, 15, 12),  "A"),
+        ("Phase 3a - Roster Planning Reminder",           sgt(2026, 3, 17, 7),   "A"),
+        ("Phase 3b - Finalisation",                       sgt(2026, 3, 20, 7),   "A"),
+        ("Phase 4a - HRIS Open (Period A)",               sgt(2026, 3, 23, 7),   "A"),
+        ("Phase 4b - HRIS Closing Soon (Period A)",       sgt(2026, 4, 5, 12),   "A"),
+        # Period B notifications
+        ("Next 1a - Window Opens (B)",                    sgt(2026, 3, 23, 7),   "B"),
+        ("Next 1b - 12h Warning (B)",                     sgt(2026, 3, 27, 12),  "B"),
+        ("Next 2a - Review Open (B)",                     sgt(2026, 3, 28, 7),   "B"),
+        ("Next 2b - Review Closing Soon (B)",             sgt(2026, 3, 29, 12),  "B"),
+        ("Next 3a - Roster Planning (B)",                 sgt(2026, 3, 31, 7),   "B"),
+        ("Next 3b - Finalisation (B)",                    sgt(2026, 4, 3, 7),    "B"),
+        ("Phase 4a - HRIS Open (Period B)",               sgt(2026, 4, 6, 7),    "B"),
+        ("Phase 4b - HRIS Closing Soon (Period B)",       sgt(2026, 4, 19, 12),  "B"),
     ]
 
     for phase_name, mock_now, expected_label in phases:
@@ -164,10 +166,10 @@ def run_edge_case_a_missed_window(session: Session):
     session.commit()
 
     # Run Phase 1a normally
-    run_phase(session, "Phase 1a - Normal", sgt(2026, 3, 9, 7), "B")
+    run_phase(session, "Phase 1a - Normal", sgt(2026, 3, 9, 7), "A")
     # SKIP Phase 2a day (March 14) entirely
     # Come back on March 15 at 07:00 — should catch up Phase 2a
-    run_phase(session, "Phase 2a - CATCH UP (server was down Mar 14)", sgt(2026, 3, 15, 7), "B")
+    run_phase(session, "Phase 2a - CATCH UP (server was down Mar 14)", sgt(2026, 3, 15, 7), "A")
 
 
 def run_edge_case_b_new_user(session: Session):
@@ -190,7 +192,7 @@ def run_edge_case_b_new_user(session: Session):
     session.commit()
 
     # Run Phase 1a on March 9 — only original nurse gets it
-    run_phase(session, "Phase 1a - Original nurse", sgt(2026, 3, 9, 7), "B")
+    run_phase(session, "Phase 1a - Original nurse", sgt(2026, 3, 9, 7), "A")
 
     # Now add a new nurse on March 11
     new_nurse = session.exec(select(Nurse).where(Nurse.email == 'newnurse@example.com')).first()
@@ -209,7 +211,7 @@ def run_edge_case_b_new_user(session: Session):
         session.commit()
 
     # Run on March 11 — new nurse should get OPEN notification (catch-up window)
-    run_phase(session, "Phase 1a - New nurse catch-up (joined Mar 11)", sgt(2026, 3, 11, 7), "B")
+    run_phase(session, "Phase 1a - New nurse catch-up (joined Mar 11)", sgt(2026, 3, 11, 7), "A")
 
     # Clean up the test nurse
     session.exec(delete(NotificationQueue).where(NotificationQueue.recipientid == new_nurse.nurseid))
@@ -237,19 +239,19 @@ def run_edge_case_c_timezone(session: Session):
 
     # 22:59 UTC on March 8 = 06:59 SGT on March 9 → too early
     run_phase(session, "06:59 SGT (SHOULD NOT trigger Phase 1a)", 
-              datetime(2026, 3, 8, 22, 59, tzinfo=timezone.utc), "B")
+              datetime(2026, 3, 8, 22, 59, tzinfo=timezone.utc), "A")
 
     # 23:00 UTC on March 8 = 07:00 SGT on March 9 → should fire
     run_phase(session, "07:00 SGT (SHOULD trigger Phase 1a)",
-              datetime(2026, 3, 8, 23, 0, tzinfo=timezone.utc), "B")
+              datetime(2026, 3, 8, 23, 0, tzinfo=timezone.utc), "A")
 
     # 03:59 UTC on March 13 = 11:59 SGT on March 13 → too early for 12h
     run_phase(session, "11:59 SGT (SHOULD NOT trigger Phase 1b 12h)",
-              datetime(2026, 3, 13, 3, 59, tzinfo=timezone.utc), "B")
+              datetime(2026, 3, 13, 3, 59, tzinfo=timezone.utc), "A")
 
     # 04:00 UTC on March 13 = 12:00 SGT on March 13 → should fire
     run_phase(session, "12:00 SGT (SHOULD trigger Phase 1b 12h)",
-              datetime(2026, 3, 13, 4, 0, tzinfo=timezone.utc), "B")
+              datetime(2026, 3, 13, 4, 0, tzinfo=timezone.utc), "A")
 
 
 def run_verification():

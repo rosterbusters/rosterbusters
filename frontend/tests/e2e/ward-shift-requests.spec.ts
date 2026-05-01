@@ -65,6 +65,27 @@ const parseCodes = (value: string) =>
     .map((code) => code.trim().toUpperCase())
     .filter(Boolean)
 
+const formatDateOnly = (value: Date) => value.toISOString().slice(0, 10)
+
+async function getRosterPeriods(request: APIRequestContext, token: string) {
+  const periodsRes = await request.get(`${API_BASE_URL}/api/v1/shift-requests/periods`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!periodsRes.ok()) {
+    const body = await periodsRes.text()
+    throw new Error(`Failed to fetch roster periods: ${periodsRes.status()} ${body}`)
+  }
+
+  return (await periodsRes.json()) as Array<{
+    periodid: number
+    startdate: string
+    enddate: string
+    status?: string
+    requestopendate?: string | null
+    requestclosedate?: string | null
+  }>
+}
+
 const getWardShiftCodes = (wardId: number) => {
   const wardCodes = runScalarQuery(
     `select string_agg(s.shiftcode, ',' order by s.shiftcode) from ward_shiftcode w join shiftcode s on s.shiftcode = w.shiftcode where w.wardid = ${wardId} and s.isworking = true;`,
@@ -79,6 +100,11 @@ const getWardShiftCodes = (wardId: number) => {
 }
 
 async function pickRosterPeriod(request: APIRequestContext, token: string) {
+  const today = new Date().toISOString().slice(0, 10)
+  const minimumWritableStartDate = new Date()
+  minimumWritableStartDate.setDate(minimumWritableStartDate.getDate() + 5)
+  const minimumWritableStartDateKey = formatDateOnly(minimumWritableStartDate)
+
   const periodRes = await request.get(
     `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -100,27 +126,19 @@ async function pickRosterPeriod(request: APIRequestContext, token: string) {
     periodWindow.upcoming_period ||
     periodWindow.current_period
   if (activePeriod) {
-    return activePeriod
+    if (activePeriod.startdate >= minimumWritableStartDateKey) {
+      return activePeriod
+    }
   }
 
-  const periodsRes = await request.get(`${API_BASE_URL}/api/v1/shift-requests/periods`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!periodsRes.ok()) {
-    const body = await periodsRes.text()
-    throw new Error(`Failed to fetch roster periods: ${periodsRes.status()} ${body}`)
-  }
-
-  const periods = (await periodsRes.json()) as Array<{
-    periodid: number
-    startdate: string
-    enddate: string
-    status?: string
-    requestopendate?: string | null
-    requestclosedate?: string | null
-  }>
-  const today = new Date().toISOString().slice(0, 10)
+  const periods = await getRosterPeriods(request, token)
   const sorted = [...periods].sort((a, b) => a.startdate.localeCompare(b.startdate))
+  const writableFuturePeriod = sorted.find(
+    (period) => period.startdate >= minimumWritableStartDateKey,
+  )
+  if (writableFuturePeriod) {
+    return writableFuturePeriod
+  }
   const fallbackPeriod =
     sorted.find(
       (period) =>
@@ -275,6 +293,36 @@ test("ward staff can create a shift request from the calendar", async ({
     })
 
     const activePeriod = await pickRosterPeriod(request, nurseToken)
+    const periods = await getRosterPeriods(request, nurseToken)
+
+    const requestWindowStart = new Date()
+    const requestWindowEnd = new Date()
+    requestWindowEnd.setDate(requestWindowEnd.getDate() + 4)
+    const mockedActivePeriod = {
+      ...periods.find((period) => period.periodid === activePeriod.periodid),
+      ...activePeriod,
+      status: "RequestOpen",
+      requestopendate: formatDateOnly(requestWindowStart),
+      requestclosedate: formatDateOnly(requestWindowEnd),
+    }
+
+    await page.route("**/api/v1/shift-requests/periods/current-upcoming", async (route) => {
+      await route.fulfill({
+        json: {
+          current_period: null,
+          upcoming_period: mockedActivePeriod,
+          request_open_period: mockedActivePeriod,
+        },
+      })
+    })
+
+    await page.route("**/api/v1/shift-requests/periods", async (route) => {
+      await route.fulfill({
+        json: periods.map((period) =>
+          period.periodid === activePeriod.periodid ? mockedActivePeriod : period,
+        ),
+      })
+    })
 
     await page.addInitScript((value) => {
       localStorage.setItem("access_token", value)

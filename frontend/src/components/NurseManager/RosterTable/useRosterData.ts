@@ -82,6 +82,7 @@ export function useWards() {
         wardId: w.wardid,
         wardName: w.wardname,
         wardType: w.wardtype ?? "",
+        wardHourType: (w.wardhourtype as string | null | undefined) ?? "8_HOURS",
         campus: w.campus ?? "",
         managerId: w.managerid ?? null,
         am_total: w.am_total ?? null,

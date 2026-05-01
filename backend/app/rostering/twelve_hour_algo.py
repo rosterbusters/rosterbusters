@@ -32,6 +32,7 @@ _SHIFT_STR_TO_CODE: dict[str, int] = {
     "A12": A12,
     "A_12": A12,
     "DAY": A12,
+    "AM": A12,
     "N-12": N12,
     "N12": N12,
     "N_12": N12,
@@ -75,7 +76,6 @@ _DEFAULT_WEIGHTS = {
 }
 
 _DEFAULT_SHIFT_RATIO = {A12: 6.0, N12: 5.0}
-_DEFAULT_RANK_A_SHIFT_RATIO = {A12: 2.0, N12: 1.0}
 _DEFAULT_RN_NIGHT_ALLOWED_EXCESS = 1
 _DEFAULT_RANK_A_NIGHT_CAP_MODE = "hard_then_soft"
 _DEFAULT_RANK_B_NIGHT_MIN_MODE = "hard_then_soft"
@@ -472,7 +472,12 @@ def _parse_inputs(
     for day in shifts:
         day_demand: dict[int, dict[str, int]] = {}
         for raw_key, code in (("A-12", A12), ("N-12", N12)):
-            req = day.get(raw_key) or day.get(raw_key.replace("-", "")) or day.get("DAY" if code == A12 else "NIGHT") or {}
+            aliases = (
+                (raw_key, raw_key.replace("-", ""), "DAY", "AM")
+                if code == A12
+                else (raw_key, raw_key.replace("-", ""), "NIGHT")
+            )
+            req = next((day.get(alias) for alias in aliases if day.get(alias) is not None), {})
             day_demand[code] = {rank: _coerce_int(req.get(rank, 0), 0) for rank in "ABC"}
         demand.append(day_demand)
 
@@ -612,21 +617,48 @@ def _parse_inputs(
 
     weekly_off_targets, expected_work_slots = build_weekly_off_targets(working_nurses)
     overall_shift_ratio = _normalize_ratio(cfg.get("twelve_hour_shift_ratio"), _DEFAULT_SHIFT_RATIO)
-    rank_a_shift_ratio = _normalize_ratio(cfg.get("rank_a_twelve_hour_shift_ratio"), _DEFAULT_RANK_A_SHIFT_RATIO)
     overall_target_totals, _ = _build_shift_targets(expected_work_slots, overall_shift_ratio)
 
     rank_a_ratio_nurses = non_ssn_managed_working_rank_a + non_ssn_pattern_working_rank_a
-    rank_a_work_slots = sum(
-        max(0, 7 - sum(1 for day_idx in range(week_start, min(week_start + 7, num_days)) if day_idx in al_day_req[nurse_idx]) - weekly_off_targets[nurse_idx][week_index])
-        for nurse_idx in rank_a_ratio_nurses
-        for week_index, week_start in enumerate(range(0, num_days, 7))
+    rank_b_ratio_nurses = managed_working_rank_b + pattern_working_rank_b
+
+    rank_a_shift_ratio = _normalize_ratio(
+        cfg.get("rank_a_twelve_hour_shift_ratio"),
+        overall_shift_ratio,
     )
+    rank_b_shift_ratio = _normalize_ratio(
+        cfg.get("rank_b_twelve_hour_shift_ratio"),
+        overall_shift_ratio,
+    )
+
+    def _build_group_work_slots(group_nurses: list[int]) -> int:
+        return sum(
+            max(
+                0,
+                7
+                - sum(
+                    1
+                    for day_idx in range(week_start, min(week_start + 7, num_days))
+                    if day_idx in al_day_req[nurse_idx]
+                )
+                - weekly_off_targets[nurse_idx][week_index],
+            )
+            for nurse_idx in group_nurses
+            for week_index, week_start in enumerate(range(0, num_days, 7))
+        )
+
+    rank_a_work_slots = _build_group_work_slots(rank_a_ratio_nurses)
     rank_a_target_totals, _ = _build_shift_targets(rank_a_work_slots, rank_a_shift_ratio)
+    rank_b_work_slots = _build_group_work_slots(rank_b_ratio_nurses)
+    rank_b_target_totals, _ = _build_shift_targets(rank_b_work_slots, rank_b_shift_ratio)
     overall_daily_targets = {
         shift_code: _distribute_targets(overall_target_totals[shift_code], num_days) for shift_code in WORK_SHIFTS
     }
     rank_a_daily_targets = {
         shift_code: _distribute_targets(rank_a_target_totals[shift_code], num_days) for shift_code in WORK_SHIFTS
+    }
+    rank_b_daily_targets = {
+        shift_code: _distribute_targets(rank_b_target_totals[shift_code], num_days) for shift_code in WORK_SHIFTS
     }
 
     default_rn_night_targets = [demand[day_idx][N12]["A"] for day_idx in range(num_days)]
@@ -750,6 +782,8 @@ def _parse_inputs(
         "overall_daily_targets": overall_daily_targets,
         "rank_a_target_totals": rank_a_target_totals,
         "rank_a_daily_targets": rank_a_daily_targets,
+        "rank_b_target_totals": rank_b_target_totals,
+        "rank_b_daily_targets": rank_b_daily_targets,
         "rn_night_targets": rn_night_targets,
         "rn_night_allowed_excess": rn_night_allowed_excess,
         "rank_a_night_caps": rank_a_night_caps,
@@ -789,12 +823,14 @@ def _format_output(
             if 0 <= day_idx < num_days:
                 labels[day_idx] = leave_code
 
-        off_count = 0
-        for day_idx, label in enumerate(labels):
-            if label == "OFF":
-                off_count += 1
-                if off_count % 2 == 0:
-                    labels[day_idx] = "RD"
+        for week_start in range(0, num_days, 7):
+            week_end = min(week_start + 7, num_days)
+            off_count = 0
+            for day_idx in range(week_start, week_end):
+                if labels[day_idx] == "OFF":
+                    off_count += 1
+                    if off_count % 3 == 0:
+                        labels[day_idx] = "RD"
 
         output_nurses.append(
             {
@@ -889,7 +925,11 @@ def run_twelve_hour_pipeline(
     ratio_working_rank_b = parsed["ratio_working_rank_b"]
     ratio_working_rank_c = parsed["ratio_working_rank_c"]
     ssn_rank_a_daily_balance_nurses = parsed["ssn_rank_a_daily_balance_nurses"]
+    non_ssn_managed_working_rank_a = parsed["non_ssn_managed_working_rank_a"]
+    non_ssn_pattern_working_rank_a = parsed["non_ssn_pattern_working_rank_a"]
     non_ssn_ratio_working_rank_a = parsed["non_ssn_ratio_working_rank_a"]
+    managed_working_rank_b = parsed["managed_working_rank_b"]
+    pattern_working_rank_b = parsed["pattern_working_rank_b"]
     night_eligible = parsed["night_eligible"]
     no_night_ids = parsed["no_night_ids"]
     al_nurses_set = parsed["al_nurses_set"]
@@ -1113,16 +1153,6 @@ def run_twelve_hour_pipeline(
         model.AddAbsEquality(dev, diff)
         add_penalty(dev, weights[weight_key])
 
-    for nurse_idx in non_ssn_ratio_working_rank_a:
-        total_work = sum(x[nurse_idx, day_idx, shift_code] for day_idx in range(num_days) for shift_code in WORK_SHIFTS)
-        n12_count = sum(x[nurse_idx, day_idx, N12] for day_idx in range(num_days))
-        diff_over = model.NewIntVar(0, num_days * 3, f"rank_a_ratio_over_{nurse_idx}")
-        diff_under = model.NewIntVar(0, num_days * 3, f"rank_a_ratio_under_{nurse_idx}")
-        model.Add(diff_over >= total_work - 3 * n12_count)
-        model.Add(diff_under >= 3 * n12_count - total_work)
-        add_penalty(diff_over, weights["rank_a_ratio"])
-        add_penalty(diff_under, weights["rank_a_ratio"])
-
     overall_daily_targets = parsed["overall_daily_targets"]
     for day_idx in range(num_days):
         for shift_code, weight_key in ((A12, "daily_ratio_a12"), (N12, "daily_ratio_n12")):
@@ -1134,16 +1164,46 @@ def run_twelve_hour_pipeline(
             model.AddAbsEquality(day_dev, day_diff)
             add_penalty(day_dev, weights[weight_key])
 
-    if non_ssn_ratio_working_rank_a:
-        rank_a_daily_targets = parsed["rank_a_daily_targets"]
-        for day_idx in range(num_days):
-            actual_rank_a_n12 = model.NewIntVar(0, len(non_ssn_ratio_working_rank_a), f"rank_a_day_n12_{day_idx}")
-            model.Add(actual_rank_a_n12 == sum(x[nurse_idx, day_idx, N12] for nurse_idx in non_ssn_ratio_working_rank_a))
-            day_diff = model.NewIntVar(-len(non_ssn_ratio_working_rank_a), len(non_ssn_ratio_working_rank_a), f"rank_a_day_diff_{day_idx}")
-            model.Add(day_diff == actual_rank_a_n12 - rank_a_daily_targets[N12][day_idx])
-            day_dev = model.NewIntVar(0, len(non_ssn_ratio_working_rank_a), f"rank_a_day_dev_{day_idx}")
-            model.AddAbsEquality(day_dev, day_diff)
-            add_penalty(day_dev, weights["rank_a_ratio"])
+    rank_a_daily_targets = parsed["rank_a_daily_targets"]
+    rank_b_daily_targets = parsed["rank_b_daily_targets"]
+    rank_a_a12_nurses = non_ssn_managed_working_rank_a + non_ssn_pattern_working_rank_a
+    rank_b_a12_nurses = managed_working_rank_b + pattern_working_rank_b
+    for group_name, a12_group_nurses, n12_group_nurses, group_targets in (
+        ("a", rank_a_a12_nurses, non_ssn_ratio_working_rank_a, rank_a_daily_targets),
+        ("b", rank_b_a12_nurses, ratio_working_rank_b, rank_b_daily_targets),
+    ):
+        for shift_code, weight_key, group_nurses in (
+            (A12, "daily_ratio_a12", a12_group_nurses),
+            (N12, "daily_ratio_n12", n12_group_nurses),
+        ):
+            if not group_nurses:
+                continue
+            for day_idx in range(num_days):
+                actual_day_total = model.NewIntVar(
+                    0,
+                    len(group_nurses),
+                    f"{group_name}_day_total_{shift_code}_{day_idx}",
+                )
+                model.Add(
+                    actual_day_total
+                    == sum(x[nurse_idx, day_idx, shift_code] for nurse_idx in group_nurses)
+                )
+                day_diff = model.NewIntVar(
+                    -len(group_nurses),
+                    len(group_nurses),
+                    f"{group_name}_day_diff_{shift_code}_{day_idx}",
+                )
+                target = group_targets[shift_code][day_idx]
+                if group_name == "a" and shift_code == N12:
+                    target = parsed["rn_night_targets"][day_idx]
+                model.Add(day_diff == actual_day_total - target)
+                day_dev = model.NewIntVar(
+                    0,
+                    len(group_nurses),
+                    f"{group_name}_day_dev_{shift_code}_{day_idx}",
+                )
+                model.AddAbsEquality(day_dev, day_diff)
+                add_penalty(day_dev, weights[weight_key])
 
     if night_eligible:
         total_night_targets = overall_daily_targets[N12]
