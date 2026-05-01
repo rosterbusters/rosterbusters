@@ -210,7 +210,7 @@ jobs:
             grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
           }
           dump_logs() {
-            local exit_code=$?
+            exit_code=$?
             echo "=== FAILED COMMAND ==="
             echo "line ${BASH_LINENO[0]}: ${BASH_COMMAND}"
             echo "exit code: ${exit_code}"
@@ -250,6 +250,58 @@ jobs:
 
           echo "=== APP COMPOSE CONFIG ==="
           app_compose config
+
+          echo "=== CHECK POSTGRES CONNECTIVITY ==="
+          python3 - <<'PY'
+          import socket
+          import time
+          from pathlib import Path
+
+          env_path = Path(".env")
+          values = {}
+          for line in env_path.read_text().splitlines():
+              if not line or line.lstrip().startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              values[key.strip()] = value.strip()
+
+          host = values.get("POSTGRES_SERVER", "")
+          port = int(values.get("POSTGRES_PORT", "5432"))
+          if not host:
+              raise SystemExit("POSTGRES_SERVER is missing from .env")
+
+          print(f"Checking TCP connectivity to Postgres at {host}:{port}")
+          try:
+              addresses = sorted(
+                  {
+                      result[4][0]
+                      for result in socket.getaddrinfo(
+                          host, port, type=socket.SOCK_STREAM
+                      )
+                  }
+              )
+              print(f"Postgres DNS resolved to: {', '.join(addresses)}")
+          except OSError as exc:
+              raise SystemExit(f"Could not resolve POSTGRES_SERVER {host!r}: {exc}")
+
+          last_error = None
+          for attempt in range(1, 7):
+              try:
+                  with socket.create_connection((host, port), timeout=10):
+                      print("Postgres TCP connectivity check passed.")
+                      break
+              except OSError as exc:
+                  last_error = exc
+                  print(f"Attempt {attempt}/6 failed: {exc}")
+                  time.sleep(5)
+          else:
+              raise SystemExit(
+                  "Could not connect to Postgres from the EC2 host. "
+                  "Check the RDS endpoint/port, VPC routing, and the RDS security group "
+                  "inbound rule allowing this EC2 instance or its security group on port "
+                  f"{port}. Last error: {last_error}"
+              )
+          PY
 
           echo "=== RUN ONE-OFF DB MIGRATION ==="
           docker rm -f prestart-migration 2>/dev/null || true
