@@ -5,8 +5,8 @@ import {
   type ShiftCode,
   type ViewMode,
   type ShiftRequestOverlay,
-  SHIFT_COLOR_MAP,
   SHIFT_CODE_MAP,
+  getShiftColor,
 } from "./types";
 
 interface ShiftBadgeProps {
@@ -111,7 +111,7 @@ export function ShiftBadge({
     );
   }
 
-  const bgColor = SHIFT_COLOR_MAP[shiftCode];
+  const bgColor = getShiftColor(shiftCode);
   const shiftInfo = SHIFT_CODE_MAP[shiftCode];
   const isWorkingShift = shiftInfo?.isWorking ?? true;
   const timeRange = getTimeRange(shiftCode, shiftTimeMap);

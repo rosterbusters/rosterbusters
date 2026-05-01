@@ -126,52 +126,91 @@ APR_2026_WARD_6_REQUESTS: list[RequestSeed] = [
     RequestSeed("Nurse 29", date(2026, 4, 8), "A", "shift_request", "Pending"),
     RequestSeed("Nurse 36", date(2026, 4, 11), "N", "shift_request", "Pending"),
     RequestSeed("Nurse 36", date(2026, 4, 14), "P", "shift_request", "Pending"),
+    # One Class A nurse on AL for the entire period.
+    RequestSeed("Nurse 13", date(2026, 4, 6), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 7), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 8), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 9), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 10), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 11), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 12), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 13), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 14), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 15), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 16), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 17), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 18), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 13", date(2026, 4, 19), "AL", "leave_request", "Approved"),
+    # One Class B nurse on AL for the entire period.
+    RequestSeed("Nurse 21", date(2026, 4, 6), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 7), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 8), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 9), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 10), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 11), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 12), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 13), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 14), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 15), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 16), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 17), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 18), "AL", "leave_request", "Approved"),
+    RequestSeed("Nurse 21", date(2026, 4, 19), "AL", "leave_request", "Approved"),
 ]
 
 
 APR_2026_12HR_WARD_REQUESTS: list[RequestSeed] = [
-    # Derived from the anonymized Apr 06 - Apr 19 2026 12-hour preview tab.
-    RequestSeed("Nurse 1", date(2026, 4, 11), "DO", "shift_request"),
-    RequestSeed("Nurse 1", date(2026, 4, 17), "N-12", "shift_request"),
-    RequestSeed("Nurse 2", date(2026, 4, 10), "A-12", "shift_request"),
-    RequestSeed("Nurse 2", date(2026, 4, 15), "DO", "shift_request"),
+    # Derived from EditedCasuarinaRoster.xlsx, sheet "6 Apr - 19 Apr".
+    # Source PH/PH2/PH3/PH4 request codes are stored as HOL leave requests.
+    RequestSeed("Nurse 1", date(2026, 4, 6), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 7), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 8), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 9), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 10), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 13), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 14), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 15), "AL", "leave_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 16), "A-12", "shift_request"),
+    RequestSeed("Nurse 1", date(2026, 4, 19), "RD", "shift_request"),
+    RequestSeed("Nurse 2", date(2026, 4, 14), "DO", "shift_request"),
     RequestSeed("Nurse 3", date(2026, 4, 10), "DO", "shift_request"),
-    RequestSeed("Nurse 3", date(2026, 4, 11), "PH4", "leave_request"),
-    RequestSeed("Nurse 3", date(2026, 4, 12), "RD", "shift_request"),
+    RequestSeed("Nurse 3", date(2026, 4, 11), "HOL", "leave_request"),
     RequestSeed("Nurse 4", date(2026, 4, 11), "RD", "shift_request"),
-    RequestSeed("Nurse 4", date(2026, 4, 12), "A-12", "shift_request"),
+    RequestSeed("Nurse 4", date(2026, 4, 18), "RD", "shift_request"),
     RequestSeed("Nurse 5", date(2026, 4, 12), "N-12", "shift_request"),
     RequestSeed("Nurse 5", date(2026, 4, 19), "RD", "shift_request"),
     RequestSeed("Nurse 6", date(2026, 4, 15), "DO", "shift_request"),
-    RequestSeed("Nurse 7", date(2026, 4, 12), "DO", "shift_request"),
-    RequestSeed("Nurse 8", date(2026, 4, 9), "DO", "shift_request"),
-    RequestSeed("Nurse 8", date(2026, 4, 10), "RD", "shift_request"),
-    RequestSeed("Nurse 8", date(2026, 4, 11), "N-12", "shift_request"),
-    RequestSeed("Nurse 9", date(2026, 4, 18), "DO", "shift_request"),
-    RequestSeed("Nurse 10", date(2026, 4, 14), "DO", "shift_request"),
-    RequestSeed("Nurse 10", date(2026, 4, 15), "RD", "shift_request"),
-    RequestSeed("Nurse 11", date(2026, 4, 9), "AL", "leave_request"),
-    RequestSeed("Nurse 11", date(2026, 4, 10), "DO", "shift_request"),
-    RequestSeed("Nurse 11", date(2026, 4, 11), "DO", "shift_request"),
-    RequestSeed("Nurse 12", date(2026, 4, 7), "INHT", "leave_request"),
-    RequestSeed("Nurse 12", date(2026, 4, 8), "ITE", "leave_request"),
-    RequestSeed("Nurse 13", date(2026, 4, 15), "DO", "shift_request"),
-    RequestSeed("Nurse 13", date(2026, 4, 14), "A-12", "shift_request"),
-    RequestSeed("Nurse 13", date(2026, 4, 16), "RD", "shift_request"),
-    RequestSeed("Nurse 14", date(2026, 4, 11), "DO", "shift_request"),
-    RequestSeed("Nurse 14", date(2026, 4, 12), "RD", "shift_request"),
+    RequestSeed("Nurse 7", date(2026, 4, 6), "A-12", "shift_request"),
+    RequestSeed("Nurse 7", date(2026, 4, 14), "DO", "shift_request"),
+    RequestSeed("Nurse 7", date(2026, 4, 15), "N-12", "shift_request"),
+    RequestSeed("Nurse 8", date(2026, 4, 11), "DO", "shift_request"),
+    RequestSeed("Nurse 8", date(2026, 4, 18), "DO", "shift_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 11), "DO", "shift_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 12), "RD", "shift_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 13), "HOL", "leave_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 14), "HOL", "leave_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 15), "HOL", "leave_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 16), "AL", "leave_request"),
+    RequestSeed("Nurse 9", date(2026, 4, 17), "AL", "leave_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 6), "AL", "leave_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 7), "AL", "leave_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 8), "AL", "leave_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 9), "DO", "shift_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 10), "RD", "shift_request"),
+    RequestSeed("Nurse 11", date(2026, 4, 11), "N-12", "shift_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 9), "AL", "leave_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 13), "AL", "leave_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 14), "AL", "leave_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 15), "AL", "leave_request"),
+    RequestSeed("Nurse 14", date(2026, 4, 16), "DO", "shift_request"),
     RequestSeed("Nurse 14", date(2026, 4, 17), "N-12", "shift_request"),
     RequestSeed("Nurse 14", date(2026, 4, 18), "N-12", "shift_request"),
-    RequestSeed("Nurse 15", date(2026, 4, 8), "HOL", "leave_request"),
-    RequestSeed("Nurse 15", date(2026, 4, 9), "BDL", "leave_request"),
-    RequestSeed("Nurse 16", date(2026, 4, 10), "DO", "shift_request"),
-    RequestSeed("Nurse 17", date(2026, 4, 11), "DO", "shift_request"),
-    RequestSeed("Nurse 17", date(2026, 4, 14), "RD", "shift_request"),
+    RequestSeed("Nurse 16", date(2026, 4, 15), "DO", "shift_request"),
+    RequestSeed("Nurse 18", date(2026, 4, 11), "DO", "shift_request"),
     RequestSeed("Nurse 18", date(2026, 4, 15), "DO", "shift_request"),
-    RequestSeed("Nurse 18", date(2026, 4, 18), "RD", "shift_request"),
-    RequestSeed("Nurse 19", date(2026, 4, 10), "DO", "shift_request"),
-    RequestSeed("Nurse 19", date(2026, 4, 15), "RD", "shift_request"),
-    RequestSeed("Nurse 20", date(2026, 4, 11), "DO", "shift_request"),
+    RequestSeed("Nurse 20", date(2026, 4, 7), "DO", "shift_request"),
+    RequestSeed("Nurse 20", date(2026, 4, 8), "HOL", "leave_request"),
+    RequestSeed("Nurse 20", date(2026, 4, 8), "BDL", "leave_request"),
 ]
 
 
@@ -407,6 +446,17 @@ APR_2026_WARD_6_ANON_DESIGNATIONS: dict[str, str] = {
     "Nurse 31": "HCA3",
     "Nurse 36": "SN",
     "Nurse 37": "SN",
+}
+
+
+APR_2026_WARD_6_SHIFT_PATTERNS: dict[str, str] = {
+    "Nurse 10": "PM_ONLY",
+}
+
+
+APR_2026_WARD_6_PERIOD_CONSTRAINTS: dict[str, list[tuple[str, str, str]]] = {
+    "Nurse 11": [("NO_NIGHT", "true", "Apr 2026 preview no night shift")],
+    "Nurse 16": [("NO_NIGHT", "true", "Apr 2026 preview no night shift")],
 }
 
 
@@ -1325,23 +1375,32 @@ def seed_apr_2026_ward_6_preview(
 
     existing_nurses = db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()
     existing_by_name = {n.name: n for n in existing_nurses}
+    shiftpattern_supported = _column_exists(db, "nurse", "shiftpattern")
 
     for anonymized in unique_names:
-        if anonymized in existing_by_name:
-            continue
         designation = APR_2026_WARD_6_ANON_DESIGNATIONS.get(anonymized, "SN")
-        db.add(
-            Nurse(
-                name=anonymized,
-                employeeid=f"APR26-{anonymized.split()[-1]}",
-                designation=designation,
-                email=f"{anonymized.replace(' ', '').lower()}.apr2026@example.com",
-                contactnumber="00000000",
-                wardid=ward.wardid,
-                employmenttype="FullTime",
-                isactive=True,
-            )
+        shift_pattern = APR_2026_WARD_6_SHIFT_PATTERNS.get(anonymized)
+        existing = existing_by_name.get(anonymized)
+        if existing:
+            existing.designation = designation
+            if shiftpattern_supported:
+                existing.shiftpattern = shift_pattern
+            existing.isactive = True
+            db.add(existing)
+            continue
+        nurse = Nurse(
+            name=anonymized,
+            employeeid=f"APR26-{anonymized.split()[-1]}",
+            designation=designation,
+            email=f"{anonymized.replace(' ', '').lower()}.apr2026@example.com",
+            contactnumber="00000000",
+            wardid=ward.wardid,
+            employmenttype="FullTime",
+            isactive=True,
         )
+        if shiftpattern_supported:
+            nurse.shiftpattern = shift_pattern
+        db.add(nurse)
 
     db.flush()
     nurse_by_name = {n.name: n for n in db.exec(select(Nurse).where(Nurse.wardid == ward.wardid)).all()}
@@ -1349,10 +1408,54 @@ def seed_apr_2026_ward_6_preview(
     if test_nurse:
         _ensure_test_nurse_user(db, test_nurse)
 
+    if _table_exists(db, "nurseperiodconstraint"):
+        for nurse_name, constraints in APR_2026_WARD_6_PERIOD_CONSTRAINTS.items():
+            nurse = nurse_by_name.get(nurse_name)
+            if not nurse:
+                continue
+            existing_constraints = db.exec(
+                select(NursePeriodConstraint).where(
+                    NursePeriodConstraint.nurseid == nurse.nurseid,
+                    NursePeriodConstraint.periodid == period.periodid,
+                )
+            ).all()
+            existing_keys = {
+                (row.constrainttype, row.value, row.reason or "")
+                for row in existing_constraints
+            }
+            for constraint_type, value, reason in constraints:
+                key = (constraint_type, value, reason)
+                if key in existing_keys:
+                    continue
+                db.add(
+                    NursePeriodConstraint(
+                        nurseid=nurse.nurseid,
+                        periodid=period.periodid,
+                        constrainttype=constraint_type,
+                        value=value,
+                        reason=reason,
+                    )
+                )
+
+    allowed_leave_types = {
+        "AL",
+        "MC",
+        "CCL",
+        "ML",
+        "EML",
+        "Mar",
+        "FCL",
+        "SPL",
+        "CL",
+        "BDL",
+        "HOL",
+        "SD",
+        "FD",
+    }
     codes = {
         _normalize_shift_request_code(req.code)
         for req in APR_2026_WARD_6_REQUESTS
-        if req.request_type == "shift_request"
+        if req.request_type == "shift_request" or req.code not in allowed_leave_types
     } | {"A", "P", "N"}
     _ensure_shift_codes(db, codes)
 
@@ -1384,6 +1487,17 @@ def seed_apr_2026_ward_6_preview(
     )
     for existing in existing_requests:
         db.delete(existing)
+    existing_leave_requests = list(
+        db.exec(
+            select(LeaveRequest).where(
+                LeaveRequest.nurseid.in_(nurse_ids),
+                LeaveRequest.startdate >= period.startdate,
+                LeaveRequest.enddate <= period.enddate,
+            )
+        ).all()
+    )
+    for existing in existing_leave_requests:
+        db.delete(existing)
     db.flush()
     existing_dates, used_numbers_by_nurse = _prepare_shift_request_seed_state(
         db, period.periodid, nurse_ids
@@ -1397,6 +1511,32 @@ def seed_apr_2026_ward_6_preview(
             continue
         nurse = nurse_by_name.get(shifted.name)
         if not nurse:
+            continue
+
+        if shifted.request_type == "leave_request" and shifted.code in allowed_leave_types:
+            existing = db.exec(
+                select(LeaveRequest).where(
+                    LeaveRequest.nurseid == nurse.nurseid,
+                    LeaveRequest.startdate == shifted.date,
+                    LeaveRequest.enddate == shifted.date,
+                    LeaveRequest.leavetype == shifted.code,
+                )
+            ).first()
+            if existing:
+                continue
+            db.add(
+                LeaveRequest(
+                    nurseid=nurse.nurseid,
+                    startdate=shifted.date,
+                    enddate=shifted.date,
+                    leavetype=shifted.code,
+                    leavecategory="PreApproved",
+                    submittedduringperiod="BeforeRoster",
+                    status="Approved",
+                    impactsroster=True,
+                )
+            )
+            created += 1
             continue
 
         key = (nurse.nurseid, shifted.date)

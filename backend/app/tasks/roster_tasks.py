@@ -13,6 +13,7 @@ from app.models.rbac import NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.rostering.ab_ratio_algo import ABRatioInfeasibilityError
 from app.rostering.milp_algo import MILPInfeasibilityError
+from app.rostering.twelve_hour_algo import TwelveHourInfeasibilityError
 from app.rostering.algo_scheduler import generate_roster
 from app.services.algorithm_lock_service import (
     refresh_ward_algorithm_lock,
@@ -234,17 +235,22 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             "roster": result["roster"],
         }
 
-    except (ABRatioInfeasibilityError, MILPInfeasibilityError) as exc:
-        logger.exception(
-            "Roster generation task failed without retry task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
+    except (ABRatioInfeasibilityError, MILPInfeasibilityError, TwelveHourInfeasibilityError) as exc:
+        logger.error(
+            "Roster generation task failed without retry task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s error=%s",
             self.request.id,
             ward_id,
             period_id,
             algorithm,
             self.request.retries,
+            exc,
         )
         release_ward_algorithm_lock(ward_id, self.request.id)
-        raise exc
+        return {
+            "task_id": self.request.id,
+            "status": "failed",
+            "error": str(exc),
+        }
 
     except Exception as exc:
         logger.exception(

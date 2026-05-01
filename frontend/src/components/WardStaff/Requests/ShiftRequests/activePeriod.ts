@@ -18,6 +18,7 @@ export function getActiveRequestPeriod(
   const sorted = [...periods].sort((a, b) => a.startdate.localeCompare(b.startdate));
 
   return (
+    sorted.find((period) => period.startdate > today) ??
     sorted.find(
       (period) =>
         !!period.requestopendate &&
@@ -26,7 +27,6 @@ export function getActiveRequestPeriod(
         period.requestclosedate >= today,
     ) ??
     sorted.find((period) => period.status === "RequestOpen") ??
-    sorted.find((period) => period.startdate > today) ??
     sorted.find((period) => period.startdate <= today && period.enddate >= today) ??
     sorted[0]
   );

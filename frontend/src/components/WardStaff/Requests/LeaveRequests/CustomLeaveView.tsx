@@ -11,6 +11,7 @@ interface CustomMonthViewProps {
   date: Date;
   localizer: DateLocalizer;
   events: Event[];
+  periodStartDate?: string;
   [key: string]: unknown;
 }
 
@@ -47,6 +48,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   localizer,
   events,
   isLocked,
+  periodStartDate,
 }: CustomMonthViewProps) {
   const locked = Boolean(isLocked);
   const [selectedRequests, setSelectedRequests] = useState<LeaveRequestEntry[] | null>(null);
@@ -115,22 +117,38 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
               const isCurrentMonth = moment(day).month() === currentMonth;
               const isToday = moment(day).isSame(moment(), "day");
               const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
+              const isBeforePeriodStart =
+                !!periodStartDate &&
+                moment(day).startOf("day").isBefore(moment(periodStartDate).startOf("day"));
+              const isBlocked = locked || isBeforePeriodStart;
               const dateKey = moment(day).format("YYYY-MM-DD");
 
               return (
                 <GridItem
                   key={di}
                   data-testid={`leave-request-calendar-cell-${dateKey}`}
-                  bg={isToday ? "menuactive" : isPastDate ? "gray.100" : "white"}
+                  bg={
+                    isToday && !isBeforePeriodStart
+                      ? "menuactive"
+                      : isPastDate || isBeforePeriodStart
+                        ? "gray.100"
+                        : "white"
+                  }
                   textAlign="start"
-                  color={isPastDate ? "gray.500" : isCurrentMonth ? "foreground" : "gray.400"}
+                  color={
+                    isPastDate || isBeforePeriodStart
+                      ? "gray.500"
+                      : isCurrentMonth
+                        ? "foreground"
+                        : "gray.400"
+                  }
                   p={2}
                   minH="120px"
                   borderColor="border"
                   borderWidth="1px"
-                  cursor={locked ? "default" : "pointer"}
+                  cursor={isBlocked ? "default" : "pointer"}
                   onClick={
-                    locked
+                    isBlocked
                       ? undefined
                       : () => {
                           setNewLeaveDate(day);
@@ -164,7 +182,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                               nurseName={ev.resource?.nurseName}
                               owned={ev.resource?.isOwn}
                               onClick={
-                                ev.resource?.isOwn && !locked
+                                ev.resource?.isOwn && !isBlocked
                                   ? () => {
                                       const ownedForDay = eventsForDay
                                         .filter((e) => e.resource?.isOwn)

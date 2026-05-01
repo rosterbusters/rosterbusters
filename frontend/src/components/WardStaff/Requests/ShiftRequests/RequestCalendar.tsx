@@ -3,10 +3,14 @@ import moment from "moment";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import CustomWeekView from "./CustomRequestView";
-import { Box } from "@chakra-ui/react";
+import { Box, VStack } from "@chakra-ui/react";
 import { ShiftRequestsService } from "@/client";
 import useAuth from "@/hooks/useAuth";
-import { getActiveShiftRequestPeriod } from "./activePeriod";
+import { LockdownBanner } from "@/components/Common/LockdownBanner";
+import {
+  useRequestPeriodWindow,
+  getRequestTargetPeriod,
+} from "@/hooks/useApplicationLockStatus";
 
 const localizer = momentLocalizer(moment);
 
@@ -21,6 +25,8 @@ interface Event {
 interface RequestCalendarProps {
   wardId: number | null | undefined;
   isLocked?: boolean;
+  nextWindowStart?: string;
+  nextWindowEnd?: string;
 }
 
 /**
@@ -32,20 +38,22 @@ interface RequestCalendarProps {
  * - Added staleTime: 0 on the shift-requests query so invalidation always
  *   triggers an immediate refetch rather than serving cache.
  * - The `enabled` guard now cleanly waits for both wardId AND periodId.
- * - Period selection logic is aligned with NewShiftRequest (today-first, then fallback).
+ * - Period selection logic is aligned with the lock banner window response.
  */
 export default function RequestCalendar({
   wardId,
   isLocked = false,
+  nextWindowStart,
+  nextWindowEnd,
 }: RequestCalendarProps) {
   const { user } = useAuth();
   const currentNurseId = user?.nurseid;
 
-  const { data: periods } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-  });
-  const activePeriod = useMemo(() => getActiveShiftRequestPeriod(periods), [periods]);
+  const { data: periodWindow } = useRequestPeriodWindow();
+  const activePeriod = useMemo(
+    () => getRequestTargetPeriod(periodWindow),
+    [periodWindow],
+  );
 
   const [date, setDate] = useState(() => moment().startOf("isoWeek").toDate());
 
@@ -100,7 +108,12 @@ export default function RequestCalendar({
 
   const { views, defaultView } = useMemo(() => {
     const FortnightView = ((props) => (
-      <CustomWeekView {...props} isLocked={isLocked} />
+      <CustomWeekView
+        {...props}
+        isLocked={isLocked}
+        periodStartDate={activePeriod?.startdate}
+        periodEndDate={activePeriod?.enddate}
+      />
     )) as typeof CustomWeekView;
     FortnightView.range = CustomWeekView.range;
     FortnightView.navigate = CustomWeekView.navigate;
@@ -115,24 +128,50 @@ export default function RequestCalendar({
       views: customViews,
       defaultView: "fortnight" as View,
     };
-  }, [isLocked]);
+  }, [activePeriod?.enddate, activePeriod?.startdate, isLocked]);
 
   const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
 
   return (
-    <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>
-      <Calendar
-        localizer={localizer}
-        startAccessor="start"
-        endAccessor="end"
-        events={events}
-        toolbar={false}
-        view={defaultView}
-        views={views}
-        date={date}
-        showAllEvents
-        onNavigate={onNavigate}
-      />
-    </Box>
+    <VStack h="100%" w="100%" gap={0} align="stretch">
+      {isLocked && (
+        <LockdownBanner
+          nextWindowStart={nextWindowStart}
+          nextWindowEnd={nextWindowEnd}
+          title="Shift Request Application Period Closed."
+        />
+      )}
+      <Box
+        h="100%"
+        position="relative"
+        borderWidth="1px"
+        p={3}
+        borderColor="border"
+        borderRadius={10}
+        overflow="hidden"
+      >
+        {isLocked && (
+          <Box
+            position="absolute"
+            inset={0}
+            bg="rgba(0, 0, 0, 0.08)"
+            zIndex={1}
+            pointerEvents="none"
+          />
+        )}
+        <Calendar
+          localizer={localizer}
+          startAccessor="start"
+          endAccessor="end"
+          events={events}
+          toolbar={false}
+          view={defaultView}
+          views={views}
+          date={date}
+          showAllEvents
+          onNavigate={onNavigate}
+        />
+      </Box>
+    </VStack>
   );
 }

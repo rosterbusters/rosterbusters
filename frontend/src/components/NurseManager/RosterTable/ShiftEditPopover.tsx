@@ -17,9 +17,9 @@ import {
   type ShiftCode,
   type ShiftAssignment,
   SHIFT_CODE_MAP,
-  SHIFT_COLOR_MAP,
+  getShiftColor,
 } from "./types";
-import { useAllShiftCodes, useUpdateRosterComment } from "./useRosterData";
+import { useAllShiftCodes, useLeaveShiftCodes, useUpdateRosterComment } from "./useRosterData";
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
 
 interface ShiftEditPopoverProps {
@@ -31,6 +31,7 @@ interface ShiftEditPopoverProps {
   onShiftChange: (shiftCode: ShiftCode) => void;
   onCommentChange?: (comment: string) => void;
   anchorEl: HTMLElement | null;
+  wardId?: number | null;
 }
 
 interface ShiftDropdownProps {
@@ -86,7 +87,7 @@ function ShiftDropdown({
           {selectedOption ? (
             <HStack gap={2}>
               <Box
-                bg={SHIFT_COLOR_MAP[selectedOption] ?? "gray.500"}
+                bg={getShiftColor(selectedOption)}
                 color="white"
                 px={2}
                 py={0.5}
@@ -174,7 +175,7 @@ function ShiftDropdown({
               }}
             >
               <Box
-                bg={SHIFT_COLOR_MAP[code] ?? "gray.500"}
+                bg={getShiftColor(code)}
                 color="white"
                 px={2}
                 py={0.5}
@@ -213,6 +214,7 @@ export function ShiftEditPopover({
   onShiftChange,
   onCommentChange,
   anchorEl,
+  wardId,
 }: ShiftEditPopoverProps) {
   const [selectedShift, setSelectedShift] = useState<ShiftCode | null>(
     currentShift?.shiftCode || null,
@@ -222,7 +224,8 @@ export function ShiftEditPopover({
   );
   const [showCommentInput, setShowCommentInput] = useState(false);
   const [isSavingComment, setIsSavingComment] = useState(false);
-  const { data: allShiftCodes = [], isLoading: isShiftCodesLoading } = useAllShiftCodes();
+  const { data: allShiftCodes = [], isLoading: isShiftCodesLoading } = useAllShiftCodes(wardId);
+  const { data: leaveShiftCodes = [], isLoading: isLeaveCodesLoading } = useLeaveShiftCodes();
 
   const updateRosterComment = useUpdateRosterComment();
 
@@ -276,14 +279,23 @@ export function ShiftEditPopover({
   }, [isOpen, handleUndoAll]);
 
   const workingOverride = new Set<ShiftCode>(["DO", "RD"]);
+  const preferredWorkingShiftOrder = ["A", "P", "N", "N-12", "P-12", "DO", "RD"];
   const workingShifts = allShiftCodes
     .filter((shiftCode) => shiftCode.isworking || workingOverride.has(shiftCode.shiftcode as ShiftCode))
-    .map((shiftCode) => shiftCode.shiftcode as ShiftCode);
-  const leaveShifts = allShiftCodes
-    .filter((shiftCode) => !shiftCode.isworking && !workingOverride.has(shiftCode.shiftcode as ShiftCode))
+    .map((shiftCode) => shiftCode.shiftcode as ShiftCode)
+    .sort((a, b) => {
+      const aIndex = preferredWorkingShiftOrder.indexOf(a);
+      const bIndex = preferredWorkingShiftOrder.indexOf(b);
+
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  const leaveShifts = leaveShiftCodes
     .map((shiftCode) => shiftCode.shiftcode as ShiftCode);
   const shiftDescriptions = Object.fromEntries(
-    allShiftCodes.map((shiftCode) => [shiftCode.shiftcode, shiftCode.description]),
+    [...allShiftCodes, ...leaveShiftCodes].map((shiftCode) => [shiftCode.shiftcode, shiftCode.description]),
   ) as Record<string, string>;
 
   // Determine which category the current selection belongs to
@@ -387,7 +399,7 @@ export function ShiftEditPopover({
                 descriptions={shiftDescriptions}
               />
 
-              {isShiftCodesLoading && (
+              {(isShiftCodesLoading || isLeaveCodesLoading) && (
                 <Flex align="center" gap={2} color="gray.500">
                   <Spinner size="sm" />
                   <Text fontSize="sm">Loading shift codes...</Text>
