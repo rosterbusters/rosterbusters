@@ -264,18 +264,13 @@ jobs:
           }
 
           echo "=== CHECK POSTGRES CONNECTIVITY ==="
-          python3 - <<'PY' || {
-            code=$?
-            dump_logs "$code" "$LINENO" "check postgres tcp connectivity"
-            exit "$code"
-          }
+          python3 -c 'import textwrap; exec(textwrap.dedent("""
           import socket
           import time
           from pathlib import Path
 
-          env_path = Path(".env")
           values = {}
-          for line in env_path.read_text().splitlines():
+          for line in Path(".env").read_text().splitlines():
               if not line or line.lstrip().startswith("#") or "=" not in line:
                   continue
               key, value = line.split("=", 1)
@@ -296,7 +291,7 @@ jobs:
                       )
                   }
               )
-              print(f"Postgres DNS resolved to: {', '.join(addresses)}")
+              print("Postgres DNS resolved to: " + ", ".join(addresses))
           except OSError as exc:
               raise SystemExit(f"Could not resolve POSTGRES_SERVER {host!r}: {exc}")
 
@@ -317,10 +312,30 @@ jobs:
                   "inbound rule allowing this EC2 instance or its security group on port "
                   f"{port}. Last error: {last_error}"
               )
-          PY
+          """))' || {
+            code=$?
+            dump_logs "$code" "$LINENO" "check postgres tcp connectivity"
+            exit "$code"
+          }
 
           echo "=== TEST POSTGRES LOGIN ==="
-          app_compose run --rm --no-deps prestart bash -lc "uv run python -c \"from sqlalchemy import create_engine, text; from app.core.config import settings; engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI), connect_args={'connect_timeout': 10}, pool_pre_ping=True); connection = engine.connect(); result = connection.execute(text('select current_database(), current_user, version()')).one(); connection.close(); print(f'Postgres login test passed: database={result[0]}, user={result[1]}'); print('Postgres server version: ' + result[2].splitlines()[0])\"" || {
+          app_compose run --rm --no-deps prestart bash -lc 'uv run python -c "import textwrap; exec(textwrap.dedent(\"\"\"
+          from sqlalchemy import create_engine, text
+          from app.core.config import settings
+
+          engine = create_engine(
+              str(settings.SQLALCHEMY_DATABASE_URI),
+              connect_args={\"connect_timeout\": 10},
+              pool_pre_ping=True,
+          )
+          with engine.connect() as connection:
+              result = connection.execute(
+                  text(\"select current_database(), current_user, version()\")
+              ).one()
+
+          print(f\"Postgres login test passed: database={result[0]}, user={result[1]}\")
+          print(f\"Postgres server version: {result[2].splitlines()[0]}\")
+          \"\"\"))"' || {
             code=$?
             dump_logs "$code" "$LINENO" "test postgres login"
             exit "$code"
