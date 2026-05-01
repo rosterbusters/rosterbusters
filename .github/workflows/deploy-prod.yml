@@ -210,9 +210,11 @@ jobs:
             grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
           }
           dump_logs() {
-            exit_code=$?
+            exit_code="${1:-1}"
+            failed_line="${2:-unknown}"
+            failed_command="${3:-unknown}"
             echo "=== FAILED COMMAND ==="
-            echo "line ${BASH_LINENO[0]}: ${BASH_COMMAND}"
+            echo "line ${failed_line}: ${failed_command}"
             echo "exit code: ${exit_code}"
             echo "=== DOCKER VERSION ==="
             docker version || true
@@ -234,25 +236,39 @@ jobs:
             app_compose logs --tail=200 celery_worker || true
             echo "=== APP LOGS ==="
             app_compose logs --tail=200 || true
-            exit "$exit_code"
           }
-          trap dump_logs ERR
 
           app_compose down --remove-orphans 2>/dev/null || true
           app_override_compose down --remove-orphans 2>/dev/null || true
 
           docker network create traefik-public 2>/dev/null || true
 
-          traefik_compose up -d
+          traefik_compose up -d || {
+            code=$?
+            dump_logs "$code" "$LINENO" "traefik_compose up -d"
+            exit "$code"
+          }
 
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
-          app_compose build
+          app_compose build || {
+            code=$?
+            dump_logs "$code" "$LINENO" "app_compose build"
+            exit "$code"
+          }
 
           echo "=== APP COMPOSE CONFIG ==="
-          app_compose config
+          app_compose config || {
+            code=$?
+            dump_logs "$code" "$LINENO" "app_compose config"
+            exit "$code"
+          }
 
           echo "=== CHECK POSTGRES CONNECTIVITY ==="
-          python3 - <<'PY'
+          python3 - <<'PY' || {
+            code=$?
+            dump_logs "$code" "$LINENO" "check postgres tcp connectivity"
+            exit "$code"
+          }
           import socket
           import time
           from pathlib import Path
@@ -303,12 +319,40 @@ jobs:
               )
           PY
 
+          echo "=== TEST POSTGRES LOGIN ==="
+          app_compose run --rm --no-deps prestart bash -lc 'uv run python - <<'"'"'PY'"'"'
+          from sqlalchemy import create_engine, text
+          from app.core.config import settings
+
+          engine = create_engine(
+              str(settings.SQLALCHEMY_DATABASE_URI),
+              connect_args={"connect_timeout": 10},
+              pool_pre_ping=True,
+          )
+          with engine.connect() as connection:
+              result = connection.execute(
+                  text("select current_database(), current_user, version()")
+              ).one()
+
+          print(f"Postgres login test passed: database={result[0]}, user={result[1]}")
+          print(f"Postgres server version: {result[2].splitlines()[0]}")
+          PY' || {
+            code=$?
+            dump_logs "$code" "$LINENO" "test postgres login"
+            exit "$code"
+          }
+
           echo "=== RUN ONE-OFF DB MIGRATION ==="
           docker rm -f prestart-migration 2>/dev/null || true
-          app_compose run --name prestart-migration prestart bash -lc "uv run alembic upgrade head"
+          app_compose run --name prestart-migration prestart bash -lc "uv run alembic upgrade head" || {
+            code=$?
+            dump_logs "$code" "$LINENO" "run alembic migration"
+            exit "$code"
+          }
           docker rm -f prestart-migration
 
           app_compose up -d --remove-orphans || {
+            code=$?
             echo "=== APP STATUS AFTER FAILED START ==="
             app_compose ps || true
             echo "=== PRESTART LOGS ==="
@@ -317,7 +361,8 @@ jobs:
             app_compose logs --tail=200 backend || true
             echo "=== CELERY LOGS ==="
             app_compose logs --tail=200 celery_worker || true
-            exit 1
+            dump_logs "$code" "$LINENO" "app_compose up -d --remove-orphans"
+            exit "$code"
           }
 
           echo "=== WAIT FOR BACKEND HEALTH ==="
