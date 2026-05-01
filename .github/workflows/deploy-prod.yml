@@ -56,7 +56,7 @@ jobs:
           DOMAIN=${{ secrets.DOMAIN_PROD }}
           STACK_NAME=${{ secrets.STACK_NAME_PROD }}
           SECRET_KEY=${{ secrets.SECRET_KEY }}
-          POSTGRES_SERVER=${{ secrets.RDS_PROD_HOST }}
+          POSTGRES_SERVER=db
           POSTGRES_USER=${{ secrets.RDS_PROD_USER }}
           POSTGRES_PASSWORD=${{ secrets.RDS_PROD_PASSWORD }}
           POSTGRES_DB=${{ secrets.RDS_PROD_DB }}
@@ -263,58 +263,24 @@ jobs:
             exit "$code"
           }
 
-          echo "=== CHECK POSTGRES CONNECTIVITY ==="
-          python3 -c 'import textwrap; exec(textwrap.dedent("""
-          import socket
-          import time
-          from pathlib import Path
-
-          values = {}
-          for line in Path(".env").read_text().splitlines():
-              if not line or line.lstrip().startswith("#") or "=" not in line:
-                  continue
-              key, value = line.split("=", 1)
-              values[key.strip()] = value.strip()
-
-          host = values.get("POSTGRES_SERVER", "")
-          port = int(values.get("POSTGRES_PORT", "5432"))
-          if not host:
-              raise SystemExit("POSTGRES_SERVER is missing from .env")
-
-          print(f"Checking TCP connectivity to Postgres at {host}:{port}")
-          try:
-              addresses = sorted(
-                  {
-                      result[4][0]
-                      for result in socket.getaddrinfo(
-                          host, port, type=socket.SOCK_STREAM
-                      )
-                  }
-              )
-              print("Postgres DNS resolved to: " + ", ".join(addresses))
-          except OSError as exc:
-              raise SystemExit(f"Could not resolve POSTGRES_SERVER {host!r}: {exc}")
-
-          last_error = None
-          for attempt in range(1, 7):
-              try:
-                  with socket.create_connection((host, port), timeout=10):
-                      print("Postgres TCP connectivity check passed.")
-                      break
-              except OSError as exc:
-                  last_error = exc
-                  print(f"Attempt {attempt}/6 failed: {exc}")
-                  time.sleep(5)
-          else:
-              raise SystemExit(
-                  "Could not connect to Postgres from the EC2 host. "
-                  "Check the RDS endpoint/port, VPC routing, and the RDS security group "
-                  "inbound rule allowing this EC2 instance or its security group on port "
-                  f"{port}. Last error: {last_error}"
-              )
-          """))' || {
+          echo "=== START LOCAL POSTGRES ==="
+          app_compose up -d db || {
             code=$?
-            dump_logs "$code" "$LINENO" "check postgres tcp connectivity"
+            dump_logs "$code" "$LINENO" "app_compose up -d db"
+            exit "$code"
+          }
+
+          echo "=== WAIT FOR POSTGRES HEALTH ==="
+          timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-db-1 2>/dev/null)" = "healthy" ]; do sleep 2; done' || {
+            code=$?
+            dump_logs "$code" "$LINENO" "wait for postgres health"
+            exit "$code"
+          }
+
+          echo "=== CHECK POSTGRES CONNECTIVITY ==="
+          app_compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' || {
+            code=$?
+            dump_logs "$code" "$LINENO" "pg_isready"
             exit "$code"
           }
 
