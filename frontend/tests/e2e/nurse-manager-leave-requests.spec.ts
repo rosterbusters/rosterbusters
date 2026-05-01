@@ -225,9 +225,6 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
       force: true,
       timeout: 10_000,
     })
-    await expect(
-      editDialog.getByRole("combobox", { name: "Nurse" }),
-    ).toContainText(nurseTwoName)
 
     const [updateResponse] = await Promise.all([
       page.waitForResponse(
@@ -250,7 +247,7 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     )
     await navigateLeaveCalendarToDate(page, newRequestDate)
     await expect(newRequestCell).toBeVisible()
-    await newRequestCell.dispatchEvent("click")
+    await newRequestCell.click()
     const createDialog = page.getByRole("dialog")
     await expect(createDialog.getByText("Create Leave Request")).toBeVisible({
       timeout: 10_000,

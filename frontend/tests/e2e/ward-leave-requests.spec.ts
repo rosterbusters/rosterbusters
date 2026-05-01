@@ -28,6 +28,59 @@ async function loginToken(
 const formatDateKey = (value: Date) =>
   `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
 
+async function navigateLeaveCalendarToDate(
+  page: import("@playwright/test").Page,
+  targetDate: Date,
+) {
+  const toolbar = page.locator(".rbc-toolbar").first()
+  await expect(toolbar).toBeVisible()
+
+  await toolbar.locator("select").first().selectOption(String(targetDate.getMonth()))
+  await toolbar
+    .locator("select")
+    .nth(1)
+    .selectOption(String(targetDate.getFullYear()))
+}
+
+async function getRequestableDate(
+  request: APIRequestContext,
+  token: string,
+) {
+  const res = await request.get(
+    `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!res.ok()) {
+    const body = await res.text()
+    throw new Error(
+      `Failed to load roster period window: ${res.status()} ${body}`,
+    )
+  }
+
+  const periodWindow = (await res.json()) as {
+    current_period?: { startdate?: string } | null
+    upcoming_period?: { startdate?: string } | null
+    request_open_period?: { startdate?: string } | null
+  }
+
+  const periodStart =
+    periodWindow.upcoming_period?.startdate ??
+    periodWindow.current_period?.startdate ??
+    periodWindow.request_open_period?.startdate
+
+  const tomorrow = new Date()
+  tomorrow.setHours(0, 0, 0, 0)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+
+  if (!periodStart) {
+    return tomorrow
+  }
+
+  const requestableDate = new Date(periodStart)
+  requestableDate.setHours(0, 0, 0, 0)
+  return requestableDate > tomorrow ? requestableDate : tomorrow
+}
+
 test("ward staff can create a leave request from the calendar", async ({
   page,
   request,
@@ -108,22 +161,13 @@ test("ward staff can create a leave request from the calendar", async ({
       page.getByText("Click on a date to create/edit leave request."),
     ).toBeVisible()
 
-    const targetDate = new Date()
-    targetDate.setDate(targetDate.getDate() + 1)
+    const targetDate = await getRequestableDate(request, nurseToken)
     const dateKey = formatDateKey(targetDate)
 
-    const now = new Date()
-    const needsNextMonth =
-      targetDate.getFullYear() !== now.getFullYear() ||
-      targetDate.getMonth() !== now.getMonth()
-    if (needsNextMonth) {
-      await page.getByRole("button", { name: "Next" }).click()
-    }
+    await navigateLeaveCalendarToDate(page, targetDate)
 
-    await page
-      .getByTestId(`leave-request-calendar-cell-${dateKey}`)
-      .dispatchEvent("click")
-    await expect(page.getByText("Create Leave Request")).toBeVisible()
+    await page.getByTestId(`leave-request-calendar-cell-${dateKey}`).click()
+    await expect(page.getByRole("dialog")).toContainText("Create Leave Request")
 
     const dialog = page.getByRole("dialog")
     await page
