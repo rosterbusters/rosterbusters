@@ -6,22 +6,16 @@ services:
     profiles: ["local-db"]  # opt-in only alongside the local db service
     restart: unless-stopped
   prestart:
-    depends_on: !reset []
     environment:
       - POSTGRES_SERVER=${POSTGRES_SERVER}
 
   backend:
-    depends_on: !override
-      - prestart
-    volumes: !reset []
     command: ["fastapi", "run", "--workers", "4", "app/main.py"]
     environment:
       - POSTGRES_SERVER=${POSTGRES_SERVER}
       - REDIS_URL=redis://redis:6379/0
 
   celery_worker:
-    depends_on: !override
-      - redis
     environment:
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_SERVER=${POSTGRES_SERVER}
@@ -32,8 +26,6 @@ services:
       - ~/gurobi.lic:/root/gurobi.lic:ro
 
   frontend:
-    ports: !reset []
-    volumes: !reset []
     build:
       context: ./frontend
       dockerfile: Dockerfile

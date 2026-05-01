@@ -210,11 +210,22 @@ jobs:
             grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
           }
           dump_logs() {
+            local exit_code=$?
+            echo "=== FAILED COMMAND ==="
+            echo "line ${BASH_LINENO[0]}: ${BASH_COMMAND}"
+            echo "exit code: ${exit_code}"
+            echo "=== DOCKER VERSION ==="
+            docker version || true
+            docker compose version || true
             echo "=== TRAEFIK LOGS ==="
             traefik_compose logs --tail=200 || true
             debug_traefik_tls
+            echo "=== APP COMPOSE CONFIG ==="
+            app_compose config || true
             echo "=== APP STATUS ==="
             app_compose ps || true
+            echo "=== MIGRATION LOGS ==="
+            docker logs --tail=200 prestart-migration || true
             echo "=== PRESTART LOGS ==="
             app_compose logs --tail=200 prestart || true
             echo "=== BACKEND LOGS ==="
@@ -223,6 +234,7 @@ jobs:
             app_compose logs --tail=200 celery_worker || true
             echo "=== APP LOGS ==="
             app_compose logs --tail=200 || true
+            exit "$exit_code"
           }
           trap dump_logs ERR
 
@@ -240,7 +252,9 @@ jobs:
           app_compose config
 
           echo "=== RUN ONE-OFF DB MIGRATION ==="
-          app_compose run --rm prestart bash -lc "uv run alembic upgrade head"
+          docker rm -f prestart-migration 2>/dev/null || true
+          app_compose run --name prestart-migration prestart bash -lc "uv run alembic upgrade head"
+          docker rm -f prestart-migration
 
           app_compose up -d --remove-orphans || {
             echo "=== APP STATUS AFTER FAILED START ==="
