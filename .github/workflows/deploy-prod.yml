@@ -170,7 +170,7 @@ jobs:
           APP_PROJECT=rosterbusters
           TRAEFIK_PROJECT=traefik-public
           app_compose() {
-            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"
+            docker compose --profile local-db -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"
           }
           app_override_compose() {
             docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml "$@"
