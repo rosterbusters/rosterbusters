@@ -6,14 +6,13 @@ services:
     profiles: ["local-db"]  # opt-in only alongside the local db service
     restart: unless-stopped
   prestart:
-    depends_on: {}
+    depends_on: []
     environment:
       - POSTGRES_SERVER=${POSTGRES_SERVER}
 
   backend:
     depends_on:
-      prestart:
-        condition: service_completed_successfully
+      - prestart
     volumes: []
     command: ["fastapi", "run", "--workers", "4", "app/main.py"]
     environment:
