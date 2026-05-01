@@ -17,7 +17,6 @@ import RequestCalendar from "@/components/WardStaff/Requests/ShiftRequests/Reque
 import LeaveRequestCalendar from "@/components/WardStaff/Requests/LeaveRequests/LeaveRequestCalendar";
 import { NewShiftRequest } from "@/components/WardStaff/Requests/ShiftRequests/NewShiftRequest";
 import { NewLeaveRequest } from "@/components/WardStaff/Requests/LeaveRequests/NewLeaveRequest";
-import { LockdownBanner } from "@/components/Common/LockdownBanner";
 import { useApplicationLockStatus } from "@/hooks/useApplicationLockStatus";
 import useAuth from "@/hooks/useAuth";
 
@@ -36,27 +35,7 @@ function RouteComponent() {
   const isShiftLocked = activeTab === "shift" && isLocked;
 
   return (
-    <>
-      {isShiftLocked && (
-        <>
-          <LockdownBanner
-            nextWindowStart={nextWindowStart}
-            nextWindowEnd={nextWindowEnd}
-          />
-          {/* Full-screen overlay below navbar: blocks all pointer events on the content area */}
-          <Box
-            position="fixed"
-            top="64px"
-            left={0}
-            right={0}
-            bottom={0}
-            bg="rgba(0, 0, 0, 0.08)"
-            zIndex={40}
-            pointerEvents="all"
-          />
-        </>
-      )}
-      <Flex
+    <Flex
         minH="100vh"
         w="100vw"
         height={"100%"}
@@ -142,7 +121,12 @@ function RouteComponent() {
           </Grid>
           <Box h="100%" w="100%">
             {activeTab === "shift" ? (
-              <RequestCalendar wardId={user?.wardid} isLocked={isLocked} />
+              <RequestCalendar
+                wardId={user?.wardid}
+                isLocked={isShiftLocked}
+                nextWindowStart={nextWindowStart}
+                nextWindowEnd={nextWindowEnd}
+              />
             ) : (
               <LeaveRequestCalendar wardId={user?.wardid} isLocked={false} />
             )}
@@ -168,6 +152,5 @@ function RouteComponent() {
           </>
         )}
       </Flex>
-    </>
   );
 }

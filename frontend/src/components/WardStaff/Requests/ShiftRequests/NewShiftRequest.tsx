@@ -18,7 +18,10 @@ import { AssignableStatus } from "./AssignableStatus";
 import { DatePickerDemo } from "@/components/Common/DatePicker";
 import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
-import { getActiveShiftRequestPeriod } from "./activePeriod";
+import {
+  getRequestTargetPeriod,
+  useRequestPeriodWindow,
+} from "@/hooks/useApplicationLockStatus";
 
 
 interface NewShiftRequestProps {
@@ -40,10 +43,7 @@ export const NewShiftRequest = ({
   );
   const queryClient = useQueryClient();
 
-  const { data: periods } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-  });
+  const { data: periodWindow } = useRequestPeriodWindow();
 
   const { data: shiftCodes } = useQuery({
     queryKey: ["shift-codes", wardId ?? "default"],
@@ -100,7 +100,7 @@ export const NewShiftRequest = ({
   );
 
   const handleSubmit = () => {
-    const activePeriod = getActiveShiftRequestPeriod(periods);
+    const activePeriod = getRequestTargetPeriod(periodWindow);
     if (!activePeriod) {
       showErrorToast("There is no roster period available.");
       return;

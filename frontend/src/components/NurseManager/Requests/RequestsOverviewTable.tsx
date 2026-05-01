@@ -14,6 +14,7 @@ import {
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { ShiftRequestsService } from "@/client";
 import { LeaveRequestsService } from "@/client/LeaveRequestsService";
+import { getShiftColor } from "@/components/NurseManager/RosterTable/types";
 import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
 import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
 import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
@@ -120,26 +121,6 @@ function TypeCell({ type }: { type: "ShiftRequest" | "LeaveRequest" }) {
   );
 }
 
-// ─── Code → badge colour (mirrors SHIFT_COLOR_MAP in RosterTable/types) ──────
-const ALL_BADGE_COLORS: Record<string, string> = {
-  // Shift types
-  D: "#0891b2",
-  A: "#06b6d4",
-  P: "#0e7490",
-  N: "#164e63",
-  "N-12": "#164e63",
-  // Leave types
-  AL: "#94a3b8",
-  MC: "#fbbf24",
-  URG: "#f87171",
-  BCL: "#a78bfa",
-  CCL: "#34d399",
-  ML: "#f472b6",
-  CL: "#60a5fa",
-  EML: "#c084fc",
-  DO: "#a3a3a3",
-};
-
 // Fallback: resolve code from full name (covers both shift and leave)
 const NAME_TO_CODE: Record<string, string> = {
   // Shift
@@ -169,7 +150,7 @@ function RequestTypeBadge({
   shiftCode?: string | null;
 }) {
   const code = shiftCode ?? NAME_TO_CODE[name] ?? null;
-  const color = code ? ALL_BADGE_COLORS[code] : null;
+  const color = code ? getShiftColor(code) : null;
 
   if (code && color) {
     return (

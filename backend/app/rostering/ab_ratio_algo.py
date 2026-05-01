@@ -237,17 +237,18 @@ _DEFAULT_WEIGHTS = {
     "daily_total_night_overflow": 80_000,
     "daily_total_night_overflow_tier2": 150_000,
     "daily_total_night_overflow_tier3": 320_000,
-    "rn_night": 100_000,
+    "rn_night": 300_000,
     "rn_night_over": 500_000,
-    "rank_b_night": 100_000,
+    "rank_b_night": 300_000,
     "rank_b_night_over": 500_000,
     "rank_c_night_over": 14_000,
     "min_nights": 100_000,
-    "isolated_night": 100_000,
+    "isolated_night": 80_000,
     "double_night_pref": 120_000,
     "daily_total_shift_balance": 24_000,
     "daily_total_shift_balance_c": 10_500,
     "daily_ap_balance": 18_000,
+    "ssn_rank_a_daily_shift_balance": 5_000,
     "c_ratio_am": 4_000,
     "c_ratio_pm": 4_200,
     "c_ratio_night": 4_200,
@@ -281,6 +282,7 @@ _DEFAULT_AB_RATIO_COVERAGE_MODE = "night_caps_only"
 _DEFAULT_RANK_A_NIGHT_CAP_MODE = "hard_then_soft"
 _DEFAULT_RANK_B_NIGHT_MIN_MODE = "hard_then_soft"
 _DEFAULT_WEIGHT_CAP = 1_000_000
+_DEFAULT_SSN_RANK_A_SHIFT_GAP_TARGET = 1
 
 logger = logging.getLogger(__name__)
 
@@ -352,6 +354,14 @@ def _get_shift_pattern(nurse: dict) -> str | None:
     if normalized in {"AM_ONLY", "PM_ONLY"}:
         return normalized
     return None
+
+
+def _is_ssn_designation(nurse: dict) -> bool:
+    for key in ("designation", "staffing_role"):
+        raw = nurse.get(key)
+        if raw is not None and str(raw).strip().upper() == "SSN":
+            return True
+    return False
 
 
 def _has_no_night_constraint(nurse: dict) -> bool:
@@ -463,9 +473,8 @@ def _pattern_weekly_targets(week_len: int, free_days: int, fixed_off_days: int) 
 def _leave_adjusted_weekly_do_target(free_days: int, leave_days: int, fixed_off_days: int = 0) -> int:
     if free_days <= 0:
         return 0
-    if leave_days >= 5:
-        return free_days
-    return min(free_days, max(_weekly_do_target(free_days), fixed_off_days))
+    week_len = free_days + leave_days
+    return min(free_days, max(_weekly_do_target(week_len), fixed_off_days))
 
 
 def _resolve_daily_targets(raw_target, default_targets: list[int]) -> list[int]:
@@ -706,6 +715,7 @@ def parse_ab_ratio_inputs(
     hard_assignments: list[dict[int, int]] = [{} for _ in range(num_nurses)]
     soft_assignments: list[dict[int, tuple[int, int]]] = [{} for _ in range(num_nurses)]
     leave_overlay: dict[str, dict[int, str]] = {}
+    al_leave_days_by_week: dict[int, dict[int, list[int]]] = {}
 
     for nurse_id, req_list in hard_requests.items():
         nurse_idx = id_to_idx.get(nurse_id)
@@ -723,6 +733,8 @@ def parse_ab_ratio_inputs(
             if shift_code == AL:
                 al_day_req[nurse_idx].add(day_idx)
                 leave_overlay.setdefault(id_to_name[nurse_id], {})[day_idx] = str(raw_shift).strip().upper()
+                if str(raw_shift).strip().upper() == "AL":
+                    al_leave_days_by_week.setdefault(nurse_idx, {}).setdefault(day_idx // 7, []).append(day_idx)
                 continue
             if _is_disallowed_work_shift(
                 shift_code,
@@ -731,6 +743,22 @@ def parse_ab_ratio_inputs(
             ):
                 continue
             hard_assignments[nurse_idx][day_idx] = shift_code
+
+    for nurse_idx, weeks in al_leave_days_by_week.items():
+        for week_index, leave_days in weeks.items():
+            week_start = week_index * 7
+            week_end = min(week_start + 7, num_days)
+            if len(set(leave_days)) != week_end - week_start:
+                continue
+            off_days = sorted(
+                set(leave_days),
+                key=lambda day_idx: (0 if day_idx % 7 in (5, 6) else 1, day_idx),
+            )[: _weekly_do_target(week_end - week_start)]
+            nurse_name = id_to_name[nurses_sorted[nurse_idx]["id"]]
+            for day_idx in off_days:
+                al_day_req[nurse_idx].discard(day_idx)
+                leave_overlay.get(nurse_name, {}).pop(day_idx, None)
+                hard_assignments[nurse_idx][day_idx] = OFF
 
     for nurse_id, req_list in soft_requests.items():
         nurse_idx = id_to_idx.get(nurse_id)
@@ -781,6 +809,20 @@ def parse_ab_ratio_inputs(
     ratio_working_rank_c = [idx for idx in managed_working_rank_c if idx not in no_night_ids]
     ratio_working_rank_a = [idx for idx in managed_working_rank_a if idx not in no_night_ids]
     ratio_working_rank_b = [idx for idx in managed_working_rank_b if idx not in no_night_ids]
+    ssn_rank_a_daily_balance_nurses = [
+        idx
+        for idx in working_rank_a
+        if _is_ssn_designation(nurses_sorted[idx])
+    ]
+    non_ssn_managed_working_rank_a = [
+        idx for idx in managed_working_rank_a if not _is_ssn_designation(nurses_sorted[idx])
+    ]
+    non_ssn_pattern_working_rank_a = [
+        idx for idx in pattern_working_rank_a if not _is_ssn_designation(nurses_sorted[idx])
+    ]
+    non_ssn_ratio_working_rank_a = [
+        idx for idx in ratio_working_rank_a if not _is_ssn_designation(nurses_sorted[idx])
+    ]
 
     post_night_off: set[int] = set()
     for nurse_id, shift_name in prev_last_shift.items():
@@ -895,6 +937,13 @@ def parse_ab_ratio_inputs(
         cfg.get("daily_ap_balance_weight"),
         ratio_weights["daily_ap_balance"],
     )
+    ratio_weights["ssn_rank_a_daily_shift_balance"] = _coerce_int(
+        cfg.get(
+            "ssn_rank_a_daily_shift_balance_weight",
+            cfg.get("ssn_rank_a_shift_balance_weight"),
+        ),
+        ratio_weights["ssn_rank_a_daily_shift_balance"],
+    )
     ratio_weights["c_ratio_am"] = _coerce_int(
         cfg.get("c_ratio_am_weight"),
         ratio_weights["c_ratio_am"],
@@ -934,6 +983,13 @@ def parse_ab_ratio_inputs(
         _coerce_int(
             cfg.get("daily_total_shift_gap_target"),
             _DEFAULT_DAILY_TOTAL_SHIFT_GAP_TARGET,
+        ),
+        0,
+    )
+    ssn_rank_a_shift_gap_target = max(
+        _coerce_int(
+            cfg.get("ssn_rank_a_shift_gap_target"),
+            _DEFAULT_SSN_RANK_A_SHIFT_GAP_TARGET,
         ),
         0,
     )
@@ -995,10 +1051,10 @@ def parse_ab_ratio_inputs(
     ab_target_totals, _ = _build_ab_targets(expected_ab_work_slots, ab_shift_ratio)
 
     expected_a_work_slots = 0
-    if managed_working_rank_a:
-        _, expected_a_work_slots = _build_weekly_do_targets_for_group(managed_working_rank_a)
-    if pattern_working_rank_a:
-        _, expected_pattern_a_work_slots = _build_weekly_do_targets_for_group(pattern_working_rank_a)
+    if non_ssn_managed_working_rank_a:
+        _, expected_a_work_slots = _build_weekly_do_targets_for_group(non_ssn_managed_working_rank_a)
+    if non_ssn_pattern_working_rank_a:
+        _, expected_pattern_a_work_slots = _build_weekly_do_targets_for_group(non_ssn_pattern_working_rank_a)
         expected_a_work_slots += expected_pattern_a_work_slots
     a_target_totals, _ = _build_ab_targets(expected_a_work_slots, ab_shift_ratio)
     a_daily_targets = {
@@ -1129,6 +1185,10 @@ def parse_ab_ratio_inputs(
         "ratio_working_rank_c": ratio_working_rank_c,
         "ratio_working_rank_a": ratio_working_rank_a,
         "ratio_working_rank_b": ratio_working_rank_b,
+        "ssn_rank_a_daily_balance_nurses": ssn_rank_a_daily_balance_nurses,
+        "non_ssn_managed_working_rank_a": non_ssn_managed_working_rank_a,
+        "non_ssn_pattern_working_rank_a": non_ssn_pattern_working_rank_a,
+        "non_ssn_ratio_working_rank_a": non_ssn_ratio_working_rank_a,
         "ab_weekly_do_targets": ab_weekly_do_targets,
         "ab_target_totals": ab_target_totals,
         "a_daily_targets": a_daily_targets,
@@ -1151,6 +1211,7 @@ def parse_ab_ratio_inputs(
         "ab_ratio_coverage_mode": ab_ratio_coverage_mode,
         "daily_total_shift_balance_enabled": daily_total_shift_balance_enabled,
         "daily_total_shift_gap_target": daily_total_shift_gap_target,
+        "ssn_rank_a_shift_gap_target": ssn_rank_a_shift_gap_target,
         "weights": ratio_weights,
     }
 
@@ -1183,8 +1244,7 @@ def _format_output(
             for day_idx, label in enumerate(schedule_labels):
                 if label == "OFF":
                     off_count += 1
-                    if off_count % 2 == 0:
-                        schedule_labels[day_idx] = "RD"
+                    schedule_labels[day_idx] = "RD" if off_count % 2 == 0 else "DO"
 
         output_nurses.append(
             {
@@ -1194,12 +1254,12 @@ def _format_output(
                 "schedule": schedule_labels,
                 "stats": {
                     "total_shifts": sum(
-                        1 for label in schedule_labels if label not in {"OFF", "RD"} and label not in leave_codes
+                        1 for label in schedule_labels if label not in {"DO", "RD"} and label not in leave_codes
                     ),
                     "am_shifts": schedule_labels.count("AM"),
                     "pm_shifts": schedule_labels.count("PM"),
                     "night_shifts": schedule_labels.count("NIGHT"),
-                    "days_off": schedule_labels.count("OFF") + schedule_labels.count("RD"),
+                    "days_off": schedule_labels.count("DO") + schedule_labels.count("RD"),
                     "al_days": sum(1 for label in schedule_labels if label in leave_codes),
                 },
             }
@@ -1308,6 +1368,10 @@ def run_ab_ratio_pipeline(
     ratio_working_rank_c = parsed["ratio_working_rank_c"]
     ratio_working_rank_a = parsed["ratio_working_rank_a"]
     ratio_working_rank_b = parsed["ratio_working_rank_b"]
+    ssn_rank_a_daily_balance_nurses = parsed["ssn_rank_a_daily_balance_nurses"]
+    non_ssn_managed_working_rank_a = parsed["non_ssn_managed_working_rank_a"]
+    non_ssn_pattern_working_rank_a = parsed["non_ssn_pattern_working_rank_a"]
+    non_ssn_ratio_working_rank_a = parsed["non_ssn_ratio_working_rank_a"]
     ab_weekly_do_targets = parsed["ab_weekly_do_targets"]
     c_weekly_do_targets = parsed["c_weekly_do_targets"]
     pattern_weekly_do_targets = parsed["pattern_weekly_do_targets"]
@@ -1324,6 +1388,7 @@ def run_ab_ratio_pipeline(
     ab_ratio_coverage_mode = parsed["ab_ratio_coverage_mode"]
     daily_total_shift_balance_enabled = parsed["daily_total_shift_balance_enabled"]
     daily_total_shift_gap_target = parsed["daily_total_shift_gap_target"]
+    ssn_rank_a_shift_gap_target = parsed["ssn_rank_a_shift_gap_target"]
     weights = parsed["weights"]
 
     x = {}
@@ -1611,7 +1676,7 @@ def run_ab_ratio_pipeline(
             )
 
     ab_am_pm_nurses = managed_working_ab + pattern_working_ab
-    a_am_pm_nurses = managed_working_rank_a + pattern_working_rank_a
+    a_am_pm_nurses = non_ssn_managed_working_rank_a + non_ssn_pattern_working_rank_a
     b_am_pm_nurses = managed_working_rank_b + pattern_working_rank_b
     c_am_pm_nurses = managed_working_rank_c + pattern_working_rank_c
 
@@ -1764,7 +1829,7 @@ def run_ab_ratio_pipeline(
                 add_penalty(overflow_tier3, weights["daily_ratio_night_overflow_tier3"])
 
     total_ratio_night_targets = [
-        a_daily_targets[NIGHT][day_idx]
+        rn_night_targets[day_idx]
         + b_daily_targets[NIGHT][day_idx]
         + c_daily_targets[NIGHT][day_idx]
         for day_idx in range(num_days)
@@ -1789,7 +1854,7 @@ def run_ab_ratio_pipeline(
 
     if daily_total_shift_balance_enabled:
         for day_idx in range(num_days):
-            for group_name, group_nurses in (("a", ratio_working_rank_a), ("b", ratio_working_rank_b)):
+            for group_name, group_nurses in (("a", non_ssn_ratio_working_rank_a), ("b", ratio_working_rank_b)):
                 if not group_nurses:
                     continue
                 shift_totals = [
@@ -1859,6 +1924,50 @@ def run_ab_ratio_pipeline(
                 )
                 model.Add(c_gap_penalty >= c_day_spread - daily_total_shift_gap_target)
                 add_penalty(c_gap_penalty, weights["daily_total_shift_balance_c"])
+
+    if ssn_rank_a_daily_balance_nurses:
+        for day_idx in range(num_days):
+            shift_totals = [
+                model.NewIntVar(
+                    0,
+                    len(ssn_rank_a_daily_balance_nurses),
+                    f"ssn_rank_a_day_{day_idx}_{shift_code}_total",
+                )
+                for shift_code in WORK_SHIFTS
+            ]
+            for total_var, shift_code in zip(shift_totals, WORK_SHIFTS):
+                model.Add(
+                    total_var
+                    == sum(
+                        x[nurse_idx, day_idx, shift_code]
+                        for nurse_idx in ssn_rank_a_daily_balance_nurses
+                    )
+                )
+            day_max = model.NewIntVar(
+                0,
+                len(ssn_rank_a_daily_balance_nurses),
+                f"ssn_rank_a_day_{day_idx}_shift_max",
+            )
+            day_min = model.NewIntVar(
+                0,
+                len(ssn_rank_a_daily_balance_nurses),
+                f"ssn_rank_a_day_{day_idx}_shift_min",
+            )
+            model.AddMaxEquality(day_max, shift_totals)
+            model.AddMinEquality(day_min, shift_totals)
+            day_spread = model.NewIntVar(
+                0,
+                len(ssn_rank_a_daily_balance_nurses),
+                f"ssn_rank_a_day_{day_idx}_shift_spread",
+            )
+            model.Add(day_spread == day_max - day_min)
+            balance_penalty = model.NewIntVar(
+                0,
+                len(ssn_rank_a_daily_balance_nurses),
+                f"ssn_rank_a_day_{day_idx}_shift_balance_penalty",
+            )
+            model.Add(balance_penalty >= day_spread - ssn_rank_a_shift_gap_target)
+            add_penalty(balance_penalty, weights["ssn_rank_a_daily_shift_balance"])
 
     for day_idx in range(num_days):
         if not rank_a:

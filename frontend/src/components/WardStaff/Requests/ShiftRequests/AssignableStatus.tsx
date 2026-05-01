@@ -2,17 +2,19 @@ import { Text, Badge, HStack } from "@chakra-ui/react";
 import { useQuery } from "@tanstack/react-query";
 import { ShiftRequestsService } from "@/client";
 import { useMemo } from "react";
-import { getActiveShiftRequestPeriod } from "./activePeriod";
+import {
+  getRequestTargetPeriod,
+  useRequestPeriodWindow,
+} from "@/hooks/useApplicationLockStatus";
 
 const MAX_REQUESTS = 3;
 
 export function AssignableStatus() {
-  const { data: periods } = useQuery({
-    queryKey: ["roster-periods"],
-    queryFn: () => ShiftRequestsService.getRosterPeriods(),
-  });
-
-  const activePeriod = useMemo(() => getActiveShiftRequestPeriod(periods), [periods]);
+  const { data: periodWindow } = useRequestPeriodWindow();
+  const activePeriod = useMemo(
+    () => getRequestTargetPeriod(periodWindow),
+    [periodWindow],
+  );
 
   const { data: userRequests } = useQuery({
     queryKey: ["shift-requests", "user"],

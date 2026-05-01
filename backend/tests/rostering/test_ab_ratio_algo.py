@@ -72,7 +72,7 @@ def test_ab_ratio_softens_min_nights_when_hard_requests_block_them() -> None:
     assert "NIGHT" not in nurse_rows["A1"]
 
 
-def test_ab_ratio_prorates_weekly_do_target_for_leave_days() -> None:
+def test_ab_ratio_preserves_weekly_do_rd_target_for_leave_days() -> None:
     nurses = [{"id": 1, "name": "A1", "rank": "A"}]
     shifts = [
         {
@@ -89,7 +89,7 @@ def test_ab_ratio_prorates_weekly_do_target_for_leave_days() -> None:
         hard_requests={1: [(0, "AL"), (1, "AL"), (2, "AL")]},
     )
 
-    assert parsed["ab_weekly_do_targets"][0] == [1, 2]
+    assert parsed["ab_weekly_do_targets"][0] == [2, 2]
 
 
 def test_ab_ratio_assigns_remaining_week_days_to_do_for_five_leave_days() -> None:
@@ -109,6 +109,29 @@ def test_ab_ratio_assigns_remaining_week_days_to_do_for_five_leave_days() -> Non
         hard_requests={1: [(day_idx, "AL") for day_idx in range(5)]},
     )
 
+    assert parsed["ab_weekly_do_targets"][0] == [2, 2]
+
+
+def test_ab_ratio_turns_full_week_al_weekend_into_do_rd() -> None:
+    nurses = [{"id": 1, "name": "A1", "rank": "A"}]
+    shifts = [
+        {
+            "AM": {"A": 0, "B": 0, "C": 0},
+            "PM": {"A": 0, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+        for _ in range(14)
+    ]
+
+    parsed = ab_ratio_algo.parse_ab_ratio_inputs(
+        nurses,
+        shifts,
+        hard_requests={1: [(day_idx, "AL") for day_idx in range(7)]},
+    )
+
+    assert parsed["al_day_req"][0] == {0, 1, 2, 3, 4}
+    assert parsed["hard_assignments"][0][5] == ab_ratio_algo.OFF
+    assert parsed["hard_assignments"][0][6] == ab_ratio_algo.OFF
     assert parsed["ab_weekly_do_targets"][0] == [2, 2]
 
 
@@ -268,7 +291,7 @@ def test_ab_ratio_allows_single_night_block_when_forced() -> None:
 
     nurse_rows = {nurse["name"]: nurse["schedule"] for nurse in result["nurses"]}
     assert nurse_rows["A1"][0] == "NIGHT"
-    assert nurse_rows["A1"][1] == "OFF"
+    assert nurse_rows["A1"][1] == "DO"
 
 
 def test_ab_ratio_does_not_penalize_last_day_night_as_isolated(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -305,6 +328,6 @@ def test_ab_ratio_does_not_penalize_last_day_night_as_isolated(monkeypatch: pyte
     )
 
     nurse_rows = {nurse["name"]: nurse["schedule"] for nurse in result["nurses"]}
-    assert nurse_rows["A1"][12] in {"OFF", "RD"}
+    assert nurse_rows["A1"][12] in {"DO", "RD"}
     assert nurse_rows["A1"][13] == "NIGHT"
     assert result["metadata"]["penalty_score"] == 0
