@@ -320,23 +320,7 @@ jobs:
           PY
 
           echo "=== TEST POSTGRES LOGIN ==="
-          app_compose run --rm --no-deps prestart bash -lc 'uv run python - <<'"'"'PY'"'"'
-          from sqlalchemy import create_engine, text
-          from app.core.config import settings
-
-          engine = create_engine(
-              str(settings.SQLALCHEMY_DATABASE_URI),
-              connect_args={"connect_timeout": 10},
-              pool_pre_ping=True,
-          )
-          with engine.connect() as connection:
-              result = connection.execute(
-                  text("select current_database(), current_user, version()")
-              ).one()
-
-          print(f"Postgres login test passed: database={result[0]}, user={result[1]}")
-          print(f"Postgres server version: {result[2].splitlines()[0]}")
-          PY' || {
+          app_compose run --rm --no-deps prestart bash -lc "uv run python -c \"from sqlalchemy import create_engine, text; from app.core.config import settings; engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI), connect_args={'connect_timeout': 10}, pool_pre_ping=True); connection = engine.connect(); result = connection.execute(text('select current_database(), current_user, version()')).one(); connection.close(); print(f'Postgres login test passed: database={result[0]}, user={result[1]}'); print('Postgres server version: ' + result[2].splitlines()[0])\"" || {
             code=$?
             dump_logs "$code" "$LINENO" "test postgres login"
             exit "$code"
