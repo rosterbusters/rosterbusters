@@ -226,7 +226,7 @@ jobs:
           }
           trap dump_logs ERR
 
-          app_compose down -v --remove-orphans 2>/dev/null || true
+          app_compose down --remove-orphans 2>/dev/null || true
           app_override_compose down --remove-orphans 2>/dev/null || true
 
           docker network create traefik-public 2>/dev/null || true
