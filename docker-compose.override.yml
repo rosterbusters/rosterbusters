@@ -79,6 +79,8 @@ services:
           action: rebuild
     # TODO: remove once coverage is done locally
     volumes:
+      - ./backend:/app
+      - /app/.venv
       - ./backend/htmlcov:/app/htmlcov
     environment:
       PYTHONUNBUFFERED: "1"

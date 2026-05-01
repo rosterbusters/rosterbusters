@@ -52,6 +52,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false
         restart: true
     command: bash scripts/prestart.sh
     env_file:
@@ -87,6 +88,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false
         restart: true
       prestart:
         condition: service_completed_successfully
@@ -122,9 +124,6 @@ services:
       timeout: 5s
       retries: 5
 
-    volumes:
-      - ./backend:/app
-      - /app/.venv
     command: bash -c "uv run alembic upgrade head && uv run fastapi dev app/main.py --host 0.0.0.0"
     build:
       context: ./backend
@@ -146,11 +145,6 @@ services:
     networks:
       - traefik-public
       - default
-    ports:
-      - "5173:5173"
-    volumes:
-    - ./frontend:/app
-    - /app/node_modules
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev #change in prod
@@ -182,8 +176,11 @@ services:
     restart: always
     command: uv run celery -A app.worker worker --loglevel=info --pool=solo
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+        required: false
     env_file:
       - .env
     environment:
