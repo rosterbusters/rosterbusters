@@ -10,6 +10,8 @@ interface CustomWeekViewProps {
   date: Date;
   localizer: DateLocalizer;
   events: Event[];
+  periodStartDate?: string;
+  periodEndDate?: string;
 
   [key: string]: unknown;
 }
@@ -42,6 +44,28 @@ export function getEventsForDay(day: Date, events: Event[]): Event[] {
   });
 }
 
+function buildRange(
+  localizer: DateLocalizer,
+  date: Date,
+  periodStartDate?: string,
+  periodEndDate?: string,
+): Date[] {
+  const start = periodStartDate ? moment(periodStartDate).toDate() : date;
+  const end = periodEndDate
+    ? moment(periodEndDate).toDate()
+    : localizer.add(start, 13, "day");
+
+  let current = start;
+  const range: Date[] = [];
+
+  while (localizer.lte(current, end, "day")) {
+    range.push(current);
+    current = localizer.add(current, 1, "day");
+  }
+
+  return range;
+}
+
 const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   date,
   localizer,
@@ -49,6 +73,8 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   startAccessor,
   endAccessor,
   isLocked,
+  periodStartDate,
+  periodEndDate,
 }: CustomWeekViewProps) {
   const locked = Boolean(isLocked);
   const { user } = useAuth();
@@ -61,8 +87,8 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   } | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const currRange = useMemo(
-    () => CustomWeekView.range(date, { localizer }),
-    [date, localizer],
+    () => buildRange(localizer, date, periodStartDate, periodEndDate),
+    [date, localizer, periodEndDate, periodStartDate],
   );
   const handleDayClicked = (day: Date) => {
     setSelectedDay(day);
@@ -201,18 +227,7 @@ CustomWeekView.range = (
   date: Date,
   { localizer }: { localizer: DateLocalizer },
 ): Date[] => {
-  const start = date; //need to change this date to shift request opening
-  const end = localizer.add(start, 13, "day");
-
-  let current = start;
-  const range: Date[] = [];
-
-  while (localizer.lte(current, end, "day")) {
-    range.push(current);
-    current = localizer.add(current, 1, "day");
-  }
-
-  return range;
+  return buildRange(localizer, date);
 };
 
 CustomWeekView.navigate = (

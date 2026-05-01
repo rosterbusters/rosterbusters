@@ -33,6 +33,11 @@ type StaffingCounts = {
   NIGHT: { A: number; B: number; C: number };
 };
 
+type StaffingSummaryRow = {
+  label: string;
+  counts: { A: number; B: number; C: number };
+};
+
 const emptyStaffing: StaffingCounts = {
   AM: { A: 0, B: 0, C: 0 },
   PM: { A: 0, B: 0, C: 0 },
@@ -85,6 +90,46 @@ export function AlgorithmInputsDialog({
       },
     };
   }, [generationInputsQuery.data?.shifts]);
+
+  const staffingSummaryRows = useMemo<StaffingSummaryRow[]>(() => {
+    const firstDay = generationInputsQuery.data?.shifts?.[0];
+    if (!firstDay) {
+      return [
+        { label: "AM", counts: emptyStaffing.AM },
+        { label: "PM", counts: emptyStaffing.PM },
+        { label: "NIGHT", counts: emptyStaffing.NIGHT },
+      ];
+    }
+
+    if ("A-12" in firstDay || "N-12" in firstDay || "A12" in firstDay || "N12" in firstDay) {
+      const a12 = firstDay["A-12"] ?? firstDay.A12 ?? { A: 0, B: 0, C: 0 };
+      const n12 = firstDay["N-12"] ?? firstDay.N12 ?? { A: 0, B: 0, C: 0 };
+      return [
+        {
+          label: "A-12",
+          counts: {
+            A: a12.A ?? 0,
+            B: a12.B ?? 0,
+            C: a12.C ?? 0,
+          },
+        },
+        {
+          label: "N-12",
+          counts: {
+            A: n12.A ?? 0,
+            B: n12.B ?? 0,
+            C: n12.C ?? 0,
+          },
+        },
+      ];
+    }
+
+    return [
+      { label: "AM", counts: staffingSummary.AM },
+      { label: "PM", counts: staffingSummary.PM },
+      { label: "NIGHT", counts: staffingSummary.NIGHT },
+    ];
+  }, [generationInputsQuery.data?.shifts, staffingSummary]);
 
   const generationInputsJson = useMemo(() => {
     if (!generationInputsQuery.data) return "";
@@ -208,18 +253,11 @@ export function AlgorithmInputsDialog({
                       <Text fontSize="sm" color="gray.700" fontWeight="semibold" mb={1}>
                         Staffing Requirements (per day)
                       </Text>
-                      <Text fontSize="sm" color="gray.600">
-                        AM: A {staffingSummary.AM.A} • B {staffingSummary.AM.B} • C{" "}
-                        {staffingSummary.AM.C}
-                      </Text>
-                      <Text fontSize="sm" color="gray.600">
-                        PM: A {staffingSummary.PM.A} • B {staffingSummary.PM.B} • C{" "}
-                        {staffingSummary.PM.C}
-                      </Text>
-                      <Text fontSize="sm" color="gray.600">
-                        NIGHT: A {staffingSummary.NIGHT.A} • B {staffingSummary.NIGHT.B} • C{" "}
-                        {staffingSummary.NIGHT.C}
-                      </Text>
+                      {staffingSummaryRows.map((row) => (
+                        <Text key={row.label} fontSize="sm" color="gray.600">
+                          {row.label}: A {row.counts.A} • B {row.counts.B} • C {row.counts.C}
+                        </Text>
+                      ))}
                     </Box>
 
                     <Box>

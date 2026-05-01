@@ -28,6 +28,8 @@ from app.api.routes.notifications import get_email_enabled
 
 ROSTER_CYCLE_ANCHOR = date(2026, 3, 9)
 PERIOD_LENGTH_DAYS = 14
+REQUEST_WINDOW_LENGTH_DAYS = 5
+REQUEST_WINDOW_LEAD_DAYS = PERIOD_LENGTH_DAYS
 PERIODS_PER_ROSTER_YEAR = 26
 ROSTER_YEAR_LENGTH_DAYS = PERIOD_LENGTH_DAYS * PERIODS_PER_ROSTER_YEAR
 ROSTER_YEARS_TO_KEEP = 2
@@ -68,9 +70,9 @@ def build_roster_period_definitions(today: date | None = None) -> list[RosterPer
 
         for period_index in range(PERIODS_PER_ROSTER_YEAR):
             startdate = roster_year_start + timedelta(days=period_index * PERIOD_LENGTH_DAYS)
-            enddate = startdate + timedelta(days=11)
-            requestopendate = startdate - timedelta(days=14)
-            requestclosedate = startdate - timedelta(days=10)
+            enddate = startdate + timedelta(days=PERIOD_LENGTH_DAYS - 1)
+            requestopendate = startdate - timedelta(days=REQUEST_WINDOW_LEAD_DAYS)
+            requestclosedate = requestopendate + timedelta(days=REQUEST_WINDOW_LENGTH_DAYS - 1)
 
             if today > enddate:
                 status = "Published"
@@ -185,9 +187,15 @@ def _queue_roster_period_notifications(
 
     created = 0
 
-    for period in periods:
+    periods_by_start = sorted(periods, key=lambda period: period.startdate)
+
+    for index, period in enumerate(periods_by_start):
         if period.periodid is None:
             continue
+
+        next_period = periods_by_start[index + 1] if index + 1 < len(periods_by_start) else None
+        next_period_start = next_period.startdate if next_period else None
+        next_period_end = next_period.enddate if next_period else None
 
         # ------------------------------------------------------------------ #
         # Bounded-window conditions.                                         #
@@ -237,7 +245,7 @@ def _queue_roster_period_notifications(
                 "recipient_type": "NurseManager",
                 "recipients": managers,
                 "condition": (
-                    period.requestclosedate + timedelta(days=2) <= d < period.startdate - timedelta(days=7)
+                    period.requestclosedate + timedelta(days=2) <= d <= period.requestclosedate + timedelta(days=3)
                     and not (d == period.requestclosedate + timedelta(days=2) and h < 12)
                 ),
                 "email_func": generate_shift_request_review_closing_soon_email,
@@ -248,8 +256,8 @@ def _queue_roster_period_notifications(
                 "recipient_type": "NurseManager",
                 "recipients": managers,
                 "condition": (
-                    period.startdate - timedelta(days=7) <= d <= period.startdate - timedelta(days=3)
-                    and not (d == period.startdate - timedelta(days=7) and h < 7)
+                    period.startdate + timedelta(days=8) <= d <= period.startdate + timedelta(days=9)
+                    and not (d == period.startdate + timedelta(days=8) and h < 7)
                 ),
                 "email_func": None,
             },
@@ -259,8 +267,8 @@ def _queue_roster_period_notifications(
                 "recipient_type": "NurseManager",
                 "recipients": managers,
                 "condition": (
-                    period.startdate - timedelta(days=3) <= d <= period.enddate
-                    and not (d == period.startdate - timedelta(days=3) and h < 7)
+                    period.startdate + timedelta(days=11) <= d <= period.startdate + timedelta(days=13)
+                    and not (d == period.startdate + timedelta(days=11) and h < 7)
                 ),
                 "email_func": None,
             },
@@ -270,8 +278,9 @@ def _queue_roster_period_notifications(
                 "recipient_type": "NurseManager",
                 "recipients": managers,
                 "condition": (
-                    period.enddate <= d <= period.enddate + timedelta(days=2)
-                    and not (d == period.enddate and h < 7)
+                    next_period_start is not None
+                    and next_period_start <= d <= next_period_start + timedelta(days=1)
+                    and not (d == next_period_start and h < 7)
                 ),
                 "email_func": generate_hris_portal_open_email,
             },
@@ -281,8 +290,9 @@ def _queue_roster_period_notifications(
                 "recipient_type": "NurseManager",
                 "recipients": managers,
                 "condition": (
-                    period.enddate + timedelta(days=2) <= d <= period.enddate + timedelta(days=4)
-                    and not (d == period.enddate + timedelta(days=2) and h < 12)
+                    next_period_end is not None
+                    and next_period_end <= d <= next_period_end + timedelta(days=1)
+                    and not (d == next_period_end and h < 12)
                 ),
                 "email_func": generate_hris_portal_closing_soon_email,
             },
@@ -323,7 +333,7 @@ def _queue_roster_period_notifications(
                     related_entity_type="RosterPeriod",
                     related_entity_id=period.periodid,
                     roster_period=period.name,
-                    roster_planning_end_date=(period.startdate - timedelta(days=3)).strftime("%d %b %Y"),
+                    roster_planning_end_date=(period.startdate + timedelta(days=11)).strftime("%d %b %Y"),
                     roster_end_date=period.enddate.strftime("%d %b %Y"),
                 )
 
@@ -350,7 +360,7 @@ def _queue_roster_period_notifications(
                                 roster_period=period.name,
                                 message=phase["type"].template.format(
                                     roster_period=period.name,
-                                    roster_planning_end_date=(period.startdate - timedelta(days=3)).strftime("%d %b %Y"),
+                                    roster_planning_end_date=(period.startdate + timedelta(days=11)).strftime("%d %b %Y"),
                                 ),
                                 manager_name=getattr(target, "name", "Nurse Manager"),
                             )

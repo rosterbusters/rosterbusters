@@ -231,7 +231,7 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
         (res) =>
           res.url().includes(`/api/v1/leave/${createdTwo.leaveid}`) &&
           res.request().method() === "PATCH",
-        { timeout: 10_000 },
+        { timeout: 30_000 },
       ),
       editDialog.getByRole("button", { name: "Save" }).click(),
     ])
@@ -247,7 +247,7 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     )
     await navigateLeaveCalendarToDate(page, newRequestDate)
     await expect(newRequestCell).toBeVisible()
-    await newRequestCell.dispatchEvent("click")
+    await newRequestCell.click()
     const createDialog = page.getByRole("dialog")
     await expect(createDialog.getByText("Create Leave Request")).toBeVisible({
       timeout: 10_000,

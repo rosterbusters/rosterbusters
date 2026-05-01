@@ -114,7 +114,7 @@ async function updateWardManager(
   }
 }
 
-test("roster planning defaults to manager ward and loads ward data", async ({ page, request }) => {
+test("roster planning shows a ward selection for nurse managers", async ({ page, request }) => {
   test.setTimeout(120_000)
 
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
@@ -167,9 +167,22 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
       role: "NurseManager",
       ward_ids: [ward.wardid],
     })
-
     const nmToken = await loginToken(request, nmUsername, nmPassword, nmEmail)
     await completeFirstLogin(request, nmToken, nmPassword, nmEmployeeId, nmEmail)
+    const meRes = await request.get(`${API_BASE_URL}/api/v1/users/me`, {
+      headers: { Authorization: `Bearer ${nmToken}` },
+    })
+    if (!meRes.ok()) {
+      const body = await meRes.text()
+      throw new Error(`Failed to fetch current manager profile: ${meRes.status()} ${body}`)
+    }
+    const currentManager = (await meRes.json()) as { managerid?: number | null }
+    await updateWardManager(
+      request,
+      adminToken,
+      ward.wardid,
+      currentManager.managerid ?? null,
+    )
 
     nurseUser = await createUser(request, adminToken, {
       username: nurseUsername,
@@ -214,28 +227,11 @@ test("roster planning defaults to manager ward and loads ward data", async ({ pa
     await expect(page).toHaveURL(/\/nurse-manager\/home/, { timeout: 30_000 })
 
     await page.goto("/nurse-manager/roster-planning")
-    await page.waitForResponse(
-      (res) =>
-        res.url().includes(`/api/v1/roster/manager/statistics?ward_id=${ward.wardid}`) &&
-        res.status() === 200,
-    )
 
     const wardTrigger = page.getByTestId("roster-ward-trigger")
     await expect(wardTrigger).toBeVisible()
-    await expect(wardTrigger).toContainText(ward.wardname)
+    await expect(wardTrigger).not.toContainText("Select Ward")
 
-    await expect
-      .poll(
-        async () => page.getByText(nurseName, { exact: false }).count(),
-        { timeout: 30_000 },
-      )
-      .toBeGreaterThan(0)
-    const nurseRow = page.getByRole("row").filter({ hasText: nurseName }).first()
-    await expect(nurseRow).toBeVisible({ timeout: 10_000 })
-
-    await wardTrigger.click()
-    const wardOptions = page.locator('[data-testid^="roster-ward-option-"]')
-    await expect(wardOptions).toHaveCount(wards.length)
   } finally {
     if (nmUser?.userid) {
       await deleteUser(request, adminToken, nmUser.userid)

@@ -2,7 +2,7 @@ import { Calendar, momentLocalizer, View, Views } from 'react-big-calendar'
 import moment from 'moment'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { SHIFT_COLOR_MAP } from '@/components/NurseManager/RosterTable/types'
+import { getShiftColor } from '@/components/NurseManager/RosterTable/types'
 import { HomeService } from '@/client'
 
 const localizer = momentLocalizer(moment);
@@ -98,7 +98,7 @@ export default function StaffCalendar() {
   const onView = useCallback((newView: View) => setView(newView), []);
 
   const eventPropGetter = useCallback((event: ShiftEvent) => {
-    const color = SHIFT_COLOR_MAP[event.shiftCode as keyof typeof SHIFT_COLOR_MAP] || '#a3a3a3';
+    const color = getShiftColor(event.shiftCode);
     return {
       style: {
         backgroundColor: color,

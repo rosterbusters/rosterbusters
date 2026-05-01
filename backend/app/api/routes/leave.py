@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/leave", tags=["leave-requests"])
 
 
-OFF_DAY_CODES = ["DO", "RD", "HOL", "FD", "SD", "OFF", "REST"]
+EXCLUDED_LEAVE_CODES = ["DO", "RD"]
 
 
 def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
@@ -46,10 +46,10 @@ def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
 
 @router.get("/leave-codes", response_model=list[ShiftCodePublic])
 def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
-    """Get leave request codes, excluding off-day codes (DO, RD, etc.)."""
+    """Get non-working leave request codes, excluding only DO and RD."""
     statement = select(ShiftCode).where(
         ShiftCode.isworking == False,  # noqa: E712
-        ShiftCode.shiftcode.notin_(OFF_DAY_CODES),  # type: ignore[attr-defined]
+        ShiftCode.shiftcode.notin_(EXCLUDED_LEAVE_CODES),  # type: ignore[attr-defined]
     )
     return list(session.exec(statement).all())
 

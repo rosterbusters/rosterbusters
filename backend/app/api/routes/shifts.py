@@ -44,8 +44,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 CACHE_TTL_SHIFT_CODES_SECONDS = 300
-EIGHT_HOUR_REQUESTABLE_SHIFT_CODES = ("A", "P", "N", "DO")
-TWELVE_HOUR_REQUESTABLE_SHIFT_CODES = ("A-12", "N-12", "DO")
+EIGHT_HOUR_REQUESTABLE_SHIFT_CODES = ("A", "P", "N", "DO", "RD")
+TWELVE_HOUR_REQUESTABLE_SHIFT_CODES = ("A-12", "N-12", "DO", "RD")
 REQUESTABLE_SHIFT_CODES = EIGHT_HOUR_REQUESTABLE_SHIFT_CODES + tuple(
     code for code in TWELVE_HOUR_REQUESTABLE_SHIFT_CODES if code not in EIGHT_HOUR_REQUESTABLE_SHIFT_CODES
 )
@@ -75,6 +75,13 @@ REQUESTABLE_SHIFT_CODE_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "DO": {
         "description": "DAY OFF",
+        "isworking": False,
+        "defaultstart": None,
+        "defaultend": None,
+        "shiftdurationhours": 0,
+    },
+    "RD": {
+        "description": "REST DAY",
         "isworking": False,
         "defaultstart": None,
         "defaultend": None,
@@ -165,6 +172,36 @@ def _get_requestable_shift_codes(session: SessionDep, ward_id: int | None = None
     codes = list(session.exec(statement).all())
     order = {code: index for index, code in enumerate(_requestable_codes_for_hour_type(ward_hour_type))}
     return sorted(codes, key=lambda code: order.get(code.shiftcode, len(order)))
+
+
+def _get_roster_edit_shift_codes(session: SessionDep, ward_id: int | None = None) -> list[ShiftCode]:
+    _ensure_requestable_shift_codes_exist(session, REQUESTABLE_SHIFT_CODES)
+
+    statement = select(ShiftCode).where(
+        or_(
+            ShiftCode.isworking == True,  # noqa: E712
+            ShiftCode.shiftcode.in_(["DO", "RD"]),  # type: ignore[attr-defined]
+        )
+    )
+    codes = list(session.exec(statement).all())
+
+    ward_code_order: dict[str, int] = {}
+    if ward_id is not None:
+        from app.models.shifts import WardShiftCode
+
+        ward_shift_codes = session.exec(
+            select(WardShiftCode.shiftcode).where(WardShiftCode.wardid == ward_id)
+        ).all()
+        ward_code_order = {
+            shift_code: index for index, shift_code in enumerate(ward_shift_codes)
+        }
+
+    def sort_key(code: ShiftCode) -> tuple[int, int, str]:
+        if code.shiftcode in ward_code_order:
+            return (0, ward_code_order[code.shiftcode], code.shiftcode)
+        return (1, 0, code.shiftcode)
+
+    return sorted(codes, key=sort_key)
 
 
 def _send_shift_request_review_email_task(
@@ -414,7 +451,7 @@ def get_all_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
     cached = cache_get_json(cache_key)
     if cached is not None:
         return cached
-    codes = _get_requestable_shift_codes(session)
+    codes = _get_roster_edit_shift_codes(session)
     payload = [ShiftCodePublic.model_validate(code).model_dump(mode="json") for code in codes]
     cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
     return payload
@@ -422,12 +459,12 @@ def get_all_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
 
 @router.get("/shift-codes/working", response_model=list[ShiftCodePublic])
 def get_working_shift_codes(session: SessionDep, current_user: CurrentUser) -> Any:
-    """Get the requestable shift codes."""
+    """Get all working shift codes, plus selectable off-day codes."""
     cache_key = _shift_codes_cache_key("working")
     cached = cache_get_json(cache_key)
     if cached is not None:
         return cached
-    codes = _get_requestable_shift_codes(session)
+    codes = _get_roster_edit_shift_codes(session)
     payload = [ShiftCodePublic.model_validate(code).model_dump(mode="json") for code in codes]
     cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
     return payload
@@ -439,12 +476,12 @@ def get_shift_codes_by_ward(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Any:
-    """Get applicable requestable shift codes for a ward."""
+    """Get all selectable shift codes with ward-specific codes first."""
     cache_key = _shift_codes_cache_key(f"ward:{ward_id}")
     cached = cache_get_json(cache_key)
     if cached is not None:
         return cached
-    codes = _get_requestable_shift_codes(session, ward_id=ward_id)
+    codes = _get_roster_edit_shift_codes(session, ward_id=ward_id)
     payload = [ShiftCodePublic.model_validate(code).model_dump(mode="json") for code in codes]
     cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
     return payload
