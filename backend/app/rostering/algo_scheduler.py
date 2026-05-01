@@ -56,15 +56,15 @@ def _normalize_algorithm_name(algorithm):
 
 def _resolve_ward_mode(ward_hour_type=None, algorithm=None):
     forced = _normalize_algorithm_name(algorithm)
-    if forced == "12HR":
-        return "12HR"
-    if forced in {"MILP", "AB-RATIO"}:
-        return "8HR"
 
     normalized = str(ward_hour_type or "").strip().upper()
     if normalized in TWELVE_HOUR_WARD_TYPES:
         return "12HR"
+    if forced == "12HR":
+        return "12HR"
     if normalized in EIGHT_HOUR_WARD_TYPES:
+        return "8HR"
+    if forced in {"MILP", "AB-RATIO"}:
         return "8HR"
     return "8HR"
 

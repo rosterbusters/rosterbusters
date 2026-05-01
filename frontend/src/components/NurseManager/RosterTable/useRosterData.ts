@@ -213,9 +213,9 @@ export interface ShiftCodeOption {
   defaultend?: string | null;
 }
 
-export function useAllShiftCodes() {
+export function useAllShiftCodes(wardId?: number | null) {
   return useQuery<ShiftCodeOption[]>({
-    queryKey: ["allShiftCodes"],
+    queryKey: ["allShiftCodes", wardId ?? null],
     queryFn: async () => {
       const data: Array<{
         shiftcode: string;
@@ -224,7 +224,30 @@ export function useAllShiftCodes() {
         shiftdurationhours: number | null;
         defaultstart?: string | null;
         defaultend?: string | null;
-      }> = await fetchWithAuth("/api/v1/shift-requests/shift-codes");
+      }> = await fetchWithAuth(
+        wardId
+          ? `/api/v1/shift-requests/shift-codes/ward/${wardId}`
+          : "/api/v1/shift-requests/shift-codes",
+      );
+
+      return data;
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+export function useLeaveShiftCodes() {
+  return useQuery<ShiftCodeOption[]>({
+    queryKey: ["leaveShiftCodes"],
+    queryFn: async () => {
+      const data: Array<{
+        shiftcode: string;
+        description: string;
+        isworking: boolean;
+        shiftdurationhours: number | null;
+        defaultstart?: string | null;
+        defaultend?: string | null;
+      }> = await fetchWithAuth("/api/v1/leave/leave-codes");
 
       return data;
     },
@@ -1001,26 +1024,6 @@ function addDays(dateStr: string, days: number): string {
   return date.toISOString().split("T")[0];
 }
 
-// Map full designation strings to short acronyms for Excel export
-function designationToAcronym(designation: string): string {
-  const d = designation.toLowerCase().trim();
-
-  if (d.includes('senior nursing aide'))   return 'SNA';
-  if (d.includes('senior staff nurse'))    return 'SSN';
-  if (d.includes('senior enrolled nurse')) return 'SEN';
-  if (d.includes('staff nurse'))           return 'SN';
-  if (d.includes('enrolled nurse'))        return 'EN';
-  if (d.includes('registered nurse'))      return 'RN';
-  if (d.includes('nursing aide'))          return 'NA';
-  if (d.includes('healthcare assistant'))  return 'HCA';
-  if (d.includes('nurse clinician'))       return 'NC';
-  if (d.includes('nurse manager'))         return 'NM';
-  if (d.includes('assistant nurse'))       return 'ANC';
-
-  // Already an acronym (RN, EN, HCA, etc.) – return as-is
-  return designation;
-}
-
 // ─────────────────────────────────────────────
 // Roster Changelog
 // ─────────────────────────────────────────────
@@ -1180,43 +1183,75 @@ export function useAutoReviewShiftRequests() {
 // Hook for Excel export
 export function useRosterExport() {
   return {
-    exportToXLSX: async (data: RosterRow[], startDate: Date, viewMode: "week" | "twoWeeks") => {
-      const XLSX = await import("xlsx");
+    exportToXLSX: async (
+      data: RosterRow[],
+      startDate: Date,
+      viewMode: "week" | "twoWeeks",
+      wardId: number,
+      periodId: number,
+    ) => {
       const days = viewMode === "week" ? 7 : 14;
-
-      // Header row: 2 blank cells + date strings in YYYY-MM-DD
-      const header = [
-        "",
-        "",
-        ...Array.from({ length: days }, (_, i) =>
-          moment(startDate).add(i, "days").format("YYYY-MM-DD")
-        ),
-      ];
-
-      // Data rows: designation (acronym), name, then shift code per day
-      const rows = data.map((row) => [
-        designationToAcronym(row.designation),
-        row.name,
-        ...Array.from({ length: days }, (_, i) => {
-          const dateKey = moment(startDate).add(i, "days").format("YYYY-MM-DD");
-          return row.shifts[dateKey]?.shiftCode ?? "";
+      const visibleDates = Array.from({ length: days }, (_, i) =>
+        moment(startDate).add(i, "days").format("YYYY-MM-DD"),
+      );
+      const token = localStorage.getItem("access_token") || "";
+      const response = await fetch(`${API_BASE}/api/v1/roster/export-xls`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ward_id: wardId,
+          period_id: periodId,
+          start_date: moment(startDate).format("YYYY-MM-DD"),
+          view_mode: viewMode,
+          rows: data.map((row) => ({
+            nurse_id: row.nurseId,
+            shifts: Object.fromEntries(
+              visibleDates.map((dateKey) => [
+                dateKey,
+                row.shifts[dateKey]?.shiftCode ?? "",
+              ]),
+            ),
+          })),
         }),
-      ]);
+      });
 
-      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      if (!response.ok) {
+        let errorMessage = `Export failed: ${response.status} ${response.statusText}`;
+        try {
+          const body = await response.clone().json();
+          if (typeof body?.detail === "string" && body.detail.trim()) {
+            errorMessage = body.detail;
+          }
+        } catch {
+          try {
+            const text = await response.text();
+            if (text.trim()) {
+              errorMessage = text;
+            }
+          } catch {
+            // Keep the fallback status-based message if the body cannot be parsed.
+          }
+        }
+        throw new Error(errorMessage);
+      }
 
-      ws["!cols"] = [
-        { wch: 10 }, // designation (acronym – narrower)
-        { wch: 20 }, // name
-        ...Array(days).fill({ wch: 12 }), // date columns
-      ];
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Roster");
-      XLSX.writeFile(wb, `roster_${moment(startDate).format("YYYY-MM-DD")}.xlsx`);
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+      const filename =
+        filenameMatch?.[1] ?? `roster_${moment(startDate).format("YYYY-MM-DD")}.xls`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
     },
   };
 }
-
-
 

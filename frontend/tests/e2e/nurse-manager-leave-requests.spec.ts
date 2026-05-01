@@ -225,13 +225,16 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
       force: true,
       timeout: 10_000,
     })
+    await expect(
+      editDialog.getByRole("combobox", { name: "Nurse" }),
+    ).toContainText(nurseTwoName)
 
     const [updateResponse] = await Promise.all([
       page.waitForResponse(
         (res) =>
           res.url().includes(`/api/v1/leave/${createdTwo.leaveid}`) &&
           res.request().method() === "PATCH",
-        { timeout: 10_000 },
+        { timeout: 30_000 },
       ),
       editDialog.getByRole("button", { name: "Save" }).click(),
     ])

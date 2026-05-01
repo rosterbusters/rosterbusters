@@ -4,58 +4,57 @@ import math
 import os
 import queue
 import threading
+from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
+from typing import Any, Literal, Optional
 from uuid import uuid4
 
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Optional
-
-logger = logging.getLogger(__name__)
-
+import xlwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import MetaData, Table, inspect as sa_inspect
-from sqlmodel import Session, select, delete
+from sqlalchemy import MetaData, Table
+from sqlalchemy import inspect as sa_inspect
+from sqlmodel import Session, delete, select
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_db
+from app.api.routes.notifications import get_email_enabled
+from app.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.security import decrypt_default_password
-from app.cache import cache_delete, cache_get_json, cache_set_json
-from app.models.enums import NotificationType
 from app.designation_mapping import (
+    canonical_designation_from_value,
     classify_designation_with_rank_map,
     load_designation_rank_map,
     roster_rank_for_designation_with_rank_map,
-    staffing_role_to_roster_rank,
 )
 from app.models.enums import NotificationType
+from app.models.leave import LeaveRequest
 from app.models.rbac import Nurse, NurseManager, RBACUser, Role, UserRole
 from app.models.roster import (
+    NotificationQueue,
     NursePeriodConstraint,
     NursePeriodConstraintPublic,
-    NotificationQueue,
     Roster,
     RosterChangeLog,
     RosterChangeLogPublic,
     RosterPeriod,
     Ward,
 )
-from app.models.leave import LeaveRequest
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rbac import user_has_role
+from app.rostering.algo_scheduler import generate_roster
 from app.services.algorithm_lock_service import (
     acquire_ward_algorithm_lock,
     release_ward_algorithm_lock,
 )
-from app.utils import generate_roster_release_email, generate_shift_updated_email, send_email
-from app.api.routes.notifications import get_email_enabled
-import app.crud as crud
-from app.rostering.algo_scheduler import generate_roster
+from app.utils import (
+    generate_roster_release_email,
+    generate_shift_updated_email,
+    send_email,
+)
 
-
-
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -89,6 +88,19 @@ class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
     algorithm: Optional[str] = None  # "MILP" | "AB-RATIO" | None (auto)
+
+
+class RosterExportRow(BaseModel):
+    nurse_id: int
+    shifts: dict[date, str]
+
+
+class RosterExportRequest(BaseModel):
+    ward_id: int
+    period_id: int
+    start_date: date
+    view_mode: Literal["week", "twoWeeks"]
+    rows: list[RosterExportRow]
 
 
 class TriggeredItem(BaseModel):
@@ -255,6 +267,58 @@ def _can_generate_roster(session: Session, current_user: CurrentUser) -> bool:
     return user_has_role(session, current_user.email, "NurseManager") or user_has_role(
         session, current_user.email, "Admin"
     )
+
+
+def _designation_export_role(designation: str | None) -> str:
+    if not designation:
+        return ""
+    return canonical_designation_from_value(designation) or designation
+
+
+def _build_roster_export_workbook_bytes(
+    *,
+    nurses: list[Nurse],
+    rows: list[RosterExportRow],
+    start_date: date,
+    days: int,
+) -> bytes:
+    nurse_by_id = {nurse.nurseid: nurse for nurse in nurses if nurse.nurseid is not None}
+    workbook = xlwt.Workbook()
+    worksheet = workbook.add_sheet("Sheet1")
+
+    text_style = xlwt.easyxf("", num_format_str="@")
+    employee_id_style = xlwt.easyxf("alignment: wrap on;", num_format_str="@")
+    date_header_style = xlwt.easyxf("font: bold on;", num_format_str="@")
+
+    worksheet.row(0).hidden = True
+    worksheet.write(0, 0, "EMP_NO", text_style)
+    worksheet.col(0).width = 11 * 256
+    worksheet.col(1).width = 32 * 256
+    worksheet.col(2).width = 10 * 256
+
+    export_dates = [start_date + timedelta(days=offset) for offset in range(days)]
+    for offset, export_date in enumerate(export_dates):
+        column_index = 3 + offset
+        worksheet.col(column_index).width = 10 * 256
+        worksheet.write(1, column_index, export_date.isoformat(), date_header_style)
+
+    for row_index, row in enumerate(rows, start=2):
+        nurse = nurse_by_id.get(row.nurse_id)
+        worksheet.write(
+            row_index,
+            0,
+            _designation_export_role(nurse.designation if nurse else None),
+            text_style,
+        )
+        worksheet.write(row_index, 1, nurse.name if nurse else "", text_style)
+        worksheet.write(row_index, 2, (nurse.employeeid or "") if nurse else "", employee_id_style)
+        for offset, export_date in enumerate(export_dates):
+            shift_code = row.shifts.get(export_date, "")
+            worksheet.write(row_index, 3 + offset, shift_code, text_style)
+
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
 
 
 def _queue_algorithm_notification(
@@ -493,6 +557,47 @@ def get_ward_roster(ward_id: int, period_id: int, db: Session = Depends(get_db))
     }
     cache_set_json(cache_key, payload, CACHE_TTL_WARD_ROSTER_SECONDS)
     return payload
+
+
+@router.post("/export-xls")
+def export_ward_roster_xls(
+    body: RosterExportRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> StreamingResponse:
+    ward = session.get(Ward, body.ward_id)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    period = session.get(RosterPeriod, body.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    if not _can_manage_ward(session, current_user, ward):
+        raise HTTPException(status_code=403, detail="Not authorized to export this ward roster")
+
+    days = 7 if body.view_mode == "week" else 14
+    ordered_nurse_ids = [row.nurse_id for row in body.rows]
+    requested_nurse_ids = sorted(set(ordered_nurse_ids))
+
+    if requested_nurse_ids:
+        nurses = session.exec(
+            select(Nurse).where(Nurse.nurseid.in_(requested_nurse_ids))  # type: ignore[attr-defined]
+        ).all()
+    else:
+        nurses = []
+    workbook_bytes = _build_roster_export_workbook_bytes(
+        nurses=nurses,
+        rows=body.rows,
+        start_date=body.start_date,
+        days=days,
+    )
+    filename = f"roster_{body.start_date.isoformat()}.xls"
+    return StreamingResponse(
+        BytesIO(workbook_bytes),
+        media_type="application/vnd.ms-excel",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/constraints", response_model=list[NursePeriodConstraintPublic])
@@ -1581,12 +1686,56 @@ def _build_milp_config(
     return _apply_milp_policy_overrides(config, policy)
 
 
-def _staffing_to_algo_inputs(ward: Ward):
+def _is_twelve_hour_ward(ward: Ward) -> bool:
+    return str(ward.wardhourtype or "").strip().upper() == "12_HOURS"
+
+
+def _staffing_role_rank(role: str, rank_map: dict[str, str] | None = None) -> str | None:
+    canonical_by_role = {
+        "RN": "SN",
+        "EN": "EN",
+        "NA": "NA",
+        "HCA12": "HCA1",
+        "HCA3": "HCA3",
+    }
+    default_by_role = {
+        "RN": "A",
+        "EN": "B",
+        "NA": "B",
+        "HCA12": "C",
+        "HCA3": "C",
+    }
+    normalized = str(role).strip().upper()
+    canonical = canonical_by_role.get(normalized)
+    if rank_map is not None and canonical:
+        rank = rank_map.get(canonical)
+        if rank in {"A", "B", "C"}:
+            return rank
+    return default_by_role.get(normalized)
+
+
+def _daily_requirement_from_rank_min(rank_min: dict[str, dict[str, int]], ward: Ward) -> dict[str, dict[str, int]]:
+    if _is_twelve_hour_ward(ward):
+        return {
+            "A-12": {"A": rank_min["A"]["A"], "B": rank_min["B"]["A"], "C": rank_min["C"]["A"]},
+            "N-12": {"A": rank_min["A"]["N"], "B": rank_min["B"]["N"], "C": rank_min["C"]["N"]},
+        }
+
+    return {
+        "AM": {"A": rank_min["A"]["A"], "B": rank_min["B"]["A"], "C": rank_min["C"]["A"]},
+        "PM": {"A": rank_min["A"]["P"], "B": rank_min["B"]["P"], "C": rank_min["C"]["P"]},
+        "NIGHT": {"A": rank_min["A"]["N"], "B": rank_min["B"]["N"], "C": rank_min["C"]["N"]},
+    }
+
+
+def _staffing_to_algo_inputs(ward: Ward, rank_map: dict[str, str] | None = None):
     """
     Build (shifts_data, milp_config) from ward.staffing_json when available,
     otherwise fall back to the legacy Ward scalar fields.
 
-    shifts_data : 14-element list of {"AM": {"A":int,"B":int,"C":int}, "PM":..., "NIGHT":...}
+    shifts_data : 14-element list of per-day demand. 8-hour wards use
+                  {"AM": ..., "PM": ..., "NIGHT": ...}; 12-hour wards use
+                  {"A-12": ..., "N-12": ...}.
     milp_config : WARD_CONFIG-compatible dict derived from the ward's staffing data.
                   LOW_DAYS is always {6,7,13,14}; shift_target is derived from normal_min.
     """
@@ -1618,7 +1767,7 @@ def _staffing_to_algo_inputs(ward: Ward):
             }
             rank_night_max: dict[str, int | None] = {"A": None, "B": None, "C": None}
             for role in ("RN", "EN", "NA", "HCA12", "HCA3"):
-                rank = staffing_role_to_roster_rank(session, role)
+                rank = _staffing_role_rank(role, rank_map)
                 if rank is None:
                     continue
                 for shift in ("A", "P", "N"):
@@ -1627,11 +1776,7 @@ def _staffing_to_algo_inputs(ward: Ward):
                 if role_night_max is not None:
                     rank_night_max[rank] = (rank_night_max[rank] or 0) + role_night_max
 
-            daily_req = {
-                "AM":    {"A": rank_min["A"]["A"], "B": rank_min["B"]["A"], "C": rank_min["C"]["A"]},
-                "PM":    {"A": rank_min["A"]["P"], "B": rank_min["B"]["P"], "C": rank_min["C"]["P"]},
-                "NIGHT": {"A": rank_min["A"]["N"], "B": rank_min["B"]["N"], "C": rank_min["C"]["N"]},
-            }
+            daily_req = _daily_requirement_from_rank_min(rank_min, ward)
             return [daily_req for _ in range(14)], _build_milp_config(
                 rank_min["A"],
                 rank_min["B"],
@@ -1646,11 +1791,8 @@ def _staffing_to_algo_inputs(ward: Ward):
     rn_min  = {"A": ward.am_rn or 0,       "P": ward.pm_rn or 0,        "N": ward.nd_rn or 0}
     en_min  = {"A": ward.am_en_na_min or 0, "P": ward.pm_en_na_min or 0, "N": ward.nd_en_na_min or 0}
     hca_min = {"A": ward.am_hca_min or 0,  "P": ward.pm_hca_min or 0,   "N": ward.nd_hca_min or 0}
-    daily_req = {
-        "AM":    {"A": rn_min["A"], "B": en_min["A"], "C": hca_min["A"]},
-        "PM":    {"A": rn_min["P"], "B": en_min["P"], "C": hca_min["P"]},
-        "NIGHT": {"A": rn_min["N"], "B": en_min["N"], "C": hca_min["N"]},
-    }
+    rank_min = {"A": rn_min, "B": en_min, "C": hca_min}
+    daily_req = _daily_requirement_from_rank_min(rank_min, ward)
     return [daily_req for _ in range(14)], _build_milp_config(
         rn_min,
         en_min,
@@ -1669,10 +1811,9 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     if not period:
         raise HTTPException(status_code=404, detail="Roster period not found")
 
-    shifts_data, milp_config = _staffing_to_algo_inputs(ward)
-
     nurses_db = _fetch_active_ward_nurses(db, ward_id)
     rank_map = load_designation_rank_map(db)
+    shifts_data, milp_config = _staffing_to_algo_inputs(ward, rank_map)
     period_constraints = _load_nurse_period_constraints(
         db,
         ward_id,
@@ -1683,6 +1824,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         {
             "id": n["nurseid"],
             "name": n["name"],
+            "designation": n.get("designation"),
             "rank": roster_rank_for_designation_with_rank_map(rank_map, n.get("designation") or ""),
             "shift_pattern": n.get("shiftpattern"),
             "constraints": period_constraints.get(n["nurseid"] or -1, []),
@@ -1722,7 +1864,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     prev_last_shift = _load_previous_last_shift(db, ward_id, period, nurse_ids)
     _filter_requests_for_nurse_constraints(nurses_data, hard_requests, soft_requests)
 
-    logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ({period.startdate}→{period.enddate})")
+    logger.warning(f"[DEBUG] ward={ward_id} period={period_id} ward_hour_type={ward.wardhourtype} ({period.startdate}→{period.enddate})")
     logger.warning(f"[DEBUG] nurses={len(nurses_data)} hard_requests={sum(len(v) for v in hard_requests.values())} soft_requests={sum(len(v) for v in soft_requests.values())}")
     logger.warning(
         "[DEBUG] hard_request_codes=%s hard_request_sample=%s",
@@ -1737,11 +1879,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     logger.warning(
         "[DEBUG] rank_counts=%s staffing=%s",
         rank_counts,
-        {
-            "AM": shifts_data[0]["AM"] if shifts_data else {},
-            "PM": shifts_data[0]["PM"] if shifts_data else {},
-            "NIGHT": shifts_data[0]["NIGHT"] if shifts_data else {},
-        },
+        shifts_data[0] if shifts_data else {},
     )
     logger.warning(
         "[DEBUG] milp_config_summary=%s",
@@ -1759,7 +1897,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
             logger.warning(f"[DEBUG]   nurse {nid}: {reqs}")
 
     for nurse_id, shift_name in prev_last_shift.items():
-        if str(shift_name).strip().upper() != "NIGHT":
+        if str(shift_name).strip().upper() not in {"NIGHT", "N", "N-12", "N12", "N_12"}:
             continue
         hard_requests[nurse_id] = [
             item for item in hard_requests.get(nurse_id, [])
@@ -1778,7 +1916,7 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         "soft_requests": soft_requests,
         "prev_last_shift": prev_last_shift,
         "ward_hour_type": ward.wardhourtype,
-        "shift_hours": _load_shift_hours(db),
+        "shift_hours": _load_shift_hours(db, ward.wardhourtype),
         "non_working_shift_codes": _load_non_working_shift_codes(db),
         "period_constraints": period_constraints,
     }
@@ -2060,16 +2198,24 @@ def _load_previous_last_shift(
 def _load_shift_label_map(db: Session) -> dict[str, str]:
     """
     Build a mapping from every DB shift code to an algorithm label.
-    Working shifts (A→AM, P→PM, N→NIGHT) keep their label; all non-working
+    Working shifts (A->AM, P->PM, N->NIGHT, A-12/N-12) keep their label; all non-working
     codes (AL, MAR, FCL, HOL, CCL, DO, …) map to "OFF".
     """
-    _WORKING = {"A": "AM", "P": "PM", "N": "NIGHT"}
+    _WORKING = {
+        "A": "AM",
+        "P": "PM",
+        "N": "NIGHT",
+        "A-12": "A-12",
+        "A12": "A-12",
+        "N-12": "N-12",
+        "N12": "N-12",
+    }
     rows = db.exec(select(ShiftCode)).all()
     result: dict[str, str] = {}
     for row in rows:
         code = str(row.shiftcode).upper()
         result[code] = _WORKING.get(code, "OFF") if row.isworking else "OFF"
-    # Ensure the three working codes are always present even if missing from DB
+    # Ensure working aliases are always present even if missing from DB.
     for code, label in _WORKING.items():
         result.setdefault(code, label)
     return result
@@ -2080,8 +2226,11 @@ def _load_non_working_shift_codes(db: Session) -> set[str]:
     return {str(row.shiftcode).upper() for row in rows}
 
 
-def _load_shift_hours(db: Session) -> dict[str, float]:
-    code_to_label = {"A": "AM", "P": "PM", "N": "NIGHT"}
+def _load_shift_hours(db: Session, ward_hour_type: str | None = None) -> dict[str, float]:
+    if str(ward_hour_type or "").strip().upper() == "12_HOURS":
+        code_to_label = {"A-12": "A-12", "N-12": "N-12"}
+    else:
+        code_to_label = {"A": "AM", "P": "PM", "N": "NIGHT"}
     rows = db.exec(
         select(ShiftCode).where(ShiftCode.shiftcode.in_(list(code_to_label.keys())))  # type: ignore[attr-defined]
     ).all()

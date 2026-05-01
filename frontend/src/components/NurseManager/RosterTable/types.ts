@@ -34,27 +34,51 @@ export const SHIFT_CODE_MAP: Record<ShiftCode, ShiftCodeInfo> = {
 };
 
 // Theme color mapping for shift codes
-export const SHIFT_COLOR_MAP: Record<ShiftCode, string> = {
+export const SHIFT_COLOR_MAP: Record<string, string> = {
   'D': '#0891b2',    // cyan.600 - Day
   'A': '#06b6d4',    // cyan.500 - AM
   'N': '#164e63',    // cyan.900 - Night
   'N-12': '#164e63', // cyan.900 - Night 12h
   'P': '#0e7490',    // cyan.700 - PM
   'DO': '#a3a3a3',   // neutral.400 - Day Off
-  'OFF': '#a3a3a3',  // neutral.400 - Day Off (algo output)
-  'RD': '#d1d5db',   // gray.300 - Rest Day
-  'AL': '#94a3b8',   // slate.400 - Annual Leave
-  'HOL': '#86efac',  // green.300 - Public Holiday Leave
-  'MC': '#fbbf24',   // amber.400 - Medical Certificate
-  'URG': '#f87171',  // red.400 - Urgent Leave
-  'BCL': '#a78bfa',  // violet.400 - Birthday Leave
-  'CCL': '#34d399',  // emerald.400 - Childcare Leave
-  'ML': '#f472b6',   // pink.400 - Marriage Leave
-  'CL': '#60a5fa',   // blue.400 - Compassionate Leave
-  'UPL': '#fdba74',  // orange.300 - Unpaid Leave
-  'PH': '#6ee7b7',   // emerald.300 - Public Holiday
-  'EML': '#c084fc',  // purple.400 - Extended Marriage Leave
+  'RD': '#737373',   // neutral.500 - Rest Day
+  'AL': '#64748b',   // slate.500 - Annual Leave
+  'MC': '#475569',   // slate.600 - Medical Certificate
+  'CCL': '#334155',  // slate.700 - Childcare Leave
+  'ML': '#52525b',   // zinc.600 - Marriage/Maternity Leave
+  'EML': '#3f3f46',  // zinc.700 - Extended Marriage/Maternity Leave
+  'Mar': '#27272a',  // zinc.800 - Marriage Leave
+  'CL': '#374151',   // gray.700 - Compassionate Leave
+  'BDL': '#1f2937',  // gray.800 - Birthday Leave
+  'BCL': '#71717a',  // zinc.500 - Birthday Leave
+  'FCL': '#6b7280',  // gray.500 - Family Care Leave
+  'SPL': '#4b5563',  // gray.600 - Shared Parental Leave
+  'HOL': '#78716c',  // stone.500 - Public Holiday Leave
+  'FD': '#57534e',   // stone.600 - Family Day
+  'SD': '#44403c',   // stone.700 - Sleeping Day
+  'OFF': '#7c8087',  // cool gray - Off
+  'REST': '#94a3b8', // slate.400 - Rest
+  'URG': '#18181b',  // zinc.900 - Urgent Leave
+  'UPL': '#0f172a',  // slate.900 - Unpaid Leave
+  'PH': '#5e6673',   // cool gray - Public Holiday
 };
+
+export function getBaseShiftCode(shiftCode: string): string {
+  const [baseCode] = shiftCode.split("-");
+  return baseCode || shiftCode;
+}
+
+export function getShiftColor(shiftCode: string | null | undefined): string {
+  if (!shiftCode) {
+    return "#4b5563";
+  }
+
+  return (
+    SHIFT_COLOR_MAP[shiftCode] ??
+    SHIFT_COLOR_MAP[getBaseShiftCode(shiftCode)] ??
+    "#4b5563"
+  );
+}
 
 // Staff designation/role types
 export type StaffDesignation = 

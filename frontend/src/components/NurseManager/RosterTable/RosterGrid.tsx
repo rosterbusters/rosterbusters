@@ -275,6 +275,7 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
 
 interface RosterGridProps {
   data: RosterRow[];
+  wardId?: number | null;
   viewMode: ViewMode;
   currentStartDate: Date;
   onShiftChange: (
@@ -502,6 +503,7 @@ function getDisplayName(row: RosterRow): string {
 
 export function RosterGrid({
   data,
+  wardId,
   viewMode,
   currentStartDate,
   onShiftChange,
@@ -1068,6 +1070,7 @@ export function RosterGrid({
         onShiftChange={handleShiftChange}
         onCommentChange={handleCommentChange}
         anchorEl={popoverState.anchorEl}
+        wardId={wardId}
       />
 
       {/* Comment-only Popover (opened via comment icon click) */}

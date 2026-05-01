@@ -492,9 +492,32 @@ function NurseManagerHome() {
     },
     [localRosterData, updateRosterComment, createChangelog]
   );
-  const handleExportXLSX = useCallback(() => {
-    exportToXLSX(displayRosterData, currentStartDate, viewMode);
-  }, [displayRosterData, currentStartDate, viewMode, exportToXLSX]);
+  const handleExportXLSX = useCallback(async () => {
+    if (!selectedWard?.wardid || !selectedPeriod) {
+      showErrorToast("Please select a ward and roster period first.");
+      return;
+    }
+    try {
+      await exportToXLSX(
+        displayRosterData,
+        currentStartDate,
+        viewMode,
+        selectedWard.wardid,
+        selectedPeriod.periodId,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to export roster.";
+      showErrorToast(message);
+    }
+  }, [
+    displayRosterData,
+    currentStartDate,
+    viewMode,
+    selectedWard,
+    selectedPeriod,
+    exportToXLSX,
+  ]);
   
   const handleViewEditHistory = useCallback(() => {
     setIsEditHistoryOpen(true);
@@ -772,6 +795,7 @@ function NurseManagerHome() {
         <Box flex={1} overflow="auto" p={4} pb={0}>
           <RosterGrid
             data={displayRosterData}
+            wardId={selectedWard?.wardid ?? null}
             viewMode={viewMode}
             currentStartDate={currentStartDate}
             onShiftChange={handleShiftChange}

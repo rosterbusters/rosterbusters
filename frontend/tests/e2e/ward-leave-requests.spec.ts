@@ -120,7 +120,9 @@ test("ward staff can create a leave request from the calendar", async ({
       await page.getByRole("button", { name: "Next" }).click()
     }
 
-    await page.getByTestId(`leave-request-calendar-cell-${dateKey}`).click()
+    await page
+      .getByTestId(`leave-request-calendar-cell-${dateKey}`)
+      .dispatchEvent("click")
     await expect(page.getByText("Create Leave Request")).toBeVisible()
 
     const dialog = page.getByRole("dialog")

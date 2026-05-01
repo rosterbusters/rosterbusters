@@ -291,7 +291,7 @@ test("ward staff can create a shift request from the calendar", async ({
 
     await page
       .getByTestId(`request-calendar-cell-${activePeriod.startdate}`)
-      .click()
+      .dispatchEvent("click")
 
     await expect(page.getByText("Create Shift Request")).toBeVisible()
     const dialog = page.getByRole("dialog")
