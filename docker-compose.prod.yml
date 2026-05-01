@@ -1,9 +1,9 @@
 services:
   db:
-    profiles: []  # keep service available because other prod services still inherit db dependencies
+    profiles: ["local-db"]  # opt-in only; prod normally uses the external Postgres host
     restart: unless-stopped
   adminer:
-    profiles: []  # keep adminer aligned with the local db service when enabled in prod
+    profiles: ["local-db"]  # opt-in only alongside the local db service
     restart: unless-stopped
   prestart:
     depends_on: {}
@@ -21,6 +21,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
 
   celery_worker:
+    depends_on:
+      - redis
     environment:
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_SERVER=${POSTGRES_SERVER}
