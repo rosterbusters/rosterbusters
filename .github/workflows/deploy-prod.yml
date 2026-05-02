@@ -3,7 +3,7 @@ name: Deploy to Production
 on:
   push:
     branches:
-      - production
+      - main
 
 jobs:
   deploy:
@@ -42,7 +42,7 @@ jobs:
           fi
           git remote set-url origin https://oauth2:${{ secrets.GH_PAT }}@github.com/rosterbusters/rosterbusters.git
           git fetch origin
-          git reset --hard origin/production
+          git reset --hard origin/main
           git remote set-url origin https://github.com/rosterbusters/rosterbusters.git
           EOF
 
