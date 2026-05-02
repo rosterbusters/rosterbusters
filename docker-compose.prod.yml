@@ -26,6 +26,9 @@ services:
       - ~/gurobi.lic:/root/gurobi.lic:ro
 
   frontend:
+    depends_on:
+      backend:
+        condition: service_healthy
     build:
       context: ./frontend
       dockerfile: Dockerfile
