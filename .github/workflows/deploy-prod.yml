@@ -223,7 +223,9 @@ jobs:
             echo "=== APP COMPOSE CONFIG ==="
             app_compose config || true
             echo "=== APP STATUS ==="
-            app_compose ps || true
+            app_compose ps -a || true
+            echo "=== ALL ROSTERBUSTERS CONTAINERS ==="
+            docker ps -a --filter "name=rosterbusters" || true
             echo "=== MIGRATION LOGS ==="
             docker logs --tail=200 prestart-migration || true
             echo "=== PRESTART LOGS ==="
@@ -251,6 +253,16 @@ jobs:
 
           echo "=== APP COMPOSE CONFIG ==="
           app_compose config
+
+          echo "=== ENSURE GUROBI LICENSE BIND MOUNT EXISTS ==="
+          if [ ! -f "$HOME/gurobi.lic" ] && [ -f "$PWD/gurobi.lic" ]; then
+            cp "$PWD/gurobi.lic" "$HOME/gurobi.lic"
+            chmod 600 "$HOME/gurobi.lic"
+          fi
+          if [ ! -f "$HOME/gurobi.lic" ]; then
+            echo "::error file=docker-compose.prod.yml,line=28::Missing $HOME/gurobi.lic required by the celery_worker bind mount."
+            exit 1
+          fi
 
           echo "=== START LOCAL POSTGRES ==="
           app_compose up -d db
@@ -297,7 +309,10 @@ jobs:
           timeout 120 bash -c 'until curl -fSs -H "Host: '"$DOMAIN"'" http://127.0.0.1/ >/dev/null; do sleep 2; done'
 
           echo "=== APP STATUS ==="
-          app_compose ps
+          app_compose ps -a
+
+          echo "To inspect this stack on EC2, run:"
+          echo "docker compose --profile local-db -p rosterbusters -f docker-compose.yml -f docker-compose.prod.yml ps -a"
 
           echo "=== ENFORCED HEALTH CHECKS ==="
           curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
