@@ -49,6 +49,10 @@ jobs:
       - name: Create .env file on EC2
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "cat > ~/rosterbusters/.env" << 'EOF'
+          COMPOSE_PROJECT_NAME=rosterbusters
+          COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+          COMPOSE_PROFILES=local-db
+          CI=false
           ENVIRONMENT=production
           PROJECT_NAME=SACH Duby
           FRONTEND_HOST=https://${{ secrets.DOMAIN_PROD }}
@@ -240,8 +244,8 @@ jobs:
             app_compose logs --tail=200 || true
           }
 
-          echo "=== STOP OLD APP STACK ==="
-          app_compose down --remove-orphans 2>/dev/null || true
+          echo "=== EXISTING APP STATUS ==="
+          app_compose ps -a || true
 
           echo "=== CREATE TRAEFIK NETWORK ==="
           docker network create traefik-public 2>/dev/null || true
@@ -272,8 +276,15 @@ jobs:
           echo "=== WAIT FOR POSTGRES HEALTH ==="
           timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-db-1 2>/dev/null)" = "healthy" ]; do sleep 2; done'
 
-          echo "=== CHECK POSTGRES CONNECTIVITY ==="
+          echo "=== CHECK POSTGRES READINESS ==="
           app_compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+          echo "=== CHECK POSTGRES CREDENTIALS ==="
+          if ! app_compose exec -T db sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1" >/dev/null'; then
+            echo "::error::Postgres is running, but the configured POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB cannot log in."
+            echo "::error::The existing Docker volume may have been initialized with different credentials. Use the original DB credentials in the production secrets, or perform an intentional database credential/volume migration."
+            exit 1
+          fi
 
           echo "=== TEST POSTGRES LOGIN ==="
           docker rm -f postgres-login-test 2>/dev/null || true
@@ -316,7 +327,8 @@ jobs:
           app_compose ps -a
 
           echo "To inspect this stack on EC2, run:"
-          echo "docker compose --profile local-db -p rosterbusters -f docker-compose.yml -f docker-compose.prod.yml ps -a"
+          echo "cd ~/rosterbusters && docker compose ps -a"
+          echo "cd ~/rosterbusters && docker compose logs --tail=200 backend frontend celery_worker"
 
           echo "=== ENFORCED HEALTH CHECKS ==="
           curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
