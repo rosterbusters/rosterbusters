@@ -25,6 +25,25 @@ def ensure_bootstrap_schema(session: Session) -> None:
         session.exec(sa.text('ALTER TABLE "User" ADD COLUMN defaultpassword VARCHAR'))
         session.commit()
 
+    if "emailverified" not in user_columns:
+        session.exec(
+            sa.text(
+                'ALTER TABLE "User" '
+                "ADD COLUMN emailverified BOOLEAN NOT NULL DEFAULT false"
+            )
+        )
+        session.exec(
+            sa.text(
+                """
+                UPDATE "User"
+                SET emailverified = true
+                WHERE email IS NOT NULL
+                  AND COALESCE(mustchangepassword, false) = false
+                """
+            )
+        )
+        session.commit()
+
     if "wardhourtype" not in ward_columns:
         session.exec(
             sa.text(

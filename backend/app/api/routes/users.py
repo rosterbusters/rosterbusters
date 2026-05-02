@@ -574,6 +574,8 @@ def update_nurse_manager_staff(
         nurse.name = body.name.strip() or user.username
 
     if email_provided:
+        if body.email != user.email:
+            user.email_verified = False
         user.email = body.email
         nurse.email = body.email or ""
 
@@ -705,8 +707,9 @@ def first_login_setup(
         if bypass_verification:
             current_email = submitted_email
             current_user.email = submitted_email
+            current_user.email_verified = True
         else:
-            if not current_email:
+            if not current_email or not current_user.email_verified:
                 raise HTTPException(
                     status_code=400,
                     detail="Email is not verified. Please verify your email before completing setup.",
@@ -716,7 +719,7 @@ def first_login_setup(
                     status_code=400,
                     detail="Submitted email does not match verified email. Please verify this email first.",
                 )
-    elif not current_email and not bypass_verification:
+    elif (not current_email or not current_user.email_verified) and not bypass_verification:
         raise HTTPException(
             status_code=400,
             detail="Email verification is required before completing setup.",
@@ -788,6 +791,7 @@ def complete_public_first_login_setup(
     user.passwordhash = get_password_hash(body.new_password)
     user.must_change_password = False
     user.default_password_encrypted = None
+    user.email_verified = True
 
     session.add(user)
     session.commit()
@@ -870,6 +874,7 @@ def verify_email_code_endpoint(
     
     # Update user email
     current_user.email = email
+    current_user.email_verified = True
     session.add(current_user)
     
     # Also update the linked nurse/manager email
@@ -940,6 +945,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         isactive=current_user.isactive,
         is_superuser=is_superuser,
         must_change_password=current_user.must_change_password,
+        email_verified=current_user.email_verified,
         wardid=wardid,
         name=name,
     )

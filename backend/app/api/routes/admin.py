@@ -542,6 +542,8 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     if body.username is not None:
         user.username = body.username
     if email_provided:
+        if body.email != user.email:
+            user.email_verified = False
         user.email = body.email
     if body.password is not None:
         user.passwordhash = get_password_hash(body.password)

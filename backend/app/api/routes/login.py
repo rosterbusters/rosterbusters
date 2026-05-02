@@ -95,6 +95,7 @@ async def auth_google_callback(
                     nurseid=nurse.nurseid if nurse else None,
                     managerid=manager.managerid if manager else None,
                     isactive=True,
+                    email_verified=True,
                     createdat=datetime.now(timezone.utc),
                 )
                 session.add(rbac_user)

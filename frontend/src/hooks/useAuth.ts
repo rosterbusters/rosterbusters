@@ -5,7 +5,6 @@ import { useState } from "react"
 import {
   type Body_login_access_token as AccessToken,
   type ApiError,
-  type UserPublic,
   DefaultService,
   UsersService,
 } from "@/client"
@@ -26,6 +25,7 @@ export interface CurrentUser {
   isactive: boolean
   is_superuser: boolean
   must_change_password?: boolean
+  email_verified?: boolean
   wardid?: number | null
   name?: string | null
 }

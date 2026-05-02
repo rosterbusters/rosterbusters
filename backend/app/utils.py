@@ -48,6 +48,8 @@ def send_email(
         if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
             client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
             client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+            if settings.AWS_SESSION_TOKEN:
+                client_kwargs["aws_session_token"] = settings.AWS_SESSION_TOKEN
 
         ses_client = boto3.client("ses", **client_kwargs)
         sender_email = settings.AWS_SES_SENDER_EMAIL

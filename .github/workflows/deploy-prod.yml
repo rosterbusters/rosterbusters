@@ -3,7 +3,7 @@ name: Deploy to Production
 on:
   push:
     branches:
-      - production
+      - main
 
 jobs:
   deploy:
@@ -42,13 +42,17 @@ jobs:
           fi
           git remote set-url origin https://oauth2:${{ secrets.GH_PAT }}@github.com/rosterbusters/rosterbusters.git
           git fetch origin
-          git reset --hard origin/production
+          git reset --hard origin/main
           git remote set-url origin https://github.com/rosterbusters/rosterbusters.git
           EOF
 
       - name: Create .env file on EC2
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "cat > ~/rosterbusters/.env" << 'EOF'
+          COMPOSE_PROJECT_NAME=rosterbusters
+          COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+          COMPOSE_PROFILES=local-db
+          CI=false
           ENVIRONMENT=production
           PROJECT_NAME=SACH Duby
           FRONTEND_HOST=https://${{ secrets.DOMAIN_PROD }}
@@ -56,7 +60,7 @@ jobs:
           DOMAIN=${{ secrets.DOMAIN_PROD }}
           STACK_NAME=${{ secrets.STACK_NAME_PROD }}
           SECRET_KEY=${{ secrets.SECRET_KEY }}
-          POSTGRES_SERVER=${{ secrets.RDS_PROD_HOST }}
+          POSTGRES_SERVER=db
           POSTGRES_USER=${{ secrets.RDS_PROD_USER }}
           POSTGRES_PASSWORD=${{ secrets.RDS_PROD_PASSWORD }}
           POSTGRES_DB=${{ secrets.RDS_PROD_DB }}
@@ -69,6 +73,9 @@ jobs:
           FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
           AWS_REGION=${{ secrets.AWS_REGION }}
           AWS_SES_SENDER_EMAIL=${{ secrets.AWS_SES_SENDER_EMAIL }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}
           SMTP_HOST=${{ secrets.SMTP_HOST }}
           SMTP_USER=${{ secrets.SMTP_USER }}
           SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
@@ -165,15 +172,13 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
           set -Eeuo pipefail
+          trap 'dump_logs $? $LINENO "$BASH_COMMAND"' ERR
           cd ~/rosterbusters
 
           APP_PROJECT=rosterbusters
           TRAEFIK_PROJECT=traefik-public
           app_compose() {
-            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"
-          }
-          app_override_compose() {
-            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml "$@"
+            docker compose --profile local-db -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"
           }
           traefik_compose() {
             docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml -f docker-compose.traefik.prod.yml "$@"
@@ -210,11 +215,28 @@ jobs:
             grep -n -- 'BEGIN CERTIFICATE\\|BEGIN .*PRIVATE KEY' ~/rosterbusters/traefik/certs/cloudflare-origin.crt ~/rosterbusters/traefik/certs/cloudflare-origin.key || true
           }
           dump_logs() {
+            exit_code="${1:-1}"
+            failed_line="${2:-unknown}"
+            failed_command="${3:-unknown}"
+            echo "=== FAILED COMMAND ==="
+            echo "line ${failed_line}: ${failed_command}"
+            echo "exit code: ${exit_code}"
+            echo "=== DOCKER VERSION ==="
+            docker version || true
+            docker compose version || true
             echo "=== TRAEFIK LOGS ==="
             traefik_compose logs --tail=200 || true
             debug_traefik_tls
+            echo "=== APP COMPOSE CONFIG ==="
+            app_compose config || true
             echo "=== APP STATUS ==="
-            app_compose ps || true
+            app_compose ps -a || true
+            echo "=== ALL ROSTERBUSTERS CONTAINERS ==="
+            docker ps -a --filter "name=rosterbusters" || true
+            echo "=== POSTGRES LOGIN TEST LOGS ==="
+            docker logs --tail=200 postgres-login-test || true
+            echo "=== MIGRATION LOGS ==="
+            docker logs --tail=200 prestart-migration || true
             echo "=== PRESTART LOGS ==="
             app_compose logs --tail=200 prestart || true
             echo "=== BACKEND LOGS ==="
@@ -224,78 +246,101 @@ jobs:
             echo "=== APP LOGS ==="
             app_compose logs --tail=200 || true
           }
-          trap dump_logs ERR
 
-          app_compose down --remove-orphans 2>/dev/null || true
-          app_override_compose down --remove-orphans 2>/dev/null || true
+          echo "=== EXISTING APP STATUS ==="
+          app_compose ps -a || true
 
+          echo "=== CREATE TRAEFIK NETWORK ==="
           docker network create traefik-public 2>/dev/null || true
 
+          echo "=== START TRAEFIK ==="
           traefik_compose up -d
 
+          echo "=== BUILD APP IMAGES ==="
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
           app_compose build
 
           echo "=== APP COMPOSE CONFIG ==="
           app_compose config
 
-          echo "=== RUN ONE-OFF DB MIGRATION ==="
-          app_compose run --rm prestart bash -lc "uv run alembic upgrade head"
-
-          app_compose up -d --remove-orphans || {
-            echo "=== APP STATUS AFTER FAILED START ==="
-            app_compose ps || true
-            echo "=== PRESTART LOGS ==="
-            app_compose logs --tail=200 prestart || true
-            echo "=== BACKEND LOGS ==="
-            app_compose logs --tail=200 backend || true
-            echo "=== CELERY LOGS ==="
-            app_compose logs --tail=200 celery_worker || true
+          echo "=== ENSURE GUROBI LICENSE BIND MOUNT EXISTS ==="
+          if [ ! -f "$HOME/gurobi.lic" ] && [ -f "$PWD/gurobi.lic" ]; then
+            cp "$PWD/gurobi.lic" "$HOME/gurobi.lic"
+            chmod 600 "$HOME/gurobi.lic"
+          fi
+          if [ ! -f "$HOME/gurobi.lic" ]; then
+            echo "::error file=docker-compose.prod.yml,line=28::Missing $HOME/gurobi.lic required by the celery_worker bind mount."
             exit 1
-          }
+          fi
+
+          echo "=== START LOCAL POSTGRES ==="
+          app_compose up -d db
+
+          echo "=== WAIT FOR POSTGRES HEALTH ==="
+          timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-db-1 2>/dev/null)" = "healthy" ]; do sleep 2; done'
+
+          echo "=== CHECK POSTGRES READINESS ==="
+          app_compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+          echo "=== CHECK POSTGRES CREDENTIALS ==="
+          if ! app_compose exec -T db sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1" >/dev/null'; then
+            echo "::error::Postgres is running, but the configured POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB cannot log in."
+            echo "::error::The existing Docker volume may have been initialized with different credentials. Use the original DB credentials in the production secrets, or perform an intentional database credential/volume migration."
+            exit 1
+          fi
+
+          echo "=== TEST POSTGRES LOGIN ==="
+          docker rm -f postgres-login-test 2>/dev/null || true
+          app_compose run --name postgres-login-test --no-deps -T prestart bash -lc 'uv run python -c "import textwrap; exec(textwrap.dedent(\"\"\"
+          from sqlalchemy import create_engine, text
+          from app.core.config import settings
+
+          engine = create_engine(
+              str(settings.SQLALCHEMY_DATABASE_URI),
+              connect_args={\"connect_timeout\": 10},
+              pool_pre_ping=True,
+          )
+          with engine.connect() as connection:
+              result = connection.execute(
+                  text(\"select current_database(), current_user, version()\")
+              ).one()
+
+          print(f\"Postgres login test passed: database={result[0]}, user={result[1]}\")
+          print(f\"Postgres server version: {result[2].splitlines()[0]}\")
+          \"\"\"))"' </dev/null
+          docker rm -f postgres-login-test
+
+          echo "=== CHECK AWS SES CREDENTIALS ==="
+          if grep -q '^AWS_REGION=.' .env && grep -q '^AWS_SES_SENDER_EMAIL=.' .env && ! grep -q '^SMTP_HOST=.' .env; then
+            docker rm -f aws-ses-credential-test 2>/dev/null || true
+            app_compose run --name aws-ses-credential-test --no-deps -T prestart bash -lc 'uv run python -c "import boto3; creds = boto3.Session().get_credentials(); raise SystemExit(\"AWS SES is enabled, but boto3 cannot find credentials. Attach an EC2 IAM role with ses:SendEmail/ses:SendRawEmail, or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY GitHub secrets.\") if creds is None else print(\"AWS credential provider resolved:\", getattr(creds, \"method\", \"unknown\"))"' </dev/null
+            docker rm -f aws-ses-credential-test
+          else
+            echo "AWS SES is not selected for this deployment; skipping SES credential check."
+          fi
+
+          echo "=== RUN ONE-OFF DB MIGRATION ==="
+          docker rm -f prestart-migration 2>/dev/null || true
+          app_compose run --name prestart-migration -T prestart bash -lc "uv run alembic upgrade head" </dev/null
+          docker rm -f prestart-migration
+
+          echo "=== START APP STACK ==="
+          app_compose up -d --remove-orphans
 
           echo "=== WAIT FOR BACKEND HEALTH ==="
           timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-backend-1 2>/dev/null)" = "healthy" ]; do sleep 2; done'
 
-          echo "=== TRAEFIK NETWORK ==="
-          docker network inspect traefik-public
-
-          echo "=== TRAEFIK STATUS ==="
-          traefik_compose ps
-
-          echo "=== TRAEFIK TLS DEBUG ==="
-          debug_traefik_tls
-
-          echo "=== APP STATUS ==="
-          app_compose ps
-
           DOMAIN=$(grep '^DOMAIN=' .env | cut -d= -f2-)
 
-          echo "=== DEPLOYED ROUTER CONFIG ==="
-          grep -n "traefik.http.routers.frontend-http.rule" docker-compose.yml docker-compose.prod.yml || true
-          grep -n "traefik.http.routers.backend-http.rule" docker-compose.yml docker-compose.prod.yml || true
-          grep -n "traefik.http.routers.adminer-http.rule" docker-compose.yml docker-compose.prod.yml || true
+          echo "=== WAIT FOR FRONTEND ROUTE ==="
+          timeout 120 bash -c 'until curl -fSs -H "Host: '"$DOMAIN"'" http://127.0.0.1/ >/dev/null; do sleep 2; done'
 
-          echo "=== LIVE FRONTEND LABELS ==="
-          docker inspect rosterbusters-frontend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
+          echo "=== APP STATUS ==="
+          app_compose ps -a
 
-          echo "=== LIVE BACKEND LABELS ==="
-          docker inspect rosterbusters-backend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
-
-          echo "=== LIVE ADMINER LABELS ==="
-          docker inspect rosterbusters-adminer-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
-
-          echo "=== LOCAL FRONTEND CHECK ==="
-          curl -i -H "Host: $DOMAIN" http://127.0.0.1/ || true
-
-          echo "=== LOCAL API CHECK ==="
-          curl -i -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ || true
-
-          echo "=== PUBLIC FRONTEND CHECK ==="
-          curl -k -i https://$DOMAIN/ || true
-
-          echo "=== PUBLIC API CHECK ==="
-          curl -k -i https://api.$DOMAIN/api/v1/utils/health-check/ || true
+          echo "To inspect this stack on EC2, run:"
+          echo "cd ~/rosterbusters && docker compose ps -a"
+          echo "cd ~/rosterbusters && docker compose logs --tail=200 backend frontend celery_worker"
 
           echo "=== ENFORCED HEALTH CHECKS ==="
           curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
