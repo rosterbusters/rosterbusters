@@ -226,6 +226,8 @@ jobs:
             app_compose ps -a || true
             echo "=== ALL ROSTERBUSTERS CONTAINERS ==="
             docker ps -a --filter "name=rosterbusters" || true
+            echo "=== POSTGRES LOGIN TEST LOGS ==="
+            docker logs --tail=200 postgres-login-test || true
             echo "=== MIGRATION LOGS ==="
             docker logs --tail=200 prestart-migration || true
             echo "=== PRESTART LOGS ==="
@@ -274,7 +276,8 @@ jobs:
           app_compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 
           echo "=== TEST POSTGRES LOGIN ==="
-          app_compose run --rm --no-deps -T prestart bash -lc 'uv run python -c "import textwrap; exec(textwrap.dedent(\"\"\"
+          docker rm -f postgres-login-test 2>/dev/null || true
+          app_compose run --name postgres-login-test --no-deps -T prestart bash -lc 'uv run python -c "import textwrap; exec(textwrap.dedent(\"\"\"
           from sqlalchemy import create_engine, text
           from app.core.config import settings
 
@@ -291,6 +294,7 @@ jobs:
           print(f\"Postgres login test passed: database={result[0]}, user={result[1]}\")
           print(f\"Postgres server version: {result[2].splitlines()[0]}\")
           \"\"\"))"' </dev/null
+          docker rm -f postgres-login-test
 
           echo "=== RUN ONE-OFF DB MIGRATION ==="
           docker rm -f prestart-migration 2>/dev/null || true

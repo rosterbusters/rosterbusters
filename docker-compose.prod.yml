@@ -25,7 +25,7 @@ services:
       - GRB_WLSSECRET=${GRB_WLSSECRET}
       - GRB_LICENSEID=${GRB_LICENSEID}
     volumes:
-      - ~/gurobi.lic:/root/gurobi.lic:ro
+      - ./gurobi.lic:/root/gurobi.lic:ro
 
   frontend:
     depends_on:
