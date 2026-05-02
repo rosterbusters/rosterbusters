@@ -40,6 +40,10 @@ class RBACUser(SQLModel, table=True):
         default=False,
         sa_column=Column("mustchangepassword", Boolean, server_default="false"),
     )
+    email_verified: bool = Field(
+        default=False,
+        sa_column=Column("emailverified", Boolean, server_default="false"),
+    )
     lastlogin: Optional[datetime] = Field(
         default=None, sa_column=Column("lastlogin", DateTime(timezone=True))
     )
@@ -60,6 +64,7 @@ class RBACUserPublic(SQLModel):
     isactive: bool
     is_superuser: bool = False
     must_change_password: bool = False
+    email_verified: bool = False
     name: Optional[str] = None
     wardid: Optional[int] = None
 

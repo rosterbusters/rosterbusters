@@ -109,6 +109,7 @@ class Settings(BaseSettings):
     EMAILS_FROM_NAME: EmailStr | None = None
     AWS_ACCESS_KEY_ID: str | None = None
     AWS_SECRET_ACCESS_KEY: str | None = None
+    AWS_SESSION_TOKEN: str | None = None
     AWS_REGION: str | None = None
     AWS_SES_SENDER_EMAIL: EmailStr | None = None
 

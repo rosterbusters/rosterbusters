@@ -4,11 +4,12 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.core.security import verify_password
+from app.core.security import get_password_hash, verify_password
 from app.models import RBACUser
 from app.models.rbac import Nurse, Role, UserRole
 from app.models.roster import Ward
 from app.utils import generate_first_login_setup_token
+from tests.utils.user import user_authentication_headers
 
 
 def test_admin_create_user_with_email_sends_first_login_email(
@@ -184,3 +185,59 @@ def test_public_first_login_context_and_completion_flow(
     )
     assert reused_response.status_code == 400
     assert reused_response.json()["detail"] == "Invalid or expired setup link."
+
+
+def test_logged_in_first_login_requires_verified_email(
+    client: TestClient,
+    db: Session,
+) -> None:
+    password = "Temporary123!"
+    user = RBACUser(
+        username="needs.email.verify",
+        email="needs.email.verify@example.com",
+        passwordhash=get_password_hash(password),
+        isactive=True,
+        must_change_password=True,
+        email_verified=False,
+        createdat=datetime.now(timezone.utc),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    headers = user_authentication_headers(
+        client=client,
+        email=user.email,
+        password=password,
+    )
+    response = client.post(
+        f"{settings.API_V1_STR}/users/me/first-login-setup",
+        headers=headers,
+        json={
+            "new_password": "NewPassword123!",
+            "email": user.email,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "Email is not verified. Please verify your email before completing setup."
+    )
+
+    user.email_verified = True
+    db.add(user)
+    db.commit()
+
+    verified_response = client.post(
+        f"{settings.API_V1_STR}/users/me/first-login-setup",
+        headers=headers,
+        json={
+            "new_password": "NewPassword123!",
+            "email": user.email,
+        },
+    )
+
+    assert verified_response.status_code == 200, verified_response.text
+    db.refresh(user)
+    assert user.must_change_password is False
+    assert verify_password("NewPassword123!", user.passwordhash)

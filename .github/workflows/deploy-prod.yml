@@ -73,6 +73,9 @@ jobs:
           FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
           AWS_REGION=${{ secrets.AWS_REGION }}
           AWS_SES_SENDER_EMAIL=${{ secrets.AWS_SES_SENDER_EMAIL }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}
           SMTP_HOST=${{ secrets.SMTP_HOST }}
           SMTP_USER=${{ secrets.SMTP_USER }}
           SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
@@ -306,6 +309,15 @@ jobs:
           print(f\"Postgres server version: {result[2].splitlines()[0]}\")
           \"\"\"))"' </dev/null
           docker rm -f postgres-login-test
+
+          echo "=== CHECK AWS SES CREDENTIALS ==="
+          if grep -q '^AWS_REGION=.' .env && grep -q '^AWS_SES_SENDER_EMAIL=.' .env && ! grep -q '^SMTP_HOST=.' .env; then
+            docker rm -f aws-ses-credential-test 2>/dev/null || true
+            app_compose run --name aws-ses-credential-test --no-deps -T prestart bash -lc 'uv run python -c "import boto3; creds = boto3.Session().get_credentials(); raise SystemExit(\"AWS SES is enabled, but boto3 cannot find credentials. Attach an EC2 IAM role with ses:SendEmail/ses:SendRawEmail, or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY GitHub secrets.\") if creds is None else print(\"AWS credential provider resolved:\", getattr(creds, \"method\", \"unknown\"))"' </dev/null
+            docker rm -f aws-ses-credential-test
+          else
+            echo "AWS SES is not selected for this deployment; skipping SES credential check."
+          fi
 
           echo "=== RUN ONE-OFF DB MIGRATION ==="
           docker rm -f prestart-migration 2>/dev/null || true
