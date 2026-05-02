@@ -165,15 +165,13 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} << 'EOF'
           set -Eeuo pipefail
+          trap 'dump_logs $? $LINENO "$BASH_COMMAND"' ERR
           cd ~/rosterbusters
 
           APP_PROJECT=rosterbusters
           TRAEFIK_PROJECT=traefik-public
           app_compose() {
             docker compose --profile local-db -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"
-          }
-          app_override_compose() {
-            docker compose -p "$APP_PROJECT" -f docker-compose.yml -f docker-compose.override.yml "$@"
           }
           traefik_compose() {
             docker compose -p "$TRAEFIK_PROJECT" -f docker-compose.traefik.yml -f docker-compose.traefik.prod.yml "$@"
@@ -238,51 +236,30 @@ jobs:
             app_compose logs --tail=200 || true
           }
 
+          echo "=== STOP OLD APP STACK ==="
           app_compose down --remove-orphans 2>/dev/null || true
-          app_override_compose down --remove-orphans 2>/dev/null || true
 
+          echo "=== CREATE TRAEFIK NETWORK ==="
           docker network create traefik-public 2>/dev/null || true
 
-          traefik_compose up -d || {
-            code=$?
-            dump_logs "$code" "$LINENO" "traefik_compose up -d"
-            exit "$code"
-          }
+          echo "=== START TRAEFIK ==="
+          traefik_compose up -d
 
+          echo "=== BUILD APP IMAGES ==="
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
-          app_compose build || {
-            code=$?
-            dump_logs "$code" "$LINENO" "app_compose build"
-            exit "$code"
-          }
+          app_compose build
 
           echo "=== APP COMPOSE CONFIG ==="
-          app_compose config || {
-            code=$?
-            dump_logs "$code" "$LINENO" "app_compose config"
-            exit "$code"
-          }
+          app_compose config
 
           echo "=== START LOCAL POSTGRES ==="
-          app_compose up -d db || {
-            code=$?
-            dump_logs "$code" "$LINENO" "app_compose up -d db"
-            exit "$code"
-          }
+          app_compose up -d db
 
           echo "=== WAIT FOR POSTGRES HEALTH ==="
-          timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-db-1 2>/dev/null)" = "healthy" ]; do sleep 2; done' || {
-            code=$?
-            dump_logs "$code" "$LINENO" "wait for postgres health"
-            exit "$code"
-          }
+          timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-db-1 2>/dev/null)" = "healthy" ]; do sleep 2; done'
 
           echo "=== CHECK POSTGRES CONNECTIVITY ==="
-          app_compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' || {
-            code=$?
-            dump_logs "$code" "$LINENO" "pg_isready"
-            exit "$code"
-          }
+          app_compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 
           echo "=== TEST POSTGRES LOGIN ==="
           app_compose run --rm --no-deps -T prestart bash -lc 'uv run python -c "import textwrap; exec(textwrap.dedent(\"\"\"
@@ -301,77 +278,23 @@ jobs:
 
           print(f\"Postgres login test passed: database={result[0]}, user={result[1]}\")
           print(f\"Postgres server version: {result[2].splitlines()[0]}\")
-          \"\"\"))"' </dev/null || {
-            code=$?
-            dump_logs "$code" "$LINENO" "test postgres login"
-            exit "$code"
-          }
+          \"\"\"))"' </dev/null
 
           echo "=== RUN ONE-OFF DB MIGRATION ==="
           docker rm -f prestart-migration 2>/dev/null || true
-          app_compose run --name prestart-migration -T prestart bash -lc "uv run alembic upgrade head" </dev/null || {
-            code=$?
-            dump_logs "$code" "$LINENO" "run alembic migration"
-            exit "$code"
-          }
+          app_compose run --name prestart-migration -T prestart bash -lc "uv run alembic upgrade head" </dev/null
           docker rm -f prestart-migration
 
-          app_compose up -d --remove-orphans || {
-            code=$?
-            echo "=== APP STATUS AFTER FAILED START ==="
-            app_compose ps || true
-            echo "=== PRESTART LOGS ==="
-            app_compose logs --tail=200 prestart || true
-            echo "=== BACKEND LOGS ==="
-            app_compose logs --tail=200 backend || true
-            echo "=== CELERY LOGS ==="
-            app_compose logs --tail=200 celery_worker || true
-            dump_logs "$code" "$LINENO" "app_compose up -d --remove-orphans"
-            exit "$code"
-          }
+          echo "=== START APP STACK ==="
+          app_compose up -d --remove-orphans
 
           echo "=== WAIT FOR BACKEND HEALTH ==="
           timeout 120 bash -c 'until [ "$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}" rosterbusters-backend-1 2>/dev/null)" = "healthy" ]; do sleep 2; done'
-
-          echo "=== TRAEFIK NETWORK ==="
-          docker network inspect traefik-public
-
-          echo "=== TRAEFIK STATUS ==="
-          traefik_compose ps
-
-          echo "=== TRAEFIK TLS DEBUG ==="
-          debug_traefik_tls
 
           echo "=== APP STATUS ==="
           app_compose ps
 
           DOMAIN=$(grep '^DOMAIN=' .env | cut -d= -f2-)
-
-          echo "=== DEPLOYED ROUTER CONFIG ==="
-          grep -n "traefik.http.routers.frontend-http.rule" docker-compose.yml docker-compose.prod.yml || true
-          grep -n "traefik.http.routers.backend-http.rule" docker-compose.yml docker-compose.prod.yml || true
-          grep -n "traefik.http.routers.adminer-http.rule" docker-compose.yml docker-compose.prod.yml || true
-
-          echo "=== LIVE FRONTEND LABELS ==="
-          docker inspect rosterbusters-frontend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
-
-          echo "=== LIVE BACKEND LABELS ==="
-          docker inspect rosterbusters-backend-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
-
-          echo "=== LIVE ADMINER LABELS ==="
-          docker inspect rosterbusters-adminer-1 --format '{{ range $k, $v := .Config.Labels }}{{ printf "%s=%s\n" $k $v }}{{ end }}' | sort | grep '^traefik\.' || true
-
-          echo "=== LOCAL FRONTEND CHECK ==="
-          curl -i -H "Host: $DOMAIN" http://127.0.0.1/ || true
-
-          echo "=== LOCAL API CHECK ==="
-          curl -i -H "Host: api.$DOMAIN" http://127.0.0.1/api/v1/utils/health-check/ || true
-
-          echo "=== PUBLIC FRONTEND CHECK ==="
-          curl -k -i https://$DOMAIN/ || true
-
-          echo "=== PUBLIC API CHECK ==="
-          curl -k -i https://api.$DOMAIN/api/v1/utils/health-check/ || true
 
           echo "=== ENFORCED HEALTH CHECKS ==="
           curl -fSs -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
