@@ -2,6 +2,8 @@ services:
   db:
     profiles: ["local-db"]  # opt-in only; prod normally uses the external Postgres host
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:15432:5432"
   adminer:
     profiles: ["local-db"]  # opt-in only alongside the local db service
     restart: unless-stopped
@@ -23,14 +25,17 @@ services:
       - GRB_WLSSECRET=${GRB_WLSSECRET}
       - GRB_LICENSEID=${GRB_LICENSEID}
     volumes:
-      - ~/gurobi.lic:/root/gurobi.lic:ro
+      - ./gurobi.lic:/root/gurobi.lic:ro
 
   frontend:
+    depends_on:
+      backend:
+        condition: service_healthy
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=
+        - VITE_API_URL=https://api.${DOMAIN?Variable not set}
         - NODE_ENV=production
     labels:
       traefik.enable: "true"
