@@ -47,6 +47,18 @@ export const Route = createFileRoute("/first-login-setup")({
     if (!search.token && !isLoggedIn()) {
       throw redirect({ to: "/login" })
     }
+    if (!search.token) {
+      const user = (await UsersService.readUserMe()) as unknown as CurrentUser
+      if (!user.must_change_password) {
+        if (user.is_superuser) {
+          throw redirect({ to: "/admin/dashboard" })
+        }
+        if (user.managerid) {
+          throw redirect({ to: "/nurse-manager/home" })
+        }
+        throw redirect({ to: "/ward-staff/home" })
+      }
+    }
   },
 })
 
@@ -127,8 +139,10 @@ function FirstLoginSetup() {
       setValue("email", existingEmail)
     }
 
-    setEmailVerificationStep("verified")
-  }, [currentUser?.email, getValues, setValue])
+    if (currentUser?.email_verified) {
+      setEmailVerificationStep("verified")
+    }
+  }, [currentUser?.email, currentUser?.email_verified, getValues, setValue])
 
   useEffect(() => {
     const existingEmployeeId = isTokenMode
@@ -271,7 +285,9 @@ function FirstLoginSetup() {
     const submittedEmail = normalizeEmail(data.email)
     const verifiedAccountEmail = normalizeEmail(currentUser?.email)
     const isUsingAlreadyVerifiedEmail =
-      submittedEmail.length > 0 && submittedEmail === verifiedAccountEmail
+      currentUser?.email_verified === true &&
+      submittedEmail.length > 0 &&
+      submittedEmail === verifiedAccountEmail
 
     if (!isUsingAlreadyVerifiedEmail && emailVerificationStep !== "verified") {
       showErrorToast("Please verify your email before completing setup.")
@@ -393,7 +409,12 @@ function FirstLoginSetup() {
                             const typedEmail = normalizeEmail(e.target.value)
                             const verifiedAccountEmail = normalizeEmail(currentUser?.email)
 
-                            if (typedEmail && verifiedAccountEmail && typedEmail === verifiedAccountEmail) {
+                            if (
+                              currentUser?.email_verified === true &&
+                              typedEmail &&
+                              verifiedAccountEmail &&
+                              typedEmail === verifiedAccountEmail
+                            ) {
                               setEmailVerificationStep("verified")
                             } else {
                               setEmailVerificationStep("idle")
