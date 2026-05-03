@@ -12,6 +12,7 @@ import type {
   ShiftAssignment,
   NursePeriodConstraint,
   ShiftPattern,
+  DailyStaffingGuideline,
 } from "./types";
 import { SHIFT_CODE_MAP } from "./types";
 
@@ -404,6 +405,9 @@ export function transformRosterData(
       name: nurse.name,
       designation: nurse.designation,
       staffingRole: nurse.staffing_role ?? null,
+      rosterRank: nurse.roster_rank ?? null,
+      employeeId: nurse.employeeId ?? null,
+      joinDate: nurse.joinDate ?? nurse.join_date ?? null,
       hours: {
         worked: workedHours,
         contracted: contractedHours,
@@ -421,10 +425,13 @@ export function useRosterPageData(wardId: number | null, periodId: number | null
   const { data: rosterData, isLoading: rosterLoading } = useWardRoster(wardId, periodId);
   
   const rows = useMemo(() => {
-    if (!statistics?.nurses || !rosterData?.roster_entries) {
+    if (!statistics?.nurses) {
       return [];
     }
-    return transformRosterData(statistics.nurses, rosterData.roster_entries);
+    return transformRosterData(
+      statistics.nurses,
+      rosterData?.roster_entries ?? [],
+    );
   }, [statistics?.nurses, rosterData?.roster_entries]);
   
   return {
@@ -520,6 +527,38 @@ export function useUpdateNurseShiftPattern() {
       });
       queryClient.invalidateQueries({
         queryKey: ["roster", "generation-inputs"],
+      });
+    },
+  });
+}
+
+export function useUpdateWardStaffing() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      wardId,
+      guidelines,
+    }: {
+      wardId: number;
+      guidelines: DailyStaffingGuideline;
+    }) => {
+      return fetchWithAuth(`/api/v1/wards/${wardId}/staffing`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          staffing_json: JSON.stringify(guidelines),
+        }),
+      });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "wards"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["wards"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["roster", "ward", variables.wardId],
       });
     },
   });
@@ -835,12 +874,18 @@ async function pollAlgorithmTask(
         : nurse.rank === "C"
         ? "HCA3"
         : "HCA12";
+    const inferredRosterRank =
+      nurse.rank === "A" || nurse.rank === "B" || nurse.rank === "C"
+        ? nurse.rank
+        : null;
 
     return {
       nurseId: nurse.id,
       name: nurse.name,
       designation: inferredDesignation,
       staffingRole: inferredStaffingRole,
+      rosterRank: inferredRosterRank,
+      joinDate: null,
       hours: { worked: workedHours, contracted: contractedHours },
       shifts: shiftsObject,
       hasOvertime: workedHours > contractedHours,

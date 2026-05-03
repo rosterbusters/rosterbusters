@@ -43,6 +43,7 @@ type DirectoryRow = {
   name: string;
   username: string;
   employeeId: string;
+  joinDate: string;
   designation: string;
   email: string;
   shiftPattern: "A_ONLY" | "P_ONLY" | null;
@@ -54,6 +55,7 @@ type StaffFormState = {
   name: string;
   username: string;
   employeeId: string;
+  joinDate: string;
   designation: string;
   email: string;
   password: string;
@@ -94,6 +96,20 @@ const shiftPatternCollection = createListCollection({
   itemToString: (item) => item.label,
   itemToValue: (item) => item.value,
 });
+
+const joinDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+function formatJoinDate(value: string | null | undefined) {
+  if (!value) return "Not available";
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return joinDateFormatter.format(parsed);
+}
 
 function FilterMenu({
   title,
@@ -311,6 +327,7 @@ function WardStaffDirectoryPage() {
     name: "",
     username: "",
     employeeId: "",
+    joinDate: "",
     designation: "",
     email: "",
     password: "",
@@ -380,14 +397,15 @@ function WardStaffDirectoryPage() {
       }
       setIsStaffFormOpen(false);
       setEditingStaff(null);
-      setStaffForm({
-        name: "",
-        username: "",
-        employeeId: "",
-        designation: "",
-        email: "",
-        password: "",
-        isActive: true,
+        setStaffForm({
+          name: "",
+          username: "",
+          employeeId: "",
+          joinDate: "",
+          designation: "",
+          email: "",
+          password: "",
+          isActive: true,
       });
       invalidateDirectoryData();
     },
@@ -403,14 +421,15 @@ function WardStaffDirectoryPage() {
       showSuccessToast("User updated successfully.");
       setIsStaffFormOpen(false);
       setEditingStaff(null);
-      setStaffForm({
-        name: "",
-        username: "",
-        employeeId: "",
-        designation: "",
-        email: "",
-        password: "",
-        isActive: true,
+        setStaffForm({
+          name: "",
+          username: "",
+          employeeId: "",
+          joinDate: "",
+          designation: "",
+          email: "",
+          password: "",
+          isActive: true,
       });
       invalidateDirectoryData();
     },
@@ -527,6 +546,10 @@ function WardStaffDirectoryPage() {
               nurse?.employeeId?.trim() ||
               ((nurse as { employee_id?: string | null } | undefined)?.employee_id?.trim() ??
                 ""),
+            joinDate:
+              linkedStaff?.join_date ??
+              ((nurse as { joinDate?: string | null } | undefined)?.joinDate ?? "") ??
+              "",
             designation: linkedStaff?.designation ?? nurse?.designation ?? "",
             email: linkedStaff?.email ?? nurse?.email ?? "",
             mustChangePassword:
@@ -634,14 +657,15 @@ function WardStaffDirectoryPage() {
   };
 
   const resetStaffForm = () => {
-    setStaffForm({
-      name: "",
-      username: "",
-      employeeId: "",
-      designation: "",
-      email: "",
-      password: "",
-      isActive: true,
+      setStaffForm({
+        name: "",
+        username: "",
+        employeeId: "",
+        joinDate: "",
+        designation: "",
+        email: "",
+        password: "",
+        isActive: true,
     });
   };
 
@@ -657,6 +681,7 @@ function WardStaffDirectoryPage() {
       name: row.name,
       username: row.username,
       employeeId: row.employeeId,
+      joinDate: row.joinDate,
       designation: row.designation,
       email: row.email,
       password: "",
@@ -696,6 +721,7 @@ function WardStaffDirectoryPage() {
       const payload: NurseManagerStaffUpdate = {
         name: staffForm.name.trim(),
         username: staffForm.username.trim(),
+        join_date: staffForm.joinDate || null,
         designation: staffForm.designation.trim(),
         email: staffForm.email.trim() || null,
         is_active: staffForm.isActive,
@@ -717,6 +743,7 @@ function WardStaffDirectoryPage() {
 
     const payload: NurseManagerStaffCreate = {
       name: staffForm.name.trim(),
+      join_date: staffForm.joinDate || undefined,
       designation: staffForm.designation.trim(),
       email: staffForm.email.trim() || undefined,
       is_active: staffForm.isActive,
@@ -1138,10 +1165,21 @@ function WardStaffDirectoryPage() {
                       anchorRef={employeeIdFilterAnchorRef}
                     />
                   </Table.ColumnHeader>
-                  <Table.ColumnHeader
-                    minW="220px"
-                    py={4}
-                    px={4}
+                    <Table.ColumnHeader
+                      minW="160px"
+                      py={4}
+                      px={4}
+                      borderBottom="1px solid"
+                      borderColor="blackAlpha.100"
+                      color="foreground"
+                      fontWeight="medium"
+                    >
+                      Join Date
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader
+                      minW="220px"
+                      py={4}
+                      px={4}
                     borderBottom="1px solid"
                     borderColor="blackAlpha.100"
                     color="foreground"
@@ -1269,13 +1307,13 @@ function WardStaffDirectoryPage() {
               <Table.Body>
                 {!selectedWard ? (
                   <Table.Row>
-                    <Table.Cell colSpan={8} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={9} textAlign="center" py={12} color="foreground">
                       Select a ward to view staff.
                     </Table.Cell>
                   </Table.Row>
                 ) : filteredRows.length === 0 ? (
                   <Table.Row>
-                    <Table.Cell colSpan={8} textAlign="center" py={12} color="foreground">
+                    <Table.Cell colSpan={9} textAlign="center" py={12} color="foreground">
                       {rows.length === 0
                         ? "No nurses were found for this ward."
                         : "No staff match the selected filters."}
@@ -1306,6 +1344,11 @@ function WardStaffDirectoryPage() {
                         <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
                           <Text fontSize="sm" color="black">
                             {row.employeeId}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
+                          <Text fontSize="sm" color="black">
+                            {formatJoinDate(row.joinDate)}
                           </Text>
                         </Table.Cell>
                         <Table.Cell py={3} px={4} borderBottom="1px solid" borderColor="blackAlpha.100">
@@ -1536,6 +1579,19 @@ function WardStaffDirectoryPage() {
                     placeholder="Employee can enter on first login"
                   />
                 </Box>
+                <Box flex="1">
+                  <Text fontSize="sm" mb={1} color="gray.700">Join Date</Text>
+                  <Input
+                    type="date"
+                    value={staffForm.joinDate}
+                    onChange={(event) =>
+                      setStaffForm((prev) => ({ ...prev, joinDate: event.target.value }))
+                    }
+                  />
+                </Box>
+              </HStack>
+
+              <HStack gap={3} align="start">
                 <Box flex="1">
                   <Text fontSize="sm" mb={1} color="gray.700">Designation</Text>
                   <select

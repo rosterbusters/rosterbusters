@@ -6,6 +6,7 @@ import { z } from "zod"
 import {
   AdminService,
   type AdminUser,
+  type AdminUserFilters,
   type AdminUserCreate,
   type AdminUserUpdate,
   type DesignationOption,
@@ -32,6 +33,20 @@ const usersSearchSchema = z.object({
 
 const PER_PAGE = 10
 
+const joinDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+})
+
+const formatJoinDate = (value?: string | null) => {
+  if (!value) return null
+  const parsed = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return joinDateFormatter.format(parsed)
+}
+
 export const Route = createFileRoute("/admin/users")({
   component: AdminUsers,
   validateSearch: (search) => usersSearchSchema.parse(search),
@@ -46,6 +61,7 @@ interface UserFormData {
   name: string
   email: string
   employee_id: string
+  join_date: string
   designation: string
   password: string
   confirm_password: string
@@ -66,6 +82,7 @@ interface ParsedImportRow {
   name?: string
   email?: string
   employee_id?: string
+  join_date?: string
   designation?: string
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
@@ -114,6 +131,74 @@ const findCellValue = (
     }
   }
   return ""
+}
+
+const findCellRawValue = (
+  row: Record<string, unknown>,
+  aliases: string[],
+): unknown => {
+  const normalizedAliases = new Set(aliases.map(normalizeHeader))
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizedAliases.has(normalizeHeader(key))) {
+      return value
+    }
+  }
+  return undefined
+}
+
+const JOIN_DATE_IMPORT_ALIASES = [
+  "join date",
+  "join_date",
+  "date joined",
+  "joined date",
+  "hired date",
+  "hire date",
+  "date hired",
+  "date of hire",
+  "start date",
+  "commencement date",
+]
+
+const parseImportedJoinDate = (
+  XLSX: typeof import("xlsx"),
+  value: unknown,
+): string | undefined => {
+  if (value == null || value === "") return undefined
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
+
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value)
+    if (!parsed) {
+      throw new Error(`Unsupported join date value "${value}".`)
+    }
+    const year = String(parsed.y).padStart(4, "0")
+    const month = String(parsed.m).padStart(2, "0")
+    const day = String(parsed.d).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  const text = textValue(value)
+  if (!text) return undefined
+
+  const normalized = text
+    .replace(/\./g, "-")
+    .replace(/\//g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(normalized)) {
+    const [year, month, day] = normalized.split("-")
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+  }
+
+  const parsed = new Date(normalized)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Unsupported join date "${text}". Use a valid date.`)
+  }
+  return parsed.toISOString().slice(0, 10)
 }
 
 const slugifyUsername = (value: string) =>
@@ -317,6 +402,10 @@ const parseExactStaffWorkbook = (
       const occupation = textValue(row["OCCUPATION"])
       const department = textValue(row["DEPARTMENT CODE"])
       const email = findCellValue(row, ["email", "email address", "e-mail"])
+      const joinDate = parseImportedJoinDate(
+        XLSX,
+        findCellRawValue(row, JOIN_DATE_IMPORT_ALIASES),
+      )
       const shiftPattern = parseShiftPatternValue(
         findCellValue(row, [
           "shift pattern",
@@ -353,6 +442,7 @@ const parseExactStaffWorkbook = (
           name: name || undefined,
           email: email || undefined,
           employee_id: employeeId || undefined,
+          join_date: joinDate,
           designation: occupation || undefined,
           shift_pattern: shiftPattern,
           is_active: true,
@@ -381,6 +471,10 @@ const parseExactStaffWorkbook = (
       const position = textValue(row.Position)
       const department = textValue(row.Department)
       const email = findCellValue(row, ["email", "email address", "e-mail"])
+      const joinDate = parseImportedJoinDate(
+        XLSX,
+        findCellRawValue(row, JOIN_DATE_IMPORT_ALIASES),
+      )
       const shiftPattern = parseShiftPatternValue(
         findCellValue(row, [
           "shift pattern",
@@ -419,6 +513,7 @@ const parseExactStaffWorkbook = (
           name: name || undefined,
           email: email || undefined,
           employee_id: undefined,
+          join_date: joinDate,
           designation: position || undefined,
           shift_pattern: shiftPattern,
           is_active: true,
@@ -487,6 +582,10 @@ async function parseStaffWorkbook(
       "position",
       "job title",
     ])
+    const joinDate = parseImportedJoinDate(
+      XLSX,
+      findCellRawValue(row, JOIN_DATE_IMPORT_ALIASES),
+    )
     const roleText = findCellValue(row, [
       "role",
       "designation",
@@ -550,6 +649,7 @@ async function parseStaffWorkbook(
       name: name || undefined,
       email: email || undefined,
       employee_id: employeeId || undefined,
+      join_date: joinDate,
       designation: designation || undefined,
       shift_pattern: shiftPattern,
       password: password || undefined,
@@ -624,6 +724,7 @@ function UserFormDialog({
           name: editUser.name ?? "",
           email: editUser.email ?? "",
           employee_id: editUser.employee_id ?? "",
+          join_date: editUser.join_date ?? "",
           designation: editUser.designation ?? "",
           password: "",
           confirm_password: "",
@@ -635,6 +736,7 @@ function UserFormDialog({
           name: "",
           email: "",
           employee_id: "",
+          join_date: "",
           designation: "",
           password: "",
           confirm_password: "",
@@ -693,6 +795,7 @@ function UserFormDialog({
         payload.employee_id = data.employee_id.trim()
       }
       if (currentRole === "Nurse") {
+        payload.join_date = data.join_date || null
         payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
@@ -712,6 +815,7 @@ function UserFormDialog({
         payload.employee_id = data.employee_id.trim()
       }
       if (data.role === "Nurse") {
+        if (data.join_date) payload.join_date = data.join_date
         payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
@@ -861,6 +965,22 @@ function UserFormDialog({
                 />
                 {errors.employee_id && (
                   <p className="text-red-500 text-xs mt-1">{errors.employee_id.message}</p>
+                )}
+              </div>
+            )}
+
+            {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Join Date
+                </label>
+                <input
+                  {...register("join_date")}
+                  type="date"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {errors.join_date && (
+                  <p className="text-red-500 text-xs mt-1">{errors.join_date.message}</p>
                 )}
               </div>
             )}
@@ -1234,6 +1354,7 @@ function AdminUsers() {
           name: row.name,
           email: row.email,
           employee_id: row.employee_id,
+          join_date: row.join_date,
           designation: row.designation,
           shift_pattern: row.shift_pattern,
           password: row.password,
@@ -1289,6 +1410,9 @@ function AdminUsers() {
             if (row.employee_id) updatePayload.employee_id = row.employee_id
             if (row.role === "Nurse" && row.designation) {
               updatePayload.designation = row.designation
+            }
+            if (row.role === "Nurse" && row.join_date) {
+              updatePayload.join_date = row.join_date
             }
             if (row.shift_pattern !== undefined) {
               updatePayload.shift_pattern = row.shift_pattern
@@ -1369,10 +1493,22 @@ function AdminUsers() {
     return () => clearTimeout(timer)
   }, [search])
 
+  const activeFilters: AdminUserFilters = {
+    role: roleFilter,
+    status: statusFilter,
+    passwordState: passwordFilter,
+    wardId: wardFilter === "all" ? undefined : Number(wardFilter),
+  }
+
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-users", { page, search: debouncedSearch }],
+    queryKey: ["admin-users", { page, search: debouncedSearch, ...activeFilters }],
     queryFn: () =>
-      AdminService.listUsers((page - 1) * PER_PAGE, PER_PAGE, debouncedSearch),
+      AdminService.listUsers(
+        (page - 1) * PER_PAGE,
+        PER_PAGE,
+        debouncedSearch,
+        activeFilters,
+      ),
     placeholderData: (prev) => prev,
   })
 
@@ -1407,26 +1543,15 @@ function AdminUsers() {
     })
   }, [users])
 
-  const filteredUsers = users.filter((user) => {
-    const matchesRole =
-      roleFilter === "all" || user.roles.includes(roleFilter)
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "active" ? user.isactive : !user.isactive)
-    const matchesPassword =
-      passwordFilter === "all" ||
-      (passwordFilter === "temporary"
-        ? user.must_change_password
-        : !user.must_change_password)
-    const matchesWard =
-      wardFilter === "all" ||
-      user.wards.some((ward) => String(ward.ward_id) === wardFilter)
-
-    return matchesRole && matchesStatus && matchesPassword && matchesWard
-  })
-
   const setPage = (p: number) =>
     navigate({ search: (prev: any) => ({ ...prev, page: p }) })
+
+  const updateFilter = (setter: (value: string) => void, value: string) => {
+    setter(value)
+    if (page !== 1) {
+      setPage(1)
+    }
+  }
 
   const resetPasswordMutation = useMutation({
     mutationFn: (user: AdminUser) => AdminService.resetUserPassword(user.userid),
@@ -1680,7 +1805,7 @@ function AdminUsers() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <select
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
+          onChange={(e) => updateFilter(setRoleFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Roles</option>
@@ -1691,7 +1816,7 @@ function AdminUsers() {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => updateFilter(setStatusFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Statuses</option>
@@ -1701,7 +1826,7 @@ function AdminUsers() {
 
         <select
           value={passwordFilter}
-          onChange={(e) => setPasswordFilter(e.target.value)}
+          onChange={(e) => updateFilter(setPasswordFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Password States</option>
@@ -1711,7 +1836,7 @@ function AdminUsers() {
 
         <select
           value={wardFilter}
-          onChange={(e) => setWardFilter(e.target.value)}
+          onChange={(e) => updateFilter(setWardFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Wards</option>
@@ -1735,6 +1860,7 @@ function AdminUsers() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Username</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Employee ID</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Join Date</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Roles</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
@@ -1745,7 +1871,7 @@ function AdminUsers() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((user) => (
+                {users.map((user) => (
                   <tr key={user.userid} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-600">
                       {user.name || <span className="text-gray-400">—</span>}
@@ -1755,6 +1881,9 @@ function AdminUsers() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">
                       {user.employee_id || <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {formatJoinDate(user.join_date) || <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">
                       {user.email || <span className="text-gray-400 italic">Not set</span>}
@@ -1861,9 +1990,9 @@ function AdminUsers() {
                     </td>
                   </tr>
                 ))}
-                {filteredUsers.length === 0 && (
+                {users.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
                       No users found.
                     </td>
                   </tr>

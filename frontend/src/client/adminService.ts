@@ -45,6 +45,7 @@ export interface AdminUser {
   name: string | null
   email: string | null
   employee_id: string | null
+  join_date: string | null
   designation: string | null
   shift_pattern: "AM_ONLY" | "PM_ONLY" | null
   isactive: boolean
@@ -66,11 +67,19 @@ export interface AdminUsersResponse {
   count: number
 }
 
+export interface AdminUserFilters {
+  role?: string
+  status?: string
+  passwordState?: string
+  wardId?: number
+}
+
 export interface AdminUserCreate {
   username?: string
   name?: string
   email?: string
   employee_id?: string
+  join_date?: string
   designation?: string
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
@@ -84,6 +93,7 @@ export interface AdminUserUpdate {
   name?: string
   email?: string | null
   employee_id?: string
+  join_date?: string | null
   designation?: string
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
@@ -118,12 +128,25 @@ export interface FirstLoginSetupContext {
 // ---------------------------------------------------------------------------
 
 export const AdminService = {
-  listUsers(skip = 0, limit = 100, search = ""): Promise<AdminUsersResponse> {
+  listUsers(
+    skip = 0,
+    limit = 100,
+    search = "",
+    filters: AdminUserFilters = {},
+  ): Promise<AdminUsersResponse> {
     const params = new URLSearchParams({
       skip: String(skip),
       limit: String(limit),
     })
     if (search) params.set("search", search)
+    if (filters.role && filters.role !== "all") params.set("role", filters.role)
+    if (filters.status && filters.status !== "all") params.set("status", filters.status)
+    if (filters.passwordState && filters.passwordState !== "all") {
+      params.set("password_state", filters.passwordState)
+    }
+    if (typeof filters.wardId === "number") {
+      params.set("ward_id", String(filters.wardId))
+    }
     return request(`/api/v1/admin/users?${params.toString()}`)
   },
 

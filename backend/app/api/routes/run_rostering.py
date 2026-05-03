@@ -496,6 +496,8 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 )
                 else None,
                 "employeeId": n.employeeid,
+                "joinDate": n.join_date.isoformat() if n.join_date else None,
+                "join_date": n.join_date.isoformat() if n.join_date else None,
                 "designation": n.designation,
                 "email": n.email,
                 "contactNumber": n.contactnumber or "",

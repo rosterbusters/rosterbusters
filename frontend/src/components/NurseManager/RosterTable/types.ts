@@ -171,6 +171,9 @@ export interface RosterRow {
   name: string;
   designation: StaffDesignation | string;
   staffingRole?: StaffRole | null;
+  rosterRank?: "A" | "B" | "C" | null;
+  employeeId?: string | null;
+  joinDate?: string | null;
   hours: HoursSummary;
   // Dynamic shift properties for each day
   shifts: Record<string, ShiftAssignment | null>;
@@ -222,6 +225,8 @@ export interface NurseInfo {
   mustChangePassword?: boolean;
   defaultPassword?: string | null;
   employeeId?: string | null;
+  joinDate?: string | null;
+  join_date?: string | null;
   designation: string;
   staffing_role?: StaffRole | null;
   roster_rank?: "A" | "B" | "C" | null;

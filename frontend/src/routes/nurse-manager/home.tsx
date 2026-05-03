@@ -129,7 +129,7 @@ const INITIAL_EDIT_HISTORY: EditHistoryEntry[] = [
 ];
 
 function NurseManagerHome() {
-  const { user } = useAuth();
+  const { user, isUserLoading } = useAuth();
   const { periodId: initialPeriodId } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -730,16 +730,26 @@ function NurseManagerHome() {
   // Default to the nurse manager's assigned ward when available, then restore
   // the last selected ward, and finally fall back to the first accessible ward.
   useEffect(() => {
-    if (wards.length > 0 && !selectedWard) {
-      const assignedWard =
-        user?.wardid != null
-          ? wards.find((w) => w.wardid === user.wardid) ?? null
-          : null;
+    if (wards.length === 0 || isUserLoading) {
+      return;
+    }
+
+    const assignedWard =
+      user?.wardid != null
+        ? wards.find((w) => w.wardid === user.wardid) ?? null
+        : null;
+    const selectedWardStillAvailable = selectedWard
+      ? wards.some((ward) => ward.wardid === selectedWard.wardid)
+      : false;
+
+    if (!selectedWardStillAvailable) {
       const savedId = localStorage.getItem("selectedWardId");
-      const restored = savedId ? wards.find(w => String(w.wardid) === savedId) : null;
+      const restored = savedId
+        ? wards.find((ward) => String(ward.wardid) === savedId) ?? null
+        : null;
       setSelectedWard(assignedWard ?? restored ?? wards[0]);
     }
-  }, [selectedWard, user?.wardid, wards]);
+  }, [isUserLoading, selectedWard, user?.wardid, wards]);
 
 
   return (

@@ -27,6 +27,7 @@ export {
   useGenerationInputs,
   useShiftCodes,
   useAllShiftCodes,
+  useUpdateWardStaffing,
   useUpdateNurseShiftPattern,
   useUpsertPeriodConstraint,
   useDeletePeriodConstraint,

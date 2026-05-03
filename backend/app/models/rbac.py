@@ -8,10 +8,10 @@ RBAC (Role-Based Access Control) models.
 - UserRole: User-role assignments
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
 from sqlmodel import Field, SQLModel
 
 
@@ -55,6 +55,7 @@ class RBACUserPublic(SQLModel):
     username: str
     email: Optional[str] = None
     employee_id: Optional[str] = None
+    join_date: Optional[date] = None
     nurseid: Optional[int] = None
     managerid: Optional[int] = None
     isactive: bool
@@ -69,6 +70,10 @@ class Nurse(SQLModel, table=True):
     nurseid: int | None = Field(default=None, primary_key=True)
     name: str
     employeeid: str | None = Field(default=None, sa_column=Column("employeeid", String))
+    join_date: date | None = Field(
+        default=None,
+        sa_column=Column("join_date", Date),
+    )
     designation: str = Field(foreign_key="designation.designation")
     email: str
     contactnumber: str

@@ -12,6 +12,7 @@ import {
   Popover,
 } from "@chakra-ui/react";
 import {
+  Star,
   Filter,
   ChevronDown,
   ChevronRight,
@@ -298,12 +299,14 @@ interface RosterGridProps {
   onNurseNameClick?: (row: RosterRow) => void;
   shiftDurationMap?: Map<string, number>;
   shiftTimeMap?: Map<string, { start?: string; end?: string }>;
+  showLongServiceSnIcon?: boolean;
 }
 
 interface RosterGridRowProps {
   row: RosterRow;
   dayColumns: DayColumn[];
   viewMode: ViewMode;
+  showLongServiceSnIcon?: boolean;
   highlightedNurseIds?: Set<number>;
   onNurseNameClick?: (row: RosterRow) => void;
   handleShiftClick: (
@@ -329,6 +332,7 @@ const RosterGridRow = React.memo(function RosterGridRow({
   row,
   dayColumns,
   viewMode,
+  showLongServiceSnIcon = false,
   highlightedNurseIds,
   onNurseNameClick,
   handleShiftClick,
@@ -339,6 +343,8 @@ const RosterGridRow = React.memo(function RosterGridRow({
 }: RosterGridRowProps) {
   const displayName = getDisplayName(row);
   const isHighlighted = highlightedNurseIds?.has(row.nurseId) ?? false;
+  const showClassASnIcon =
+    showLongServiceSnIcon && shouldShowClassASnIcon(row);
 
   return (
     <Table.Row
@@ -378,6 +384,18 @@ const RosterGridRow = React.memo(function RosterGridRow({
             >
               {displayName}
             </Text>
+            {showClassASnIcon && (
+              <Box
+                as="span"
+                color="gray.500"
+                title="Class A SN with more than 3 years since join date"
+                aria-label="Class A SN with more than 3 years since join date"
+                display="inline-flex"
+                alignItems="center"
+              >
+                <Icon as={Star} boxSize={3.5} fill="currentColor" />
+              </Box>
+            )}
             {isHighlighted && (
               <Box
                 px={2}
@@ -487,7 +505,9 @@ function getEnNaHcaSortRank(row: RosterRow): number {
 function getSsnSnSortRank(row: RosterRow): number {
   const title = getDisplayTitle(row).toUpperCase();
   if (title === "SSN") return 1;
-  if (title === "SN") return 2;
+  if (title === "SN") {
+    return shouldShowClassASnIcon(row) ? 2 : 3;
+  }
   return 99;
 }
 
@@ -499,6 +519,32 @@ function getDisplayName(row: RosterRow): string {
   if (!name) return title;
 
   return `${title} ${name}`;
+}
+
+function isSnDesignation(designation?: string): boolean {
+  const normalized = (designation ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+
+  return [
+    "RN",
+    "REGISTEREDNURSE",
+    "STAFFNURSE",
+    "STAFFNURSEI",
+    "STAFFNURSEII",
+    "SN",
+  ].includes(normalized);
+}
+
+function shouldShowClassASnIcon(row: RosterRow): boolean {
+  if (row.rosterRank !== "A") return false;
+  if (!isSnDesignation(row.designation)) return false;
+  if (!row.joinDate) return false;
+
+  const joinDate = moment(row.joinDate);
+  if (!joinDate.isValid()) return false;
+
+  return moment().diff(joinDate, "years", true) > 3;
 }
 
 export function RosterGrid({
@@ -518,6 +564,7 @@ export function RosterGrid({
   onNurseNameClick,
   shiftDurationMap,
   shiftTimeMap,
+  showLongServiceSnIcon = false,
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
@@ -958,6 +1005,7 @@ export function RosterGrid({
               row={row}
               dayColumns={dayColumns}
               viewMode={viewMode}
+              showLongServiceSnIcon={showLongServiceSnIcon}
               highlightedNurseIds={highlightedNurseIds}
               onNurseNameClick={onNurseNameClick}
               handleShiftClick={handleShiftClick}
