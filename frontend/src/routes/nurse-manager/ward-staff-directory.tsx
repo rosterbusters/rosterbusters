@@ -564,7 +564,6 @@ function WardStaffDirectoryPage() {
           joinDate:
             linkedStaff?.join_date ??
             (nurse as { joinDate?: string | null } | undefined)?.joinDate ??
-            "" ??
             "",
           designation: linkedStaff?.designation ?? nurse?.designation ?? "",
           email: linkedStaff?.email ?? nurse?.email ?? "",
