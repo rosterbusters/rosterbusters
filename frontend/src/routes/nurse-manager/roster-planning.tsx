@@ -47,6 +47,7 @@ import {
   useAllShiftCodes,
   useUpdateRoster,
   useUpdateRosterComment,
+  useUpdateWardStaffing,
   useUpsertPeriodConstraint,
   useDeletePeriodConstraint,
   useRosterChangelog,
@@ -207,6 +208,7 @@ function RosterPlanningPage() {
     const { data: allShiftCodes = [] } = useAllShiftCodes();
     const updateRoster = useUpdateRoster();
     const updateRosterComment = useUpdateRosterComment();
+    const updateWardStaffing = useUpdateWardStaffing();
     const { exportToXLSX } = useRosterExport();
   const bulkUpsertRoster = useBulkUpsertRoster();
   const upsertPeriodConstraint = useUpsertPeriodConstraint();
@@ -402,13 +404,15 @@ function RosterPlanningPage() {
 
   // Set default ward when there is no valid selection yet.
   useEffect(() => {
-    if (displayWards.length === 0 || isUserLoading) return;
+    // Use `wards` (real API data) not `displayWards` so the mock fallback wards
+    // don't trigger a premature selection before real data has loaded.
+    if (wards.length === 0 || isUserLoading) return;
 
     const designatedWard =
-      (user?.wardid
+      (user?.wardid != null
         ? displayWards.find((ward) => ward.wardId === user.wardid)
         : undefined) ??
-      (user?.managerid
+      (user?.managerid != null
         ? displayWards.find((ward) => ward.managerId === user.managerid)
         : undefined) ??
       null;
@@ -422,7 +426,7 @@ function RosterPlanningPage() {
         setSelectedWard(fallbackWard);
       }
     }
-  }, [displayWards, getDefaultWard, isUserLoading, selectedWard, user?.managerid, user?.wardid]);
+  }, [displayWards, getDefaultWard, isUserLoading, selectedWard, user?.managerid, user?.wardid, wards.length]);
 
   // Reset guidelines and per-date overrides when the selected ward changes
   useEffect(() => {
@@ -521,6 +525,9 @@ function RosterPlanningPage() {
           name: nurse.name,
           designation: nurse.designation,
           staffingRole: nurse.staffing_role ?? null,
+          rosterRank: nurse.roster_rank ?? null,
+          employeeId: nurse.employeeId ?? null,
+          joinDate: nurse.joinDate ?? nurse.join_date ?? null,
           hours: { worked: 0, contracted: 44 },
           shifts: {},
           hasOvertime: false,
@@ -539,6 +546,9 @@ function RosterPlanningPage() {
       name: nurse.name,
       designation: nurse.designation,
       staffingRole: nurse.staffing_role ?? null,
+      rosterRank: nurse.roster_rank ?? null,
+      employeeId: nurse.employeeId ?? null,
+      joinDate: nurse.joinDate ?? nurse.join_date ?? null,
       hours: { worked: 0, contracted: 44 },
       shifts: {},
       hasOvertime: false,
@@ -850,6 +860,9 @@ function RosterPlanningPage() {
           ...row,
           designation: meta.designation ?? row.designation,
           staffingRole: meta.staffing_role ?? row.staffingRole ?? null,
+          rosterRank: meta.roster_rank ?? row.rosterRank ?? null,
+          employeeId: meta.employeeId ?? row.employeeId ?? null,
+          joinDate: meta.joinDate ?? meta.join_date ?? row.joinDate ?? null,
         };
       });
 
@@ -1229,6 +1242,49 @@ function RosterPlanningPage() {
     setIsEditHistoryOpen(true);
   }, []);
 
+  const handleGuidelinesChange = useCallback(
+    (updated: DailyStaffingGuideline) => {
+      if (!selectedWard) {
+        showErrorToast("Please select a ward before saving staffing requirements.");
+        return;
+      }
+
+      const previousGuidelines = guidelines;
+      setGuidelines(updated);
+
+      updateWardStaffing.mutate(
+        { wardId: selectedWard.wardId, guidelines: updated },
+        {
+          onSuccess: (updatedWard) => {
+            setSelectedWard((prev) =>
+              prev && prev.wardId === updatedWard.wardId ? updatedWard : prev,
+            );
+            showSuccessToast("Staffing requirements saved for all future rosters", {
+              title: "Staffing saved",
+            });
+          },
+          onError: (error) => {
+            setGuidelines(previousGuidelines);
+            showErrorToast(
+              error instanceof Error
+                ? error.message
+                : "Failed to save staffing requirements",
+              { title: "Save failed" },
+            );
+          },
+        },
+      );
+    },
+    [guidelines, selectedWard, updateWardStaffing],
+  );
+
+  const handleDateOverrideChange = useCallback(
+    (dateKey: string, updated: DailyStaffingGuideline) => {
+      setDateOverrides((prev) => ({ ...prev, [dateKey]: updated }));
+    },
+    [],
+  );
+
   const handlePublishClick = useCallback(() => {
     setIsPublishDialogOpen(true);
   }, []);
@@ -1345,7 +1401,19 @@ function RosterPlanningPage() {
         },
       });
 
-      setRosterData(result.rosterData);
+      const mergedRegenData = result.rosterData.map((row) => {
+        const meta = nurseMetaById.get(row.nurseId);
+        if (!meta) return row;
+        return {
+          ...row,
+          designation: meta.designation ?? row.designation,
+          staffingRole: meta.staffing_role ?? row.staffingRole ?? null,
+          rosterRank: meta.roster_rank ?? row.rosterRank ?? null,
+          employeeId: meta.employeeId ?? row.employeeId ?? null,
+          joinDate: meta.joinDate ?? meta.join_date ?? row.joinDate ?? null,
+        };
+      });
+      setRosterData(mergedRegenData);
       setIsAlgorithmGenerated(true);
       setGenerationProgress(100);
       setGeneratedAlgorithmMethod(result.algorithm);
@@ -1368,6 +1436,7 @@ function RosterPlanningPage() {
     canAutoRegenerate,
     isAlgorithmRunning,
     generateAlgorithmRoster,
+    nurseMetaById,
     showSuccessToast,
     showErrorToast,
   ]);
@@ -1403,7 +1472,19 @@ function RosterPlanningPage() {
       },
     }).then((result) => {
       if (resumeCancelledRef.current) return;
-      setRosterData(result.rosterData);
+      const mergedResumeData = result.rosterData.map((row) => {
+        const meta = nurseMetaById.get(row.nurseId);
+        if (!meta) return row;
+        return {
+          ...row,
+          designation: meta.designation ?? row.designation,
+          staffingRole: meta.staffing_role ?? row.staffingRole ?? null,
+          rosterRank: meta.roster_rank ?? row.rosterRank ?? null,
+          employeeId: meta.employeeId ?? row.employeeId ?? null,
+          joinDate: meta.joinDate ?? meta.join_date ?? row.joinDate ?? null,
+        };
+      });
+      setRosterData(mergedResumeData);
       setIsAlgorithmGenerated(true);
       setGenerationProgress(100);
       setGeneratedAlgorithmMethod(result.algorithm);
@@ -1426,6 +1507,7 @@ function RosterPlanningPage() {
     currentStartDate,
     generateAlgorithmRoster.isPending,
     resumeAlgorithmTask,
+    nurseMetaById,
     showErrorToast,
     showSuccessToast,
   ]);
@@ -1446,6 +1528,9 @@ function RosterPlanningPage() {
         name: nurse.name,
         designation: nurse.designation,
         staffingRole: nurse.staffing_role ?? null,
+        rosterRank: nurse.roster_rank ?? null,
+        employeeId: nurse.employeeId ?? null,
+        joinDate: nurse.joinDate ?? nurse.join_date ?? null,
         hours: { worked: 0, contracted: 44 },
         shifts: {},
         hasOvertime: false,
@@ -1658,6 +1743,7 @@ function RosterPlanningPage() {
             onNurseNameClick={handleOpenNurseSettings}
             shiftDurationMap={shiftDurationMap}
             shiftTimeMap={shiftTimeMap}
+            showLongServiceSnIcon={true}
           />
         </Box>
 
@@ -1671,10 +1757,8 @@ function RosterPlanningPage() {
           guidelines={guidelines}
           dateOverrides={dateOverrides}
           originalGuidelines={originalGuidelines}
-          onGuidelinesChange={setGuidelines}
-          onDateOverrideChange={(dateKey, updated) =>
-            setDateOverrides((prev) => ({ ...prev, [dateKey]: updated }))
-          }
+          onGuidelinesChange={handleGuidelinesChange}
+          onDateOverrideChange={handleDateOverrideChange}
         />
       </Box>
 

@@ -20,13 +20,6 @@ def _run_ab_ratio_pipeline(*args, **kwargs):
 
 
 def _run_twelve_hour_pipeline(*args, **kwargs):
-    """
-    Temporary 12-hour pipeline hook.
-
-    The scheduler now separates 8-hour and 12-hour parsing first. This runner
-    remains as the current execution path for 12-hour wards until dedicated
-    12-hour MILP / AB-RATIO implementations are introduced.
-    """
     try:
         from app.rostering.twelve_hour_algo import run_twelve_hour_pipeline
     except ModuleNotFoundError as exc:
@@ -37,6 +30,11 @@ def _run_twelve_hour_pipeline(*args, **kwargs):
             ) from exc
         raise
     return run_twelve_hour_pipeline(*args, **kwargs)
+
+
+def _run_twelve_hour_milp_pipeline(*args, **kwargs):
+    from app.rostering.milp_algo_12hr import run_twelve_hour_milp_pipeline
+    return run_twelve_hour_milp_pipeline(*args, **kwargs)
 
 
 EIGHT_HOUR_WARD_TYPES = {"8_HOURS", "8HR", "8_HR", "8-HOUR", "8_HOUR"}
@@ -191,20 +189,36 @@ def generate_roster(
     )
 
     if ward_mode == "12HR":
-        print("[SCHEDULER] Running 12HR pipeline")
-        roster = _run_twelve_hour_pipeline(
-            nurses,
-            shifts,
-            hard_requests=hard_requests,
-            soft_requests=soft_requests,
-            prev_last_shift=prev_last_shift,
-            shift_hours=shift_hours,
-            non_working_shift_codes=non_working_shift_codes,
-            progress_callback=progress_callback,
-            milp_config=milp_config,
-        )
-        print("[SCHEDULER] 12HR pipeline succeeded - returning result")
-        return {"method": "12HR", "roster": roster}
+        print("[SCHEDULER] Running 12HR pipeline (CP-SAT)")
+        try:
+            roster = _run_twelve_hour_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                shift_hours=shift_hours,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                milp_config=milp_config,
+            )
+            print("[SCHEDULER] 12HR CP-SAT pipeline succeeded - returning result")
+            return {"method": "12HR", "roster": roster}
+        except Exception as exc:
+            print(f"[SCHEDULER] 12HR CP-SAT failed ({exc}); falling back to 12HR MILP")
+            roster = _run_twelve_hour_milp_pipeline(
+                nurses,
+                shifts,
+                hard_requests=hard_requests,
+                soft_requests=soft_requests,
+                prev_last_shift=prev_last_shift,
+                shift_hours=shift_hours,
+                non_working_shift_codes=non_working_shift_codes,
+                progress_callback=progress_callback,
+                milp_config=milp_config,
+            )
+            print("[SCHEDULER] 12HR MILP fallback succeeded - returning result")
+            return {"method": "12HR-MILP", "roster": roster}
 
     if forced == "AB-RATIO":
         roster = _run_ab_ratio_pipeline(
@@ -236,23 +250,8 @@ def generate_roster(
         print("[SCHEDULER] MILP succeeded - returning result")
         return {"method": "MILP", "roster": roster}
 
-    print("[SCHEDULER] Running MILP (auto: default algorithm)")
+    print("[SCHEDULER] Running AB-RATIO (auto: default algorithm)")
     try:
-        roster = run_milp_pipeline(
-            nurses,
-            shifts,
-            hard_requests=hard_requests,
-            soft_requests=soft_requests,
-            prev_last_shift=prev_last_shift,
-            non_working_shift_codes=non_working_shift_codes,
-            ward_name=ward_name,
-            milp_config=milp_config,
-            progress_callback=progress_callback,
-        )
-        print("[SCHEDULER] MILP succeeded - returning result")
-        return {"method": "MILP", "roster": roster}
-    except MILPError as exc:
-        print(f"[SCHEDULER] MILP infeasible ({exc}); falling back to AB-RATIO")
         roster = _run_ab_ratio_pipeline(
             nurses,
             shifts,
@@ -264,8 +263,23 @@ def generate_roster(
             shift_hours=shift_hours,
             milp_config=milp_config,
         )
-        print("[SCHEDULER] AB-RATIO fallback succeeded - returning result")
+        print("[SCHEDULER] AB-RATIO succeeded - returning result")
         return {"method": "AB-RATIO", "roster": roster}
+    except Exception as exc:
+        print(f"[SCHEDULER] AB-RATIO failed ({exc}); falling back to MILP")
+        roster = run_milp_pipeline(
+            nurses,
+            shifts,
+            hard_requests=hard_requests,
+            soft_requests=soft_requests,
+            prev_last_shift=prev_last_shift,
+            non_working_shift_codes=non_working_shift_codes,
+            ward_name=ward_name,
+            milp_config=milp_config,
+            progress_callback=progress_callback,
+        )
+        print("[SCHEDULER] MILP fallback succeeded - returning result")
+        return {"method": "MILP", "roster": roster}
 
 
 def validate_inputs(nurses, shifts, hard_requests, soft_requests, non_working_shift_codes=None):

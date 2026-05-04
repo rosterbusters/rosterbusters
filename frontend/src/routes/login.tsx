@@ -303,7 +303,7 @@ function Login() {
                     <Flex justify="center" mt={2} w="100%">
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outlinegrey"
                         size="sm"
                         mx="auto"
                         onClick={handleBackToLogin}

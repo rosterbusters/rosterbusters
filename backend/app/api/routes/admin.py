@@ -4,7 +4,7 @@ Admin endpoints for managing RBACUsers (the real authentication table).
 All endpoints require the Admin role.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
 import re
 from typing import Any, Optional
@@ -59,6 +59,7 @@ class AdminUserPublic(SQLModel):
     name: Optional[str] = None
     email: Optional[str] = None
     employee_id: Optional[str] = None
+    join_date: Optional[date] = None
     designation: Optional[str] = None
     shift_pattern: Optional[str] = None
     isactive: bool
@@ -85,6 +86,7 @@ class AdminUserCreate(SQLModel):
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    join_date: Optional[date] = None
     designation: Optional[str] = Field(default=None, max_length=100)
     shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
@@ -98,6 +100,7 @@ class AdminUserUpdate(SQLModel):
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    join_date: Optional[date] = None
     designation: Optional[str] = Field(default=None, max_length=100)
     shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
@@ -145,11 +148,113 @@ def _generate_unique_username(session, seed: str) -> str:
         suffix += 1
     return candidate
 
+
+def _get_role_by_name(session: SessionDep, role_name: str) -> Role:
+    role = session.exec(select(Role).where(Role.rolename == role_name)).first()
+    if not role:
+        raise HTTPException(status_code=400, detail=f"Role {role_name} not found.")
+    return role
+
+
+def _get_manager_ward_ids(session: SessionDep, userid: int) -> list[int]:
+    ward_ids = session.exec(
+        select(UserRole.wardid)
+        .join(Role, UserRole.roleid == Role.roleid)
+        .where(
+            UserRole.userid == userid,
+            UserRole.isactive == True,  # noqa: E712
+            UserRole.wardid.is_not(None),
+            Role.rolename == "NurseManager",
+        )
+    ).all()
+    return list(dict.fromkeys(wid for wid in ward_ids if wid is not None))
+
+
+def _find_replacement_manager_id(
+    session: SessionDep,
+    ward_id: int,
+    excluded_user_id: int,
+) -> Optional[int]:
+    manager_ids = session.exec(
+        select(RBACUser.managerid)
+        .join(UserRole, RBACUser.userid == UserRole.userid)  # type: ignore[arg-type]
+        .join(Role, UserRole.roleid == Role.roleid)
+        .where(
+            UserRole.wardid == ward_id,
+            UserRole.isactive == True,  # noqa: E712
+            Role.rolename == "NurseManager",
+            RBACUser.userid != excluded_user_id,
+            RBACUser.managerid.is_not(None),
+        )
+    ).all()
+    return next((manager_id for manager_id in manager_ids if manager_id is not None), None)
+
+
+def _sync_manager_ward_assignments(
+    session: SessionDep,
+    user: RBACUser,
+    ward_ids: list[int],
+) -> None:
+    if not user.userid or not user.managerid:
+        return
+
+    manager_role = _get_role_by_name(session, "NurseManager")
+    previous_ward_ids = set(_get_manager_ward_ids(session, user.userid))
+    normalized_ward_ids = list(dict.fromkeys(ward_ids))
+
+    existing_roles = session.exec(
+        select(UserRole).where(
+            UserRole.userid == user.userid,
+            UserRole.roleid == manager_role.roleid,
+        )
+    ).all()
+    for existing_role in existing_roles:
+        session.delete(existing_role)
+    session.flush()
+
+    if normalized_ward_ids:
+        for ward_id in normalized_ward_ids:
+            session.add(
+                UserRole(
+                    userid=user.userid,
+                    roleid=manager_role.roleid,
+                    wardid=ward_id,
+                    isactive=True,
+                    assignedat=datetime.now(timezone.utc),
+                )
+            )
+    else:
+        session.add(
+            UserRole(
+                userid=user.userid,
+                roleid=manager_role.roleid,
+                isactive=True,
+                assignedat=datetime.now(timezone.utc),
+            )
+        )
+    session.flush()
+
+    current_ward_ids = set(normalized_ward_ids)
+    for ward_id in previous_ward_ids - current_ward_ids:
+        ward = session.get(Ward, ward_id)
+        if ward and ward.managerid == user.managerid:
+            ward.managerid = _find_replacement_manager_id(session, ward_id, user.userid)
+            session.add(ward)
+
+    for ward_id in current_ward_ids:
+        ward = session.get(Ward, ward_id)
+        if ward and ward.managerid is None:
+            ward.managerid = user.managerid
+            session.add(ward)
+
+    session.commit()
+
 def _enrich(session, user: RBACUser) -> AdminUserPublic:
     """Convert an RBACUser row to the public response model."""
     roles = get_user_roles_by_userid(session, user.userid)
     ward_list: list[WardInfo] = []
     employee_id: Optional[str] = None
+    join_date: Optional[date] = None
     designation: Optional[str] = None
     shift_pattern: Optional[str] = None
     name: Optional[str] = None
@@ -160,6 +265,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         if nurse:
             name = nurse.name
             employee_id = nurse.employeeid
+            join_date = nurse.join_date
             designation = nurse.designation
             shift_pattern = nurse.shiftpattern
             if nurse.wardid:
@@ -167,15 +273,18 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
                 if ward:
                     ward_list.append(WardInfo(ward_id=ward.wardid, ward_name=ward.wardname))
 
-    # Resolve wards for managers (multiple — every ward where ward.managerid matches)
+    # Resolve wards for managers from role assignments so multiple managers can share a ward
     if user.managerid:
         manager = session.get(NurseManager, user.managerid)
         if manager:
             name = manager.name
             employee_id = manager.employeeid
-        managed_wards = session.exec(
-            select(Ward).where(Ward.managerid == user.managerid)
-        ).all()
+        managed_ward_ids = _get_manager_ward_ids(session, user.userid)
+        managed_wards = (
+            session.exec(select(Ward).where(Ward.wardid.in_(managed_ward_ids))).all()
+            if managed_ward_ids
+            else []
+        )
         for w in managed_wards:
             ward_list.append(WardInfo(ward_id=w.wardid, ward_name=w.wardname))
 
@@ -189,6 +298,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
         name=name,
         email=user.email,
         employee_id=employee_id,
+        join_date=join_date,
         designation=designation,
         shift_pattern=shift_pattern,
         isactive=user.isactive,
@@ -207,7 +317,14 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
 
 @router.get("/users", response_model=AdminUsersPublic)
 def list_users(
-    session: SessionDep, skip: int = 0, limit: int = 100, search: str = ""
+    session: SessionDep,
+    skip: int = 0,
+    limit: int = 100,
+    search: str = "",
+    role: str = "all",
+    status: str = "all",
+    password_state: str = "all",
+    ward_id: int | None = None,
 ) -> Any:
     """List all RBACUsers with their roles."""
     query = select(RBACUser)
@@ -226,6 +343,51 @@ def list_users(
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
 
+    if role != "all":
+        matching_role_user_ids = (
+            select(UserRole.userid)
+            .join(Role, UserRole.roleid == Role.roleid)
+            .where(
+                UserRole.isactive.is_(True),
+                Role.isactive.is_(True),
+                Role.rolename == role,
+            )
+        )
+        query = query.where(RBACUser.userid.in_(matching_role_user_ids))
+        count_query = count_query.where(RBACUser.userid.in_(matching_role_user_ids))
+
+    if status == "active":
+        query = query.where(RBACUser.isactive.is_(True))
+        count_query = count_query.where(RBACUser.isactive.is_(True))
+    elif status == "inactive":
+        query = query.where(RBACUser.isactive.is_(False))
+        count_query = count_query.where(RBACUser.isactive.is_(False))
+
+    if password_state == "temporary":
+        query = query.where(RBACUser.must_change_password.is_(True))
+        count_query = count_query.where(RBACUser.must_change_password.is_(True))
+    elif password_state == "updated":
+        query = query.where(RBACUser.must_change_password.is_(False))
+        count_query = count_query.where(RBACUser.must_change_password.is_(False))
+
+    if ward_id is not None:
+        nurse_user_ids = (
+            select(RBACUser.userid)
+            .join(Nurse, RBACUser.nurseid == Nurse.nurseid)
+            .where(Nurse.wardid == ward_id)
+        )
+        manager_user_ids = select(UserRole.userid).where(
+            UserRole.wardid == ward_id,
+            UserRole.isactive.is_(True),
+        )
+        ward_filter = or_(
+            RBACUser.userid.in_(nurse_user_ids),
+            RBACUser.userid.in_(manager_user_ids),
+        )
+        query = query.where(ward_filter)
+        count_query = count_query.where(ward_filter)
+
+    query = query.order_by(RBACUser.userid)
     count = session.exec(count_query).one()
     users = session.exec(query.offset(skip).limit(limit)).all()
     return AdminUsersPublic(
@@ -265,6 +427,7 @@ def create_user(
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = _truncate_name(body.name.strip()) if body.name else None
     designation = body.designation.strip() if body.designation else None
+    join_date = body.join_date
     rank_map = load_designation_rank_map(session)
 
     def _normalize_designation(raw: str | None) -> str | None:
@@ -368,6 +531,7 @@ def create_user(
         nurse = Nurse(
             name=name or username,
             employeeid=employee_id,
+            join_date=join_date,
             designation=canonical_designation or "SN",
             email=body.email or "",
             contactnumber="",
@@ -401,23 +565,18 @@ def create_user(
         session.commit()
         session.refresh(user)
 
-        # Assign all selected wards to this manager
-        for wid in body.ward_ids:
-            ward = session.get(Ward, wid)
-            if ward:
-                ward.managerid = manager.managerid
-                session.add(ward)
-        session.commit()
-
     # Assign role
-    user_role = UserRole(
-        userid=user.userid,
-        roleid=role.roleid,
-        isactive=True,
-        assignedat=datetime.now(timezone.utc),
-    )
-    session.add(user_role)
-    session.commit()
+    if body.role == "NurseManager":
+        _sync_manager_ward_assignments(session, user, body.ward_ids)
+    else:
+        user_role = UserRole(
+            userid=user.userid,
+            roleid=role.roleid,
+            isactive=True,
+            assignedat=datetime.now(timezone.utc),
+        )
+        session.add(user_role)
+        session.commit()
 
     result = _enrich(session, user)
     # Return the generated password so admin can share it with the user
@@ -456,6 +615,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     employee_id = body.employee_id.strip() if body.employee_id else None
     name = body.name.strip() if body.name else None
     designation = body.designation.strip() if body.designation else None
+    join_date_provided = "join_date" in body.model_fields_set
     shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
     if body.shift_pattern is not None and shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
         raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
@@ -490,6 +650,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
 
     nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
     manager = session.get(NurseManager, user.managerid) if user.managerid else None
+    manager_ward_ids = _get_manager_ward_ids(session, user.userid) if manager else []
 
     if body.designation is not None and designation is None:
         raise HTTPException(status_code=400, detail="Designation cannot be empty.")
@@ -558,6 +719,8 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     if body.employee_id is not None:
         if nurse:
             nurse.employeeid = employee_id
+            if join_date_provided:
+                nurse.join_date = body.join_date
             if body.designation is not None:
                 nurse.designation = _normalize_designation(designation)
             if body.shift_pattern is not None:
@@ -578,8 +741,17 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
             session.add(manager)
             session.commit()
 
-    elif body.username is not None or body.name is not None or email_provided or body.designation is not None:
+    elif (
+        body.username is not None
+        or body.name is not None
+        or email_provided
+        or body.designation is not None
+        or body.shift_pattern is not None
+        or join_date_provided
+    ):
         if nurse:
+            if join_date_provided:
+                nurse.join_date = body.join_date
             if body.designation is not None:
                 nurse.designation = _normalize_designation(designation)
             if body.shift_pattern is not None:
@@ -616,21 +788,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
 
         # For managers: replace ward assignments
         if user.managerid:
-            # Un-assign all current wards
-            old_wards = session.exec(
-                select(Ward).where(Ward.managerid == user.managerid)
-            ).all()
-            for ow in old_wards:
-                ow.managerid = None
-                session.add(ow)
-
-            # Assign new wards
-            for wid in body.ward_ids:
-                ward = session.get(Ward, wid)
-                if ward:
-                    ward.managerid = user.managerid
-                    session.add(ward)
-            session.commit()
+            _sync_manager_ward_assignments(session, user, body.ward_ids)
 
     return _enrich(session, user)
 
@@ -665,6 +823,7 @@ def delete_user(session: SessionDep, userid: int) -> Message:
 
     nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
     manager = session.get(NurseManager, user.managerid) if user.managerid else None
+    manager_ward_ids = _get_manager_ward_ids(session, userid) if manager else []
 
     user_roles = get_user_roles_by_userid(session, userid)
     if "Admin" in user_roles:
@@ -681,12 +840,11 @@ def delete_user(session: SessionDep, userid: int) -> Message:
         session.delete(r)
 
     if manager:
-        managed_wards = session.exec(
-            select(Ward).where(Ward.managerid == manager.managerid)
-        ).all()
-        for ward in managed_wards:
-            ward.managerid = None
-            session.add(ward)
+        for ward_id in manager_ward_ids:
+            ward = session.get(Ward, ward_id)
+            if ward and ward.managerid == manager.managerid:
+                ward.managerid = _find_replacement_manager_id(session, ward_id, user.userid)
+                session.add(ward)
 
     session.delete(user)
     if nurse:

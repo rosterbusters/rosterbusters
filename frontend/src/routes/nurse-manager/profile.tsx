@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Box, Flex, Grid, GridItem, Text, VStack } from "@chakra-ui/react";
 
+import { AdminService, type WardOption } from "@/client/adminService";
 import useAuth from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/nurse-manager/profile")({
@@ -13,11 +15,17 @@ function formatValue(value: string | null | undefined) {
 
 function ProfilePage() {
   const { user } = useAuth();
+  const { data: wards = [] } = useQuery<WardOption[]>({
+    queryKey: ["wards"],
+    queryFn: () => AdminService.listWards(),
+    staleTime: 60_000,
+  });
 
   const profileName = formatValue(user?.name ?? user?.username ?? user?.email);
   const email = formatValue(user?.email);
   const designation = "Nurse Manager";
-  const ward = "Not available";
+  const wardName = wards.find((item) => item.wardid === user?.wardid)?.wardname;
+  const ward = formatValue(wardName);
   const phoneNumber = "Not available";
 
   const details = [

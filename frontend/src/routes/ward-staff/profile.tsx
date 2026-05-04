@@ -11,6 +11,18 @@ function formatValue(value: string | null | undefined) {
   return value && value.trim().length > 0 ? value : "Not available";
 }
 
+function formatJoinDate(value: string | null | undefined) {
+  if (!value) return "Not available";
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
+}
+
 function ProfilePage() {
   const { user } = useAuth();
 
@@ -19,10 +31,12 @@ function ProfilePage() {
   const designation = user?.managerid ? "Nurse Manager" : "Ward Staff";
   const ward = user?.wardid ? `Ward ${user.wardid}` : "Not available";
   const phoneNumber = "Not available";
+  const joinDate = formatJoinDate(user?.join_date);
 
   const details = [
     { label: "Ward", value: ward },
     { label: "Designation", value: designation },
+    { label: "Join Date", value: joinDate },
     { label: "Email", value: email },
     { label: "Phone Number", value: phoneNumber },
   ];

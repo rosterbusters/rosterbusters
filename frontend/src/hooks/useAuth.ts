@@ -20,6 +20,7 @@ export interface CurrentUser {
   username: string
   email: string | null
   employee_id?: string | null
+  join_date?: string | null
   nurseid?: number | null
   managerid?: number | null
   isactive: boolean

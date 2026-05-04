@@ -13,7 +13,7 @@ def get_user_roles(session: Session, email: str) -> list[str]:
 
 def get_user_roles_by_userid(session: Session, userid: int) -> list[str]:
     """Look up roles by userid directly (works even when email is None)."""
-    statement = select(Role.rolename).join(UserRole, Role.roleid == UserRole.roleid).where(  # type: ignore[arg-type]
+    statement = select(Role.rolename).distinct().join(UserRole, Role.roleid == UserRole.roleid).where(  # type: ignore[arg-type]
         UserRole.userid == userid,
         UserRole.isactive == True  # noqa: E712
     )

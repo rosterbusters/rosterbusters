@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.models.roster import Ward
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from sqlmodel import select
+from app.rbac import user_has_role
 
 
 class WardStaffingIn(BaseModel):
@@ -153,12 +154,18 @@ def update_ward_staffing(
 ):
     """Update the staffing requirements for a ward.
 
-    Accessible by the ward's own nurse manager or a superuser.
+    Accessible by any nurse manager or admin.
     """
     ward = session.get(Ward, ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
-    if not current_user.is_superuser and current_user.id != ward.managerid:
+
+    has_staffing_access = bool(current_user.email) and (
+        user_has_role(session, current_user.email, "Admin")
+        or user_has_role(session, current_user.email, "NurseManager")
+    )
+
+    if not has_staffing_access:
         raise HTTPException(status_code=403, detail="Not authorized to update this ward's staffing")
     ward.staffing_json = body.staffing_json
     _sync_legacy_staffing_columns(ward, body.staffing_json)

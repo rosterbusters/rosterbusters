@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+from datetime import date
 
 try:
     from ortools.sat.python import cp_model
@@ -242,6 +243,10 @@ _DEFAULT_WEIGHTS = {
     "rank_b_night": 300_000,
     "rank_b_night_over": 500_000,
     "rank_c_night_over": 14_000,
+    "dayoff_under": 800_000,
+    "dayoff_over": 700_000,
+    "consec_night": 300_000,
+    "post_night_rest": 900_000,
     "min_nights": 100_000,
     "isolated_night": 80_000,
     "double_night_pref": 120_000,
@@ -362,6 +367,47 @@ def _is_ssn_designation(nurse: dict) -> bool:
         if raw is not None and str(raw).strip().upper() == "SSN":
             return True
     return False
+
+
+def _is_sn_designation(nurse: dict) -> bool:
+    for key in ("designation", "staffing_role"):
+        raw = nurse.get(key)
+        if raw is not None and str(raw).strip().upper() == "SN":
+            return True
+    return False
+
+
+def _long_service_join_date_cutoff(reference_date: date | None = None) -> date:
+    effective_reference_date = reference_date or date.today()
+    try:
+        return effective_reference_date.replace(
+            year=effective_reference_date.year - 3
+        )
+    except ValueError:
+        # Handle Feb 29 on non-leap target years.
+        return effective_reference_date.replace(
+            year=effective_reference_date.year - 3,
+            month=2,
+            day=28,
+        )
+
+
+def _is_long_service_sn_rank_a_eligible(nurse: dict) -> bool:
+    if not _is_sn_designation(nurse):
+        return False
+    raw_join_date = nurse.get("join_date")
+    if raw_join_date is None:
+        return False
+    if isinstance(raw_join_date, date):
+        normalized_join_date = raw_join_date
+    elif isinstance(raw_join_date, str):
+        try:
+            normalized_join_date = date.fromisoformat(raw_join_date)
+        except ValueError:
+            return False
+    else:
+        return False
+    return normalized_join_date < _long_service_join_date_cutoff()
 
 
 def _has_no_night_constraint(nurse: dict) -> bool:
@@ -814,6 +860,12 @@ def parse_ab_ratio_inputs(
         for idx in working_rank_a
         if _is_ssn_designation(nurses_sorted[idx])
     ]
+    ssn_rank_a_fallback_nurses = [
+        idx
+        for idx in working_rank_a
+        if not _is_ssn_designation(nurses_sorted[idx])
+        and _is_long_service_sn_rank_a_eligible(nurses_sorted[idx])
+    ]
     non_ssn_managed_working_rank_a = [
         idx for idx in managed_working_rank_a if not _is_ssn_designation(nurses_sorted[idx])
     ]
@@ -1138,11 +1190,15 @@ def parse_ab_ratio_inputs(
     )
 
     hca_policy = cfg.get("HCA") if isinstance(cfg.get("HCA"), dict) else {}
-    default_rank_c_night_caps = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
     raw_rank_c_cap = cfg.get(
         "rank_c_night_cap_per_day",
         cfg.get("c_night_cap_per_day", hca_policy.get("max_night_per_day")),
     )
+    uncapped_rank_c_night_cap = len(working_rank_c) if working_rank_c else 0
+    default_rank_c_night_caps = [
+        demand[day_idx][NIGHT]["C"] if raw_rank_c_cap is not None else uncapped_rank_c_night_cap
+        for day_idx in range(num_days)
+    ]
     rank_c_night_caps = _resolve_daily_targets(raw_rank_c_cap, default_rank_c_night_caps)
     raw_rank_c_allowed_excess = cfg.get(
         "rank_c_night_allowed_excess",
@@ -1186,6 +1242,7 @@ def parse_ab_ratio_inputs(
         "ratio_working_rank_a": ratio_working_rank_a,
         "ratio_working_rank_b": ratio_working_rank_b,
         "ssn_rank_a_daily_balance_nurses": ssn_rank_a_daily_balance_nurses,
+        "ssn_rank_a_fallback_nurses": ssn_rank_a_fallback_nurses,
         "non_ssn_managed_working_rank_a": non_ssn_managed_working_rank_a,
         "non_ssn_pattern_working_rank_a": non_ssn_pattern_working_rank_a,
         "non_ssn_ratio_working_rank_a": non_ssn_ratio_working_rank_a,
@@ -1369,6 +1426,7 @@ def run_ab_ratio_pipeline(
     ratio_working_rank_a = parsed["ratio_working_rank_a"]
     ratio_working_rank_b = parsed["ratio_working_rank_b"]
     ssn_rank_a_daily_balance_nurses = parsed["ssn_rank_a_daily_balance_nurses"]
+    ssn_rank_a_fallback_nurses = parsed["ssn_rank_a_fallback_nurses"]
     non_ssn_managed_working_rank_a = parsed["non_ssn_managed_working_rank_a"]
     non_ssn_pattern_working_rank_a = parsed["non_ssn_pattern_working_rank_a"]
     non_ssn_ratio_working_rank_a = parsed["non_ssn_ratio_working_rank_a"]
@@ -1390,6 +1448,10 @@ def run_ab_ratio_pipeline(
     daily_total_shift_gap_target = parsed["daily_total_shift_gap_target"]
     ssn_rank_a_shift_gap_target = parsed["ssn_rank_a_shift_gap_target"]
     weights = parsed["weights"]
+
+    dayoff_violation_vars: list[tuple[int, int, object, object]] = []
+    consec_violation_vars: list[tuple[int, int, object]] = []
+    post_night_violation_vars: list[tuple[int, int, object]] = []
 
     x = {}
     for nurse_idx in range(num_nurses):
@@ -1520,24 +1582,56 @@ def run_ab_ratio_pipeline(
         for week_index, week_start in enumerate(range(0, num_days, 7)):
             week_end = min(week_start + 7, num_days)
             week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
+            target = ab_weekly_do_targets[nurse_idx][week_index]
             if not relax_weekly_off:
-                model.Add(week_do == ab_weekly_do_targets[nurse_idx][week_index])
+                model.Add(week_do == target)
+            else:
+                under = model.NewIntVar(0, max(target, 1), f"ab_week_off_under_{nurse_idx}_{week_index}")
+                over = model.NewIntVar(0, max(week_end - week_start, 1), f"ab_week_off_over_{nurse_idx}_{week_index}")
+                model.Add(under >= target - week_do)
+                model.Add(over >= week_do - target)
+                add_penalty(under, weights["dayoff_under"])
+                add_penalty(over, weights["dayoff_over"])
+                dayoff_violation_vars.append((nurse_idx, week_index, under, over))
 
-        if nurse_idx not in no_night_ids and not relax_no_three_nights:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 2):
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT]
-                    + x[nurse_idx, day_idx + 1, NIGHT]
-                    + x[nurse_idx, day_idx + 2, NIGHT]
-                    <= 2
-                )
+                if not relax_no_three_nights:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        <= 2
+                    )
+                else:
+                    ov = model.NewIntVar(0, 1, f"consec_night_ab_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        ov
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        - 2
+                    )
+                    add_penalty(ov, weights["consec_night"])
+                    consec_violation_vars.append((nurse_idx, day_idx, ov))
 
-        if nurse_idx not in no_night_ids and not relax_post_night_rest:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 1):
                 next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
-                )
+                if not relax_post_night_rest:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
+                    )
+                else:
+                    viol = model.NewIntVar(0, 1, f"post_night_rest_ab_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        viol
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        - x[nurse_idx, day_idx + 1, NIGHT]
+                        - next_non_working
+                    )
+                    add_penalty(viol, weights["post_night_rest"])
+                    post_night_violation_vars.append((nurse_idx, day_idx, viol))
 
         # Carry-N continuation: if prev roster ended on N, prefer starting this roster
         # with N (completing the 2N block) rather than resting. Single-N carry is allowed
@@ -1599,24 +1693,56 @@ def run_ab_ratio_pipeline(
         for week_index, week_start in enumerate(range(0, num_days, 7)):
             week_end = min(week_start + 7, num_days)
             week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
+            target = c_weekly_do_targets[nurse_idx][week_index]
             if not relax_weekly_off:
-                model.Add(week_do == c_weekly_do_targets[nurse_idx][week_index])
+                model.Add(week_do == target)
+            else:
+                under = model.NewIntVar(0, max(target, 1), f"c_week_off_under_{nurse_idx}_{week_index}")
+                over = model.NewIntVar(0, max(week_end - week_start, 1), f"c_week_off_over_{nurse_idx}_{week_index}")
+                model.Add(under >= target - week_do)
+                model.Add(over >= week_do - target)
+                add_penalty(under, weights["dayoff_under"])
+                add_penalty(over, weights["dayoff_over"])
+                dayoff_violation_vars.append((nurse_idx, week_index, under, over))
 
-        if nurse_idx not in no_night_ids and not relax_no_three_nights:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 2):
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT]
-                    + x[nurse_idx, day_idx + 1, NIGHT]
-                    + x[nurse_idx, day_idx + 2, NIGHT]
-                    <= 2
-                )
+                if not relax_no_three_nights:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        <= 2
+                    )
+                else:
+                    ov = model.NewIntVar(0, 1, f"consec_night_c_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        ov
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        - 2
+                    )
+                    add_penalty(ov, weights["consec_night"])
+                    consec_violation_vars.append((nurse_idx, day_idx, ov))
 
-        if nurse_idx not in no_night_ids and not relax_post_night_rest:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 1):
                 next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
-                )
+                if not relax_post_night_rest:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
+                    )
+                else:
+                    viol = model.NewIntVar(0, 1, f"post_night_rest_c_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        viol
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        - x[nurse_idx, day_idx + 1, NIGHT]
+                        - next_non_working
+                    )
+                    add_penalty(viol, weights["post_night_rest"])
+                    post_night_violation_vars.append((nurse_idx, day_idx, viol))
 
         if nurse_idx not in no_night_ids:
             for day_idx in range(num_days):
@@ -1925,49 +2051,91 @@ def run_ab_ratio_pipeline(
                 model.Add(c_gap_penalty >= c_day_spread - daily_total_shift_gap_target)
                 add_penalty(c_gap_penalty, weights["daily_total_shift_balance_c"])
 
-    if ssn_rank_a_daily_balance_nurses:
+    if ssn_rank_a_daily_balance_nurses or ssn_rank_a_fallback_nurses:
+        ssn_balance_group_size = max(
+            len(ssn_rank_a_daily_balance_nurses),
+            1 if ssn_rank_a_fallback_nurses else 0,
+        )
         for day_idx in range(num_days):
             shift_totals = [
                 model.NewIntVar(
                     0,
-                    len(ssn_rank_a_daily_balance_nurses),
+                    ssn_balance_group_size,
                     f"ssn_rank_a_day_{day_idx}_{shift_code}_total",
                 )
                 for shift_code in WORK_SHIFTS
             ]
             for total_var, shift_code in zip(shift_totals, WORK_SHIFTS):
-                model.Add(
-                    total_var
-                    == sum(
+                fallback_present = None
+                if ssn_rank_a_fallback_nurses:
+                    fallback_assignments = sum(
+                        x[nurse_idx, day_idx, shift_code]
+                        for nurse_idx in ssn_rank_a_fallback_nurses
+                    )
+                    fallback_present = model.NewBoolVar(
+                        f"ssn_rank_a_day_{day_idx}_{shift_code}_fallback_present"
+                    )
+                    model.Add(fallback_assignments >= 1).OnlyEnforceIf(fallback_present)
+                    model.Add(fallback_assignments == 0).OnlyEnforceIf(fallback_present.Not())
+
+                if ssn_rank_a_daily_balance_nurses:
+                    ssn_assignments = sum(
                         x[nurse_idx, day_idx, shift_code]
                         for nurse_idx in ssn_rank_a_daily_balance_nurses
                     )
-                )
+                    has_ssn = model.NewBoolVar(
+                        f"ssn_rank_a_day_{day_idx}_{shift_code}_has_ssn"
+                    )
+                    model.Add(ssn_assignments >= 1).OnlyEnforceIf(has_ssn)
+                    model.Add(ssn_assignments == 0).OnlyEnforceIf(has_ssn.Not())
+                    model.Add(total_var == ssn_assignments).OnlyEnforceIf(has_ssn)
+                    if fallback_present is not None:
+                        model.Add(total_var == fallback_present).OnlyEnforceIf(has_ssn.Not())
+                    else:
+                        model.Add(total_var == 0).OnlyEnforceIf(has_ssn.Not())
+                elif fallback_present is not None:
+                    model.Add(total_var == fallback_present)
+                else:
+                    model.Add(total_var == 0)
             day_max = model.NewIntVar(
                 0,
-                len(ssn_rank_a_daily_balance_nurses),
+                ssn_balance_group_size,
                 f"ssn_rank_a_day_{day_idx}_shift_max",
             )
             day_min = model.NewIntVar(
                 0,
-                len(ssn_rank_a_daily_balance_nurses),
+                ssn_balance_group_size,
                 f"ssn_rank_a_day_{day_idx}_shift_min",
             )
             model.AddMaxEquality(day_max, shift_totals)
             model.AddMinEquality(day_min, shift_totals)
             day_spread = model.NewIntVar(
                 0,
-                len(ssn_rank_a_daily_balance_nurses),
+                ssn_balance_group_size,
                 f"ssn_rank_a_day_{day_idx}_shift_spread",
             )
             model.Add(day_spread == day_max - day_min)
             balance_penalty = model.NewIntVar(
                 0,
-                len(ssn_rank_a_daily_balance_nurses),
+                ssn_balance_group_size,
                 f"ssn_rank_a_day_{day_idx}_shift_balance_penalty",
             )
             model.Add(balance_penalty >= day_spread - ssn_rank_a_shift_gap_target)
             add_penalty(balance_penalty, weights["ssn_rank_a_daily_shift_balance"])
+
+    eligible_rank_a_am_coverage_nurses = (
+        ssn_rank_a_daily_balance_nurses + ssn_rank_a_fallback_nurses
+    )
+    if eligible_rank_a_am_coverage_nurses:
+        for day_idx in range(num_days):
+            required_rank_a_am = demand[day_idx][AM]["A"]
+            if required_rank_a_am <= 0:
+                continue
+            eligible_am_count = sum(
+                x[nurse_idx, day_idx, AM]
+                for nurse_idx in eligible_rank_a_am_coverage_nurses
+            )
+            model.Add(eligible_am_count >= 1)
 
     for day_idx in range(num_days):
         if not rank_a:
@@ -2208,6 +2376,29 @@ def run_ab_ratio_pipeline(
     penalty_score = solver.ObjectiveValue() if penalty_vars else 0.0
     if progress_callback:
         progress_callback(4, 4, penalty_score)
+
+    if relax_weekly_off:
+        for nurse_idx, week_index, under, over in dayoff_violation_vars:
+            u, o = solver.Value(under), solver.Value(over)
+            if u or o:
+                logger.warning(
+                    "[AB-DEBUG] relax_weekly_off: nurse %s week %d off-day deviation -%d/+%d",
+                    nurse_names[nurse_idx], week_index, u, o,
+                )
+    if relax_no_three_nights:
+        for nurse_idx, day_idx, ov in consec_violation_vars:
+            if solver.Value(ov):
+                logger.warning(
+                    "[AB-DEBUG] relax_no_three_nights: nurse %s 3-consecutive-night violation at day %d",
+                    nurse_names[nurse_idx], day_idx,
+                )
+    if relax_post_night_rest:
+        for nurse_idx, day_idx, viol in post_night_violation_vars:
+            if solver.Value(viol):
+                logger.warning(
+                    "[AB-DEBUG] relax_post_night_rest: nurse %s missing rest after night on day %d",
+                    nurse_names[nurse_idx], day_idx,
+                )
 
     return _format_output(
         parsed["nurses_sorted"],

@@ -79,7 +79,7 @@ test("imported users show default password in the column", async ({
     const row = page.getByRole("row").filter({ hasText: username })
     await expect(row).toContainText(username)
 
-    const defaultPasswordCell = row.getByRole("cell").nth(8)
+    const defaultPasswordCell = row.getByRole("cell").nth(9)
     await expect(
       defaultPasswordCell.getByRole("button", { name: "Copy" }),
     ).toBeVisible()

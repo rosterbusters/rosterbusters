@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogCloseTrigger,
 } from "@/components/ui/dialog";
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
 import type { StaffRole, SummaryShiftType } from "./types";
 
 const ROLE_LABEL: Record<StaffRole, string> = {
@@ -80,6 +81,22 @@ export function ManpowerEditDialog({
     }
   }, [isOpen, currentMin, currentMax]);
 
+  useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen]);
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0);
+    },
+    [],
+  );
+
   const handleSave = () => {
     const parsedMin = Math.max(0, parseInt(minValue, 10) || 0);
     const parsedMax =
@@ -94,6 +111,8 @@ export function ManpowerEditDialog({
     <DialogRoot
       size={{ base: "xl", md: "sm" }}
       placement="center"
+      lazyMount
+      unmountOnExit
       open={isOpen}
       onOpenChange={({ open }) => {
         if (!open) onClose();
