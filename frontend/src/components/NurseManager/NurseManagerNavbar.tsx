@@ -1,20 +1,27 @@
-import { useState } from "react";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router"
 import {
-  Home,
   CalendarDays,
+  ChevronDown,
+  CircleUserRound,
+  Home,
+  LogOut,
+  Menu,
   NotebookPen,
+  NotepadText,
+  Pencil,
   Settings,
   User,
   Users,
-  Menu,
   X,
-  ChevronDown,
-  Pencil,
-  NotepadText,
-  LogOut,
-  CircleUserRound,
-} from "lucide-react";
+} from "lucide-react"
+import { useState } from "react"
+import NotificationDropdown from "@/components/Common/NotificationDropdown"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -22,47 +29,43 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu";
-import { cn } from "@/lib/utils";
-import NotificationDropdown from "@/components/Common/NotificationDropdown";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import useAuth from "@/hooks/useAuth";
+} from "@/components/ui/navigation-menu"
+import useAuth from "@/hooks/useAuth"
+import { cn } from "@/lib/utils"
 
 function NurseManagerNavbar() {
-  const location = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
-  const { user, logout } = useAuth();
+  const location = useLocation()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false)
+  const { user, logout } = useAuth()
 
-  const userName = user?.name || user?.email || "Manager";
+  const userName = user?.name || user?.email || "Manager"
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
-    return location.pathname === path;
-  };
+    return location.pathname === path
+  }
 
   // Check if current path is within a section (for dropdown parent highlighting)
   const isSectionActive = (paths: string[]) => {
-    return paths.some((path) => location.pathname === path);
-  };
+    return paths.some((path) => location.pathname === path)
+  }
 
-  const leaveShiftPaths = ["/nurse-manager/request-application", "/nurse-manager/request-overview"];
-  const isLeaveShiftActive = isSectionActive(leaveShiftPaths);
+  const leaveShiftPaths = [
+    "/nurse-manager/request-application",
+    "/nurse-manager/request-overview",
+  ]
+  const isLeaveShiftActive = isSectionActive(leaveShiftPaths)
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
   const navPillBaseStyles =
-    "px-1 inline-flex h-8 items-center justify-center gap-1 rounded-lg text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2";
-  const navPillActiveStyles = "bg-[#DDE8EA] !text-[#4B8798]";
+    "px-1 inline-flex h-8 items-center justify-center gap-1 rounded-lg text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2"
+  const navPillActiveStyles = "bg-[#DDE8EA] !text-[#4B8798]"
   const navPillInactiveStyles =
-    "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50";
+    "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50"
   // Utility pill for non-clickable elements (like staff name display)
   const utilityPillStyles =
-    "cursor-pointer inline-flex h-10 items-center gap-1 rounded-xl px-6 text-sm font-medium tracking-[0.07px]";
+    "cursor-pointer inline-flex h-10 items-center gap-1 rounded-xl px-6 text-sm font-medium tracking-[0.07px]"
 
   return (
     <nav
@@ -81,7 +84,7 @@ function NurseManagerNavbar() {
               alt="SACH Logo"
               className="h-9"
               onError={(e) => {
-                e.currentTarget.src = "/assets/images/sach-navbarlogo.png";
+                e.currentTarget.src = "/assets/images/sach-navbarlogo.png"
               }}
             />
           </Link>
@@ -224,12 +227,17 @@ function NurseManagerNavbar() {
         {/* RIGHT ZONE: Utilities */}
         <div className="flex items-center shrink-0">
           {/* Notification Bell Dropdown */}
-          <NotificationDropdown role="manager" />
+          <NotificationDropdown />
 
           {/* Staff Name Display with Logout Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className={cn(utilityPillStyles, "text-[#4A4A4A] hover:bg-[#DDE8EA]/50")}>
+              <button
+                className={cn(
+                  utilityPillStyles,
+                  "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
+                )}
+              >
                 <User className="h-5 w-5 shrink-0 text-[#4B8798]" />
                 <span>{userName}</span>
                 <ChevronDown className="h-4 w-4 text-[#4B8798]" />
@@ -239,7 +247,10 @@ function NurseManagerNavbar() {
               align="end"
               className="w-44 border border-[#E6E6E6] bg-white p-1 shadow-md"
             >
-              <DropdownMenuItem asChild className="cursor-pointer bg-white text-[#4A4A4A] focus:bg-[#DDE8EA]/50 focus:text-[#4A4A4A]">
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer bg-white text-[#4A4A4A] focus:bg-[#DDE8EA]/50 focus:text-[#4A4A4A]"
+              >
                 <Link
                   to="/nurse-manager/profile"
                   className="flex w-full items-center rounded-sm"
@@ -291,14 +302,14 @@ function NurseManagerNavbar() {
               className="h-6 max-h-7"
               style={{ width: "auto", maxWidth: "120px" }}
               onError={(e) => {
-                e.currentTarget.src = "/assets/images/sach-navbarlogo.png";
+                e.currentTarget.src = "/assets/images/sach-navbarlogo.png"
               }}
             />
           </Link>
         </div>
 
         {/* Right: Notification Bell Dropdown */}
-        <NotificationDropdown role="manager" />
+        <NotificationDropdown />
       </div>
 
       {/* Mobile Dropdown Panel (appears below navbar) - NO backdrop */}
@@ -310,7 +321,9 @@ function NurseManagerNavbar() {
               <div className="space-y-3">
                 <div className="flex items-center gap-1">
                   <User className="h-[18px] w-[18px] text-[#4B8798]" />
-                  <span className="text-sm font-medium text-[#4A4A4A]">{userName}</span>
+                  <span className="text-sm font-medium text-[#4A4A4A]">
+                    {userName}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Link
@@ -323,8 +336,8 @@ function NurseManagerNavbar() {
                   </Link>
                   <button
                     onClick={() => {
-                      setMobileMenuOpen(false);
-                      logout();
+                      setMobileMenuOpen(false)
+                      logout()
                     }}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
                   >
@@ -484,7 +497,7 @@ function NurseManagerNavbar() {
         </div>
       )}
     </nav>
-  );
+  )
 }
 
-export default NurseManagerNavbar;
+export default NurseManagerNavbar

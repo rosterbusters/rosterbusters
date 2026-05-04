@@ -1,12 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Box, Flex, Stack } from "@chakra-ui/react";
-import StaffCalendar from "@/components/WardStaff/HomePage/StaffCalendar";
-import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer";
-import StatusBanner from "@/components/WardStaff/HomePage/StatusBanner";
+import { Box, Flex, Stack } from "@chakra-ui/react"
+import { createFileRoute } from "@tanstack/react-router"
+import NotificationBannerContainer from "@/components/Common/NotificationBannerContainer"
+import StaffCalendar from "@/components/WardStaff/HomePage/StaffCalendar"
+import StatusBanner from "@/components/WardStaff/HomePage/StatusBanner"
 
 export const Route = createFileRoute("/ward-staff/home")({
   component: HomePage,
-});
+})
 
 function HomePage() {
   return (
@@ -43,7 +43,7 @@ function HomePage() {
           rounded="lg"
           width={{ base: "100%", md: "50%" }}
         >
-          <NotificationBannerContainer role="nurse" />
+          <NotificationBannerContainer />
         </Stack>
       </Stack>
 
@@ -60,7 +60,7 @@ function HomePage() {
         </Box>
       </Box>
     </Flex>
-  );
+  )
 }
 
-export default HomePage;
+export default HomePage

@@ -1,10 +1,10 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 import {
   API_BASE_URL,
+  completeFirstLoginSetup,
   createUser,
   deleteUser,
-  completeFirstLoginSetup,
   getAdminToken,
   getAnyWard,
   withCleanupRequest,
@@ -35,17 +35,17 @@ async function navigateLeaveCalendarToDate(
   const toolbar = page.locator(".rbc-toolbar").first()
   await expect(toolbar).toBeVisible()
 
-  await toolbar.locator("select").first().selectOption(String(targetDate.getMonth()))
+  await toolbar
+    .locator("select")
+    .first()
+    .selectOption(String(targetDate.getMonth()))
   await toolbar
     .locator("select")
     .nth(1)
     .selectOption(String(targetDate.getFullYear()))
 }
 
-async function getRequestableDate(
-  request: APIRequestContext,
-  token: string,
-) {
+async function getRequestableDate(request: APIRequestContext, token: string) {
   const res = await request.get(
     `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -134,7 +134,9 @@ test("ward staff can create a leave request from the calendar", async ({
     )
     if (!leaveCodesRes.ok()) {
       const body = await leaveCodesRes.text()
-      throw new Error(`Failed to load leave codes: ${leaveCodesRes.status()} ${body}`)
+      throw new Error(
+        `Failed to load leave codes: ${leaveCodesRes.status()} ${body}`,
+      )
     }
     const leaveCodes = (await leaveCodesRes.json()) as Array<{
       shiftcode: string
@@ -170,9 +172,7 @@ test("ward staff can create a leave request from the calendar", async ({
     await expect(page.getByRole("dialog")).toContainText("Create Leave Request")
 
     const dialog = page.getByRole("dialog")
-    await page
-      .getByRole("combobox", { name: "Requested Leave Type" })
-      .click()
+    await page.getByRole("combobox", { name: "Requested Leave Type" }).click()
 
     for (const code of expectedCodes) {
       await expect(page.getByTestId(`leave-type-option-${code}`)).toBeVisible()
@@ -209,9 +209,12 @@ test("ward staff can create a leave request from the calendar", async ({
   } finally {
     await withCleanupRequest(async (cleanupRequest) => {
       if (createdLeaveId && nurseToken) {
-        await cleanupRequest.delete(`${API_BASE_URL}/api/v1/leave/${createdLeaveId}`, {
-          headers: { Authorization: `Bearer ${nurseToken}` },
-        })
+        await cleanupRequest.delete(
+          `${API_BASE_URL}/api/v1/leave/${createdLeaveId}`,
+          {
+            headers: { Authorization: `Bearer ${nurseToken}` },
+          },
+        )
       }
       for (const userid of createdUserIds.reverse()) {
         await deleteUser(cleanupRequest, adminToken, userid)

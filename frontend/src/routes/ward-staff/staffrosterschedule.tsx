@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
   Box,
@@ -12,150 +10,161 @@ import {
   Table,
   Text,
   VStack,
-} from "@chakra-ui/react";
-import { Filter, X } from "lucide-react";
-import moment from "moment";
+} from "@chakra-ui/react"
+import { createFileRoute } from "@tanstack/react-router"
+import { Filter, X } from "lucide-react"
+import moment from "moment"
+import { useEffect, useMemo, useRef, useState } from "react"
 
-import { ShiftBadge } from "@/components/NurseManager/RosterTable/ShiftBadge";
+import { ShiftBadge } from "@/components/NurseManager/RosterTable/ShiftBadge"
+import type { DayColumn } from "@/components/NurseManager/RosterTable/types"
 import {
-  useRosterPeriodWindow,
   transformRosterData,
   useRosterPeriods,
+  useRosterPeriodWindow,
   useWardRoster,
   useWardStatistics,
-} from "@/components/NurseManager/RosterTable/useRosterData";
-import type { DayColumn } from "@/components/NurseManager/RosterTable/types";
-import { Checkbox } from "@/components/ui/checkbox";
-import useAuth from "@/hooks/useAuth";
+} from "@/components/NurseManager/RosterTable/useRosterData"
+import { Checkbox } from "@/components/ui/checkbox"
+import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/ward-staff/staffrosterschedule")({
   component: StaffRosterSchedule,
-});
+})
 
 function generateDayColumns(startDate: Date): DayColumn[] {
   return Array.from({ length: 7 }, (_, index) => {
-    const date = moment(startDate).add(index, "days");
+    const date = moment(startDate).add(index, "days")
 
     return {
       field: `shift_${date.format("YYYY-MM-DD")}`,
       title: date.format("dddd"),
       date: date.toDate(),
       dayOfWeek: date.format("ddd"),
-    };
-  });
+    }
+  })
 }
 
 function StaffRosterSchedule() {
-  const { user } = useAuth();
+  const { user } = useAuth()
   const [currentStartDate, setCurrentStartDate] = useState(() =>
     moment().startOf("isoWeek").toDate(),
-  );
-  const [nameFilterOpen, setNameFilterOpen] = useState(false);
-  const [designationFilterOpen, setDesignationFilterOpen] = useState(false);
-  const [nameFilterSearch, setNameFilterSearch] = useState("");
-  const [designationFilterSearch, setDesignationFilterSearch] = useState("");
-  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+  )
+  const [nameFilterOpen, setNameFilterOpen] = useState(false)
+  const [designationFilterOpen, setDesignationFilterOpen] = useState(false)
+  const [nameFilterSearch, setNameFilterSearch] = useState("")
+  const [designationFilterSearch, setDesignationFilterSearch] = useState("")
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [selectedDesignations, setSelectedDesignations] = useState<Set<string>>(
     new Set(),
-  );
+  )
   const [hasInitializedCurrentPeriod, setHasInitializedCurrentPeriod] =
-    useState(false);
-  const nameFilterAnchorRef = useRef<HTMLDivElement>(null);
-  const designationFilterAnchorRef = useRef<HTMLDivElement>(null);
+    useState(false)
+  const nameFilterAnchorRef = useRef<HTMLDivElement>(null)
+  const designationFilterAnchorRef = useRef<HTMLDivElement>(null)
 
-  const wardId = user?.wardid ?? null;
+  const wardId = user?.wardid ?? null
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate),
     [currentStartDate],
-  );
+  )
 
-  const { data: periods } = useRosterPeriods();
-  const { data: periodWindow } = useRosterPeriodWindow();
-  const currentPeriod = periodWindow?.currentPeriod ?? null;
-  const upcomingPeriod = periodWindow?.upcomingPeriod ?? null;
+  const { data: periods } = useRosterPeriods()
+  const { data: periodWindow } = useRosterPeriodWindow()
+  const currentPeriod = periodWindow?.currentPeriod ?? null
+  const upcomingPeriod = periodWindow?.upcomingPeriod ?? null
   const activePeriod = useMemo(() => {
-    const weekStart = moment(currentStartDate);
+    const weekStart = moment(currentStartDate)
     return (
       periods?.find((period) =>
-        weekStart.isBetween(moment(period.startDate), moment(period.endDate), "day", "[]"),
+        weekStart.isBetween(
+          moment(period.startDate),
+          moment(period.endDate),
+          "day",
+          "[]",
+        ),
       ) ?? null
-    );
-  }, [currentStartDate, periods]);
+    )
+  }, [currentStartDate, periods])
   const isViewingCurrentPeriod =
     !!activePeriod &&
     !!currentPeriod &&
-    activePeriod.periodId === currentPeriod.periodId;
+    activePeriod.periodId === currentPeriod.periodId
   const isViewingUpcomingPeriod =
     !!activePeriod &&
     !!upcomingPeriod &&
-    activePeriod.periodId === upcomingPeriod.periodId;
+    activePeriod.periodId === upcomingPeriod.periodId
 
   const navigationEndDate = useMemo(() => {
-    return upcomingPeriod?.endDate ?? currentPeriod?.endDate ?? null;
-  }, [currentPeriod?.endDate, upcomingPeriod?.endDate]);
-  const navigationStartDate = currentPeriod?.startDate ?? null;
+    return upcomingPeriod?.endDate ?? currentPeriod?.endDate ?? null
+  }, [currentPeriod?.endDate, upcomingPeriod?.endDate])
+  const navigationStartDate = currentPeriod?.startDate ?? null
 
   const canGoBack = useMemo(() => {
     if (!navigationStartDate) {
-      return true;
+      return true
     }
-    const previousWeekStart = moment(currentStartDate).subtract(7, "days").startOf("day");
-    return previousWeekStart.isSameOrAfter(moment(navigationStartDate).startOf("day"));
-  }, [currentStartDate, navigationStartDate]);
+    const previousWeekStart = moment(currentStartDate)
+      .subtract(7, "days")
+      .startOf("day")
+    return previousWeekStart.isSameOrAfter(
+      moment(navigationStartDate).startOf("day"),
+    )
+  }, [currentStartDate, navigationStartDate])
 
   const canGoNext = useMemo(() => {
     if (!navigationEndDate) {
-      return true;
+      return true
     }
-    const nextWeekStart = moment(currentStartDate).add(7, "days").startOf("day");
+    const nextWeekStart = moment(currentStartDate).add(7, "days").startOf("day")
     const latestAllowedWeekStart = moment(navigationEndDate)
       .subtract(6, "days")
-      .startOf("day");
+      .startOf("day")
 
-    return nextWeekStart.isSameOrBefore(latestAllowedWeekStart);
-  }, [currentStartDate, navigationEndDate]);
+    return nextWeekStart.isSameOrBefore(latestAllowedWeekStart)
+  }, [currentStartDate, navigationEndDate])
 
   useEffect(() => {
     if (currentPeriod && !hasInitializedCurrentPeriod) {
-      setCurrentStartDate(moment(currentPeriod.startDate).toDate());
-      setHasInitializedCurrentPeriod(true);
+      setCurrentStartDate(moment(currentPeriod.startDate).toDate())
+      setHasInitializedCurrentPeriod(true)
     }
-  }, [currentPeriod, hasInitializedCurrentPeriod]);
+  }, [currentPeriod, hasInitializedCurrentPeriod])
 
   const {
     data: statistics,
     isLoading: isStatisticsLoading,
     isError: isStatisticsError,
-  } = useWardStatistics(wardId);
+  } = useWardStatistics(wardId)
   const {
     data: rosterData,
     isLoading: isRosterLoading,
     isError: isRosterError,
-  } = useWardRoster(wardId, activePeriod?.periodId ?? null);
+  } = useWardRoster(wardId, activePeriod?.periodId ?? null)
 
   const rows = useMemo(() => {
     if (!statistics?.nurses || !rosterData?.roster_entries) {
-      return [];
+      return []
     }
 
-    return transformRosterData(statistics.nurses, rosterData.roster_entries);
-  }, [rosterData, statistics]);
+    return transformRosterData(statistics.nurses, rosterData.roster_entries)
+  }, [rosterData, statistics])
 
   const allNames = useMemo(
     () => Array.from(new Set(rows.map((row) => row.name))).sort(),
     [rows],
-  );
+  )
   const allDesignations = useMemo(
     () => Array.from(new Set(rows.map((row) => row.designation))).sort(),
     [rows],
-  );
+  )
   const filteredNameOptions = useMemo(
     () =>
       allNames.filter((name) =>
         name.toLowerCase().includes(nameFilterSearch.toLowerCase()),
       ),
     [allNames, nameFilterSearch],
-  );
+  )
   const filteredDesignationOptions = useMemo(
     () =>
       allDesignations.filter((designation) =>
@@ -164,96 +173,101 @@ function StaffRosterSchedule() {
           .includes(designationFilterSearch.toLowerCase()),
       ),
     [allDesignations, designationFilterSearch],
-  );
-  const isNameFilterActive = selectedNames.size > 0;
-  const isDesignationFilterActive = selectedDesignations.size > 0;
+  )
+  const isNameFilterActive = selectedNames.size > 0
+  const isDesignationFilterActive = selectedDesignations.size > 0
   const filteredRows = useMemo(
     () =>
       rows.filter((row) => {
-        const matchesName =
-          !isNameFilterActive || selectedNames.has(row.name);
+        const matchesName = !isNameFilterActive || selectedNames.has(row.name)
         const matchesDesignation =
           !isDesignationFilterActive ||
-          selectedDesignations.has(row.designation);
+          selectedDesignations.has(row.designation)
 
-        return matchesName && matchesDesignation;
+        return matchesName && matchesDesignation
       }),
-    [isDesignationFilterActive, isNameFilterActive, rows, selectedDesignations, selectedNames],
-  );
+    [
+      isDesignationFilterActive,
+      isNameFilterActive,
+      rows,
+      selectedDesignations,
+      selectedNames,
+    ],
+  )
 
-  const isLoading = isStatisticsLoading || isRosterLoading;
-  const hasError = isStatisticsError || isRosterError;
+  const isLoading = isStatisticsLoading || isRosterLoading
+  const hasError = isStatisticsError || isRosterError
 
   const handleToday = () => {
     setCurrentStartDate(
       moment(currentPeriod?.startDate ?? moment().startOf("isoWeek")).toDate(),
-    );
-  };
+    )
+  }
 
   const handleBack = () => {
     if (!canGoBack) {
-      return;
+      return
     }
     setCurrentStartDate((previousDate) =>
       moment(previousDate).subtract(7, "days").toDate(),
-    );
-  };
+    )
+  }
 
   const handleNext = () => {
     if (!canGoNext) {
-      return;
+      return
     }
     setCurrentStartDate((previousDate) =>
       moment(previousDate).add(7, "days").toDate(),
-    );
-  };
+    )
+  }
 
   const toggleName = (name: string) => {
     setSelectedNames((previousNames) => {
-      const nextNames = new Set(previousNames);
+      const nextNames = new Set(previousNames)
       if (nextNames.has(name)) {
-        nextNames.delete(name);
+        nextNames.delete(name)
       } else {
-        nextNames.add(name);
+        nextNames.add(name)
       }
-      return nextNames;
-    });
-  };
+      return nextNames
+    })
+  }
 
   const toggleDesignation = (designation: string) => {
     setSelectedDesignations((previousDesignations) => {
-      const nextDesignations = new Set(previousDesignations);
+      const nextDesignations = new Set(previousDesignations)
       if (nextDesignations.has(designation)) {
-        nextDesignations.delete(designation);
+        nextDesignations.delete(designation)
       } else {
-        nextDesignations.add(designation);
+        nextDesignations.add(designation)
       }
-      return nextDesignations;
-    });
-  };
+      return nextDesignations
+    })
+  }
 
   const selectAllNames = () => {
-    setSelectedNames(new Set(allNames));
-  };
+    setSelectedNames(new Set(allNames))
+  }
 
   const selectAllDesignations = () => {
-    setSelectedDesignations(new Set(allDesignations));
-  };
+    setSelectedDesignations(new Set(allDesignations))
+  }
 
   const clearNameFilter = () => {
-    setSelectedNames(new Set());
-    setNameFilterSearch("");
-  };
+    setSelectedNames(new Set())
+    setNameFilterSearch("")
+  }
 
   const clearDesignationFilter = () => {
-    setSelectedDesignations(new Set());
-    setDesignationFilterSearch("");
-  };
+    setSelectedDesignations(new Set())
+    setDesignationFilterSearch("")
+  }
 
-  const weekEnd = moment(currentStartDate).add(6, "days");
+  const weekEnd = moment(currentStartDate).add(6, "days")
   const dateRangeLabel = `${moment(currentStartDate).format("Do MMMM YYYY")} - ${weekEnd.format(
     "Do MMMM YYYY",
-  )}`;
+  )}`
 
   return (
     <Flex
@@ -276,19 +290,21 @@ function StaffRosterSchedule() {
           <Text color="primary" fontWeight="semibold" fontSize="lg">
             Staff Roster Schedule
           </Text>
-          <HStack justify="center" gap={2} flexWrap="wrap" align="center" minH="32px">
+          <HStack
+            justify="center"
+            gap={2}
+            flexWrap="wrap"
+            align="center"
+            minH="32px"
+          >
             <Text color="foreground" fontWeight="light" whiteSpace="nowrap">
               {dateRangeLabel}
             </Text>
             {isViewingCurrentPeriod ? (
-              <Badge variant={"currentPeriod" as any}>
-                Current
-              </Badge>
+              <Badge variant={"currentPeriod" as any}>Current</Badge>
             ) : null}
             {isViewingUpcomingPeriod ? (
-              <Badge variant={"upcomingPeriod" as any}>
-                Upcoming
-              </Badge>
+              <Badge variant={"upcomingPeriod" as any}>Upcoming</Badge>
             ) : null}
           </HStack>
         </VStack>
@@ -360,7 +376,11 @@ function StaffRosterSchedule() {
                   >
                     <HStack gap={2}>
                       <Text fontSize="sm">Name</Text>
-                      <Box position="relative" display="inline-flex" ref={nameFilterAnchorRef}>
+                      <Box
+                        position="relative"
+                        display="inline-flex"
+                        ref={nameFilterAnchorRef}
+                      >
                         <Box
                           as="button"
                           display="flex"
@@ -375,9 +395,9 @@ function StaffRosterSchedule() {
                           _active={{ bg: "#bae6fd", color: "#0e7490" }}
                           transition="all 0.15s ease"
                           onClick={(event) => {
-                            event.stopPropagation();
-                            setNameFilterOpen((open) => !open);
-                            setDesignationFilterOpen(false);
+                            event.stopPropagation()
+                            setNameFilterOpen((open) => !open)
+                            setDesignationFilterOpen(false)
                           }}
                           title="Filter by name"
                         >
@@ -402,13 +422,14 @@ function StaffRosterSchedule() {
                       open={nameFilterOpen}
                       onOpenChange={(details) => {
                         if (!details.open) {
-                          setNameFilterOpen(false);
-                          setNameFilterSearch("");
+                          setNameFilterOpen(false)
+                          setNameFilterSearch("")
                         }
                       }}
                       positioning={{
                         getAnchorRect: () =>
-                          nameFilterAnchorRef.current?.getBoundingClientRect() ?? null,
+                          nameFilterAnchorRef.current?.getBoundingClientRect() ??
+                          null,
                         placement: "bottom-start",
                       }}
                     >
@@ -426,7 +447,11 @@ function StaffRosterSchedule() {
                             borderColor="gray.100"
                           >
                             <Flex justify="space-between" align="center" mb={2}>
-                              <Text fontSize="xs" fontWeight="semibold" color="primary">
+                              <Text
+                                fontSize="xs"
+                                fontWeight="semibold"
+                                color="primary"
+                              >
                                 Filter by Name
                               </Text>
                               <Box
@@ -435,8 +460,8 @@ function StaffRosterSchedule() {
                                 color="gray.400"
                                 _hover={{ color: "gray.600" }}
                                 onClick={() => {
-                                  setNameFilterOpen(false);
-                                  setNameFilterSearch("");
+                                  setNameFilterOpen(false)
+                                  setNameFilterSearch("")
                                 }}
                               >
                                 <X size={13} />
@@ -446,7 +471,9 @@ function StaffRosterSchedule() {
                               placeholder="Search name..."
                               size="xs"
                               value={nameFilterSearch}
-                              onChange={(event) => setNameFilterSearch(event.target.value)}
+                              onChange={(event) =>
+                                setNameFilterSearch(event.target.value)
+                              }
                               onClick={(event) => event.stopPropagation()}
                               autoFocus
                               borderColor="gray.200"
@@ -469,7 +496,10 @@ function StaffRosterSchedule() {
                               fontSize="xs"
                               color="#4B8798"
                               cursor="pointer"
-                              _hover={{ color: "primary", textDecoration: "underline" }}
+                              _hover={{
+                                color: "primary",
+                                textDecoration: "underline",
+                              }}
                               onClick={selectAllNames}
                             >
                               Select all
@@ -482,7 +512,10 @@ function StaffRosterSchedule() {
                               fontSize="xs"
                               color="#4B8798"
                               cursor="pointer"
-                              _hover={{ color: "primary", textDecoration: "underline" }}
+                              _hover={{
+                                color: "primary",
+                                textDecoration: "underline",
+                              }}
                               onClick={clearNameFilter}
                             >
                               Clear
@@ -509,12 +542,16 @@ function StaffRosterSchedule() {
                                   px={3}
                                   py={1.5}
                                   cursor="pointer"
-                                  bg={selectedNames.has(name) ? "#f0f9ff" : "white"}
+                                  bg={
+                                    selectedNames.has(name)
+                                      ? "#f0f9ff"
+                                      : "white"
+                                  }
                                   _hover={{ bg: "#f0f9ff" }}
                                   transition="background 0.1s ease"
                                   onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleName(name);
+                                    event.stopPropagation()
+                                    toggleName(name)
                                   }}
                                 >
                                   <Checkbox
@@ -524,7 +561,11 @@ function StaffRosterSchedule() {
                                     onClick={(event) => event.stopPropagation()}
                                     colorPalette="cyan"
                                   />
-                                  <Text fontSize="xs" color="gray.700" userSelect="none">
+                                  <Text
+                                    fontSize="xs"
+                                    color="gray.700"
+                                    userSelect="none"
+                                  >
                                     {name}
                                   </Text>
                                 </Flex>
@@ -559,15 +600,21 @@ function StaffRosterSchedule() {
                           p={1}
                           borderRadius="md"
                           cursor="pointer"
-                          color={isDesignationFilterActive ? "primary" : "foreground"}
-                          bg={isDesignationFilterActive ? "#e0f2fe" : "transparent"}
+                          color={
+                            isDesignationFilterActive ? "primary" : "foreground"
+                          }
+                          bg={
+                            isDesignationFilterActive
+                              ? "#e0f2fe"
+                              : "transparent"
+                          }
                           _hover={{ bg: "#e0f2fe", color: "primary" }}
                           _active={{ bg: "#bae6fd", color: "#0e7490" }}
                           transition="all 0.15s ease"
                           onClick={(event) => {
-                            event.stopPropagation();
-                            setDesignationFilterOpen((open) => !open);
-                            setNameFilterOpen(false);
+                            event.stopPropagation()
+                            setDesignationFilterOpen((open) => !open)
+                            setNameFilterOpen(false)
                           }}
                           title="Filter by designation"
                         >
@@ -592,13 +639,14 @@ function StaffRosterSchedule() {
                       open={designationFilterOpen}
                       onOpenChange={(details) => {
                         if (!details.open) {
-                          setDesignationFilterOpen(false);
-                          setDesignationFilterSearch("");
+                          setDesignationFilterOpen(false)
+                          setDesignationFilterSearch("")
                         }
                       }}
                       positioning={{
                         getAnchorRect: () =>
-                          designationFilterAnchorRef.current?.getBoundingClientRect() ?? null,
+                          designationFilterAnchorRef.current?.getBoundingClientRect() ??
+                          null,
                         placement: "bottom-start",
                       }}
                     >
@@ -616,7 +664,11 @@ function StaffRosterSchedule() {
                             borderColor="gray.100"
                           >
                             <Flex justify="space-between" align="center" mb={2}>
-                              <Text fontSize="xs" fontWeight="semibold" color="primary">
+                              <Text
+                                fontSize="xs"
+                                fontWeight="semibold"
+                                color="primary"
+                              >
                                 Filter by Designation
                               </Text>
                               <Box
@@ -625,8 +677,8 @@ function StaffRosterSchedule() {
                                 color="gray.400"
                                 _hover={{ color: "gray.600" }}
                                 onClick={() => {
-                                  setDesignationFilterOpen(false);
-                                  setDesignationFilterSearch("");
+                                  setDesignationFilterOpen(false)
+                                  setDesignationFilterSearch("")
                                 }}
                               >
                                 <X size={13} />
@@ -660,7 +712,10 @@ function StaffRosterSchedule() {
                               fontSize="xs"
                               color="#4B8798"
                               cursor="pointer"
-                              _hover={{ color: "primary", textDecoration: "underline" }}
+                              _hover={{
+                                color: "primary",
+                                textDecoration: "underline",
+                              }}
                               onClick={selectAllDesignations}
                             >
                               Select all
@@ -673,7 +728,10 @@ function StaffRosterSchedule() {
                               fontSize="xs"
                               color="#4B8798"
                               cursor="pointer"
-                              _hover={{ color: "primary", textDecoration: "underline" }}
+                              _hover={{
+                                color: "primary",
+                                textDecoration: "underline",
+                              }}
                               onClick={clearDesignationFilter}
                             >
                               Clear
@@ -708,18 +766,26 @@ function StaffRosterSchedule() {
                                   _hover={{ bg: "#f0f9ff" }}
                                   transition="background 0.1s ease"
                                   onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleDesignation(designation);
+                                    event.stopPropagation()
+                                    toggleDesignation(designation)
                                   }}
                                 >
                                   <Checkbox
                                     size="sm"
-                                    checked={selectedDesignations.has(designation)}
-                                    onCheckedChange={() => toggleDesignation(designation)}
+                                    checked={selectedDesignations.has(
+                                      designation,
+                                    )}
+                                    onCheckedChange={() =>
+                                      toggleDesignation(designation)
+                                    }
                                     onClick={(event) => event.stopPropagation()}
                                     colorPalette="cyan"
                                   />
-                                  <Text fontSize="xs" color="gray.700" userSelect="none">
+                                  <Text
+                                    fontSize="xs"
+                                    color="gray.700"
+                                    userSelect="none"
+                                  >
                                     {designation}
                                   </Text>
                                 </Flex>
@@ -744,7 +810,11 @@ function StaffRosterSchedule() {
                     >
                       <VStack gap={0}>
                         <Text fontSize="sm">{column.title}</Text>
-                        <Text fontSize="xs" color="foreground" fontWeight="light">
+                        <Text
+                          fontSize="xs"
+                          color="foreground"
+                          fontWeight="light"
+                        >
                           {moment(column.date).format("D/M/YYYY")}
                         </Text>
                       </VStack>
@@ -769,7 +839,7 @@ function StaffRosterSchedule() {
                   </Table.Row>
                 ) : (
                   filteredRows.map((row) => {
-                    const isCurrentUser = row.nurseId === user?.nurseid;
+                    const isCurrentUser = row.nurseId === user?.nurseid
 
                     return (
                       <Table.Row
@@ -783,7 +853,11 @@ function StaffRosterSchedule() {
                           borderBottom="1px solid"
                           borderColor="blackAlpha.100"
                         >
-                          <Text fontSize="sm" color="black" fontWeight={isCurrentUser ? "medium" : "normal"}>
+                          <Text
+                            fontSize="sm"
+                            color="black"
+                            fontWeight={isCurrentUser ? "medium" : "normal"}
+                          >
                             {row.name}
                           </Text>
                         </Table.Cell>
@@ -793,13 +867,19 @@ function StaffRosterSchedule() {
                           borderBottom="1px solid"
                           borderColor="blackAlpha.100"
                         >
-                          <Text fontSize="sm" color="black" textTransform="uppercase">
+                          <Text
+                            fontSize="sm"
+                            color="black"
+                            textTransform="uppercase"
+                          >
                             {row.designation}
                           </Text>
                         </Table.Cell>
                         {dayColumns.map((column) => {
-                          const dateKey = moment(column.date).format("YYYY-MM-DD");
-                          const shift = row.shifts[dateKey];
+                          const dateKey = moment(column.date).format(
+                            "YYYY-MM-DD",
+                          )
+                          const shift = row.shifts[dateKey]
 
                           return (
                             <Table.Cell
@@ -823,10 +903,10 @@ function StaffRosterSchedule() {
                                 <Box w="140px" h="44px" mx="auto" />
                               )}
                             </Table.Cell>
-                          );
+                          )
                         })}
                       </Table.Row>
-                    );
+                    )
                   })
                 )}
               </Table.Body>
@@ -835,7 +915,7 @@ function StaffRosterSchedule() {
         </Box>
       </VStack>
     </Flex>
-  );
+  )
 }
 
-export default StaffRosterSchedule;
+export default StaffRosterSchedule

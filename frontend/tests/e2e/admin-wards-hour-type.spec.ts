@@ -20,13 +20,16 @@ test("admin ward form shows only 12-hour shift options with DO last", async ({
 
   await page.locator('select[name="wardhourtype"]').selectOption("12_HOURS")
 
-  const shiftOptionsSection = page.locator("div.border.rounded-lg.bg-blue-50.border-blue-200")
+  const shiftOptionsSection = page.locator(
+    "div.border.rounded-lg.bg-blue-50.border-blue-200",
+  )
   await shiftOptionsSection
     .getByRole("button", { name: /Shift Request Options \(Nurse\)/i })
     .click()
 
-  const optionTexts = (await shiftOptionsSection.locator("label span").allTextContents())
-    .map((text) => text.trim())
+  const optionTexts = (
+    await shiftOptionsSection.locator("label span").allTextContents()
+  ).map((text) => text.trim())
   const optionCodes = optionTexts.map((text) => text.split(" - ")[0].trim())
 
   expect(optionCodes).toEqual(["A-12", "N-12", "DO"])

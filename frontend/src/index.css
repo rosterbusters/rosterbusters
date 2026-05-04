@@ -1,4 +1,4 @@
-@import 'react-big-calendar/lib/css/react-big-calendar.css';
+@import "react-big-calendar/lib/css/react-big-calendar.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -50,10 +50,9 @@
   background-color: #e2e8f0;
 }
 
-
-:root{
-  --default-font-family:"Poppins", sans-serif;
-  --font-sans:"Poppins", sans-serif;
+:root {
+  --default-font-family: "Poppins", sans-serif;
+  --font-sans: "Poppins", sans-serif;
 }
 body {
   font-family: var(--default-font-family);
@@ -169,4 +168,3 @@ html {
   font-weight: 900;
   font-style: italic;
 }
-

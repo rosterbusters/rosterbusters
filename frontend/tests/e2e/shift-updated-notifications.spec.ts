@@ -1,5 +1,6 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
+import { type APIRequestContext, expect, test } from "@playwright/test"
+import { loginForE2E } from "../utils/auth"
 import {
   API_BASE_URL,
   createUser,
@@ -8,7 +9,6 @@ import {
   getAnyWard,
   getUserByUsername,
 } from "./admin-helpers"
-import { loginForE2E } from "../utils/auth"
 
 const MAILCATCHER_HOST = process.env.MAILCATCHER_HOST
 const DB_CONTAINER_ENV =
@@ -52,7 +52,19 @@ const runScalarQuery = (sql: string) => {
   const container = getDbContainerName()
   return execFileSync(
     "docker",
-    ["exec", container, "psql", "-U", DB_USER, "-d", DB_NAME, "-t", "-A", "-c", sql],
+    [
+      "exec",
+      container,
+      "psql",
+      "-U",
+      DB_USER,
+      "-d",
+      DB_NAME,
+      "-t",
+      "-A",
+      "-c",
+      sql,
+    ],
     { encoding: "utf8" },
   ).trim()
 }
@@ -119,14 +131,18 @@ async function fetchMailCatcherMessages() {
       }>
     }
   }
-  throw new Error(`Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`)
+  throw new Error(
+    `Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`,
+  )
 }
 
 async function fetchMailCatcherMessage(id: number) {
   const res = await fetch(`${MAILCATCHER_HOST}/messages/${id}.json`)
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`Failed to fetch MailCatcher message: ${res.status} ${body}`)
+    throw new Error(
+      `Failed to fetch MailCatcher message: ${res.status} ${body}`,
+    )
   }
   const message = (await res.json()) as {
     id: number
@@ -246,24 +262,29 @@ test.describe("shift updated notifications", () => {
         nurseEmail,
       )
 
-      const createRes = await request.post(`${API_BASE_URL}/api/v1/roster/create`, {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-          "Content-Type": "application/json",
+      const createRes = await request.post(
+        `${API_BASE_URL}/api/v1/roster/create`,
+        {
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+            "Content-Type": "application/json",
+          },
+          data: {
+            ward_id: ward.wardid,
+            nurse_id: nurseDetails.nurseid,
+            period_id: period.periodid,
+            shift_date: period.startdate,
+            shift_code: "A",
+            status: "Pending",
+            assignment_method: "Manual",
+          },
         },
-        data: {
-          ward_id: ward.wardid,
-          nurse_id: nurseDetails.nurseid,
-          period_id: period.periodid,
-          shift_date: period.startdate,
-          shift_code: "A",
-          status: "Pending",
-          assignment_method: "Manual",
-        },
-      })
+      )
       if (!createRes.ok()) {
         const body = await createRes.text()
-        throw new Error(`Failed to create roster entry: ${createRes.status()} ${body}`)
+        throw new Error(
+          `Failed to create roster entry: ${createRes.status()} ${body}`,
+        )
       }
       const created = (await createRes.json()) as { roster_id: number }
 
@@ -287,60 +308,76 @@ test.describe("shift updated notifications", () => {
       )
       if (!pendingUpdateRes.ok()) {
         const body = await pendingUpdateRes.text()
-        throw new Error(`Failed to update roster entry: ${pendingUpdateRes.status()} ${body}`)
+        throw new Error(
+          `Failed to update roster entry: ${pendingUpdateRes.status()} ${body}`,
+        )
       }
 
-      await expect.poll(() =>
-        countRows(
-          `select count(*) from notificationqueue where recipienttype = 'Nurse' and recipientid = ${nurseDetails.nurseid} and notificationtype = 'ShiftUpdated' and relatedentitytype = 'Roster' and relatedentityid = ${created.roster_id};`,
-        ),
-      ).toBe(0)
+      await expect
+        .poll(() =>
+          countRows(
+            `select count(*) from notificationqueue where recipienttype = 'Nurse' and recipientid = ${nurseDetails.nurseid} and notificationtype = 'ShiftUpdated' and relatedentitytype = 'Roster' and relatedentityid = ${created.roster_id};`,
+          ),
+        )
+        .toBe(0)
 
-      const confirmRes = await request.post(`${API_BASE_URL}/api/v1/roster/create`, {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-          "Content-Type": "application/json",
+      const confirmRes = await request.post(
+        `${API_BASE_URL}/api/v1/roster/create`,
+        {
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+            "Content-Type": "application/json",
+          },
+          data: {
+            ward_id: ward.wardid,
+            nurse_id: nurseDetails.nurseid,
+            period_id: period.periodid,
+            shift_date: period.startdate,
+            shift_code: "P",
+            status: "Confirmed",
+            assignment_method: "Manual",
+          },
         },
-        data: {
-          ward_id: ward.wardid,
-          nurse_id: nurseDetails.nurseid,
-          period_id: period.periodid,
-          shift_date: period.startdate,
-          shift_code: "P",
-          status: "Confirmed",
-          assignment_method: "Manual",
-        },
-      })
+      )
       if (!confirmRes.ok()) {
         const body = await confirmRes.text()
-        throw new Error(`Failed to confirm roster entry: ${confirmRes.status()} ${body}`)
+        throw new Error(
+          `Failed to confirm roster entry: ${confirmRes.status()} ${body}`,
+        )
       }
 
-      const updatedRes = await request.post(`${API_BASE_URL}/api/v1/roster/create`, {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-          "Content-Type": "application/json",
+      const updatedRes = await request.post(
+        `${API_BASE_URL}/api/v1/roster/create`,
+        {
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+            "Content-Type": "application/json",
+          },
+          data: {
+            ward_id: ward.wardid,
+            nurse_id: nurseDetails.nurseid,
+            period_id: period.periodid,
+            shift_date: period.startdate,
+            shift_code: "N",
+            status: "Confirmed",
+            assignment_method: "Manual",
+          },
         },
-        data: {
-          ward_id: ward.wardid,
-          nurse_id: nurseDetails.nurseid,
-          period_id: period.periodid,
-          shift_date: period.startdate,
-          shift_code: "N",
-          status: "Confirmed",
-          assignment_method: "Manual",
-        },
-      })
+      )
       if (!updatedRes.ok()) {
         const body = await updatedRes.text()
-        throw new Error(`Failed to update roster entry: ${updatedRes.status()} ${body}`)
+        throw new Error(
+          `Failed to update roster entry: ${updatedRes.status()} ${body}`,
+        )
       }
 
-      await expect.poll(() =>
-        countRows(
-          `select count(*) from notificationqueue where recipienttype = 'Nurse' and recipientid = ${nurseDetails.nurseid} and notificationtype = 'ShiftUpdated' and relatedentitytype = 'Roster' and relatedentityid = ${created.roster_id};`,
-        ),
-      ).toBe(1)
+      await expect
+        .poll(() =>
+          countRows(
+            `select count(*) from notificationqueue where recipienttype = 'Nurse' and recipientid = ${nurseDetails.nurseid} and notificationtype = 'ShiftUpdated' and relatedentitytype = 'Roster' and relatedentityid = ${created.roster_id};`,
+          ),
+        )
+        .toBe(1)
 
       const email = await waitForEmail(
         nurseEmail,
@@ -352,22 +389,24 @@ test.describe("shift updated notifications", () => {
         .join(" ")
       expect(emailBody).toContain(period.startdate)
 
-      await expect.poll(async () => {
-        const res = await request.get(
-          `${API_BASE_URL}/api/v1/notifications/nurse`,
-          {
-            headers: { Authorization: `Bearer ${nurseToken}` },
-            params: { notification_type: "ShiftUpdated" },
-          },
-        )
-        if (!res.ok()) return null
-        const json = (await res.json()) as {
-          notifications: Array<{ relatedentityid?: number | null }>
-        }
-        return json.notifications.find(
-          (n) => n.relatedentityid === created.roster_id,
-        )
-      }).toBeTruthy()
+      await expect
+        .poll(async () => {
+          const res = await request.get(
+            `${API_BASE_URL}/api/v1/notifications/nurse`,
+            {
+              headers: { Authorization: `Bearer ${nurseToken}` },
+              params: { notification_type: "ShiftUpdated" },
+            },
+          )
+          if (!res.ok()) return null
+          const json = (await res.json()) as {
+            notifications: Array<{ relatedentityid?: number | null }>
+          }
+          return json.notifications.find(
+            (n) => n.relatedentityid === created.roster_id,
+          )
+        })
+        .toBeTruthy()
     } finally {
       await request
         .delete(`${API_BASE_URL}/api/v1/roster/ward/${ward.wardid}/clear`, {

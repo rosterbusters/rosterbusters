@@ -1,23 +1,23 @@
-import { useMemo, type JSX, useState } from "react";
-import { Navigate, DateLocalizer } from "react-big-calendar";
-import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
-import { Event } from "@/models/Event";
-import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
-import { EditLeaveRequest, type LeaveRequestEntry } from "./EditLeaveRequest";
-import { NewLeaveRequest } from "./NewLeaveRequest";
-import moment from "moment";
+import { Box, Grid, GridItem, VStack } from "@chakra-ui/react"
+import moment from "moment"
+import { type JSX, useMemo, useState } from "react"
+import { type DateLocalizer, Navigate } from "react-big-calendar"
+import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock"
+import type { Event } from "@/models/Event"
+import { EditLeaveRequest, type LeaveRequestEntry } from "./EditLeaveRequest"
+import { NewLeaveRequest } from "./NewLeaveRequest"
 
 interface CustomMonthViewProps {
-  date: Date;
-  localizer: DateLocalizer;
-  events: Event[];
-  periodStartDate?: string;
-  [key: string]: unknown;
+  date: Date
+  localizer: DateLocalizer
+  events: Event[]
+  periodStartDate?: string
+  [key: string]: unknown
 }
 
 interface CustomMonthViewComponent {
-  (props: CustomMonthViewProps): JSX.Element;
-  range: (date: Date, options: { localizer: DateLocalizer }) => Date[];
+  (props: CustomMonthViewProps): JSX.Element
+  range: (date: Date, options: { localizer: DateLocalizer }) => Date[]
   navigate: (
     date: Date,
     action:
@@ -25,23 +25,23 @@ interface CustomMonthViewComponent {
       | typeof Navigate.NEXT
       | typeof Navigate.DATE,
     options: { localizer: DateLocalizer },
-  ) => Date;
-  title: (date: Date, options: { localizer: DateLocalizer }) => string;
+  ) => Date
+  title: (date: Date, options: { localizer: DateLocalizer }) => string
 }
 
 function getEventsForDay(day: Date, events: Event[]): Event[] {
-  const dayStart = new Date(day);
-  dayStart.setHours(0, 0, 0, 0);
+  const dayStart = new Date(day)
+  dayStart.setHours(0, 0, 0, 0)
   return events.filter((ev) => {
-    const start = new Date(ev.start);
-    const end = new Date(ev.end);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-    return dayStart >= start && dayStart <= end;
-  });
+    const start = new Date(ev.start)
+    const end = new Date(ev.end)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+    return dayStart >= start && dayStart <= end
+  })
 }
 
-const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
@@ -50,36 +50,38 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   isLocked,
   periodStartDate,
 }: CustomMonthViewProps) {
-  const locked = Boolean(isLocked);
-  const [selectedRequests, setSelectedRequests] = useState<LeaveRequestEntry[] | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
-  const [isNewLeaveOpen, setIsNewLeaveOpen] = useState(false);
+  const locked = Boolean(isLocked)
+  const [selectedRequests, setSelectedRequests] = useState<
+    LeaveRequestEntry[] | null
+  >(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null)
+  const [isNewLeaveOpen, setIsNewLeaveOpen] = useState(false)
 
   const currRange = useMemo(
     () => CustomMonthView.range(date, { localizer }),
     [date, localizer],
-  );
+  )
 
   const weeks = useMemo(() => {
-    const result: Date[][] = [];
+    const result: Date[][] = []
     for (let i = 0; i < currRange.length; i += 7) {
-      result.push(currRange.slice(i, i + 7));
+      result.push(currRange.slice(i, i + 7))
     }
-    return result;
-  }, [currRange]);
+    return result
+  }, [currRange])
 
-  const currentMonth = moment(date).month();
+  const currentMonth = moment(date).month()
 
   const handleEditClose = () => {
-    setIsEditOpen(false);
-    window.setTimeout(() => setSelectedRequests(null), 0);
-  };
+    setIsEditOpen(false)
+    window.setTimeout(() => setSelectedRequests(null), 0)
+  }
 
   const handleNewLeaveClose = () => {
-    setIsNewLeaveOpen(false);
-    window.setTimeout(() => setNewLeaveDate(null), 0);
-  };
+    setIsNewLeaveOpen(false)
+    window.setTimeout(() => setNewLeaveDate(null), 0)
+  }
 
   return (
     <>
@@ -113,15 +115,19 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
             templateColumns="repeat(7, 1fr)"
           >
             {week.map((day, di) => {
-              const eventsForDay = getEventsForDay(day, events);
-              const isCurrentMonth = moment(day).month() === currentMonth;
-              const isToday = moment(day).isSame(moment(), "day");
-              const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
+              const eventsForDay = getEventsForDay(day, events)
+              const isCurrentMonth = moment(day).month() === currentMonth
+              const isToday = moment(day).isSame(moment(), "day")
+              const isPastDate = moment(day)
+                .startOf("day")
+                .isBefore(moment().startOf("day"))
               const isBeforePeriodStart =
                 !!periodStartDate &&
-                moment(day).startOf("day").isBefore(moment(periodStartDate).startOf("day"));
-              const isBlocked = locked || isBeforePeriodStart;
-              const dateKey = moment(day).format("YYYY-MM-DD");
+                moment(day)
+                  .startOf("day")
+                  .isBefore(moment(periodStartDate).startOf("day"))
+              const isBlocked = locked || isBeforePeriodStart
+              const dateKey = moment(day).format("YYYY-MM-DD")
 
               return (
                 <GridItem
@@ -151,8 +157,8 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                     isBlocked
                       ? undefined
                       : () => {
-                          setNewLeaveDate(day);
-                          setIsNewLeaveOpen(true);
+                          setNewLeaveDate(day)
+                          setIsNewLeaveOpen(true)
                         }
                   }
                 >
@@ -188,13 +194,15 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                                         .filter((e) => e.resource?.isOwn)
                                         .map((e) => ({
                                           requestId: e.resource.requestId,
-                                          nurseName: e.resource.nurseName ?? e.title,
-                                          initialLeaveType: e.resource.shiftType,
+                                          nurseName:
+                                            e.resource.nurseName ?? e.title,
+                                          initialLeaveType:
+                                            e.resource.shiftType,
                                           startDate: e.resource.startDate,
                                           endDate: e.resource.endDate,
-                                        }));
-                                      setSelectedRequests(ownedForDay);
-                                      setIsEditOpen(true);
+                                        }))
+                                      setSelectedRequests(ownedForDay)
+                                      setIsEditOpen(true)
                                     }
                                   : undefined
                               }
@@ -203,7 +211,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                         ))}
                   </Box>
                 </GridItem>
-              );
+              )
             })}
           </Grid>
         ))}
@@ -225,23 +233,23 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         />
       )}
     </>
-  );
-};
+  )
+}
 
 CustomMonthView.range = (
   date: Date,
   { localizer }: { localizer: DateLocalizer },
 ): Date[] => {
-  const start = moment(date).startOf("month").startOf("week").toDate();
-  const end = moment(date).endOf("month").endOf("week").toDate();
-  const range: Date[] = [];
-  let current = start;
+  const start = moment(date).startOf("month").startOf("week").toDate()
+  const end = moment(date).endOf("month").endOf("week").toDate()
+  const range: Date[] = []
+  let current = start
   while (localizer.lte(current, end, "day")) {
-    range.push(current);
-    current = localizer.add(current, 1, "day");
+    range.push(current)
+    current = localizer.add(current, 1, "day")
   }
-  return range;
-};
+  return range
+}
 
 CustomMonthView.navigate = (
   date: Date,
@@ -252,16 +260,16 @@ CustomMonthView.navigate = (
 ): Date => {
   switch (action) {
     case Navigate.PREVIOUS:
-      return moment(date).subtract(1, "month").toDate();
+      return moment(date).subtract(1, "month").toDate()
     case Navigate.NEXT:
-      return moment(date).add(1, "month").toDate();
+      return moment(date).add(1, "month").toDate()
     default:
-      return date;
+      return date
   }
-};
+}
 
 CustomMonthView.title = (date: Date): string => {
-  return moment(date).format("MMMM YYYY");
-};
+  return moment(date).format("MMMM YYYY")
+}
 
-export default CustomMonthView;
+export default CustomMonthView

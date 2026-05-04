@@ -1,45 +1,48 @@
-import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Flex,
-  Text,
-  VStack,
   HStack,
-  Popover,
-  Textarea,
   Input,
+  Popover,
   Spinner,
-} from "@chakra-ui/react";
-import { X, ChevronDown, MessageSquarePlus, Trash2 } from "lucide-react";
-
-import { usePopoverContext } from "@chakra-ui/react";
+  Text,
+  Textarea,
+  usePopoverContext,
+  VStack,
+} from "@chakra-ui/react"
+import { ChevronDown, MessageSquarePlus, Trash2, X } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import {
-  type ShiftCode,
-  type ShiftAssignment,
-  SHIFT_CODE_MAP,
   getShiftColor,
-} from "./types";
-import { useAllShiftCodes, useLeaveShiftCodes, useUpdateRosterComment } from "./useRosterData";
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+  SHIFT_CODE_MAP,
+  type ShiftAssignment,
+  type ShiftCode,
+} from "./types"
+import {
+  useAllShiftCodes,
+  useLeaveShiftCodes,
+  useUpdateRosterComment,
+} from "./useRosterData"
 
 interface ShiftEditPopoverProps {
-  isOpen: boolean;
-  onClose: () => void;
-  currentShift: ShiftAssignment | null;
-  nurseName: string;
-  date: string;
-  onShiftChange: (shiftCode: ShiftCode) => void;
-  onCommentChange?: (comment: string) => void;
-  anchorEl: HTMLElement | null;
-  wardId?: number | null;
+  isOpen: boolean
+  onClose: () => void
+  currentShift: ShiftAssignment | null
+  nurseName: string
+  date: string
+  onShiftChange: (shiftCode: ShiftCode) => void
+  onCommentChange?: (comment: string) => void
+  anchorEl: HTMLElement | null
+  wardId?: number | null
 }
 
 interface ShiftDropdownProps {
-  label: string;
-  options: ShiftCode[];
-  selectedShift: ShiftCode | null;
-  onSelect: (code: ShiftCode) => void;
-  descriptions?: Record<string, string>;
+  label: string
+  options: ShiftCode[]
+  selectedShift: ShiftCode | null
+  onSelect: (code: ShiftCode) => void
+  descriptions?: Record<string, string>
 }
 
 function ShiftDropdown({
@@ -49,18 +52,20 @@ function ShiftDropdown({
   onSelect,
   descriptions,
 }: ShiftDropdownProps) {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
 
-  const selectedOption = options.find((code) => code === selectedShift);
+  const selectedOption = options.find((code) => code === selectedShift)
 
   const filteredOptions = options.filter((code) => {
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase()
     return (
       code.toLowerCase().includes(q) ||
-      (descriptions?.[code] ?? SHIFT_CODE_MAP[code]?.description ?? "").toLowerCase().includes(q)
-    );
-  });
+      (descriptions?.[code] ?? SHIFT_CODE_MAP[code]?.description ?? "")
+        .toLowerCase()
+        .includes(q)
+    )
+  })
 
   return (
     <Box>
@@ -76,8 +81,8 @@ function ShiftDropdown({
         py={2}
         cursor="pointer"
         onClick={() => {
-          if (isDropdownOpen) setSearchQuery("");
-          setIsDropdownOpen(!isDropdownOpen);
+          if (isDropdownOpen) setSearchQuery("")
+          setIsDropdownOpen(!isDropdownOpen)
         }}
         _hover={{ borderColor: "#4B8798" }}
         transition="all 0.15s ease"
@@ -101,8 +106,15 @@ function ShiftDropdown({
               >
                 {selectedOption}
               </Box>
-              <Text fontSize="sm" color="gray.700" whiteSpace="normal" wordBreak="break-word">
-                {descriptions?.[selectedOption] ?? SHIFT_CODE_MAP[selectedOption]?.description ?? selectedOption}
+              <Text
+                fontSize="sm"
+                color="gray.700"
+                whiteSpace="normal"
+                wordBreak="break-word"
+              >
+                {descriptions?.[selectedOption] ??
+                  SHIFT_CODE_MAP[selectedOption]?.description ??
+                  selectedOption}
               </Text>
             </HStack>
           ) : (
@@ -151,7 +163,10 @@ function ShiftDropdown({
               onClick={(e) => e.stopPropagation()}
               autoFocus
               borderColor="gray.200"
-              _focus={{ borderColor: "#4B8798", boxShadow: "0 0 0 1px #4B8798" }}
+              _focus={{
+                borderColor: "#4B8798",
+                boxShadow: "0 0 0 1px #4B8798",
+              }}
             />
           </Box>
 
@@ -168,10 +183,10 @@ function ShiftDropdown({
               _hover={{ bg: "gray.50" }}
               transition="background 0.1s ease"
               onClick={(e) => {
-                e.stopPropagation();
-                onSelect(code);
-                setSearchQuery("");
-                setIsDropdownOpen(false);
+                e.stopPropagation()
+                onSelect(code)
+                setSearchQuery("")
+                setIsDropdownOpen(false)
               }}
             >
               <Box
@@ -189,20 +204,29 @@ function ShiftDropdown({
               >
                 {code}
               </Box>
-              <Text fontSize="sm" color="gray.700" whiteSpace="normal" wordBreak="break-word">
-                {descriptions?.[code] ?? SHIFT_CODE_MAP[code]?.description ?? code}
+              <Text
+                fontSize="sm"
+                color="gray.700"
+                whiteSpace="normal"
+                wordBreak="break-word"
+              >
+                {descriptions?.[code] ??
+                  SHIFT_CODE_MAP[code]?.description ??
+                  code}
               </Text>
             </Flex>
           ))}
           {filteredOptions.length === 0 && (
             <Flex px={3} py={2} align="center">
-              <Text fontSize="sm" color="gray.400">No results</Text>
+              <Text fontSize="sm" color="gray.400">
+                No results
+              </Text>
             </Flex>
           )}
         </Box>
       )}
     </Box>
-  );
+  )
 }
 
 export function ShiftEditPopover({
@@ -218,138 +242,145 @@ export function ShiftEditPopover({
 }: ShiftEditPopoverProps) {
   const [selectedShift, setSelectedShift] = useState<ShiftCode | null>(
     currentShift?.shiftCode || null,
-  );
-  const [comment, setComment] = useState<string>(
-    currentShift?.comment || "",
-  );
-  const [showCommentInput, setShowCommentInput] = useState(false);
-  const [isSavingComment, setIsSavingComment] = useState(false);
-  const { data: allShiftCodes = [], isLoading: isShiftCodesLoading } = useAllShiftCodes(wardId);
-  const { data: leaveShiftCodes = [], isLoading: isLeaveCodesLoading } = useLeaveShiftCodes();
+  )
+  const [comment, setComment] = useState<string>(currentShift?.comment || "")
+  const [showCommentInput, setShowCommentInput] = useState(false)
+  const [isSavingComment, setIsSavingComment] = useState(false)
+  const { data: allShiftCodes = [], isLoading: isShiftCodesLoading } =
+    useAllShiftCodes(wardId)
+  const { data: leaveShiftCodes = [], isLoading: isLeaveCodesLoading } =
+    useLeaveShiftCodes()
 
-  const updateRosterComment = useUpdateRosterComment();
+  const updateRosterComment = useUpdateRosterComment()
 
   // Snapshot of state at the moment the popover was opened — used for Ctrl+Z revert
-  const originalShiftRef = useRef<ShiftCode | null>(null);
-  const originalCommentRef = useRef<string>("");
+  const originalShiftRef = useRef<ShiftCode | null>(null)
+  const originalCommentRef = useRef<string>("")
 
   // Reset state when popover opens with new data and capture the original snapshot
   useEffect(() => {
     if (isOpen) {
-      const origShift = currentShift?.shiftCode || null;
-      const origComment = currentShift?.comment || "";
-      setSelectedShift(origShift);
-      setComment(origComment);
-      setShowCommentInput(!!currentShift?.comment);
+      const origShift = currentShift?.shiftCode || null
+      const origComment = currentShift?.comment || ""
+      setSelectedShift(origShift)
+      setComment(origComment)
+      setShowCommentInput(!!currentShift?.comment)
       // Capture snapshot for Ctrl+Z
-      originalShiftRef.current = origShift;
-      originalCommentRef.current = origComment;
+      originalShiftRef.current = origShift
+      originalCommentRef.current = origComment
     }
-  }, [isOpen, currentShift?.shiftCode, currentShift?.comment]);
+  }, [isOpen, currentShift?.shiftCode, currentShift?.comment])
 
   // Ctrl+Z: revert all in-session changes back to the snapshot taken when popover opened
   const handleUndoAll = useCallback(() => {
-    const origShift = originalShiftRef.current;
-    const origComment = originalCommentRef.current;
+    const origShift = originalShiftRef.current
+    const origComment = originalCommentRef.current
 
-    setComment(origComment);
-    setShowCommentInput(!!origComment);
+    setComment(origComment)
+    setShowCommentInput(!!origComment)
 
     if (selectedShift !== origShift) {
-      setSelectedShift(origShift);
+      setSelectedShift(origShift)
       // Revert the live grid preview too
       if (origShift) {
-        onShiftChange(origShift);
+        onShiftChange(origShift)
       }
     }
-
-  }, [selectedShift, onShiftChange]);
+  }, [selectedShift, onShiftChange])
 
   // Listen for Ctrl+Z while the popover is open
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
-        e.preventDefault();
-        handleUndoAll();
+        e.preventDefault()
+        handleUndoAll()
       }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, handleUndoAll]);
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, handleUndoAll])
 
-  const workingOverride = new Set<ShiftCode>(["DO", "RD"]);
-  const preferredWorkingShiftOrder = ["A", "P", "N", "N-12", "P-12", "DO", "RD"];
+  const workingOverride = new Set<ShiftCode>(["DO", "RD"])
+  const preferredWorkingShiftOrder = ["A", "P", "N", "N-12", "P-12", "DO", "RD"]
   const workingShifts = allShiftCodes
-    .filter((shiftCode) => shiftCode.isworking || workingOverride.has(shiftCode.shiftcode as ShiftCode))
+    .filter(
+      (shiftCode) =>
+        shiftCode.isworking ||
+        workingOverride.has(shiftCode.shiftcode as ShiftCode),
+    )
     .map((shiftCode) => shiftCode.shiftcode as ShiftCode)
     .sort((a, b) => {
-      const aIndex = preferredWorkingShiftOrder.indexOf(a);
-      const bIndex = preferredWorkingShiftOrder.indexOf(b);
+      const aIndex = preferredWorkingShiftOrder.indexOf(a)
+      const bIndex = preferredWorkingShiftOrder.indexOf(b)
 
-      if (aIndex === -1 && bIndex === -1) return 0;
-      if (aIndex === -1) return 1;
-      if (bIndex === -1) return -1;
-      return aIndex - bIndex;
-    });
-  const leaveShifts = leaveShiftCodes
-    .map((shiftCode) => shiftCode.shiftcode as ShiftCode);
+      if (aIndex === -1 && bIndex === -1) return 0
+      if (aIndex === -1) return 1
+      if (bIndex === -1) return -1
+      return aIndex - bIndex
+    })
+  const leaveShifts = leaveShiftCodes.map(
+    (shiftCode) => shiftCode.shiftcode as ShiftCode,
+  )
   const shiftDescriptions = Object.fromEntries(
-    [...allShiftCodes, ...leaveShiftCodes].map((shiftCode) => [shiftCode.shiftcode, shiftCode.description]),
-  ) as Record<string, string>;
+    [...allShiftCodes, ...leaveShiftCodes].map((shiftCode) => [
+      shiftCode.shiftcode,
+      shiftCode.description,
+    ]),
+  ) as Record<string, string>
 
   // Determine which category the current selection belongs to
   const isWorkingShift = selectedShift
     ? workingShifts.includes(selectedShift)
-    : false;
+    : false
   const isLeaveShift = selectedShift
     ? leaveShifts.includes(selectedShift)
-    : false;
+    : false
 
   const handleShiftSelect = (shiftCode: ShiftCode) => {
-    setSelectedShift(shiftCode);
-    onShiftChange(shiftCode);
-  };
+    setSelectedShift(shiftCode)
+    onShiftChange(shiftCode)
+  }
 
   const handleCommentSave = async () => {
-    const rosterId = currentShift?.rosterId;
+    const rosterId = currentShift?.rosterId
     if (rosterId && rosterId > 0) {
-      setIsSavingComment(true);
+      setIsSavingComment(true)
       try {
         await updateRosterComment.mutateAsync({
           rosterId,
           comment: comment || null,
-        });
-        showSuccessToast("Comment saved successfully.");
+        })
+        showSuccessToast("Comment saved successfully.")
       } catch {
-        showErrorToast("Failed to save comment. Please try again.");
-        setIsSavingComment(false);
-        return;
+        showErrorToast("Failed to save comment. Please try again.")
+        setIsSavingComment(false)
+        return
       }
-      setIsSavingComment(false);
+      setIsSavingComment(false)
     }
     if (onCommentChange) {
-      onCommentChange(comment);
+      onCommentChange(comment)
     }
-    onClose();
-  };
+    onClose()
+  }
 
   const CloseButton = () => {
-    const popover = usePopoverContext();
+    const popover = usePopoverContext()
     return (
       <X
         size={16}
         onClick={() => popover.setOpen(false)}
         style={{ cursor: "pointer" }}
       />
-    );
-  };
+    )
+  }
 
   return (
     <Popover.Root
       open={isOpen}
       onOpenChange={(details) => {
-        if (!details.open) onClose();
+        if (!details.open) onClose()
       }}
       positioning={{
         getAnchorRect: () => anchorEl?.getBoundingClientRect() ?? null,
@@ -357,7 +388,13 @@ export function ShiftEditPopover({
       }}
     >
       <Popover.Positioner zIndex={1400} overflow="visible">
-        <Popover.Content w="300px" borderRadius="lg" boxShadow="lg" overflow="auto" maxH="90vh">
+        <Popover.Content
+          w="300px"
+          borderRadius="lg"
+          boxShadow="lg"
+          overflow="auto"
+          maxH="90vh"
+        >
           {/* Header */}
           <Popover.Header
             p={3}
@@ -407,11 +444,7 @@ export function ShiftEditPopover({
               )}
 
               {/* Add Comment Section */}
-              <Box
-                borderTop="1px solid"
-                borderColor="gray.100"
-                pt={3}
-              >
+              <Box borderTop="1px solid" borderColor="gray.100" pt={3}>
                 {!showCommentInput ? (
                   <Flex
                     align="center"
@@ -445,7 +478,10 @@ export function ShiftEditPopover({
                         size="sm"
                         borderRadius="md"
                         borderColor="gray.200"
-                        _focus={{ borderColor: "#4B8798", boxShadow: "0 0 0 1px #4B8798" }}
+                        _focus={{
+                          borderColor: "#4B8798",
+                          boxShadow: "0 0 0 1px #4B8798",
+                        }}
                         resize="none"
                         rows={3}
                         fontSize="sm"
@@ -482,9 +518,9 @@ export function ShiftEditPopover({
                           cursor="pointer"
                           _hover={{ color: "gray.700" }}
                           onClick={() => {
-                            setComment(currentShift?.comment || "");
+                            setComment(currentShift?.comment || "")
                             if (!currentShift?.comment) {
-                              setShowCommentInput(false);
+                              setShowCommentInput(false)
                             }
                           }}
                         >
@@ -500,9 +536,13 @@ export function ShiftEditPopover({
                           bg={isSavingComment ? "#7aacba" : "#4B8798"}
                           borderRadius="md"
                           cursor={isSavingComment ? "not-allowed" : "pointer"}
-                          _hover={{ bg: isSavingComment ? "#7aacba" : "#155E75" }}
+                          _hover={{
+                            bg: isSavingComment ? "#7aacba" : "#155E75",
+                          }}
                           transition="all 0.2s ease"
-                          onClick={isSavingComment ? undefined : handleCommentSave}
+                          onClick={
+                            isSavingComment ? undefined : handleCommentSave
+                          }
                           display="flex"
                           alignItems="center"
                           gap={1}
@@ -512,7 +552,6 @@ export function ShiftEditPopover({
                       </Flex>
                     </Flex>
                   </Box>
-
                 )}
               </Box>
             </VStack>
@@ -520,7 +559,7 @@ export function ShiftEditPopover({
         </Popover.Content>
       </Popover.Positioner>
     </Popover.Root>
-  );
+  )
 }
 
-export default ShiftEditPopover;
+export default ShiftEditPopover

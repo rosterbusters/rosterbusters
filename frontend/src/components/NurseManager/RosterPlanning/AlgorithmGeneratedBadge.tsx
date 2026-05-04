@@ -1,11 +1,13 @@
-import { HStack, Box, Text } from "@chakra-ui/react";
-import { Pencil } from "lucide-react";
+import { Box, HStack, Text } from "@chakra-ui/react"
+import { Pencil } from "lucide-react"
 
 interface AlgorithmGeneratedBadgeProps {
-  isGenerated?: boolean;
+  isGenerated?: boolean
 }
 
-export function AlgorithmGeneratedBadge({ isGenerated = false }: AlgorithmGeneratedBadgeProps) {
+export function AlgorithmGeneratedBadge({
+  isGenerated = false,
+}: AlgorithmGeneratedBadgeProps) {
   if (isGenerated) {
     return (
       <HStack gap={2} alignItems="center">
@@ -20,7 +22,7 @@ export function AlgorithmGeneratedBadge({ isGenerated = false }: AlgorithmGenera
           Algorithm Generated
         </Text>
       </HStack>
-    );
+    )
   }
 
   // Manual Editing mode badge
@@ -41,8 +43,7 @@ export function AlgorithmGeneratedBadge({ isGenerated = false }: AlgorithmGenera
         Manual Editing
       </Text>
     </HStack>
-  );
+  )
 }
 
-export default AlgorithmGeneratedBadge;
-
+export default AlgorithmGeneratedBadge

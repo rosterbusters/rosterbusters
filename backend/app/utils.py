@@ -357,9 +357,47 @@ def _store_login_2fa_code_in_memory(
     }
 
 
+def _delete_login_2fa_code_from_memory(challenge_id: str) -> None:
+    _login_2fa_codes.pop(challenge_id, None)
+
+
+def _consume_login_2fa_code_from_memory(
+    challenge_id: str, code: str, user_id: int
+) -> str | None:
+    now = datetime.now(timezone.utc)
+
+    stored_data = _login_2fa_codes.get(challenge_id)
+    if stored_data is not None:
+        if now > stored_data["expiry"]:
+            _delete_login_2fa_code_from_memory(challenge_id)
+            logger.warning("Login 2FA code for challenge %s has expired", challenge_id)
+        elif stored_data["user_id"] == user_id and stored_data["code"] == code:
+            _delete_login_2fa_code_from_memory(challenge_id)
+            logger.info("Login 2FA successful for challenge %s", challenge_id)
+            return challenge_id
+
+    for stored_challenge_id, candidate in list(_login_2fa_codes.items()):
+        if now > candidate["expiry"]:
+            _delete_login_2fa_code_from_memory(stored_challenge_id)
+            continue
+        if candidate["user_id"] != user_id or candidate["code"] != code:
+            continue
+
+        _delete_login_2fa_code_from_memory(stored_challenge_id)
+        logger.info(
+            "Login 2FA successful for challenge %s using fallback match from %s",
+            challenge_id,
+            stored_challenge_id,
+        )
+        return stored_challenge_id
+
+    return None
+
+
 def store_login_2fa_code(challenge_id: str, user_id: int) -> str:
     code = generate_login_2fa_code()
     expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+    _store_login_2fa_code_in_memory(challenge_id, user_id, code, expiry)
 
     redis_client = _get_login_2fa_redis_client()
     if redis_client is not None:
@@ -385,8 +423,6 @@ def store_login_2fa_code(challenge_id: str, user_id: int) -> str:
                 user_id,
             )
 
-    _store_login_2fa_code_in_memory(challenge_id, user_id, code, expiry)
-
     logger.info("Generated login 2FA code for user %s (expires at %s)", user_id, expiry)
     return code
 
@@ -403,12 +439,15 @@ def verify_login_2fa_code(challenge_id: str, code: str, user_id: int) -> bool:
                     return False
 
                 if stored_data.get("code") != normalized_code:
-                    logger.warning("Invalid login 2FA code for challenge %s", challenge_id)
-                    return False
-
-                redis_client.delete(_login_2fa_redis_key(challenge_id))
-                logger.info("Login 2FA successful for challenge %s", challenge_id)
-                return True
+                    logger.warning(
+                        "Invalid login 2FA code for challenge %s in Redis; checking fallback store",
+                        challenge_id,
+                    )
+                else:
+                    redis_client.delete(_login_2fa_redis_key(challenge_id))
+                    _delete_login_2fa_code_from_memory(challenge_id)
+                    logger.info("Login 2FA successful for challenge %s", challenge_id)
+                    return True
         except Exception:
             _disable_login_2fa_redis_temporarily()
             logger.warning(
@@ -416,26 +455,23 @@ def verify_login_2fa_code(challenge_id: str, code: str, user_id: int) -> bool:
                 challenge_id,
             )
 
-    if challenge_id not in _login_2fa_codes:
+    matched_challenge_id = _consume_login_2fa_code_from_memory(
+        challenge_id, normalized_code, user_id
+    )
+    if matched_challenge_id is None:
         return False
 
-    stored_data = _login_2fa_codes[challenge_id]
-
-    if datetime.now(timezone.utc) > stored_data["expiry"]:
-        del _login_2fa_codes[challenge_id]
-        logger.warning("Login 2FA code for challenge %s has expired", challenge_id)
-        return False
-
-    if stored_data["user_id"] != user_id:
-        logger.warning("User ID mismatch for login 2FA challenge %s", challenge_id)
-        return False
-
-    if stored_data["code"] != normalized_code:
-        logger.warning("Invalid login 2FA code for challenge %s", challenge_id)
-        return False
-
-    del _login_2fa_codes[challenge_id]
-    logger.info("Login 2FA successful for challenge %s", challenge_id)
+    _delete_login_2fa_code_from_memory(challenge_id)
+    if redis_client is not None:
+        try:
+            redis_client.delete(_login_2fa_redis_key(challenge_id))
+            if matched_challenge_id != challenge_id:
+                redis_client.delete(_login_2fa_redis_key(matched_challenge_id))
+        except Exception:
+            logger.warning(
+                "Failed to clean up Redis login 2FA entries after fallback verification for challenge %s",
+                challenge_id,
+            )
     return True
 
 

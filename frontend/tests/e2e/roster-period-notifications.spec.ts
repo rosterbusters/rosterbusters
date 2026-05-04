@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E, verifyEmailForCurrentUser } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
@@ -57,16 +57,21 @@ async function completeFirstLoginSetup(
     apiBaseUrl: API_BASE_URL,
   })
 
-  const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const res = await request.post(
+    `${API_BASE_URL}/api/v1/users/me/first-login-setup`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: payload,
     },
-    data: payload,
-  })
+  )
   if (!res.ok()) {
     const body = await res.text()
-    throw new Error(`Failed to complete first login setup: ${res.status()} ${body}`)
+    throw new Error(
+      `Failed to complete first login setup: ${res.status()} ${body}`,
+    )
   }
 }
 
@@ -80,10 +85,7 @@ async function deleteUser(
   })
 }
 
-async function getActiveWard(
-  request: APIRequestContext,
-  token: string,
-) {
+async function getActiveWard(request: APIRequestContext, token: string) {
   const res = await request.get(`${API_BASE_URL}/api/v1/wards/`, {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -187,7 +189,9 @@ test("roster period notifications appear in queue and dropdown", async ({
       { headers: { Authorization: `Bearer ${nurseToken}` } },
     )
     if (periodsCheckRes.ok()) {
-      const periods = (await periodsCheckRes.json()) as Array<{ status: string }>
+      const periods = (await periodsCheckRes.json()) as Array<{
+        status: string
+      }>
       const hasOpenPeriod = periods.some((p) => p.status === "RequestOpen")
       test.skip(
         !hasOpenPeriod,
@@ -204,7 +208,9 @@ test("roster period notifications appear in queue and dropdown", async ({
           )
           if (!res.ok()) {
             const body = await res.text()
-            throw new Error(`Failed to fetch notifications: ${res.status()} ${body}`)
+            throw new Error(
+              `Failed to fetch notifications: ${res.status()} ${body}`,
+            )
           }
           const payload = (await res.json()) as {
             notifications: Array<{ messagebody: string }>
@@ -217,10 +223,10 @@ test("roster period notifications appear in queue and dropdown", async ({
 
     if (MAILCATCHER_HOST) {
       await expect
-        .poll(
-          async () => (await listMailcatcherMessages(request)).length,
-          { timeout: 15_000, intervals: [500, 1000, 1500, 2000] },
-        )
+        .poll(async () => (await listMailcatcherMessages(request)).length, {
+          timeout: 15_000,
+          intervals: [500, 1000, 1500, 2000],
+        })
         .toBeGreaterThan(mailBefore.length)
     }
 

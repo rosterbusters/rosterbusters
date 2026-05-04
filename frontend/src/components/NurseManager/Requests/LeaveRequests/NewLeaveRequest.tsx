@@ -1,37 +1,36 @@
-import { useState, useEffect, useMemo } from "react";
 import {
+  Badge,
   Box,
   Button,
   CloseButton,
   createListCollection,
   Dialog,
+  HStack,
   Portal,
   Select,
-  Badge,
-  HStack,
   Text,
   Textarea,
   VStack,
-} from "@chakra-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-
-import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
-import { LeaveRequestsService, ShiftRequestsService } from "@/client";
-import { Trash2 } from "lucide-react";
-import type { DateRange, Matcher } from "react-day-picker";
+} from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Trash2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import type { DateRange, Matcher } from "react-day-picker"
+import { LeaveRequestsService, ShiftRequestsService } from "@/client"
+import { DatePickerDemo } from "@/components/Common/DatePicker"
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 
 interface NewLeaveRequestProps {
-  isOpen: boolean;
-  onClose: () => void;
-  selectedDate?: Date | null;
-  wardId?: number | null;
+  isOpen: boolean
+  onClose: () => void
+  selectedDate?: Date | null
+  wardId?: number | null
   blockedRanges?: Array<{
-    requestId: number;
-    startDate: string;
-    endDate: string;
-  }>;
+    requestId: number
+    startDate: string
+    endDate: string
+  }>
 }
 
 function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
@@ -40,15 +39,15 @@ function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
         from: selectedDate,
         to: selectedDate,
       }
-    : undefined;
+    : undefined
 }
 
 function toLocalDate(value: string) {
-  const [year, month, day] = value.split("-");
+  const [year, month, day] = value.split("-")
   if (year && month && day) {
-    return new Date(Number(year), Number(month) - 1, Number(day));
+    return new Date(Number(year), Number(month) - 1, Number(day))
   }
-  return new Date(value);
+  return new Date(value)
 }
 
 export const NewLeaveRequest = ({
@@ -58,19 +57,19 @@ export const NewLeaveRequest = ({
   wardId,
   blockedRanges,
 }: NewLeaveRequestProps) => {
-  const [leaveType, setLeaveType] = useState<string[]>([]);
-  const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
-  const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>(
-    buildInitialRange(selectedDate),
-  );
-  const [localComment, setLocalComment] = useState("");
-  const queryClient = useQueryClient();
+  const [leaveType, setLeaveType] = useState<string[]>([])
+  const [selectedNurse, setSelectedNurse] = useState<string[]>([])
+  const [requestDateRange, setRequestDateRange] = useState<
+    DateRange | undefined
+  >(buildInitialRange(selectedDate))
+  const [localComment, setLocalComment] = useState("")
+  const queryClient = useQueryClient()
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
     queryFn: () => LeaveRequestsService.getLeaveCodes(),
     staleTime: 5 * 60 * 1000,
-  });
+  })
 
   const leaveCollection = useMemo(
     () =>
@@ -84,14 +83,14 @@ export const NewLeaveRequest = ({
           })),
       }),
     [leaveCodes],
-  );
+  )
 
   const { data: wardNurses } = useQuery({
     queryKey: ["ward-nurses", wardId],
     queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
     enabled: wardId != null,
     staleTime: 5 * 60 * 1000,
-  });
+  })
 
   const nurseCollection = useMemo(
     () =>
@@ -103,7 +102,7 @@ export const NewLeaveRequest = ({
         })),
       }),
     [wardNurses],
-  );
+  )
 
   const disabledDates = useMemo<Matcher[]>(
     () => [
@@ -114,73 +113,73 @@ export const NewLeaveRequest = ({
       })) as Matcher[]),
     ],
     [blockedRanges],
-  );
+  )
 
   const selectedNurseId =
-    selectedNurse.length > 0 ? Number(selectedNurse[0]) : null;
+    selectedNurse.length > 0 ? Number(selectedNurse[0]) : null
 
   const mutation = useMutation({
     mutationFn: (data: {
-      startdate: string;
-      enddate: string;
-      leavetype: string;
-      nurseid: number;
-      reason?: string;
+      startdate: string
+      enddate: string
+      leavetype: string
+      nurseid: number
+      reason?: string
     }) => LeaveRequestsService.createLeaveRequest(data),
     onSuccess: async () => {
-      showSuccessToast("Leave request created!");
+      showSuccessToast("Leave request created!")
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] }),
         queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] }),
-      ]);
-      onClose();
+      ])
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as { body?: { detail?: string } })?.body?.detail;
-      showErrorToast(detail || "Failed to create request");
+      const detail = (error as { body?: { detail?: string } })?.body?.detail
+      showErrorToast(detail || "Failed to create request")
     },
-  });
+  })
 
   useEffect(() => {
     if (isOpen) {
-      setRequestDateRange(buildInitialRange(selectedDate));
-      setLeaveType([]);
-      setSelectedNurse([]);
-      setLocalComment("");
-      return;
+      setRequestDateRange(buildInitialRange(selectedDate))
+      setLeaveType([])
+      setSelectedNurse([])
+      setLocalComment("")
+      return
     }
 
-    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
-    return () => window.clearTimeout(timeoutId);
-  }, [isOpen, selectedDate]);
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
+    return () => window.clearTimeout(timeoutId)
+  }, [isOpen, selectedDate])
 
   useEffect(
     () => () => {
-      window.setTimeout(cleanupOrphanedDialogState, 0);
+      window.setTimeout(cleanupOrphanedDialogState, 0)
     },
     [],
-  );
+  )
 
   const handleSubmit = () => {
     if (selectedNurse.length === 0) {
-      showErrorToast("Please select a nurse.");
-      return;
+      showErrorToast("Please select a nurse.")
+      return
     }
     if (selectedNurseId == null || Number.isNaN(selectedNurseId)) {
-      showErrorToast("Please select a valid nurse.");
-      return;
+      showErrorToast("Please select a valid nurse.")
+      return
     }
     if (leaveType.length === 0) {
-      showErrorToast("Please select a leave type.");
-      return;
+      showErrorToast("Please select a leave type.")
+      return
     }
     if (!requestDateRange?.from || !requestDateRange?.to) {
-      showErrorToast("Please select a start and end date.");
-      return;
+      showErrorToast("Please select a start and end date.")
+      return
     }
 
     const toDateStr = (date: Date) =>
-      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 
     mutation.mutate({
       nurseid: selectedNurseId,
@@ -188,8 +187,8 @@ export const NewLeaveRequest = ({
       enddate: toDateStr(requestDateRange.to),
       leavetype: leaveType[0],
       reason: localComment.trim() || undefined,
-    });
-  };
+    })
+  }
 
   return (
     <Dialog.Root
@@ -200,9 +199,9 @@ export const NewLeaveRequest = ({
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {
-        const target = event.target as HTMLElement | null;
+        const target = event.target as HTMLElement | null
         if (target?.closest("[data-datepicker-popup='true']")) {
-          event.preventDefault();
+          event.preventDefault()
         }
       }}
     >
@@ -353,5 +352,5 @@ export const NewLeaveRequest = ({
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
-  );
-};
+  )
+}

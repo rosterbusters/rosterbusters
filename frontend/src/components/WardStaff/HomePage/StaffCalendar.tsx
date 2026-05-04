@@ -1,58 +1,60 @@
-import { Calendar, momentLocalizer, View, Views } from 'react-big-calendar'
-import moment from 'moment'
-import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { getShiftColor } from '@/components/NurseManager/RosterTable/types'
-import { HomeService } from '@/client'
+import { useQuery } from "@tanstack/react-query"
+import moment from "moment"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Calendar, momentLocalizer, type View, Views } from "react-big-calendar"
+import { HomeService } from "@/client"
+import { getShiftColor } from "@/components/NurseManager/RosterTable/types"
 
-const localizer = momentLocalizer(moment);
-const API_BASE = import.meta.env.VITE_API_URL || "";
+const localizer = momentLocalizer(moment)
+const API_BASE = import.meta.env.VITE_API_URL || ""
 
 interface ShiftEvent {
-  start: Date;
-  end: Date;
-  title: string;
-  shiftCode: string;
+  start: Date
+  end: Date
+  title: string
+  shiftCode: string
 }
 
 interface PeriodWindowResponse {
   current_period: {
-    periodid: number;
-    name: string;
-    startdate: string;
-    enddate: string;
-    status: string;
-  } | null;
+    periodid: number
+    name: string
+    startdate: string
+    enddate: string
+    status: string
+  } | null
 }
 
 async function fetchWithAuth(url: string) {
-  const token = localStorage.getItem("access_token") || "";
+  const token = localStorage.getItem("access_token") || ""
   const response = await fetch(`${API_BASE}${url}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  })
 
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    throw new Error(`API Error: ${response.status} ${response.statusText}`)
   }
 
-  return response.json();
+  return response.json()
 }
 
 export default function StaffCalendar() {
-  const [view, setView] = useState<View>(Views.MONTH);
-  const [date, setDate] = useState(new Date());
+  const [view, setView] = useState<View>(Views.MONTH)
+  const [date, setDate] = useState(new Date())
 
-  const { data: periodWindow, isLoading: isPeriodLoading } = useQuery<PeriodWindowResponse>({
-    queryKey: ['roster-period-window'],
-    queryFn: () => fetchWithAuth('/api/v1/shift-requests/periods/current-upcoming'),
-  });
+  const { data: periodWindow, isLoading: isPeriodLoading } =
+    useQuery<PeriodWindowResponse>({
+      queryKey: ["roster-period-window"],
+      queryFn: () =>
+        fetchWithAuth("/api/v1/shift-requests/periods/current-upcoming"),
+    })
 
-  const currentPeriod = periodWindow?.current_period ?? null;
+  const currentPeriod = periodWindow?.current_period ?? null
 
   const { data: shiftsData, isLoading: isShiftsLoading } = useQuery({
-    queryKey: ['my-roster-shifts', currentPeriod?.periodid ?? null],
+    queryKey: ["my-roster-shifts", currentPeriod?.periodid ?? null],
     queryFn: () =>
       HomeService.getMyShifts(
         currentPeriod
@@ -63,67 +65,80 @@ export default function StaffCalendar() {
           : undefined,
       ),
     enabled: currentPeriod !== null,
-  });
+  })
 
   useEffect(() => {
     if (!currentPeriod) {
-      return;
+      return
     }
-    setDate(moment(currentPeriod.startdate).toDate());
-  }, [currentPeriod]);
+    setDate(moment(currentPeriod.startdate).toDate())
+  }, [currentPeriod])
 
   const events = useMemo((): ShiftEvent[] => {
-    if (!shiftsData) return [];
+    if (!shiftsData) return []
 
     return shiftsData.map((shift) => {
-      const shiftDate = moment(shift.shiftdate);
+      const shiftDate = moment(shift.shiftdate)
       const parseHM = (t: string | null) => {
-        if (!t) return { h: 0, m: 0 };
-        const [h, m] = t.split(':').map(Number);
-        return { h, m };
-      };
-      const startHM = parseHM(shift.starttime);
-      const endHM = parseHM(shift.endtime);
+        if (!t) return { h: 0, m: 0 }
+        const [h, m] = t.split(":").map(Number)
+        return { h, m }
+      }
+      const startHM = parseHM(shift.starttime)
+      const endHM = parseHM(shift.endtime)
 
       return {
         start: shiftDate.clone().hour(startHM.h).minute(startHM.m).toDate(),
-        end: shiftDate.clone().hour(Math.max(endHM.h, startHM.h)).minute(endHM.m).toDate(),
-        title: shift.description ? `${shift.shiftcode}: ${shift.description}` : shift.shiftcode,
+        end: shiftDate
+          .clone()
+          .hour(Math.max(endHM.h, startHM.h))
+          .minute(endHM.m)
+          .toDate(),
+        title: shift.description
+          ? `${shift.shiftcode}: ${shift.description}`
+          : shift.shiftcode,
         shiftCode: shift.shiftcode,
-      };
-    });
-  }, [shiftsData]);
+      }
+    })
+  }, [shiftsData])
 
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
-  const onView = useCallback((newView: View) => setView(newView), []);
+  const onNavigate = useCallback((newDate: Date) => setDate(newDate), [])
+  const onView = useCallback((newView: View) => setView(newView), [])
 
   const eventPropGetter = useCallback((event: ShiftEvent) => {
-    const color = getShiftColor(event.shiftCode);
+    const color = getShiftColor(event.shiftCode)
     return {
       style: {
         backgroundColor: color,
-        borderRadius: '6px',
-        border: 'none',
-        color: 'white',
+        borderRadius: "6px",
+        border: "none",
+        color: "white",
         fontWeight: 600,
-        fontSize: '12px',
-        letterSpacing: '0.02em',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-        padding: '2px 6px',
+        fontSize: "12px",
+        letterSpacing: "0.02em",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+        padding: "2px 6px",
       },
-    };
-  }, []);
+    }
+  }, [])
 
   if (isPeriodLoading || isShiftsLoading) {
     return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div
+        style={{
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <p>Loading your shifts...</p>
       </div>
-    );
+    )
   }
 
   return (
-    <div style={{ height: '100%' }}>
+    <div style={{ height: "100%" }}>
       <Calendar
         localizer={localizer}
         startAccessor="start"

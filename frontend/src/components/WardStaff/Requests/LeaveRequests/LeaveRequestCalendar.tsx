@@ -1,37 +1,53 @@
-import { Navigate, Calendar, momentLocalizer, View, ToolbarProps } from "react-big-calendar";
-import moment from "moment";
-import { useState, useCallback, useMemo, ComponentType, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import CustomMonthView from "./CustomLeaveView";
-import { Box, Grid, HStack, Span } from "@chakra-ui/react";
-import cx from "clsx";
-import { ShiftRequestsService, LeaveRequestsService } from "@/client";
-import useAuth from "@/hooks/useAuth";
+import { Box, Grid, HStack, Span } from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import cx from "clsx"
+import moment from "moment"
 import {
-  useRequestPeriodWindow,
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
+import {
+  Calendar,
+  momentLocalizer,
+  Navigate,
+  type ToolbarProps,
+  type View,
+} from "react-big-calendar"
+import { LeaveRequestsService, ShiftRequestsService } from "@/client"
+import {
   getRequestTargetPeriod,
-} from "@/hooks/useApplicationLockStatus";
+  useRequestPeriodWindow,
+} from "@/hooks/useApplicationLockStatus"
+import useAuth from "@/hooks/useAuth"
+import CustomMonthView from "./CustomLeaveView"
 
-const localizer = momentLocalizer(moment);
+const localizer = momentLocalizer(moment)
 
-const MONTHS = moment.months();
+const MONTHS = moment.months()
 
 const selectStyle: React.CSSProperties = {
-  color: '#373a3c',
-  background: 'none',
-  border: '1px solid #ccc',
-  padding: '0.375em 0.6em',
-  borderRadius: '4px',
-  lineHeight: 'normal',
-  cursor: 'pointer',
-  fontSize: 'inherit',
-};
+  color: "#373a3c",
+  background: "none",
+  border: "1px solid #ccc",
+  padding: "0.375em 0.6em",
+  borderRadius: "4px",
+  lineHeight: "normal",
+  cursor: "pointer",
+  fontSize: "inherit",
+}
 
-const LeaveToolbar: ComponentType<ToolbarProps> = ({ date, localizer, onNavigate }) => {
-  const currentMonth = moment(date).month();
-  const currentYear = moment(date).year();
-  const thisYear = moment().year();
-  const years = Array.from({ length: 4 }, (_, i) => thisYear - 2 + i);
+const LeaveToolbar: ComponentType<ToolbarProps> = ({
+  date,
+  localizer,
+  onNavigate,
+}) => {
+  const currentMonth = moment(date).month()
+  const currentYear = moment(date).year()
+  const thisYear = moment().year()
+  const years = Array.from({ length: 4 }, (_, i) => thisYear - 2 + i)
 
   return (
     <Grid
@@ -40,7 +56,10 @@ const LeaveToolbar: ComponentType<ToolbarProps> = ({ date, localizer, onNavigate
       gap={{ base: "2", md: "0" }}
       position={{ base: "sticky", md: "relative" }}
     >
-      <Span className={cx("rbc-btn-group")} justifySelf={{ base: "center", md: "start" }}>
+      <Span
+        className={cx("rbc-btn-group")}
+        justifySelf={{ base: "center", md: "start" }}
+      >
         <button onClick={() => onNavigate(Navigate.PREVIOUS)}>
           {localizer.messages.previous}
         </button>
@@ -50,83 +69,100 @@ const LeaveToolbar: ComponentType<ToolbarProps> = ({ date, localizer, onNavigate
           value={currentMonth}
           style={selectStyle}
           onChange={(e) =>
-            onNavigate(Navigate.DATE, moment(date).month(parseInt(e.target.value)).toDate())
+            onNavigate(
+              Navigate.DATE,
+              moment(date).month(parseInt(e.target.value, 10)).toDate(),
+            )
           }
         >
           {MONTHS.map((m, i) => (
-            <option key={i} value={i}>{m}</option>
+            <option key={i} value={i}>
+              {m}
+            </option>
           ))}
         </select>
         <select
           value={currentYear}
           style={selectStyle}
           onChange={(e) =>
-            onNavigate(Navigate.DATE, moment(date).year(parseInt(e.target.value)).toDate())
+            onNavigate(
+              Navigate.DATE,
+              moment(date).year(parseInt(e.target.value, 10)).toDate(),
+            )
           }
         >
           {years.map((y) => (
-            <option key={y} value={y}>{y}</option>
+            <option key={y} value={y}>
+              {y}
+            </option>
           ))}
         </select>
       </HStack>
-      <Span justifySelf={{ base: "center", md: "end" }} className={cx("rbc-btn-group")}>
+      <Span
+        justifySelf={{ base: "center", md: "end" }}
+        className={cx("rbc-btn-group")}
+      >
         <button onClick={() => onNavigate(Navigate.NEXT)}>
           {localizer.messages.next}
         </button>
       </Span>
     </Grid>
-  );
-};
+  )
+}
 
 interface Event {
-  title: string;
-  start: Date;
-  end: Date;
-  allDay?: boolean;
-  resource?: any;
+  title: string
+  start: Date
+  end: Date
+  allDay?: boolean
+  resource?: any
 }
 
 interface LeaveRequestCalendarProps {
-  wardId: number | null | undefined;
-  isLocked?: boolean;
+  wardId: number | null | undefined
+  isLocked?: boolean
 }
 
-export default function LeaveRequestCalendar({ wardId, isLocked = false }: LeaveRequestCalendarProps) {
-  const { user } = useAuth();
-  const currentNurseId = user?.nurseid;
-  const { data: periodWindow } = useRequestPeriodWindow();
+export default function LeaveRequestCalendar({
+  wardId,
+  isLocked = false,
+}: LeaveRequestCalendarProps) {
+  const { user } = useAuth()
+  const currentNurseId = user?.nurseid
+  const { data: periodWindow } = useRequestPeriodWindow()
   const activePeriod = useMemo(
     () => getRequestTargetPeriod(periodWindow),
     [periodWindow],
-  );
+  )
 
   // ─── Calendar navigation (month view) ────────────────────────────────────
-  const [date, setDate] = useState(() => moment().startOf("month").toDate());
+  const [date, setDate] = useState(() => moment().startOf("month").toDate())
 
   useEffect(() => {
     if (activePeriod?.startdate) {
-      setDate(moment(activePeriod.startdate).startOf("month").toDate());
+      setDate(moment(activePeriod.startdate).startOf("month").toDate())
     }
-  }, [activePeriod?.startdate]);
+  }, [activePeriod?.startdate])
 
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
+  const onNavigate = useCallback((newDate: Date) => setDate(newDate), [])
 
   // ─── Leave requests: ward-level when wardId available, own requests as fallback
   const { data: wardLeaveRequests } = useQuery({
     queryKey: ["ward-leave-requests", wardId],
-    queryFn: () => LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
+    queryFn: () =>
+      LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 0,
-  });
+  })
 
   const { data: myLeaveRequests } = useQuery({
     queryKey: ["my-leave-requests"],
     queryFn: () => LeaveRequestsService.getMyLeaveRequests(),
     enabled: !wardId,
     staleTime: 0,
-  });
+  })
 
-  const leaveRequests = wardId ? wardLeaveRequests : myLeaveRequests;
+  const leaveRequests = wardId ? wardLeaveRequests : myLeaveRequests
 
   // ─── Ward nurses (for name lookup) ───────────────────────────────────────
   const { data: wardNurses } = useQuery({
@@ -134,16 +170,16 @@ export default function LeaveRequestCalendar({ wardId, isLocked = false }: Leave
     queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 5 * 60 * 1000,
-  });
+  })
 
   const nurseMap = useMemo(() => {
-    if (!wardNurses) return new Map<number, string>();
-    return new Map(wardNurses.map((n) => [n.nurseid, n.name]));
-  }, [wardNurses]);
+    if (!wardNurses) return new Map<number, string>()
+    return new Map(wardNurses.map((n) => [n.nurseid, n.name]))
+  }, [wardNurses])
 
   // ─── Map leave requests → calendar events ─────────────────────────────────
   const events: Event[] = useMemo(() => {
-    if (!leaveRequests) return [];
+    if (!leaveRequests) return []
     return leaveRequests.map((lr) => ({
       title: lr.leavetype,
       start: new Date(lr.startdate),
@@ -158,8 +194,8 @@ export default function LeaveRequestCalendar({ wardId, isLocked = false }: Leave
         endDate: lr.enddate,
         status: lr.status,
       },
-    }));
-  }, [leaveRequests, nurseMap, currentNurseId]);
+    }))
+  }, [leaveRequests, nurseMap, currentNurseId])
 
   // ─── Calendar view setup ──────────────────────────────────────────────────
   const { views, defaultView } = useMemo(() => {
@@ -169,19 +205,25 @@ export default function LeaveRequestCalendar({ wardId, isLocked = false }: Leave
         isLocked={isLocked}
         periodStartDate={activePeriod?.startdate}
       />
-    )) as typeof CustomMonthView;
-    MonthView.range = CustomMonthView.range;
-    MonthView.navigate = CustomMonthView.navigate;
-    MonthView.title = CustomMonthView.title;
+    )) as typeof CustomMonthView
+    MonthView.range = CustomMonthView.range
+    MonthView.navigate = CustomMonthView.navigate
+    MonthView.title = CustomMonthView.title
 
     return {
       views: { month: MonthView, week: false, day: false } as any,
       defaultView: "month" as View,
-    };
-  }, [activePeriod?.startdate, isLocked]);
+    }
+  }, [activePeriod?.startdate, isLocked])
 
   return (
-    <Box h="100%" borderWidth="1px" p={3} borderColor="border" borderRadius={10}>
+    <Box
+      h="100%"
+      borderWidth="1px"
+      p={3}
+      borderColor="border"
+      borderRadius={10}
+    >
       <Calendar
         localizer={localizer}
         startAccessor="start"
@@ -195,5 +237,5 @@ export default function LeaveRequestCalendar({ wardId, isLocked = false }: Leave
         onNavigate={onNavigate}
       />
     </Box>
-  );
+  )
 }

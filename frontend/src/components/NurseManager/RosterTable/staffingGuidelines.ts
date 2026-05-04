@@ -1,4 +1,4 @@
-import type { DailyStaffingGuideline, RosterRow, StaffRole } from "./types";
+import type { DailyStaffingGuideline, RosterRow, StaffRole } from "./types"
 
 /**
  * Mock staffing guidelines for roster planning.
@@ -35,10 +35,10 @@ export const MOCK_STAFFING_GUIDELINES: DailyStaffingGuideline = {
     P: { minimum: 1 },
     N: { minimum: 1 },
   },
-};
+}
 
-export type RosterRank = "A" | "B" | "C";
-export type RoleGroupKey = "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3" | "Other";
+export type RosterRank = "A" | "B" | "C"
+export type RoleGroupKey = "SSN/SN" | "EN/NA/HCA1/HCA2" | "HCA3" | "Other"
 
 const DESIGNATION_ALIASES: Record<string, string> = {
   RN: "SN",
@@ -80,7 +80,7 @@ const DESIGNATION_ALIASES: Record<string, string> = {
   HEALTHCAREASSTIII: "HCA3",
   SENIORHEALTHCAREASSISTANTI: "HCA1",
   SENIORHEALTHCAREASSISTANTII: "HCA2",
-};
+}
 
 const CANONICAL_DESIGNATIONS: Record<string, StaffRole> = {
   SN: "RN",
@@ -91,7 +91,7 @@ const CANONICAL_DESIGNATIONS: Record<string, StaffRole> = {
   EN: "EN",
   NA: "NA",
   HCA3: "HCA3",
-};
+}
 
 const STAFF_ROLE_TO_RANK: Record<StaffRole, RosterRank> = {
   RN: "A",
@@ -99,19 +99,22 @@ const STAFF_ROLE_TO_RANK: Record<StaffRole, RosterRank> = {
   NA: "B",
   HCA12: "B",
   HCA3: "C",
-};
+}
 
 function normalizeDesignation(designation: string): string {
-  return designation.replace(/[^A-Za-z0-9]+/g, "").trim().toUpperCase();
+  return designation
+    .replace(/[^A-Za-z0-9]+/g, "")
+    .trim()
+    .toUpperCase()
 }
 
 export function isPsaDesignation(designation: string): boolean {
-  const normalized = normalizeDesignation(designation);
+  const normalized = normalizeDesignation(designation)
   return (
     normalized === "PSA" ||
     normalized.includes("PATIENTSERVICEASST") ||
     normalized.includes("PATIENTSERVICEASSISTANT")
-  );
+  )
 }
 
 /**
@@ -121,54 +124,61 @@ export function isPsaDesignation(designation: string): boolean {
 export function mapDesignationToRole(
   designation: string,
 ): "RN" | "EN" | "NA" | "HCA12" | "HCA3" | null {
-  const normalized = normalizeDesignation(designation);
-  if (!normalized) return null;
-  if (isPsaDesignation(designation)) return null;
+  const normalized = normalizeDesignation(designation)
+  if (!normalized) return null
+  if (isPsaDesignation(designation)) return null
 
-  const canonical = DESIGNATION_ALIASES[normalized] ?? normalized;
-  return CANONICAL_DESIGNATIONS[canonical] ?? null;
+  const canonical = DESIGNATION_ALIASES[normalized] ?? normalized
+  return CANONICAL_DESIGNATIONS[canonical] ?? null
 }
 
 export function mapStaffRoleToRosterRank(
   role: StaffRole | null | undefined,
 ): RosterRank | null {
-  if (!role) return null;
-  return STAFF_ROLE_TO_RANK[role] ?? null;
+  if (!role) return null
+  return STAFF_ROLE_TO_RANK[role] ?? null
 }
 
-export function mapDesignationToRosterRank(designation: string): RosterRank | null {
-  return mapStaffRoleToRosterRank(mapDesignationToRole(designation));
+export function mapDesignationToRosterRank(
+  designation: string,
+): RosterRank | null {
+  return mapStaffRoleToRosterRank(mapDesignationToRole(designation))
 }
 
 export function mapRosterRankToGroup(rank: RosterRank | null): RoleGroupKey {
-  if (rank === "A") return "SSN/SN";
-  if (rank === "B") return "EN/NA/HCA1/HCA2";
-  if (rank === "C") return "HCA3";
-  return "Other";
+  if (rank === "A") return "SSN/SN"
+  if (rank === "B") return "EN/NA/HCA1/HCA2"
+  if (rank === "C") return "HCA3"
+  return "Other"
 }
 
-export function getRosterGroupKey(row: Pick<RosterRow, "designation" | "staffingRole">): RoleGroupKey {
+export function getRosterGroupKey(
+  row: Pick<RosterRow, "designation" | "staffingRole">,
+): RoleGroupKey {
   const rank =
     mapStaffRoleToRosterRank(row.staffingRole ?? null) ??
-    mapDesignationToRosterRank(row.designation ?? "");
-  return mapRosterRankToGroup(rank);
+    mapDesignationToRosterRank(row.designation ?? "")
+  return mapRosterRankToGroup(rank)
 }
 
 /**
  * Maps shift codes to summary shift types (A, P, N).
  * Returns null for non-working shifts.
  */
-export function mapShiftCodeToSummaryType(shiftCode: string): "A" | "P" | "N" | null {
-  const normalizedShiftCode = shiftCode.trim().toUpperCase();
+export function mapShiftCodeToSummaryType(
+  shiftCode: string,
+): "A" | "P" | "N" | null {
+  const normalizedShiftCode = shiftCode.trim().toUpperCase()
 
   if (
     normalizedShiftCode === "D" ||
     normalizedShiftCode === "A" ||
     normalizedShiftCode.startsWith("A-")
   ) {
-    return "A";
+    return "A"
   }
-  if (normalizedShiftCode === "P") return "P";
-  if (normalizedShiftCode === "N" || normalizedShiftCode.startsWith("N-")) return "N";
-  return null;
+  if (normalizedShiftCode === "P") return "P"
+  if (normalizedShiftCode === "N" || normalizedShiftCode.startsWith("N-"))
+    return "N"
+  return null
 }

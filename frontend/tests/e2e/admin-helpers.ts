@@ -1,10 +1,10 @@
+import os from "node:os"
+import path from "node:path"
 import {
-  request as playwrightRequest,
   type APIRequestContext,
+  request as playwrightRequest,
 } from "@playwright/test"
 import * as XLSX from "xlsx"
-import os from "os"
-import path from "path"
 import { loginForE2E, verifyEmailForCurrentUser } from "../utils/auth"
 
 export const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
@@ -83,7 +83,10 @@ export async function getAnyWard(request: APIRequestContext, token: string) {
     const body = await res.text()
     throw new Error(`Failed to load wards: ${res.status()} ${body}`)
   }
-  const wards = (await res.json()) as Array<{ wardid: number; wardname: string }>
+  const wards = (await res.json()) as Array<{
+    wardid: number
+    wardname: string
+  }>
   if (!wards.length) {
     throw new Error("No wards found. Seed a ward before running this test.")
   }
@@ -178,16 +181,21 @@ export async function completeFirstLoginSetup(
     apiBaseUrl: API_BASE_URL,
   })
 
-  const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const res = await request.post(
+    `${API_BASE_URL}/api/v1/users/me/first-login-setup`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: payload,
     },
-    data: payload,
-  })
+  )
   if (!res.ok()) {
     const body = await res.text()
-    throw new Error(`Failed to complete first login setup: ${res.status()} ${body}`)
+    throw new Error(
+      `Failed to complete first login setup: ${res.status()} ${body}`,
+    )
   }
 }
 

@@ -1,16 +1,28 @@
-import { Box, Container, Flex, Heading, Image, Input, Text, VStack } from "@chakra-ui/react"
+import {
+  Box,
+  Button,
+  Container,
+  Flex,
+  Heading,
+  Image,
+  Input,
+  Text,
+  VStack,
+} from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
-import { createFileRoute, Link as RouterLink, redirect } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link as RouterLink,
+  redirect,
+} from "@tanstack/react-router"
+import { useState } from "react"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiArrowLeft, FiMail } from "react-icons/fi"
-
-import { type ApiError } from "@/client"
-import { Button } from "@chakra-ui/react"
+import type { ApiError } from "@/client"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { isLoggedIn } from "@/hooks/useAuth"
 import { emailPattern, handleError } from "@/utils"
-import { useState } from "react"
 
 interface FormData {
   email: string
@@ -41,7 +53,7 @@ function RecoverPassword() {
     const BASE = import.meta.env.VITE_API_URL || ""
     const response = await fetch(
       `${BASE}/api/v1/password-recovery/${encodeURIComponent(data.email)}`,
-      { method: "POST" }
+      { method: "POST" },
     )
     if (!response.ok) {
       const err = await response.json()
@@ -112,7 +124,6 @@ function RecoverPassword() {
         pb={4}
       >
         <Container maxW="md" w="100%" px={6}>
-
           {/* ── "Check your email" confirmation state ── */}
           {submittedEmail ? (
             <VStack gap={5} align="stretch">
@@ -130,7 +141,13 @@ function RecoverPassword() {
 
               {/* Copy */}
               <VStack gap={1} align="center">
-                <Heading as="h1" size="lg" fontWeight="700" color="teal.700" textAlign="center">
+                <Heading
+                  as="h1"
+                  size="lg"
+                  fontWeight="700"
+                  color="teal.700"
+                  textAlign="center"
+                >
                   Check your inbox
                 </Heading>
                 <Text color="gray.500" fontSize="sm" textAlign="center">
@@ -172,9 +189,7 @@ function RecoverPassword() {
                 </RouterLink>
               </Flex>
             </VStack>
-
           ) : (
-
             /* ── Default: email form ── */
             <VStack gap={3} align="stretch">
               <VStack gap={0} align="start" mb={1}>
@@ -188,7 +203,10 @@ function RecoverPassword() {
 
               <Box as="form" onSubmit={handleSubmit(onSubmit)}>
                 <VStack gap={3} align="stretch">
-                  <Field invalid={!!errors.email} errorText={errors.email?.message}>
+                  <Field
+                    invalid={!!errors.email}
+                    errorText={errors.email?.message}
+                  >
                     <InputGroup startElement={<FiMail color="gray" />} w="100%">
                       <Input
                         {...register("email", {
@@ -236,7 +254,6 @@ function RecoverPassword() {
               </Box>
             </VStack>
           )}
-
         </Container>
       </Flex>
     </Flex>

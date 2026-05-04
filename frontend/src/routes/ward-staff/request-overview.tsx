@@ -1,6 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Badge,
   Box,
@@ -11,80 +8,82 @@ import {
   Table,
   Text,
   VStack,
-} from "@chakra-ui/react";
-import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
-
-import { EditShiftRequest } from "@/components/WardStaff/Requests/ShiftRequests/EditShiftRequest";
-import { EditLeaveRequest } from "@/components/WardStaff/Requests/LeaveRequests/EditLeaveRequest";
+} from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import { createFileRoute } from "@tanstack/react-router"
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react"
+import { useMemo, useState } from "react"
 import {
+  type LeaveRequestPublic,
   LeaveRequestsService,
   ShiftRequestsService,
-  type LeaveRequestPublic,
-} from "@/client";
-import type { ShiftRequestPublic } from "@/client/types.gen";
-import useAuth from "@/hooks/useAuth";
+} from "@/client"
+import type { ShiftRequestPublic } from "@/client/types.gen"
+import { EditLeaveRequest } from "@/components/WardStaff/Requests/LeaveRequests/EditLeaveRequest"
+import { EditShiftRequest } from "@/components/WardStaff/Requests/ShiftRequests/EditShiftRequest"
+import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/ward-staff/request-overview")({
   component: WardStaffRequestOverviewPage,
-});
+})
 
-type TabFilter = "all" | "shift" | "leave";
-type SortDirection = "asc" | "desc";
-type RequestStatus = "Pending" | "Approved" | "Rejected" | string;
+type TabFilter = "all" | "shift" | "leave"
+type SortDirection = "asc" | "desc"
+type RequestStatus = "Pending" | "Approved" | "Rejected" | string
 
 type ShiftOverviewRow = {
-  id: number;
-  type: "ShiftRequest";
-  requestTypeCode: string;
-  requestTypeName: string;
-  requestedDates: string;
-  applicationDate: string;
-  rawDate: string;
-  status: RequestStatus;
-};
+  id: number
+  type: "ShiftRequest"
+  requestTypeCode: string
+  requestTypeName: string
+  requestedDates: string
+  applicationDate: string
+  rawDate: string
+  status: RequestStatus
+}
 
 type LeaveOverviewRow = {
-  id: number;
-  type: "LeaveRequest";
-  requestTypeCode: string;
-  requestTypeName: string;
-  requestedDates: string;
-  applicationDate: string;
-  rawDate: string;
-  status: RequestStatus;
-};
+  id: number
+  type: "LeaveRequest"
+  requestTypeCode: string
+  requestTypeName: string
+  requestedDates: string
+  applicationDate: string
+  rawDate: string
+  status: RequestStatus
+}
 
-type OverviewRow = ShiftOverviewRow | LeaveOverviewRow;
+type OverviewRow = ShiftOverviewRow | LeaveOverviewRow
 
 type LeaveEditRequest = {
-  requestId: number;
-  nurseName: string;
-  initialLeaveType: string;
-  startDate: string;
-  endDate: string;
-};
+  requestId: number
+  nurseName: string
+  initialLeaveType: string
+  startDate: string
+  endDate: string
+}
 
 const TABS: { id: TabFilter; label: string }[] = [
   { id: "all", label: "All Types" },
   { id: "shift", label: "Shift Requests" },
   { id: "leave", label: "Leave Requests" },
-];
+]
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 30
 
 function formatDate(dateStr: string) {
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return dateStr;
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return dateStr
 
-  return `${date.getDate()}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+  return `${date.getDate()}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`
 }
 
 function formatDateRange(startDate: string, endDate: string) {
-  const formattedStart = formatDate(startDate);
-  const formattedEnd = formatDate(endDate);
+  const formattedStart = formatDate(startDate)
+  const formattedEnd = formatDate(endDate)
   return startDate === endDate
     ? formattedStart
-    : `${formattedStart} – ${formattedEnd}`;
+    : `${formattedStart} – ${formattedEnd}`
 }
 
 function StatusCell({ status }: { status: RequestStatus }) {
@@ -104,7 +103,7 @@ function StatusCell({ status }: { status: RequestStatus }) {
           Pending
         </Badge>
       </Flex>
-    );
+    )
   }
 
   if (status === "Approved") {
@@ -123,7 +122,7 @@ function StatusCell({ status }: { status: RequestStatus }) {
           Approved
         </Badge>
       </Flex>
-    );
+    )
   }
 
   if (status === "Rejected") {
@@ -142,35 +141,35 @@ function StatusCell({ status }: { status: RequestStatus }) {
           Rejected
         </Badge>
       </Flex>
-    );
+    )
   }
 
   return (
     <Text fontSize="xs" color="gray.400">
       {status}
     </Text>
-  );
+  )
 }
 
 function SortIcon({ direction }: { direction: SortDirection | null }) {
   if (direction === "asc") {
-    return <ChevronUp className="ml-0.5 inline h-3.5 w-3.5" />;
+    return <ChevronUp className="ml-0.5 inline h-3.5 w-3.5" />
   }
   if (direction === "desc") {
-    return <ChevronDown className="ml-0.5 inline h-3.5 w-3.5" />;
+    return <ChevronDown className="ml-0.5 inline h-3.5 w-3.5" />
   }
-  return <ChevronsUpDown className="ml-0.5 inline h-3.5 w-3.5 opacity-40" />;
+  return <ChevronsUpDown className="ml-0.5 inline h-3.5 w-3.5 opacity-40" />
 }
 
 function WardStaffRequestOverviewPage() {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabFilter>("all");
-  const [sortDir, setSortDir] = useState<SortDirection>("desc");
-  const [page, setPage] = useState(1);
+  const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState<TabFilter>("all")
+  const [sortDir, setSortDir] = useState<SortDirection>("desc")
+  const [page, setPage] = useState(1)
   const [selectedShiftRequest, setSelectedShiftRequest] =
-    useState<ShiftOverviewRow | null>(null);
+    useState<ShiftOverviewRow | null>(null)
   const [selectedLeaveRequest, setSelectedLeaveRequest] =
-    useState<LeaveEditRequest | null>(null);
+    useState<LeaveEditRequest | null>(null)
 
   const { data: shiftRequests = [], isLoading: isShiftLoading } = useQuery<
     ShiftRequestPublic[]
@@ -178,7 +177,7 @@ function WardStaffRequestOverviewPage() {
     queryKey: ["shift-requests", "user"],
     queryFn: () => ShiftRequestsService.getUserShiftRequests(),
     staleTime: 0,
-  });
+  })
 
   const { data: leaveRequests = [], isLoading: isLeaveLoading } = useQuery<
     LeaveRequestPublic[]
@@ -186,35 +185,35 @@ function WardStaffRequestOverviewPage() {
     queryKey: ["my-leave-requests"],
     queryFn: () => LeaveRequestsService.getMyLeaveRequests(),
     staleTime: 0,
-  });
+  })
 
   const { data: shiftCodes = [] } = useQuery({
     queryKey: ["shift-codes", "all"],
     queryFn: () => ShiftRequestsService.getAllShiftCodes(),
     staleTime: 5 * 60_000,
-  });
+  })
 
   const { data: leaveCodes = [] } = useQuery({
     queryKey: ["leave-codes"],
     queryFn: () => LeaveRequestsService.getLeaveCodes(),
     staleTime: 5 * 60_000,
-  });
+  })
 
   const shiftCodeMap = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, string>()
     shiftCodes.forEach((shiftCode) => {
-      map.set(shiftCode.shiftcode, shiftCode.description);
-    });
-    return map;
-  }, [shiftCodes]);
+      map.set(shiftCode.shiftcode, shiftCode.description)
+    })
+    return map
+  }, [shiftCodes])
 
   const leaveCodeMap = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, string>()
     leaveCodes.forEach((leaveCode) => {
-      map.set(leaveCode.shiftcode, leaveCode.description);
-    });
-    return map;
-  }, [leaveCodes]);
+      map.set(leaveCode.shiftcode, leaveCode.description)
+    })
+    return map
+  }, [leaveCodes])
 
   const allRequests = useMemo<OverviewRow[]>(() => {
     const shiftRows: ShiftOverviewRow[] = shiftRequests.map((request) => ({
@@ -228,7 +227,7 @@ function WardStaffRequestOverviewPage() {
       applicationDate: formatDate(request.preferreddate),
       rawDate: request.preferreddate,
       status: request.status,
-    }));
+    }))
 
     const leaveRows: LeaveOverviewRow[] = leaveRequests.map((request) => ({
       id: request.leaveid,
@@ -239,64 +238,65 @@ function WardStaffRequestOverviewPage() {
       applicationDate: formatDate(request.requestedat),
       rawDate: request.requestedat,
       status: request.status,
-    }));
+    }))
 
-    return [...shiftRows, ...leaveRows];
-  }, [leaveCodeMap, leaveRequests, shiftCodeMap, shiftRequests]);
+    return [...shiftRows, ...leaveRows]
+  }, [leaveCodeMap, leaveRequests, shiftCodeMap, shiftRequests])
 
   const filteredRequests = useMemo(() => {
     if (activeTab === "shift") {
-      return allRequests.filter((request) => request.type === "ShiftRequest");
+      return allRequests.filter((request) => request.type === "ShiftRequest")
     }
     if (activeTab === "leave") {
-      return allRequests.filter((request) => request.type === "LeaveRequest");
+      return allRequests.filter((request) => request.type === "LeaveRequest")
     }
-    return allRequests;
-  }, [activeTab, allRequests]);
+    return allRequests
+  }, [activeTab, allRequests])
 
   const sortedRequests = useMemo(() => {
-    const pendingRank = (status: RequestStatus) => (status === "Pending" ? 0 : 1);
+    const pendingRank = (status: RequestStatus) =>
+      status === "Pending" ? 0 : 1
 
     return [...filteredRequests].sort((left, right) => {
-      const statusDiff = pendingRank(left.status) - pendingRank(right.status);
-      if (statusDiff !== 0) return statusDiff;
+      const statusDiff = pendingRank(left.status) - pendingRank(right.status)
+      if (statusDiff !== 0) return statusDiff
 
       const timeDiff =
-        new Date(left.rawDate).getTime() - new Date(right.rawDate).getTime();
-      return sortDir === "asc" ? timeDiff : -timeDiff;
-    });
-  }, [filteredRequests, sortDir]);
+        new Date(left.rawDate).getTime() - new Date(right.rawDate).getTime()
+      return sortDir === "asc" ? timeDiff : -timeDiff
+    })
+  }, [filteredRequests, sortDir])
 
-  const totalPages = Math.max(1, Math.ceil(sortedRequests.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedRequests.length / PAGE_SIZE))
   const currentPageData = sortedRequests.slice(
     (page - 1) * PAGE_SIZE,
     page * PAGE_SIZE,
-  );
+  )
 
   const leaveRequestMap = useMemo(() => {
-    const map = new Map<number, LeaveRequestPublic>();
-    leaveRequests.forEach((request) => map.set(request.leaveid, request));
-    return map;
-  }, [leaveRequests]);
+    const map = new Map<number, LeaveRequestPublic>()
+    leaveRequests.forEach((request) => map.set(request.leaveid, request))
+    return map
+  }, [leaveRequests])
 
   const handleTabChange = (tab: TabFilter) => {
-    setActiveTab(tab);
-    setPage(1);
-  };
+    setActiveTab(tab)
+    setPage(1)
+  }
 
   const handleSortToggle = () => {
-    setSortDir((current) => (current === "asc" ? "desc" : "asc"));
-    setPage(1);
-  };
+    setSortDir((current) => (current === "asc" ? "desc" : "asc"))
+    setPage(1)
+  }
 
   const handleOpenEdit = (request: OverviewRow) => {
     if (request.type === "ShiftRequest") {
-      setSelectedShiftRequest(request);
-      return;
+      setSelectedShiftRequest(request)
+      return
     }
 
-    const leaveRequest = leaveRequestMap.get(request.id);
-    if (!leaveRequest) return;
+    const leaveRequest = leaveRequestMap.get(request.id)
+    if (!leaveRequest) return
 
     setSelectedLeaveRequest({
       requestId: leaveRequest.leaveid,
@@ -304,10 +304,10 @@ function WardStaffRequestOverviewPage() {
       initialLeaveType: leaveRequest.leavetype,
       startDate: leaveRequest.startdate,
       endDate: leaveRequest.enddate,
-    });
-  };
+    })
+  }
 
-  const isLoading = isShiftLoading || isLeaveLoading;
+  const isLoading = isShiftLoading || isLeaveLoading
 
   return (
     <Flex
@@ -349,7 +349,7 @@ function WardStaffRequestOverviewPage() {
             flexShrink={0}
           >
             {TABS.map((tab, index) => {
-              const isActive = activeTab === tab.id;
+              const isActive = activeTab === tab.id
               return (
                 <Button
                   key={tab.id}
@@ -370,7 +370,7 @@ function WardStaffRequestOverviewPage() {
                 >
                   {tab.label}
                 </Button>
-              );
+              )
             })}
           </HStack>
         </Flex>
@@ -496,7 +496,11 @@ function WardStaffRequestOverviewPage() {
                       <Table.Cell py={2} px={4}>
                         <HStack gap={2} align="center">
                           <Badge
-                            bg={request.type === "ShiftRequest" ? "#4B8798" : "#94A3B8"}
+                            bg={
+                              request.type === "ShiftRequest"
+                                ? "#4B8798"
+                                : "#94A3B8"
+                            }
                             color="white"
                             fontWeight="bold"
                             fontSize="xs"
@@ -509,7 +513,11 @@ function WardStaffRequestOverviewPage() {
                           >
                             {request.requestTypeCode}
                           </Badge>
-                          <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
+                          <Text
+                            fontSize="sm"
+                            color="#4A4A4A"
+                            whiteSpace="nowrap"
+                          >
                             {request.requestTypeName}
                           </Text>
                         </HStack>
@@ -578,7 +586,9 @@ function WardStaffRequestOverviewPage() {
                     color={page === pageNumber ? "white" : "#4A4A4A"}
                     borderColor={page === pageNumber ? "#4B8798" : "gray.300"}
                     _hover={
-                      page === pageNumber ? { bg: "#3d6f7e" } : { bg: "gray.50" }
+                      page === pageNumber
+                        ? { bg: "#3d6f7e" }
+                        : { bg: "gray.50" }
                     }
                     onClick={() => setPage(pageNumber)}
                     minW="7"
@@ -628,7 +638,7 @@ function WardStaffRequestOverviewPage() {
         />
       )}
     </Flex>
-  );
+  )
 }
 
-export default WardStaffRequestOverviewPage;
+export default WardStaffRequestOverviewPage

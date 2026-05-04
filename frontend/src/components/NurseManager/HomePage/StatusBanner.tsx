@@ -1,19 +1,27 @@
-import { Text } from "@chakra-ui/react";
-import useAuth from "@/hooks/useAuth";
-import { Ward } from "@/client/types.gen";
+import { Text } from "@chakra-ui/react"
+import type { Ward } from "@/client/types.gen"
+import useAuth from "@/hooks/useAuth"
 
 interface StatusBannerProps {
-  ward: Ward | null;
+  ward: Ward | null
 }
 
 export default function StatusBanner({ ward }: StatusBannerProps) {
-  const { user } = useAuth();
-  const managerName = user?.name ?? "Name";
+  const { user } = useAuth()
+  const managerName = user?.name ?? "Name"
 
-  const now = new Date();
-  const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-  const day = now.toLocaleDateString("en-US", { weekday: "long" });
-  const date = now.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const now = new Date()
+  const time = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+  const day = now.toLocaleDateString("en-US", { weekday: "long" })
+  const date = now.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
 
   return (
     <>
@@ -29,8 +37,8 @@ export default function StatusBanner({ ward }: StatusBannerProps) {
         You are currently managing{" "}
         <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
           {ward?.wardname ?? "your ward"}
-        </Text>
-        {" "}at{" "}
+        </Text>{" "}
+        at{" "}
         <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
           {time}
         </Text>
@@ -40,8 +48,5 @@ export default function StatusBanner({ ward }: StatusBannerProps) {
         </Text>
       </Text>
     </>
-  );
+  )
 }
-
-
-

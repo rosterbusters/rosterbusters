@@ -1,33 +1,31 @@
-import { useState, useEffect, useMemo } from "react";
 import {
+  Badge,
   Button,
   CloseButton,
   createListCollection,
   Dialog,
+  HStack,
   Portal,
   Select,
-  Badge,
-  HStack,
   Text,
   VStack,
-} from "@chakra-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-
-import { AssignableStatus } from "./AssignableStatus";
-import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
+} from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
+import { type ShiftRequestCreate, ShiftRequestsService } from "@/client"
+import { DatePickerDemo } from "@/components/Common/DatePicker"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import {
   getRequestTargetPeriod,
   useRequestPeriodWindow,
-} from "@/hooks/useApplicationLockStatus";
-
+} from "@/hooks/useApplicationLockStatus"
+import { AssignableStatus } from "./AssignableStatus"
 
 interface NewShiftRequestProps {
-  isOpen: boolean;
-  onClose: () => void;
-  selectedDate?: Date | null;
-  wardId?: number | null;
+  isOpen: boolean
+  onClose: () => void
+  selectedDate?: Date | null
+  wardId?: number | null
 }
 
 export const NewShiftRequest = ({
@@ -36,78 +34,79 @@ export const NewShiftRequest = ({
   selectedDate,
   wardId,
 }: NewShiftRequestProps) => {
-  const [shiftType, setShiftType] = useState<string[]>([]);
+  const [shiftType, setShiftType] = useState<string[]>([])
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     selectedDate ?? undefined,
-  );
-  const queryClient = useQueryClient();
+  )
+  const queryClient = useQueryClient()
 
-  const { data: periodWindow } = useRequestPeriodWindow();
+  const { data: periodWindow } = useRequestPeriodWindow()
 
-  const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", wardId ?? "default"],
+  const { data: shiftCodes = [] } = useQuery({
+    queryKey: ["shift-codes", "ward", wardId],
     queryFn: () =>
-      wardId != null
-        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
-        : ShiftRequestsService.getAllShiftCodes(),
-  });
-
-  const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
+      ShiftRequestsService.getShiftCodesByWard({ wardId: wardId! }),
+    enabled: wardId != null,
+  })
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: requestableShiftCodes.map((sc) => ({
+        items: shiftCodes.map((sc) => ({
           value: sc.shiftcode,
           label: sc.shiftcode,
           description: sc.description,
         })),
       }),
-    [requestableShiftCodes],
-  );
+    [shiftCodes],
+  )
 
   const mutation = useMutation({
     mutationFn: (data: ShiftRequestCreate) =>
       ShiftRequestsService.createShiftRequest({ requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("Shift request created!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
-      onClose();
+      showSuccessToast("Shift request created!")
+      queryClient.invalidateQueries({ queryKey: ["shift-requests"] })
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to create request");
+      const detail = (error as any)?.body?.detail
+      showErrorToast(detail || "Failed to create request")
     },
-  });
-  
+  })
+
   useEffect(() => {
     if (isOpen) {
-      setRequestDate(selectedDate ?? undefined);
-      setShiftType([]);
+      setRequestDate(selectedDate ?? undefined)
+      setShiftType([])
     }
-  }, [isOpen, selectedDate]);
+  }, [isOpen, selectedDate])
 
   const handleSubmit = () => {
-    const activePeriod = getRequestTargetPeriod(periodWindow);
+    if (wardId == null) {
+      showErrorToast("No ward is linked to your account.")
+      return
+    }
+    const activePeriod = getRequestTargetPeriod(periodWindow)
     if (!activePeriod) {
-      showErrorToast("There is no roster period available.");
-      return;
+      showErrorToast("There is no roster period available.")
+      return
     }
     if (shiftType.length === 0) {
-      showErrorToast("Please select a shift type.");
-      return;
+      showErrorToast("Please select a shift type.")
+      return
     }
     if (!requestDate) {
-      showErrorToast("Please select a date.");
-      return;
+      showErrorToast("Please select a date.")
+      return
     }
 
     mutation.mutate({
       periodid: activePeriod.periodid,
       preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
       preferredshifttype: shiftType[0],
-    });
-  };
+    })
+  }
 
   return (
     <Dialog.Root
@@ -116,9 +115,9 @@ export const NewShiftRequest = ({
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {
-        const target = event.target as HTMLElement | null;
+        const target = event.target as HTMLElement | null
         if (target?.closest("[data-datepicker-popup='true']")) {
-          event.preventDefault();
+          event.preventDefault()
         }
       }}
     >
@@ -139,6 +138,9 @@ export const NewShiftRequest = ({
                   size="sm"
                   value={shiftType}
                   onValueChange={(e) => setShiftType(e.value)}
+                  disabled={
+                    wardId == null || shiftCollection.items.length === 0
+                  }
                 >
                   <Select.Label>Requested Shift Type</Select.Label>
                   <Select.Control>
@@ -153,7 +155,11 @@ export const NewShiftRequest = ({
                     <Select.Positioner>
                       <Select.Content>
                         {shiftCollection.items.map((code) => (
-                          <Select.Item item={code.value} key={code.value} data-testid={`shift-type-option-${code.value}`}>
+                          <Select.Item
+                            item={code.value}
+                            key={code.value}
+                            data-testid={`shift-type-option-${code.value}`}
+                          >
                             <HStack gap={2}>
                               <Badge variant={`${code.value}Shift` as any}>
                                 {code.value}
@@ -191,5 +197,5 @@ export const NewShiftRequest = ({
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
-  );
-};
+  )
+}

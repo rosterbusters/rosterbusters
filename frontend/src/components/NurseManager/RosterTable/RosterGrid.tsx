@@ -1,63 +1,61 @@
-import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
   Box,
-  Flex,
-  Text,
-  HStack,
-  Table,
-  Icon,
-  Spinner,
-  Input,
   Checkbox,
+  Flex,
+  HStack,
+  Icon,
+  Input,
   Popover,
-} from "@chakra-ui/react";
-import {
-  Star,
-  Filter,
-  ChevronDown,
-  ChevronRight,
-  X,
-} from "lucide-react";
-import moment from "moment";
+  Spinner,
+  Table,
+  Text,
+} from "@chakra-ui/react"
+import { ChevronDown, ChevronRight, Filter, Star, X } from "lucide-react"
+import moment from "moment"
+import React, { useCallback, useMemo, useRef, useState } from "react"
 
-import { ShiftBadge } from "./ShiftBadge";
-import { ShiftEditPopover } from "./ShiftEditPopover";
-import { ShiftCommentPopover } from "./ShiftCommentPopover";
-import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable";
-import { getRosterGroupKey, isPsaDesignation, MOCK_STAFFING_GUIDELINES } from "./staffingGuidelines";
+import { ShiftBadge } from "./ShiftBadge"
+import { ShiftCommentPopover } from "./ShiftCommentPopover"
+import { ShiftEditPopover } from "./ShiftEditPopover"
+import { calculateShiftCounts, getCellStyle } from "./ShiftSummaryTable"
+import {
+  getRosterGroupKey,
+  isPsaDesignation,
+  MOCK_STAFFING_GUIDELINES,
+} from "./staffingGuidelines"
 import type {
+  DailyStaffingGuideline,
+  DayColumn,
   RosterRow,
   ShiftAssignment,
   ShiftCode,
-  ViewMode,
-  DayColumn,
-  DailyStaffingGuideline,
-  SummaryShiftType,
-  StaffRole,
   ShiftRequestOverlay,
-} from "./types";
+  StaffRole,
+  SummaryShiftType,
+  ViewMode,
+} from "./types"
 
-const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"];
-const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"];
+const SHIFT_TYPES: SummaryShiftType[] = ["A", "P", "N"]
+const STAFF_ROLES: StaffRole[] = ["RN", "EN", "NA", "HCA12", "HCA3"]
 const ROLE_LABEL: Record<StaffRole, string> = {
   RN: "RN",
   EN: "EN",
   NA: "NA",
   HCA12: "HCA1&2",
   HCA3: "HCA3",
-};
-const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3", "Other"] as const;
-type RoleGroupKey = (typeof ROLE_GROUP_ORDER)[number];
+}
+const ROLE_GROUP_ORDER = ["SSN/SN", "EN/NA/HCA1/HCA2", "HCA3", "Other"] as const
+type RoleGroupKey = (typeof ROLE_GROUP_ORDER)[number]
 
-const isPSA = (designation?: string) => isPsaDesignation(designation ?? "");
+const isPSA = (designation?: string) => isPsaDesignation(designation ?? "")
 
 interface NameFilterPopoverProps {
-  isFilterActive: boolean;
-  selectedNames: Set<string>;
-  allNames: string[];
-  onToggleName: (name: string) => void;
-  onClearFilter: () => void;
-  onSelectAll: () => void;
+  isFilterActive: boolean
+  selectedNames: Set<string>
+  allNames: string[]
+  onToggleName: (name: string) => void
+  onClearFilter: () => void
+  onSelectAll: () => void
 }
 
 const NameFilterPopover = React.memo(function NameFilterPopover({
@@ -68,9 +66,9 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
   onClearFilter,
   onSelectAll,
 }: NameFilterPopoverProps) {
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filterSearch, setFilterSearch] = useState("");
-  const filterAnchorRef = useRef<HTMLDivElement>(null);
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [filterSearch, setFilterSearch] = useState("")
+  const filterAnchorRef = useRef<HTMLDivElement>(null)
 
   const filteredNameOptions = useMemo(
     () =>
@@ -78,12 +76,12 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
         n.toLowerCase().includes(filterSearch.toLowerCase()),
       ),
     [allNames, filterSearch],
-  );
+  )
 
   const handleClear = useCallback(() => {
-    onClearFilter();
-    setFilterSearch("");
-  }, [onClearFilter]);
+    onClearFilter()
+    setFilterSearch("")
+  }, [onClearFilter])
 
   return (
     <>
@@ -102,8 +100,8 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
           _active={{ bg: "#bae6fd", color: "#0e7490" }}
           transition="all 0.15s ease"
           onClick={(e) => {
-            e.stopPropagation();
-            setFilterOpen((o) => !o);
+            e.stopPropagation()
+            setFilterOpen((o) => !o)
           }}
           title="Filter by name"
         >
@@ -129,8 +127,8 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
         open={filterOpen}
         onOpenChange={(d) => {
           if (!d.open) {
-            setFilterOpen(false);
-            setFilterSearch("");
+            setFilterOpen(false)
+            setFilterSearch("")
           }
         }}
         positioning={{
@@ -163,8 +161,8 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
                   color="gray.400"
                   _hover={{ color: "gray.600" }}
                   onClick={() => {
-                    setFilterOpen(false);
-                    setFilterSearch("");
+                    setFilterOpen(false)
+                    setFilterSearch("")
                   }}
                 >
                   <X size={13} />
@@ -204,7 +202,9 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
               >
                 Select all
               </Box>
-              <Text fontSize="xs" color="gray.300">|</Text>
+              <Text fontSize="xs" color="gray.300">
+                |
+              </Text>
               <Box
                 as="button"
                 fontSize="xs"
@@ -226,7 +226,9 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
             <Popover.Body p={0} maxH="200px" overflowY="auto">
               {filteredNameOptions.length === 0 ? (
                 <Flex px={3} py={3} align="center">
-                  <Text fontSize="xs" color="gray.400">No names found</Text>
+                  <Text fontSize="xs" color="gray.400">
+                    No names found
+                  </Text>
                 </Flex>
               ) : (
                 filteredNameOptions.map((name) => (
@@ -241,8 +243,8 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
                     _hover={{ bg: "#f0f9ff" }}
                     transition="background 0.1s ease"
                     onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleName(name);
+                      e.stopPropagation()
+                      onToggleName(name)
                     }}
                   >
                     <Checkbox.Root
@@ -254,7 +256,9 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
                     >
                       <Checkbox.HiddenInput />
                       <Checkbox.Control
-                        borderColor={selectedNames.has(name) ? "#0e7490" : "gray.300"}
+                        borderColor={
+                          selectedNames.has(name) ? "#0e7490" : "gray.300"
+                        }
                         bg={selectedNames.has(name) ? "#0e7490" : "white"}
                       >
                         <Checkbox.Indicator />
@@ -271,61 +275,57 @@ const NameFilterPopover = React.memo(function NameFilterPopover({
         </Popover.Positioner>
       </Popover.Root>
     </>
-  );
-});
+  )
+})
 
 interface RosterGridProps {
-  data: RosterRow[];
-  wardId?: number | null;
-  viewMode: ViewMode;
-  currentStartDate: Date;
+  data: RosterRow[]
+  wardId?: number | null
+  viewMode: ViewMode
+  currentStartDate: Date
   onShiftChange: (
     nurseId: number,
     date: string,
     newShiftCode: ShiftCode,
-  ) => void;
-  onCommentChange?: (
-    nurseId: number,
-    date: string,
-    comment: string,
-  ) => void;
-  isLoading?: boolean;
-  loadingLabel?: string;
-  guidelines?: DailyStaffingGuideline;
-  isRosterGenerated?: boolean;
-  showSummary?: boolean;
-  shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>;
-  highlightedNurseIds?: Set<number>;
-  onNurseNameClick?: (row: RosterRow) => void;
-  shiftDurationMap?: Map<string, number>;
-  shiftTimeMap?: Map<string, { start?: string; end?: string }>;
-  showLongServiceSnIcon?: boolean;
+  ) => void
+  onCommentChange?: (nurseId: number, date: string, comment: string) => void
+  isLoading?: boolean
+  loadingLabel?: string
+  guidelines?: DailyStaffingGuideline
+  isRosterGenerated?: boolean
+  showSummary?: boolean
+  shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>
+  highlightedNurseIds?: Set<number>
+  onNurseNameClick?: (row: RosterRow) => void
+  shiftDurationMap?: Map<string, number>
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>
+  showLongServiceSnIcon?: boolean
 }
 
 interface RosterGridRowProps {
-  row: RosterRow;
-  dayColumns: DayColumn[];
-  viewMode: ViewMode;
-  showLongServiceSnIcon?: boolean;
-  highlightedNurseIds?: Set<number>;
-  onNurseNameClick?: (row: RosterRow) => void;
+  row: RosterRow
+  dayColumns: DayColumn[]
+  viewMode: ViewMode
+  showLongServiceSnIcon?: boolean
+  highlightedNurseIds?: Set<number>
+  onNurseNameClick?: (row: RosterRow) => void
   handleShiftClick: (
     nurseId: number,
     nurseName: string,
     date: string,
     shift: ShiftAssignment | null,
     event: React.MouseEvent<HTMLDivElement>,
-  ) => void;
+  ) => void
   handleCommentIconClick: (
     nurseId: number,
     nurseName: string,
     date: string,
     shift: ShiftAssignment | null,
     event: React.MouseEvent,
-  ) => void;
-  shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>;
-  shiftDurationMap?: Map<string, number>;
-  shiftTimeMap?: Map<string, { start?: string; end?: string }>;
+  ) => void
+  shiftRequestOverlays?: Record<string, Record<string, ShiftRequestOverlay>>
+  shiftDurationMap?: Map<string, number>
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>
 }
 
 const RosterGridRow = React.memo(function RosterGridRow({
@@ -341,10 +341,9 @@ const RosterGridRow = React.memo(function RosterGridRow({
   shiftDurationMap,
   shiftTimeMap,
 }: RosterGridRowProps) {
-  const displayName = getDisplayName(row);
-  const isHighlighted = highlightedNurseIds?.has(row.nurseId) ?? false;
-  const showClassASnIcon =
-    showLongServiceSnIcon && shouldShowClassASnIcon(row);
+  const displayName = getDisplayName(row)
+  const isHighlighted = highlightedNurseIds?.has(row.nurseId) ?? false
+  const showClassASnIcon = showLongServiceSnIcon && shouldShowClassASnIcon(row)
 
   return (
     <Table.Row
@@ -415,9 +414,9 @@ const RosterGridRow = React.memo(function RosterGridRow({
 
       {/* Shift Cells */}
       {dayColumns.map((col) => {
-        const dateKey = moment(col.date).format("YYYY-MM-DD");
-        const rawShift = row.shifts[dateKey] || null;
-        const shift = rawShift;
+        const dateKey = moment(col.date).format("YYYY-MM-DD")
+        const rawShift = row.shifts[dateKey] || null
+        const shift = rawShift
 
         return (
           <Table.Cell
@@ -439,92 +438,98 @@ const RosterGridRow = React.memo(function RosterGridRow({
                   viewMode={viewMode}
                   comment={shift?.comment}
                   onCommentIconClick={(e) =>
-                    handleCommentIconClick(row.nurseId, displayName, dateKey, shift, e)
+                    handleCommentIconClick(
+                      row.nurseId,
+                      displayName,
+                      dateKey,
+                      shift,
+                      e,
+                    )
                   }
-                  shiftRequestOverlay={shiftRequestOverlays?.[String(row.nurseId)]?.[dateKey]}
+                  shiftRequestOverlay={
+                    shiftRequestOverlays?.[String(row.nurseId)]?.[dateKey]
+                  }
                   shiftDurationMap={shiftDurationMap}
                   shiftTimeMap={shiftTimeMap}
                 />
               </Box>
             </Flex>
           </Table.Cell>
-        );
+        )
       })}
     </Table.Row>
-  );
-});
+  )
+})
 
 // Generate day columns based on view mode and start date
 function generateDayColumns(startDate: Date, viewMode: ViewMode): DayColumn[] {
-  const days = viewMode === "week" ? 7 : 14;
-  const columns: DayColumn[] = [];
+  const days = viewMode === "week" ? 7 : 14
+  const columns: DayColumn[] = []
 
   for (let i = 0; i < days; i++) {
-    const date = moment(startDate).add(i, "days");
+    const date = moment(startDate).add(i, "days")
     columns.push({
       field: `shift_${date.format("YYYY-MM-DD")}`,
       title: date.format("dddd"),
       date: date.toDate(),
       dayOfWeek: date.format("ddd"),
-    });
+    })
   }
 
-  return columns;
+  return columns
 }
 
 function groupByRoleGroup(data: RosterRow[]): Map<RoleGroupKey, RosterRow[]> {
-  const groups = new Map<RoleGroupKey, RosterRow[]>();
-  ROLE_GROUP_ORDER.forEach((key) => groups.set(key, []));
+  const groups = new Map<RoleGroupKey, RosterRow[]>()
+  ROLE_GROUP_ORDER.forEach((key) => groups.set(key, []))
 
   data.forEach((row) => {
-    const key = getRosterGroupKey(row);
-    const existing = groups.get(key) || [];
-    existing.push(row);
-    groups.set(key, existing);
-  });
+    const key = getRosterGroupKey(row)
+    const existing = groups.get(key) || []
+    existing.push(row)
+    groups.set(key, existing)
+  })
 
-  return groups;
+  return groups
 }
 
 function getDisplayTitle(row: RosterRow): string {
-  return (row.designation ?? "").toString();
+  return (row.designation ?? "").toString()
 }
 
 function getEnNaHcaSortRank(row: RosterRow): number {
-  const title = getDisplayTitle(row).toUpperCase();
-  if (title === "SEN") return 1;
-  if (title === "EN") return 2;
-  if (title === "NA") return 3;
-  if (title === "HCA1") return 4;
-  if (title === "HCA2") return 5;
-  if (title === "HCA3") return 6;
-  if (title === "HCA") return 7;
-  return 99;
+  const title = getDisplayTitle(row).toUpperCase()
+  if (title === "SEN") return 1
+  if (title === "EN") return 2
+  if (title === "NA") return 3
+  if (title === "HCA1") return 4
+  if (title === "HCA2") return 5
+  if (title === "HCA3") return 6
+  if (title === "HCA") return 7
+  return 99
 }
 
 function getSsnSnSortRank(row: RosterRow): number {
-  const title = getDisplayTitle(row).toUpperCase();
-  if (title === "SSN") return 1;
+  const title = getDisplayTitle(row).toUpperCase()
+  if (title === "SSN") return 1
   if (title === "SN") {
-    return shouldShowClassASnIcon(row) ? 2 : 3;
+    return shouldShowClassASnIcon(row) ? 2 : 3
   }
-  return 99;
+  return 99
 }
 
 function getDisplayName(row: RosterRow): string {
-  const title = getDisplayTitle(row).trim();
-  const name = (row.name ?? "").toString().trim();
+  const title = getDisplayTitle(row).trim()
+  const name = (row.name ?? "").toString().trim()
 
-  if (!title) return name;
-  if (!name) return title;
+  if (!title) return name
+  if (!name) return title
 
-  return `${title} ${name}`;
+  return `${title} ${name}`
 }
 
 function isSnDesignation(designation?: string): boolean {
-  const normalized = (designation ?? "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
+  const normalized = (designation ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "")
 
   return [
     "RN",
@@ -533,18 +538,18 @@ function isSnDesignation(designation?: string): boolean {
     "STAFFNURSEI",
     "STAFFNURSEII",
     "SN",
-  ].includes(normalized);
+  ].includes(normalized)
 }
 
 function shouldShowClassASnIcon(row: RosterRow): boolean {
-  if (row.rosterRank !== "A") return false;
-  if (!isSnDesignation(row.designation)) return false;
-  if (!row.joinDate) return false;
+  if (row.rosterRank !== "A") return false
+  if (!isSnDesignation(row.designation)) return false
+  if (!row.joinDate) return false
 
-  const joinDate = moment(row.joinDate);
-  if (!joinDate.isValid()) return false;
+  const joinDate = moment(row.joinDate)
+  if (!joinDate.isValid()) return false
 
-  return moment().diff(joinDate, "years", true) > 3;
+  return moment().diff(joinDate, "years", true) > 3
 }
 
 export function RosterGrid({
@@ -568,12 +573,12 @@ export function RosterGrid({
 }: RosterGridProps) {
   // Popover state
   const [popoverState, setPopoverState] = useState<{
-    isOpen: boolean;
-    nurseId: number | null;
-    date: string;
-    nurseName: string;
-    currentShift: ShiftAssignment | null;
-    anchorEl: HTMLElement | null;
+    isOpen: boolean
+    nurseId: number | null
+    date: string
+    nurseName: string
+    currentShift: ShiftAssignment | null
+    anchorEl: HTMLElement | null
   }>({
     isOpen: false,
     nurseId: null,
@@ -581,16 +586,16 @@ export function RosterGrid({
     nurseName: "",
     currentShift: null,
     anchorEl: null,
-  });
+  })
 
   // Comment-only popover state
   const [commentPopoverState, setCommentPopoverState] = useState<{
-    isOpen: boolean;
-    nurseId: number | null;
-    date: string;
-    nurseName: string;
-    currentComment: string;
-    anchorEl: HTMLElement | null;
+    isOpen: boolean
+    nurseId: number | null
+    date: string
+    nurseName: string
+    currentComment: string
+    anchorEl: HTMLElement | null
   }>({
     isOpen: false,
     nurseId: null,
@@ -598,50 +603,48 @@ export function RosterGrid({
     nurseName: "",
     currentComment: "",
     anchorEl: null,
-  });
+  })
 
   // Collapsed groups state - all groups start expanded
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set(),
-  );
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
 
   const dataWithoutPSA = useMemo(
     () => data.filter((row) => !isPSA(row.designation)),
     [data],
-  );
+  )
 
   // All unique nurse names sorted
   const allNames = useMemo(
     () => Array.from(new Set(dataWithoutPSA.map((r) => r.name))).sort(),
     [dataWithoutPSA],
-  );
+  )
 
-  const isFilterActive = selectedNames.size > 0;
+  const isFilterActive = selectedNames.size > 0
 
   const toggleName = useCallback((name: string) => {
     setSelectedNames((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }, []);
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }, [])
 
   const clearFilter = useCallback(() => {
-    setSelectedNames(new Set());
-  }, []);
+    setSelectedNames(new Set())
+  }, [])
 
   const selectAll = useCallback(() => {
-    setSelectedNames(new Set(allNames));
-  }, [allNames]);
+    setSelectedNames(new Set(allNames))
+  }, [allNames])
 
   // Generate day columns
   const dayColumns = useMemo(
     () => generateDayColumns(currentStartDate, viewMode),
     [currentStartDate, viewMode],
-  );
+  )
 
   // Apply name filter to data before grouping
   const filteredData = useMemo(
@@ -650,12 +653,12 @@ export function RosterGrid({
         ? dataWithoutPSA.filter((r) => selectedNames.has(r.name))
         : dataWithoutPSA,
     [dataWithoutPSA, isFilterActive, selectedNames],
-  );
+  )
 
   // Group data by designation (role) - always grouped
   const groupedData = useMemo(() => {
-    return groupByRoleGroup(filteredData);
-  }, [filteredData]);
+    return groupByRoleGroup(filteredData)
+  }, [filteredData])
 
   // Handle shift badge click
   const handleShiftClick = useCallback(
@@ -673,35 +676,35 @@ export function RosterGrid({
         nurseName,
         currentShift: shift,
         anchorEl: event.currentTarget,
-      });
+      })
     },
     [],
-  );
+  )
 
   // Handle popover close
   const handlePopoverClose = useCallback(() => {
-    setPopoverState((prev) => ({ ...prev, isOpen: false }));
-  }, []);
+    setPopoverState((prev) => ({ ...prev, isOpen: false }))
+  }, [])
 
   // Handle shift change from popover
   const handleShiftChange = useCallback(
     (newShiftCode: ShiftCode) => {
       if (popoverState.nurseId !== null) {
-        onShiftChange(popoverState.nurseId, popoverState.date, newShiftCode);
+        onShiftChange(popoverState.nurseId, popoverState.date, newShiftCode)
       }
     },
     [popoverState.nurseId, popoverState.date, onShiftChange],
-  );
+  )
 
   // Handle comment change from popover
   const handleCommentChange = useCallback(
     (comment: string) => {
       if (popoverState.nurseId !== null && onCommentChange) {
-        onCommentChange(popoverState.nurseId, popoverState.date, comment);
+        onCommentChange(popoverState.nurseId, popoverState.date, comment)
       }
     },
     [popoverState.nurseId, popoverState.date, onCommentChange],
-  );
+  )
 
   // Handle comment icon click — open comment-only popover (suppresses Edit Shift popover)
   const handleCommentIconClick = useCallback(
@@ -719,70 +722,74 @@ export function RosterGrid({
         nurseName,
         currentComment: shift?.comment || "",
         anchorEl: event.currentTarget as HTMLElement,
-      });
+      })
     },
     [],
-  );
+  )
 
   // Handle comment popover close
   const handleCommentPopoverClose = useCallback(() => {
-    setCommentPopoverState((prev) => ({ ...prev, isOpen: false }));
-  }, []);
+    setCommentPopoverState((prev) => ({ ...prev, isOpen: false }))
+  }, [])
 
   // Handle comment save from comment-only popover
   const handleCommentSaveFromIcon = useCallback(
     (comment: string) => {
       if (commentPopoverState.nurseId !== null && onCommentChange) {
-        onCommentChange(commentPopoverState.nurseId, commentPopoverState.date, comment);
+        onCommentChange(
+          commentPopoverState.nurseId,
+          commentPopoverState.date,
+          comment,
+        )
       }
     },
     [commentPopoverState.nurseId, commentPopoverState.date, onCommentChange],
-  );
+  )
 
   // Toggle group collapse
   const toggleGroup = useCallback((groupKey: string) => {
     setCollapsedGroups((prev) => {
-      const newSet = new Set(prev);
+      const newSet = new Set(prev)
       if (newSet.has(groupKey)) {
-        newSet.delete(groupKey);
+        newSet.delete(groupKey)
       } else {
-        newSet.add(groupKey);
+        newSet.add(groupKey)
       }
-      return newSet;
-    });
-  }, []);
+      return newSet
+    })
+  }, [])
 
   // Column width calculation
-  const dayColumnWidth = viewMode === "week" ? "120px" : "80px";
+  const dayColumnWidth = viewMode === "week" ? "120px" : "80px"
 
   // Total columns: Name + Day columns
-  const totalCols = 1 + dayColumns.length;
+  const totalCols = 1 + dayColumns.length
 
   // Calculate shift counts for summary
   const shiftCounts = useMemo(
     () => calculateShiftCounts(filteredData, dayColumns),
     [filteredData, dayColumns],
-  );
+  )
 
   // Calculate total for a specific shift type and date
   const getTotal = useCallback(
     (dateKey: string, shiftType: SummaryShiftType): number => {
-      const dayCounts = shiftCounts.get(dateKey);
-      if (!dayCounts) return 0;
+      const dayCounts = shiftCounts.get(dateKey)
+      if (!dayCounts) return 0
       return STAFF_ROLES.reduce(
         (sum, role) => sum + dayCounts[role][shiftType],
         0,
-      );
+      )
     },
     [shiftCounts],
-  );
+  )
 
   const summaryRows = useMemo(() => {
-    const summaryRows: React.ReactNode[] = [];
+    const summaryRows: React.ReactNode[] = []
 
     // Summary Header Row (A, P, N labels)
     summaryRows.push(
-        <Table.Row
+      <Table.Row
         key="summary-header"
         bg="white"
         borderTop="2px solid"
@@ -822,15 +829,12 @@ export function RosterGrid({
           </Table.Cell>
         ))}
       </Table.Row>,
-    );
+    )
 
     // Role Rows (RN, EN, HCA)
     STAFF_ROLES.forEach((role) => {
       summaryRows.push(
-        <Table.Row
-          key={`summary-${role}`}
-          bg="white"
-        >
+        <Table.Row key={`summary-${role}`} bg="white">
           <Table.Cell
             colSpan={1}
             fontWeight="semibold"
@@ -846,8 +850,8 @@ export function RosterGrid({
             {ROLE_LABEL[role]}
           </Table.Cell>
           {dayColumns.map((col) => {
-            const dateKey = moment(col.date).format("YYYY-MM-DD");
-            const dayCounts = shiftCounts.get(dateKey);
+            const dateKey = moment(col.date).format("YYYY-MM-DD")
+            const dayCounts = shiftCounts.get(dateKey)
 
             return (
               <Table.Cell
@@ -859,13 +863,13 @@ export function RosterGrid({
               >
                 <Flex>
                   {SHIFT_TYPES.map((shiftType) => {
-                    const count = dayCounts?.[role]?.[shiftType] ?? 0;
+                    const count = dayCounts?.[role]?.[shiftType] ?? 0
                     const style = getCellStyle(
                       count,
                       guidelines[role][shiftType].minimum,
                       isRosterGenerated,
                       guidelines[role][shiftType].maximum,
-                    );
+                    )
 
                     return (
                       <Flex
@@ -881,22 +885,19 @@ export function RosterGrid({
                       >
                         {count}
                       </Flex>
-                    );
+                    )
                   })}
                 </Flex>
               </Table.Cell>
-            );
+            )
           })}
         </Table.Row>,
-      );
-    });
+      )
+    })
 
     // Total Row
     summaryRows.push(
-      <Table.Row
-        key="summary-total"
-        bg="#ADD8E6"
-      >
+      <Table.Row key="summary-total" bg="#ADD8E6">
         <Table.Cell
           colSpan={1}
           fontWeight="bold"
@@ -912,7 +913,7 @@ export function RosterGrid({
           Total
         </Table.Cell>
         {dayColumns.map((col) => {
-          const dateKey = moment(col.date).format("YYYY-MM-DD");
+          const dateKey = moment(col.date).format("YYYY-MM-DD")
 
           return (
             <Table.Cell
@@ -925,7 +926,7 @@ export function RosterGrid({
             >
               <Flex>
                 {SHIFT_TYPES.map((shiftType) => {
-                  const total = getTotal(dateKey, shiftType);
+                  const total = getTotal(dateKey, shiftType)
                   return (
                     <Flex
                       key={shiftType}
@@ -939,38 +940,40 @@ export function RosterGrid({
                     >
                       {total}
                     </Flex>
-                  );
+                  )
                 })}
               </Flex>
             </Table.Cell>
-          );
+          )
         })}
       </Table.Row>,
-    );
+    )
 
-    return summaryRows;
-  }, [dayColumns, shiftCounts, guidelines, isRosterGenerated, getTotal, showSummary]);
+    return summaryRows
+  }, [dayColumns, shiftCounts, guidelines, isRosterGenerated, getTotal])
 
   const renderedRows = useMemo(() => {
-    const allRows: React.ReactNode[] = [];
+    const allRows: React.ReactNode[] = []
 
     Array.from(groupedData.entries()).forEach(([groupKey, rows]) => {
-      if (!rows.length) return;
-      const isCollapsed = collapsedGroups.has(groupKey);
+      if (!rows.length) return
+      const isCollapsed = collapsedGroups.has(groupKey)
       const sortedRows =
         groupKey === "SSN/SN"
           ? [...rows].sort((a, b) => {
-              const rankDelta = getSsnSnSortRank(a) - getSsnSnSortRank(b);
-              if (rankDelta !== 0) return rankDelta;
-              return (a.name ?? "").localeCompare(b.name ?? "");
+              const rankDelta = getSsnSnSortRank(a) - getSsnSnSortRank(b)
+              if (rankDelta !== 0) return rankDelta
+              return (a.name ?? "").localeCompare(b.name ?? "")
             })
           : groupKey === "EN/NA/HCA1/HCA2"
             ? [...rows].sort((a, b) => {
-                const rankDelta = getEnNaHcaSortRank(a) - getEnNaHcaSortRank(b);
-                if (rankDelta !== 0) return rankDelta;
-                return (a.name ?? "").localeCompare(b.name ?? "");
+                const rankDelta = getEnNaHcaSortRank(a) - getEnNaHcaSortRank(b)
+                if (rankDelta !== 0) return rankDelta
+                return (a.name ?? "").localeCompare(b.name ?? "")
               })
-            : [...rows].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+            : [...rows].sort((a, b) =>
+                (a.name ?? "").localeCompare(b.name ?? ""),
+              )
 
       // Group Header Row
       allRows.push(
@@ -994,7 +997,7 @@ export function RosterGrid({
             </HStack>
           </Table.Cell>
         </Table.Row>,
-      );
+      )
 
       // Data Rows
       if (!isCollapsed) {
@@ -1014,17 +1017,17 @@ export function RosterGrid({
               shiftDurationMap={shiftDurationMap}
               shiftTimeMap={shiftTimeMap}
             />,
-          );
-        });
+          )
+        })
       }
-    });
+    })
 
     // Insert summary rows at the bottom of the grid
     if (showSummary) {
-      allRows.push(...summaryRows);
+      allRows.push(...summaryRows)
     }
 
-    return allRows;
+    return allRows
   }, [
     groupedData,
     collapsedGroups,
@@ -1040,7 +1043,9 @@ export function RosterGrid({
     showSummary,
     summaryRows,
     totalCols,
-  ]);
+    shiftTimeMap,
+    showLongServiceSnIcon,
+  ])
 
   return (
     <Box position="relative" w="100%">
@@ -1156,7 +1161,7 @@ export function RosterGrid({
         </Box>
       )}
     </Box>
-  );
+  )
 }
 
-export default RosterGrid;
+export default RosterGrid

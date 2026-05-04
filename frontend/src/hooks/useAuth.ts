@@ -37,7 +37,8 @@ const isLoggedIn = () => {
 
 const useAuth = () => {
   const [error, setError] = useState<string | null>(null)
-  const [email2faChallenge, setEmail2faChallenge] = useState<Email2FAChallenge | null>(null)
+  const [email2faChallenge, setEmail2faChallenge] =
+    useState<Email2FAChallenge | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: user, isLoading: isUserLoading } = useQuery<
@@ -72,7 +73,8 @@ const useAuth = () => {
   }
 
   const completeLoginRedirect = async () => {
-    const currentUser = (await UsersService.readUserMe()) as unknown as CurrentUser
+    const currentUser =
+      (await UsersService.readUserMe()) as unknown as CurrentUser
     queryClient.setQueryData(["currentUser"], currentUser)
 
     if (currentUser.must_change_password) {
@@ -154,7 +156,6 @@ const useAuth = () => {
     setError(null)
   }
 
-  
   const logout = () => {
     // Cancel in-flight queries before removing the token to avoid 401s
     queryClient.cancelQueries()

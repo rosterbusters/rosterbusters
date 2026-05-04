@@ -1,29 +1,29 @@
-import { useMemo, type JSX, useState } from "react";
-import { Navigate, DateLocalizer } from "react-big-calendar";
-import { Grid, GridItem, VStack, Box } from "@chakra-ui/react";
-import { Event } from "@/models/Event";
-import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock";
-import { NMReviewLeaveRequest } from "./NMReviewLeaveRequest";
-import { NewLeaveRequest } from "./NewLeaveRequest";
-import moment from "moment";
+import { Box, Grid, GridItem, VStack } from "@chakra-ui/react"
+import moment from "moment"
+import { type JSX, useMemo, useState } from "react"
+import { type DateLocalizer, Navigate } from "react-big-calendar"
+import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock"
+import type { Event } from "@/models/Event"
+import { NewLeaveRequest } from "./NewLeaveRequest"
+import { NMReviewLeaveRequest } from "./NMReviewLeaveRequest"
 
 interface CustomMonthViewProps {
-  date: Date;
-  localizer: DateLocalizer;
-  events: Event[];
-  wardId?: number | null;
-  [key: string]: unknown;
+  date: Date
+  localizer: DateLocalizer
+  events: Event[]
+  wardId?: number | null
+  [key: string]: unknown
 }
 
 interface BlockedRange {
-  requestId: number;
-  startDate: string;
-  endDate: string;
+  requestId: number
+  startDate: string
+  endDate: string
 }
 
 interface CustomMonthViewComponent {
-  (props: CustomMonthViewProps): JSX.Element;
-  range: (date: Date, options: { localizer: DateLocalizer }) => Date[];
+  (props: CustomMonthViewProps): JSX.Element
+  range: (date: Date, options: { localizer: DateLocalizer }) => Date[]
   navigate: (
     date: Date,
     action:
@@ -31,31 +31,31 @@ interface CustomMonthViewComponent {
       | typeof Navigate.NEXT
       | typeof Navigate.DATE,
     options: { localizer: DateLocalizer },
-  ) => Date;
-  title: (date: Date, options: { localizer: DateLocalizer }) => string;
+  ) => Date
+  title: (date: Date, options: { localizer: DateLocalizer }) => string
 }
 
 function getEventsForDay(day: Date, events: Event[]): Event[] {
-  const dayStart = new Date(day);
-  dayStart.setHours(0, 0, 0, 0);
+  const dayStart = new Date(day)
+  dayStart.setHours(0, 0, 0, 0)
   return events.filter((ev) => {
-    const start = new Date(ev.start);
-    const end = new Date(ev.end);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-    return dayStart >= start && dayStart <= end;
-  });
+    const start = new Date(ev.start)
+    const end = new Date(ev.end)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+    return dayStart >= start && dayStart <= end
+  })
 }
 
 function groupByLeaveType(events: Event[]): Map<string, Event[]> {
-  const grouped = new Map<string, Event[]>();
+  const grouped = new Map<string, Event[]>()
   events.forEach((ev) => {
-    const key = ev.resource?.leaveType ?? ev.title;
-    const existing = grouped.get(key) ?? [];
-    existing.push(ev);
-    grouped.set(key, existing);
-  });
-  return grouped;
+    const key = ev.resource?.leaveType ?? ev.title
+    const existing = grouped.get(key) ?? []
+    existing.push(ev)
+    grouped.set(key, existing)
+  })
+  return grouped
 }
 
 function rangesOverlap(
@@ -64,25 +64,26 @@ function rangesOverlap(
   startB: string,
   endB: string,
 ): boolean {
-  const aStart = new Date(startA);
-  const aEnd = new Date(endA);
-  const bStart = new Date(startB);
-  const bEnd = new Date(endB);
-  return aStart <= bEnd && bStart <= aEnd;
+  const aStart = new Date(startA)
+  const aEnd = new Date(endA)
+  const bStart = new Date(startB)
+  const bEnd = new Date(endB)
+  return aStart <= bEnd && bStart <= aEnd
 }
 
 function getLeaveRequestsFromEvent(event: Event) {
-  const nestedRequests = event.resource?.requests;
+  const nestedRequests = event.resource?.requests
   if (Array.isArray(nestedRequests) && nestedRequests.length > 0) {
     return nestedRequests.map((request) => ({
       requestId: request.requestId,
       nurseName: request.nurseName ?? "",
-      leaveType: request.leaveType ?? event.resource?.leaveType ?? event.title ?? "",
+      leaveType:
+        request.leaveType ?? event.resource?.leaveType ?? event.title ?? "",
       startDate: request.startDate ?? event.resource?.startDate ?? "",
       endDate: request.endDate ?? event.resource?.endDate ?? "",
       status: request.status ?? event.resource?.status ?? "Pending",
       reason: request.reason ?? null,
-    }));
+    }))
   }
 
   return [
@@ -95,33 +96,31 @@ function getLeaveRequestsFromEvent(event: Event) {
       status: event.resource?.status ?? "Pending",
       reason: event.resource?.reason ?? null,
     },
-  ];
+  ]
 }
 
 function getBlockedRanges(events: Event[]): BlockedRange[] {
-  const uniqueRanges = new Map<number, BlockedRange>();
+  const uniqueRanges = new Map<number, BlockedRange>()
 
-  events
-    .flatMap(getLeaveRequestsFromEvent)
-    .forEach((request) => {
-      if (
-        request.requestId != null &&
-        request.startDate &&
-        request.endDate &&
-        !uniqueRanges.has(request.requestId)
-      ) {
-        uniqueRanges.set(request.requestId, {
-          requestId: request.requestId,
-          startDate: request.startDate,
-          endDate: request.endDate,
-        });
-      }
-    });
+  events.flatMap(getLeaveRequestsFromEvent).forEach((request) => {
+    if (
+      request.requestId != null &&
+      request.startDate &&
+      request.endDate &&
+      !uniqueRanges.has(request.requestId)
+    ) {
+      uniqueRanges.set(request.requestId, {
+        requestId: request.requestId,
+        startDate: request.startDate,
+        endDate: request.endDate,
+      })
+    }
+  })
 
-  return Array.from(uniqueRanges.values());
+  return Array.from(uniqueRanges.values())
 }
 
-const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
@@ -130,39 +129,39 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   wardId,
 }: CustomMonthViewProps) {
   const [selectedRequest, setSelectedRequest] = useState<{
-    requestId: number;
-    nurseName: string;
-    leaveType: string;
-    startDate: string;
-    endDate: string;
-    status: string;
+    requestId: number
+    nurseName: string
+    leaveType: string
+    startDate: string
+    endDate: string
+    status: string
     requests?: Array<{
-      requestId: number;
-      nurseName: string;
-      leaveType: string;
-      startDate: string;
-      endDate: string;
-      status: string;
-    }>;
-  } | null>(null);
-  const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null);
+      requestId: number
+      nurseName: string
+      leaveType: string
+      startDate: string
+      endDate: string
+      status: string
+    }>
+  } | null>(null)
+  const [newLeaveDate, setNewLeaveDate] = useState<Date | null>(null)
 
   const currRange = useMemo(
     () => CustomMonthView.range(date, { localizer }),
     [date, localizer],
-  );
+  )
 
   const weeks = useMemo(() => {
-    const result: Date[][] = [];
+    const result: Date[][] = []
     for (let i = 0; i < currRange.length; i += 7) {
-      result.push(currRange.slice(i, i + 7));
+      result.push(currRange.slice(i, i + 7))
     }
-    return result;
-  }, [currRange]);
+    return result
+  }, [currRange])
 
-  const blockedRanges = useMemo(() => getBlockedRanges(events), [events]);
+  const blockedRanges = useMemo(() => getBlockedRanges(events), [events])
 
-  const currentMonth = moment(date).month();
+  const currentMonth = moment(date).month()
 
   return (
     <>
@@ -196,20 +195,30 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
             templateColumns="repeat(7, 1fr)"
           >
             {week.map((day, di) => {
-              const eventsForDay = getEventsForDay(day, events);
-              const grouped = groupByLeaveType(eventsForDay);
-              const isCurrentMonth = moment(day).month() === currentMonth;
-              const isToday = moment(day).isSame(moment(), "day");
-              const isPastDate = moment(day).startOf("day").isBefore(moment().startOf("day"));
-              const dateKey = moment(day).format("YYYY-MM-DD");
+              const eventsForDay = getEventsForDay(day, events)
+              const grouped = groupByLeaveType(eventsForDay)
+              const isCurrentMonth = moment(day).month() === currentMonth
+              const isToday = moment(day).isSame(moment(), "day")
+              const isPastDate = moment(day)
+                .startOf("day")
+                .isBefore(moment().startOf("day"))
+              const dateKey = moment(day).format("YYYY-MM-DD")
 
               return (
                 <GridItem
                   key={di}
                   data-testid={`leave-request-calendar-cell-${dateKey}`}
-                  bg={isToday ? "menuactive" : isPastDate ? "gray.100" : "white"}
+                  bg={
+                    isToday ? "menuactive" : isPastDate ? "gray.100" : "white"
+                  }
                   textAlign="start"
-                  color={isPastDate ? "gray.500" : isCurrentMonth ? "foreground" : "gray.400"}
+                  color={
+                    isPastDate
+                      ? "gray.500"
+                      : isCurrentMonth
+                        ? "foreground"
+                        : "gray.400"
+                  }
                   p={2}
                   minH="120px"
                   borderColor="border"
@@ -217,31 +226,39 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                   cursor={isPastDate ? "default" : "pointer"}
                   opacity={isPastDate ? 0.7 : 1}
                   onClick={() => {
-                    if (isPastDate) return;
-                    setNewLeaveDate(day);
+                    if (isPastDate) return
+                    setNewLeaveDate(day)
                   }}
                 >
                   {localizer.format(day, "D")}
                   <Box mt={2}>
                     {Array.from(grouped.entries())
                       .sort(([, a], [, b]) => {
-                        const aOwn = a.some((event) => event.resource?.isOwn);
-                        const bOwn = b.some((event) => event.resource?.isOwn);
-                        return (bOwn ? 1 : 0) - (aOwn ? 1 : 0);
+                        const aOwn = a.some((event) => event.resource?.isOwn)
+                        const bOwn = b.some((event) => event.resource?.isOwn)
+                        return (bOwn ? 1 : 0) - (aOwn ? 1 : 0)
                       })
                       .map(([leaveType, groupEvents]) => {
-                        const isOwn = groupEvents.some((event) => event.resource?.isOwn);
-                        const requests = groupEvents.flatMap(getLeaveRequestsFromEvent);
-                        const nurseStatuses = requests.map((r) => ({
-                          name: r.nurseName,
-                          status: r.status,
-                          reason: r.reason ?? null,
-                        })).filter((n) => n.name);
-                        const nurseNames = nurseStatuses.map((n) => n.name).join(", ");
-                        const leadRequest = requests[0];
+                        const isOwn = groupEvents.some(
+                          (event) => event.resource?.isOwn,
+                        )
+                        const requests = groupEvents.flatMap(
+                          getLeaveRequestsFromEvent,
+                        )
+                        const nurseStatuses = requests
+                          .map((r) => ({
+                            name: r.nurseName,
+                            status: r.status,
+                            reason: r.reason ?? null,
+                          }))
+                          .filter((n) => n.name)
+                        const nurseNames = nurseStatuses
+                          .map((n) => n.name)
+                          .join(", ")
+                        const leadRequest = requests[0]
 
                         if (!leadRequest) {
-                          return null;
+                          return null
                         }
 
                         return (
@@ -270,14 +287,15 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                                         event.requestId != null &&
                                         event.startDate &&
                                         event.endDate &&
-                                        event.leaveType === leadRequest.leaveType &&
+                                        event.leaveType ===
+                                          leadRequest.leaveType &&
                                         rangesOverlap(
                                           leadRequest.startDate,
                                           leadRequest.endDate,
                                           event.startDate,
                                           event.endDate,
                                         ),
-                                    );
+                                    )
 
                                   return {
                                     requestId: leadRequest.requestId,
@@ -286,17 +304,20 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                                     endDate: leadRequest.endDate,
                                     nurseName: leadRequest.nurseName,
                                     status: leadRequest.status,
-                                    requests: overlapping.length > 0 ? overlapping : requests,
-                                  };
+                                    requests:
+                                      overlapping.length > 0
+                                        ? overlapping
+                                        : requests,
+                                  }
                                 })
                               }
                             />
                           </Box>
-                        );
+                        )
                       })}
                   </Box>
                 </GridItem>
-              );
+              )
             })}
           </Grid>
         ))}
@@ -325,23 +346,23 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         blockedRanges={blockedRanges}
       />
     </>
-  );
-};
+  )
+}
 
 CustomMonthView.range = (
   date: Date,
   { localizer }: { localizer: DateLocalizer },
 ): Date[] => {
-  const start = moment(date).startOf("month").startOf("week").toDate();
-  const end = moment(date).endOf("month").endOf("week").toDate();
-  const range: Date[] = [];
-  let current = start;
+  const start = moment(date).startOf("month").startOf("week").toDate()
+  const end = moment(date).endOf("month").endOf("week").toDate()
+  const range: Date[] = []
+  let current = start
   while (localizer.lte(current, end, "day")) {
-    range.push(current);
-    current = localizer.add(current, 1, "day");
+    range.push(current)
+    current = localizer.add(current, 1, "day")
   }
-  return range;
-};
+  return range
+}
 
 CustomMonthView.navigate = (
   date: Date,
@@ -352,16 +373,16 @@ CustomMonthView.navigate = (
 ): Date => {
   switch (action) {
     case Navigate.PREVIOUS:
-      return moment(date).subtract(1, "month").toDate();
+      return moment(date).subtract(1, "month").toDate()
     case Navigate.NEXT:
-      return moment(date).add(1, "month").toDate();
+      return moment(date).add(1, "month").toDate()
     default:
-      return date;
+      return date
   }
-};
+}
 
 CustomMonthView.title = (date: Date): string => {
-  return moment(date).format("MMMM YYYY");
-};
+  return moment(date).format("MMMM YYYY")
+}
 
-export default CustomMonthView;
+export default CustomMonthView

@@ -1,7 +1,16 @@
 import { defineSlotRecipe } from "@chakra-ui/react"
 
 export const tableRecipe = defineSlotRecipe({
-  slots: ["root", "header", "body", "row", "cell", "columnHeader", "caption", "footer"],
+  slots: [
+    "root",
+    "header",
+    "body",
+    "row",
+    "cell",
+    "columnHeader",
+    "caption",
+    "footer",
+  ],
   base: {
     root: {
       width: "full",

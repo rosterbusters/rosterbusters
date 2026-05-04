@@ -1,20 +1,26 @@
-import { Text, Spinner, Stack } from "@chakra-ui/react";
-import { useQuery } from "@tanstack/react-query";
-import { HomeService } from "@/client";
+import { Spinner, Stack, Text } from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import { HomeService } from "@/client"
 
 export default function StatusBanner() {
-  const { data: shiftData, isLoading, error } = useQuery({
+  const {
+    data: shiftData,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["upcomingShift"],
     queryFn: () => HomeService.getUpcomingShift(),
-  });
+  })
 
   if (isLoading) {
     return (
       <Stack alignItems="center" justifyContent="center" py={4}>
         <Spinner size="lg" color="primary" />
-        <Text color="foreground" fontSize="md">Loading shift information...</Text>
+        <Text color="foreground" fontSize="md">
+          Loading shift information...
+        </Text>
       </Stack>
-    );
+    )
   }
 
   if (error) {
@@ -22,7 +28,7 @@ export default function StatusBanner() {
       <Text fontSize="2xl" color="foreground" fontWeight="semibold">
         Unable to load shift information. Please try again later.
       </Text>
-    );
+    )
   }
 
   return (
@@ -34,22 +40,22 @@ export default function StatusBanner() {
           {shiftData?.nurse_name || "User"},
         </Text>
       </Text>
-      
+
       {shiftData?.has_shift ? (
         <Text fontSize="2xl" color="foreground" fontWeight="semibold">
           You have an upcoming{" "}
           <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
             {shiftData.shift_type}
-          </Text>
-          {" "} from{" "}
+          </Text>{" "}
+          from{" "}
           <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
             {shiftData.start_time}
-          </Text>
-          {" "}to{" "}
+          </Text>{" "}
+          to{" "}
           <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
             {shiftData.end_time}
-          </Text>
-          {" "}on{" "}
+          </Text>{" "}
+          on{" "}
           <Text as="span" fontSize="2xl" fontWeight="semibold" color="primary">
             {shiftData.shift_day}, {shiftData.formatted_date}.
           </Text>
@@ -60,5 +66,5 @@ export default function StatusBanner() {
         </Text>
       )}
     </>
-  );
+  )
 }

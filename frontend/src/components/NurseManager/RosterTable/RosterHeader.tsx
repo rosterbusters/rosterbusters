@@ -1,35 +1,35 @@
 import {
-  Box,
-  Flex,
-  Text,
-  Button,
   Badge,
-  HStack,
-  Select,
-  Portal,
+  Box,
+  Button,
   createListCollection,
-} from "@chakra-ui/react";
-import { useMemo } from "react";
-import { ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
-import moment from "moment";
-import { Ward } from "@/client";
-import type { RosterPeriod, ViewMode } from "./types";
+  Flex,
+  HStack,
+  Portal,
+  Select,
+  Text,
+} from "@chakra-ui/react"
+import { ChevronLeft, ChevronRight, Download, Eye } from "lucide-react"
+import moment from "moment"
+import { useMemo } from "react"
+import type { Ward } from "@/client"
+import type { RosterPeriod, ViewMode } from "./types"
 
 interface RosterHeaderProps {
-  currentStartDate: Date;
-  viewMode: ViewMode;
-  selectedWard: Ward | null;
-  selectedPeriod: RosterPeriod | null;
-  currentPeriod: RosterPeriod | null;
-  upcomingPeriod: RosterPeriod | null;
-  wards: Ward[];
-  periods: RosterPeriod[];
-  onDateChange: (date: Date) => void;
-  onViewModeChange: (mode: ViewMode) => void;
-  onWardChange: (ward: Ward) => void;
-  onPeriodChange: (period: RosterPeriod) => void;
-  onExportCSV: () => void;
-  onViewEditHistory: () => void;
+  currentStartDate: Date
+  viewMode: ViewMode
+  selectedWard: Ward | null
+  selectedPeriod: RosterPeriod | null
+  currentPeriod: RosterPeriod | null
+  upcomingPeriod: RosterPeriod | null
+  wards: Ward[]
+  periods: RosterPeriod[]
+  onDateChange: (date: Date) => void
+  onViewModeChange: (mode: ViewMode) => void
+  onWardChange: (ward: Ward) => void
+  onPeriodChange: (period: RosterPeriod) => void
+  onExportCSV: () => void
+  onViewEditHistory: () => void
 }
 
 export function RosterHeader({
@@ -51,94 +51,104 @@ export function RosterHeader({
   const endDate = moment(currentStartDate).add(
     viewMode === "week" ? 6 : 13,
     "days",
-  );
-  const today = moment().startOf("day");
-  const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
-  const currentPeriodId = currentPeriod?.periodId ?? null;
-  const upcomingPeriodId = upcomingPeriod?.periodId ?? null;
-  const earliestPeriodStartDate = periods.length > 0 ? periods[periods.length - 1]?.startDate ?? null : null;
-  const navigationEndDate = upcomingPeriod?.endDate ?? currentPeriod?.endDate ?? null;
+  )
+  const _today = moment().startOf("day")
+  const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`
+  const currentPeriodId = currentPeriod?.periodId ?? null
+  const upcomingPeriodId = upcomingPeriod?.periodId ?? null
+  const earliestPeriodStartDate =
+    periods.length > 0 ? (periods[periods.length - 1]?.startDate ?? null) : null
+  const navigationEndDate =
+    upcomingPeriod?.endDate ?? currentPeriod?.endDate ?? null
   const canGoBack = useMemo(() => {
     if (!earliestPeriodStartDate) {
-      return true;
+      return true
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const previousStart = moment(currentStartDate).subtract(days, "days").startOf("day");
+    const days = viewMode === "week" ? 7 : 14
+    const previousStart = moment(currentStartDate)
+      .subtract(days, "days")
+      .startOf("day")
 
-    return previousStart.isSameOrAfter(moment(earliestPeriodStartDate).startOf("day"));
-  }, [currentStartDate, earliestPeriodStartDate, viewMode]);
+    return previousStart.isSameOrAfter(
+      moment(earliestPeriodStartDate).startOf("day"),
+    )
+  }, [currentStartDate, earliestPeriodStartDate, viewMode])
   const canGoNext = useMemo(() => {
     if (!navigationEndDate) {
-      return true;
+      return true
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const nextStart = moment(currentStartDate).add(days, "days").startOf("day");
+    const days = viewMode === "week" ? 7 : 14
+    const nextStart = moment(currentStartDate).add(days, "days").startOf("day")
     const latestAllowedStart = moment(navigationEndDate)
       .subtract(days - 1, "days")
-      .startOf("day");
+      .startOf("day")
 
-    return nextStart.isSameOrBefore(latestAllowedStart);
-  }, [currentStartDate, navigationEndDate, viewMode]);
+    return nextStart.isSameOrBefore(latestAllowedStart)
+  }, [currentStartDate, navigationEndDate, viewMode])
 
   const getPeriodFlag = (period: RosterPeriod) => {
-    if (period.periodId === currentPeriodId) return "Current";
-    if (period.periodId === upcomingPeriodId) return "Upcoming";
-    return null;
-  };
+    if (period.periodId === currentPeriodId) return "Current"
+    if (period.periodId === upcomingPeriodId) return "Upcoming"
+    return null
+  }
 
   const renderPeriodLabel = (period: RosterPeriod) => {
-    const flag = getPeriodFlag(period);
+    const flag = getPeriodFlag(period)
     return (
       <HStack gap={2} minW={0} flexWrap="nowrap">
         <Text whiteSpace="nowrap">{period.name}</Text>
         {flag ? (
-          <Badge variant={(flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any}>
+          <Badge
+            variant={
+              (flag === "Current" ? "currentPeriod" : "upcomingPeriod") as any
+            }
+          >
             {flag}
           </Badge>
         ) : null}
       </HStack>
-    );
-  };
+    )
+  }
 
   const wardCollection = createListCollection({
     items: wards,
     itemToString: (ward: Ward) => ward.wardname,
     itemToValue: (ward: Ward) => String(ward.wardid),
-  });
+  })
 
   const periodCollection = createListCollection({
     items: periods,
     itemToString: (period: RosterPeriod) => {
-      const flag = getPeriodFlag(period);
-      return flag ? `${period.name} ${flag}` : period.name;
+      const flag = getPeriodFlag(period)
+      return flag ? `${period.name} ${flag}` : period.name
     },
     itemToValue: (period: RosterPeriod) => String(period.periodId),
-  });
+  })
 
   const handleToday = () => {
     const targetDate = currentPeriod?.startDate
       ? moment(currentPeriod.startDate).toDate()
-      : moment().startOf("isoWeek").toDate();
-    onDateChange(targetDate);
-  };
+      : moment().startOf("isoWeek").toDate()
+    onDateChange(targetDate)
+  }
 
   const handleBack = () => {
     if (!canGoBack) {
-      return;
+      return
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const newDate = moment(currentStartDate).subtract(days, "days").toDate();
-    onDateChange(newDate);
-  };
+    const days = viewMode === "week" ? 7 : 14
+    const newDate = moment(currentStartDate).subtract(days, "days").toDate()
+    onDateChange(newDate)
+  }
 
   const handleNext = () => {
     if (!canGoNext) {
-      return;
+      return
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const newDate = moment(currentStartDate).add(days, "days").toDate();
-    onDateChange(newDate);
-  };
+    const days = viewMode === "week" ? 7 : 14
+    const newDate = moment(currentStartDate).add(days, "days").toDate()
+    onDateChange(newDate)
+  }
 
   return (
     <Box w="full">
@@ -185,8 +195,8 @@ export function RosterHeader({
             onValueChange={(details) => {
               const ward = wards.find(
                 (w) => String(w.wardid) === details.value[0],
-              );
-              if (ward) onWardChange(ward);
+              )
+              if (ward) onWardChange(ward)
             }}
           >
             <Select.HiddenSelect />
@@ -214,7 +224,13 @@ export function RosterHeader({
       </Flex>
 
       {/* Bottom Row: Navigation Controls + Filters + Actions */}
-      <Flex justify="space-between" align="center" flexWrap="wrap" gap={3} position="relative">
+      <Flex
+        justify="space-between"
+        align="center"
+        flexWrap="wrap"
+        gap={3}
+        position="relative"
+      >
         {/* Left Section: Date Navigation */}
         <HStack gap={2}>
           <Button
@@ -258,7 +274,13 @@ export function RosterHeader({
         </HStack>
 
         {/* Center Section: Roster Period Dropdown */}
-        <HStack gap={2} position="absolute" left="50%" top="50%" transform="translate(-50%, -50%)">
+        <HStack
+          gap={2}
+          position="absolute"
+          left="50%"
+          top="50%"
+          transform="translate(-50%, -50%)"
+        >
           <Text fontSize="sm" color="foreground" fontWeight="medium">
             Roster Period:
           </Text>
@@ -271,8 +293,8 @@ export function RosterHeader({
             onValueChange={(details) => {
               const period = periods.find(
                 (p) => String(p.periodId) === details.value[0],
-              );
-              if (period) onPeriodChange(period);
+              )
+              if (period) onPeriodChange(period)
             }}
           >
             <Select.HiddenSelect />
@@ -344,18 +366,14 @@ export function RosterHeader({
           </HStack>
 
           {/* Export Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onExportCSV}
-          >
+          <Button size="sm" variant="outline" onClick={onExportCSV}>
             <Download />
             Export to Excel
           </Button>
         </HStack>
       </Flex>
     </Box>
-  );
+  )
 }
 
-export default RosterHeader;
+export default RosterHeader

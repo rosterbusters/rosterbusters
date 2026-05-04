@@ -1,39 +1,37 @@
-import { useState, useEffect, useMemo } from "react";
 import {
+  Badge,
   Box,
   Button,
   CloseButton,
   createListCollection,
   Dialog,
+  HStack,
   Portal,
   Select,
-  Badge,
   Text,
   Textarea,
   VStack,
-  HStack,
-} from "@chakra-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-
-import { DatePickerDemo } from "@/components/Common/DatePicker";
-import moment from "moment";
+} from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Trash2 } from "lucide-react"
+import moment from "moment"
+import { useEffect, useMemo, useState } from "react"
+import { type ShiftRequestCreate, ShiftRequestsService } from "@/client"
+import type { NursePublic } from "@/client/types.gen"
+import { DatePickerDemo } from "@/components/Common/DatePicker"
 import {
-  useRosterPeriodWindow,
   useRosterPeriods,
-} from "@/components/NurseManager/RosterTable/useRosterData";
-import { ShiftRequestsService, type ShiftRequestCreate } from "@/client";
-import type { NursePublic } from "@/client/types.gen";
-import { Trash2 } from "lucide-react";
+  useRosterPeriodWindow,
+} from "@/components/NurseManager/RosterTable/useRosterData"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 
-
-const MAX_REQUESTS = 3;
+const MAX_REQUESTS = 3
 
 interface NewShiftRequestProps {
-  isOpen: boolean;
-  onClose: () => void;
-  selectedDate?: Date | null;
-  wardId?: number | null;
+  isOpen: boolean
+  onClose: () => void
+  selectedDate?: Date | null
+  wardId?: number | null
 }
 
 export const NewShiftRequest = ({
@@ -42,16 +40,16 @@ export const NewShiftRequest = ({
   selectedDate,
   wardId,
 }: NewShiftRequestProps) => {
-  const [selectedNurse, setSelectedNurse] = useState<string[]>([]);
-  const [shiftType, setShiftType] = useState<string[]>([]);
-  const [localComment, setLocalComment] = useState("");
+  const [selectedNurse, setSelectedNurse] = useState<string[]>([])
+  const [shiftType, setShiftType] = useState<string[]>([])
+  const [localComment, setLocalComment] = useState("")
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     selectedDate ?? undefined,
-  );
-  const queryClient = useQueryClient();
+  )
+  const queryClient = useQueryClient()
 
-  const { data: periodWindow } = useRosterPeriodWindow();
-  const { data: periods = [] } = useRosterPeriods();
+  const { data: periodWindow } = useRosterPeriodWindow()
+  const { data: periods = [] } = useRosterPeriods()
   const activePeriod = useMemo(() => {
     if (requestDate) {
       const matchingPeriod = periods.find((period) =>
@@ -61,25 +59,37 @@ export const NewShiftRequest = ({
           "day",
           "[]",
         ),
-      );
+      )
 
       if (matchingPeriod) {
-        return matchingPeriod;
+        return matchingPeriod
       }
     }
 
-    return periodWindow?.requestOpenPeriod ?? periodWindow?.currentPeriod ?? null;
-  }, [periodWindow?.currentPeriod, periodWindow?.requestOpenPeriod, periods, requestDate]);
+    return (
+      periodWindow?.requestOpenPeriod ?? periodWindow?.currentPeriod ?? null
+    )
+  }, [
+    periodWindow?.currentPeriod,
+    periodWindow?.requestOpenPeriod,
+    periods,
+    requestDate,
+  ])
 
   const { data: wardNurses = [] } = useQuery<NursePublic[]>({
     queryKey: ["ward-nurses", wardId],
     queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 5 * 60 * 1000,
-  });
+  })
 
   const { data: wardRequests = [] } = useQuery({
-    queryKey: ["shift-requests", "ward", wardId, activePeriod?.periodId ?? null],
+    queryKey: [
+      "shift-requests",
+      "ward",
+      wardId,
+      activePeriod?.periodId ?? null,
+    ],
     queryFn: () =>
       ShiftRequestsService.getShiftRequestsByWard({
         wardId: wardId!,
@@ -87,7 +97,7 @@ export const NewShiftRequest = ({
       }),
     enabled: !!wardId && !!activePeriod?.periodId,
     staleTime: 0,
-  });
+  })
 
   const { data: shiftCodes } = useQuery({
     queryKey: ["shift-codes", wardId ?? "default"],
@@ -95,21 +105,21 @@ export const NewShiftRequest = ({
       wardId != null
         ? ShiftRequestsService.getShiftCodesByWard({ wardId })
         : ShiftRequestsService.getAllShiftCodes(),
-  });
+  })
 
-  const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
+  const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes])
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
         items: requestableShiftCodes.map((sc) => ({
-            value: sc.shiftcode,
-            label: sc.shiftcode,
-            description: sc.description,
-          })),
+          value: sc.shiftcode,
+          label: sc.shiftcode,
+          description: sc.description,
+        })),
       }),
     [requestableShiftCodes],
-  );
+  )
 
   const nurseCollection = useMemo(
     () =>
@@ -121,75 +131,81 @@ export const NewShiftRequest = ({
         })),
       }),
     [wardNurses],
-  );
+  )
 
   const wardShiftCodeSet = useMemo(
     () => new Set((requestableShiftCodes ?? []).map((code) => code.shiftcode)),
     [requestableShiftCodes],
-  );
+  )
 
-  const selectedNurseId = selectedNurse.length > 0 ? Number(selectedNurse[0]) : null;
+  const selectedNurseId =
+    selectedNurse.length > 0 ? Number(selectedNurse[0]) : null
   const selectedNurseRecord =
     selectedNurseId == null
       ? null
-      : wardNurses.find((nurse) => nurse.nurseid === selectedNurseId) ?? null;
+      : (wardNurses.find((nurse) => nurse.nurseid === selectedNurseId) ?? null)
   const selectedNurseRequestCount =
     activePeriod && selectedNurseId != null
       ? wardRequests.filter(
           (request) =>
             request.nurseid === selectedNurseId &&
             request.periodid === activePeriod.periodId &&
-              wardShiftCodeSet.has(request.preferredshifttype),
+            wardShiftCodeSet.has(request.preferredshifttype),
         ).length
-      : 0;
+      : 0
 
   const mutation = useMutation({
     mutationFn: (data: ShiftRequestCreate) =>
       ShiftRequestsService.createShiftRequest({ requestBody: data }),
     onSuccess: async () => {
-      showSuccessToast("Shift request created!");
+      showSuccessToast("Shift request created!")
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["shift-requests"] }),
         queryClient.invalidateQueries({
-          queryKey: ["shift-requests", "ward", wardId, activePeriod?.periodId ?? null],
+          queryKey: [
+            "shift-requests",
+            "ward",
+            wardId,
+            activePeriod?.periodId ?? null,
+          ],
         }),
         queryClient.invalidateQueries({
           queryKey: ["shift-requests", "ward", wardId],
         }),
-      ]);
-      onClose();
+      ])
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to create request");
+      const detail = (error as any)?.body?.detail
+      showErrorToast(detail || "Failed to create request")
     },
-  });
-  
+  })
+
   useEffect(() => {
     if (isOpen) {
-      setRequestDate(selectedDate ?? undefined);
-      setShiftType([]);
-      setSelectedNurse([]);
-      setLocalComment("");
+      setRequestDate(selectedDate ?? undefined)
+      setShiftType([])
+      setSelectedNurse([])
+      setLocalComment("")
     }
-  }, [isOpen, selectedDate]);
+  }, [isOpen, selectedDate])
 
   const handleSubmit = () => {
     if (!activePeriod) {
-      showErrorToast("There is no open request period available.");
-      return;
+      showErrorToast("There is no open request period available.")
+      return
     }
     if (selectedNurseId == null) {
-      showErrorToast("Please select a nurse.");
-      return;
+      showErrorToast("Please select a nurse.")
+      return
     }
     if (shiftType.length === 0) {
-      showErrorToast("Please select a shift type.");
-      return;
+      showErrorToast("Please select a shift type.")
+      return
     }
     if (!requestDate) {
-      showErrorToast("Please select a date.");
-      return;
+      showErrorToast("Please select a date.")
+      return
     }
 
     mutation.mutate({
@@ -198,8 +214,8 @@ export const NewShiftRequest = ({
       preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
       preferredshifttype: shiftType[0],
       reason: localComment.trim() || undefined,
-    });
-  };
+    })
+  }
 
   return (
     <Dialog.Root
@@ -259,7 +275,8 @@ export const NewShiftRequest = ({
                       Assignable:
                     </Text>
                     <Badge variant="requests">
-                      Requests: {MAX_REQUESTS - selectedNurseRequestCount}/{MAX_REQUESTS}
+                      Requests: {MAX_REQUESTS - selectedNurseRequestCount}/
+                      {MAX_REQUESTS}
                     </Badge>
                   </HStack>
                 ) : null}
@@ -361,5 +378,5 @@ export const NewShiftRequest = ({
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
-  );
-};
+  )
+}
