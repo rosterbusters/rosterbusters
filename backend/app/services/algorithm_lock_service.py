@@ -7,10 +7,15 @@ from redis import Redis
 from app.core.config import settings
 
 ALGORITHM_LOCK_TTL_SECONDS = 60 * 60 * 2
+ROSTER_PERIOD_NOTIFICATION_LOCK_TTL_SECONDS = 60 * 5
 
 
 def _ward_lock_key(ward_id: int) -> str:
     return f"roster:algorithm-lock:ward:{ward_id}"
+
+
+def _roster_period_notification_lock_key() -> str:
+    return "roster:notification-lock:period-window"
 
 
 @lru_cache(maxsize=1)
@@ -41,6 +46,37 @@ def refresh_ward_algorithm_lock(ward_id: int, owner_id: str) -> bool:
 def release_ward_algorithm_lock(ward_id: int, owner_id: str) -> bool:
     redis_client = _get_redis_client()
     lock_key = _ward_lock_key(ward_id)
+    with redis_client.pipeline() as pipeline:
+        while True:
+            try:
+                pipeline.watch(lock_key)
+                current_owner = pipeline.get(lock_key)
+                if current_owner != owner_id:
+                    pipeline.unwatch()
+                    return False
+                pipeline.multi()
+                pipeline.delete(lock_key)
+                pipeline.execute()
+                return True
+            except Exception:
+                pipeline.reset()
+                raise
+
+
+def acquire_roster_period_notification_lock(owner_id: str) -> bool:
+    return bool(
+        _get_redis_client().set(
+            _roster_period_notification_lock_key(),
+            owner_id,
+            nx=True,
+            ex=ROSTER_PERIOD_NOTIFICATION_LOCK_TTL_SECONDS,
+        )
+    )
+
+
+def release_roster_period_notification_lock(owner_id: str) -> bool:
+    redis_client = _get_redis_client()
+    lock_key = _roster_period_notification_lock_key()
     with redis_client.pipeline() as pipeline:
         while True:
             try:

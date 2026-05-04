@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
 import {
+  Badge,
   Box,
   Button,
   CloseButton,
@@ -7,61 +7,61 @@ import {
   Dialog,
   Portal,
   Select,
-  Badge,
   Text,
   Textarea,
   VStack,
-} from "@chakra-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
-import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
-import { LeaveRequestsService } from "@/client";
-import { Trash2 } from "lucide-react";
-import type { DateRange, Matcher } from "react-day-picker";
+} from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Trash2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import type { DateRange, Matcher } from "react-day-picker"
+import { LeaveRequestsService } from "@/client"
+import { DatePickerDemo } from "@/components/Common/DatePicker"
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
+import { Tooltip } from "@/components/ui/tooltip"
 
 function parseRequestDate(value: string) {
-  const normalized = value.split("–")[0]?.trim() ?? value;
-  const [day, month, year] = normalized.split("/");
+  const normalized = value.split("–")[0]?.trim() ?? value
+  const [day, month, year] = normalized.split("/")
   if (day && month && year) {
-    return new Date(Number(year), Number(month) - 1, Number(day));
+    return new Date(Number(year), Number(month) - 1, Number(day))
   }
-  return new Date(normalized);
+  return new Date(normalized)
 }
 
 interface LeaveRequestOption {
-  requestId: number;
-  nurseName: string;
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  status: string;
+  requestId: number
+  nurseName: string
+  leaveType: string
+  startDate: string
+  endDate: string
+  status: string
 }
 
 interface NMReviewLeaveRequestProps {
-  isOpen: boolean;
-  onClose: () => void;
-  requestId: number;
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  nurseName: string;
-  currentStatus: string;
-  requests?: LeaveRequestOption[];
+  isOpen: boolean
+  onClose: () => void
+  requestId: number
+  leaveType: string
+  startDate: string
+  endDate: string
+  nurseName: string
+  currentStatus: string
+  requests?: LeaveRequestOption[]
   blockedRanges?: Array<{
-    requestId: number;
-    startDate: string;
-    endDate: string;
-  }>;
+    requestId: number
+    startDate: string
+    endDate: string
+  }>
 }
 
 function toLocalDate(value: string) {
-  const [year, month, day] = value.split("-");
+  const [year, month, day] = value.split("-")
   if (year && month && day) {
-    return new Date(Number(year), Number(month) - 1, Number(day));
+    return new Date(Number(year), Number(month) - 1, Number(day))
   }
-  return new Date(value);
+  return new Date(value)
 }
 
 export const NMReviewLeaveRequest = ({
@@ -90,26 +90,36 @@ export const NMReviewLeaveRequest = ({
               status: currentStatus,
             },
           ],
-    [currentStatus, endDate, leaveType, nurseName, requestId, requests, startDate],
-  );
+    [
+      currentStatus,
+      endDate,
+      leaveType,
+      nurseName,
+      requestId,
+      requests,
+      startDate,
+    ],
+  )
 
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0];
+  const [selectedIdx, setSelectedIdx] = useState(0)
+  const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0]
   const [selectedLeaveType, setSelectedLeaveType] = useState<string[]>([
     activeRequest?.leaveType ?? leaveType,
-  ]);
-  const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>({
+  ])
+  const [requestDateRange, setRequestDateRange] = useState<
+    DateRange | undefined
+  >({
     from: parseRequestDate(activeRequest?.startDate ?? startDate),
     to: parseRequestDate(activeRequest?.endDate ?? endDate),
-  });
-  const [localComment, setLocalComment] = useState("");
-  const queryClient = useQueryClient();
+  })
+  const [localComment, setLocalComment] = useState("")
+  const queryClient = useQueryClient()
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
     queryFn: () => LeaveRequestsService.getLeaveCodes(),
     staleTime: 5 * 60 * 1000,
-  });
+  })
 
   const leaveCollection = useMemo(
     () =>
@@ -121,7 +131,7 @@ export const NMReviewLeaveRequest = ({
         })),
       }),
     [leaveCodes],
-  );
+  )
 
   const nurseCollection = useMemo(
     () =>
@@ -132,7 +142,7 @@ export const NMReviewLeaveRequest = ({
         })),
       }),
     [requestOptions],
-  );
+  )
 
   const disabledDates = useMemo<Matcher[]>(
     () => [
@@ -145,94 +155,100 @@ export const NMReviewLeaveRequest = ({
         })),
     ],
     [activeRequest?.requestId, blockedRanges],
-  );
+  )
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return
 
-    setSelectedIdx(0);
-    setSelectedLeaveType([requestOptions[0]?.leaveType ?? leaveType]);
+    setSelectedIdx(0)
+    setSelectedLeaveType([requestOptions[0]?.leaveType ?? leaveType])
     setRequestDateRange({
       from: parseRequestDate(requestOptions[0]?.startDate ?? startDate),
       to: parseRequestDate(requestOptions[0]?.endDate ?? endDate),
-    });
-    setLocalComment("");
-  }, [endDate, isOpen, leaveType, requestOptions, startDate]);
+    })
+    setLocalComment("")
+  }, [endDate, isOpen, leaveType, requestOptions, startDate])
 
   useEffect(() => {
-    if (!activeRequest) return;
+    if (!activeRequest) return
 
-    setSelectedLeaveType([activeRequest.leaveType]);
+    setSelectedLeaveType([activeRequest.leaveType])
     setRequestDateRange({
       from: parseRequestDate(activeRequest.startDate),
       to: parseRequestDate(activeRequest.endDate),
-    });
-    setLocalComment("");
-  }, [activeRequest]);
+    })
+    setLocalComment("")
+  }, [activeRequest])
 
   useEffect(() => {
     if (isOpen) {
-      return;
+      return
     }
 
-    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
-    return () => window.clearTimeout(timeoutId);
-  }, [isOpen]);
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
+    return () => window.clearTimeout(timeoutId)
+  }, [isOpen])
 
   useEffect(
     () => () => {
-      window.setTimeout(cleanupOrphanedDialogState, 0);
+      window.setTimeout(cleanupOrphanedDialogState, 0)
     },
     [],
-  );
+  )
 
   const toDateStr = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 
   const updateMutation = useMutation({
     mutationFn: () =>
       LeaveRequestsService.updateLeaveRequest({
         leaveId: activeRequest.requestId,
         leavetype: selectedLeaveType[0],
-        startdate: requestDateRange?.from ? toDateStr(requestDateRange.from) : undefined,
-        enddate: requestDateRange?.to ? toDateStr(requestDateRange.to) : undefined,
+        startdate: requestDateRange?.from
+          ? toDateStr(requestDateRange.from)
+          : undefined,
+        enddate: requestDateRange?.to
+          ? toDateStr(requestDateRange.to)
+          : undefined,
       }),
     onSuccess: () => {
-      showSuccessToast("Leave request updated!");
-      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
-      onClose();
+      showSuccessToast("Leave request updated!")
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] })
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as { body?: { detail?: string } })?.body?.detail;
-      showErrorToast(detail || "Failed to update request");
+      const detail = (error as { body?: { detail?: string } })?.body?.detail
+      showErrorToast(detail || "Failed to update request")
     },
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: () =>
-      LeaveRequestsService.deleteLeaveRequest({ leaveId: activeRequest.requestId }),
+      LeaveRequestsService.deleteLeaveRequest({
+        leaveId: activeRequest.requestId,
+      }),
     onSuccess: () => {
-      showSuccessToast("Leave request withdrawn.");
-      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
-      onClose();
+      showSuccessToast("Leave request withdrawn.")
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] })
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as { body?: { detail?: string } })?.body?.detail;
-      showErrorToast(detail || "Failed to withdraw request");
+      const detail = (error as { body?: { detail?: string } })?.body?.detail
+      showErrorToast(detail || "Failed to withdraw request")
     },
-  });
+  })
 
   const handleSave = () => {
     if (selectedLeaveType.length === 0) {
-      showErrorToast("Please select a leave type.");
-      return;
+      showErrorToast("Please select a leave type.")
+      return
     }
     if (!requestDateRange?.from || !requestDateRange?.to) {
-      showErrorToast("Please select a start and end date.");
-      return;
+      showErrorToast("Please select a start and end date.")
+      return
     }
-    updateMutation.mutate();
-  };
+    updateMutation.mutate()
+  }
 
   return (
     <Dialog.Root
@@ -243,9 +259,9 @@ export const NMReviewLeaveRequest = ({
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {
-        const target = event.target as HTMLElement | null;
+        const target = event.target as HTMLElement | null
         if (target?.closest("[data-datepicker-popup='true']")) {
-          event.preventDefault();
+          event.preventDefault()
         }
       }}
     >
@@ -398,5 +414,5 @@ export const NMReviewLeaveRequest = ({
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
-  );
-};
+  )
+}

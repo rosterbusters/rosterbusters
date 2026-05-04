@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.models.roster import Ward
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from sqlmodel import select
+from app.rbac import user_has_role
 
 
 class WardStaffingIn(BaseModel):
@@ -73,7 +74,7 @@ def _sync_legacy_staffing_columns(ward: Ward, staffing_json: str) -> None:
         raise HTTPException(status_code=422, detail="staffing_json must decode to an object")
 
     for shift, prefix in (("A", "am"), ("P", "pm"), ("N", "nd")):
-        rn_min, _ = _extract_requirement(payload, "RN", shift)
+        rn_min, rn_max = _extract_requirement(payload, "RN", shift)
         en_min, en_max = _extract_requirement(payload, "EN", shift)
         na_min, na_max = _extract_requirement(payload, "NA", shift)
         hca12_min, hca12_max = _extract_requirement(payload, "HCA12", shift)
@@ -85,6 +86,8 @@ def _sync_legacy_staffing_columns(ward: Ward, staffing_json: str) -> None:
         rank_c_max = hca3_max
 
         setattr(ward, f"{prefix}_rn", rn_min)
+        if shift == "N":
+            ward.nd_rn_max = rn_max
         setattr(ward, f"{prefix}_en_na_min", rank_b_min)
         setattr(ward, f"{prefix}_en_na_max", rank_b_max)
         setattr(ward, f"{prefix}_hca_min", rank_c_min)
@@ -153,12 +156,18 @@ def update_ward_staffing(
 ):
     """Update the staffing requirements for a ward.
 
-    Accessible by the ward's own nurse manager or a superuser.
+    Accessible by any nurse manager or admin.
     """
     ward = session.get(Ward, ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
-    if not current_user.is_superuser and current_user.id != ward.managerid:
+
+    has_staffing_access = bool(current_user.email) and (
+        user_has_role(session, current_user.email, "Admin")
+        or user_has_role(session, current_user.email, "NurseManager")
+    )
+
+    if not has_staffing_access:
         raise HTTPException(status_code=403, detail="Not authorized to update this ward's staffing")
     ward.staffing_json = body.staffing_json
     _sync_legacy_staffing_columns(ward, body.staffing_json)

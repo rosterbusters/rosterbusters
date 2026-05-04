@@ -1,26 +1,27 @@
-import type { DailyStaffingGuideline } from "../RosterTable/types";
+import type { DailyStaffingGuideline } from "../RosterTable/types"
 
 type WardStaffingSource = {
-  wardName?: string | null;
-  wardname?: string | null;
-  staffingJson?: string | null;
-  staffing_json?: string | null;
-  am_rn?: number | null;
-  am_en_na_min?: number | null;
-  am_en_na_max?: number | null;
-  am_hca_min?: number | null;
-  am_hca_max?: number | null;
-  pm_rn?: number | null;
-  pm_en_na_min?: number | null;
-  pm_en_na_max?: number | null;
-  pm_hca_min?: number | null;
-  pm_hca_max?: number | null;
-  nd_rn?: number | null;
-  nd_en_na_min?: number | null;
-  nd_en_na_max?: number | null;
-  nd_hca_min?: number | null;
-  nd_hca_max?: number | null;
-};
+  wardName?: string | null
+  wardname?: string | null
+  staffingJson?: string | null
+  staffing_json?: string | null
+  am_rn?: number | null
+  am_en_na_min?: number | null
+  am_en_na_max?: number | null
+  am_hca_min?: number | null
+  am_hca_max?: number | null
+  pm_rn?: number | null
+  pm_en_na_min?: number | null
+  pm_en_na_max?: number | null
+  pm_hca_min?: number | null
+  pm_hca_max?: number | null
+  nd_rn?: number | null
+  nd_rn_max?: number | null
+  nd_en_na_min?: number | null
+  nd_en_na_max?: number | null
+  nd_hca_min?: number | null
+  nd_hca_max?: number | null
+}
 
 /**
  * Per-ward staffing guidelines derived from WARDS_DATA in seed_data.py.
@@ -37,107 +38,237 @@ type WardStaffingSource = {
 const WARD_GUIDELINES: Record<string, DailyStaffingGuideline> = {
   // ── SACH Simei ───────────────────────────────────────────────────────────
 
-  "Ward 4": { // Dementia
-    RN:   { A: { minimum: 2, maximum: 2 }, P: { minimum: 2, maximum: 2 }, N: { minimum: 1, maximum: 1 } },
-    EN:   { A: { minimum: 4, maximum: 5 }, P: { minimum: 2, maximum: 5 }, N: { minimum: 1, maximum: 3 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  "Ward 4": {
+    // Dementia
+    RN: {
+      A: { minimum: 2, maximum: 2 },
+      P: { minimum: 2, maximum: 2 },
+      N: { minimum: 1, maximum: 1 },
+    },
+    EN: {
+      A: { minimum: 4, maximum: 5 },
+      P: { minimum: 2, maximum: 5 },
+      N: { minimum: 1, maximum: 3 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "Ward 5": { // Rehab
-    RN:   { A: { minimum: 2, maximum: 2 }, P: { minimum: 2, maximum: 2 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 4, maximum: 5 }, P: { minimum: 2, maximum: 5 }, N: { minimum: 1, maximum: 2 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  "Ward 5": {
+    // Rehab
+    RN: {
+      A: { minimum: 2, maximum: 2 },
+      P: { minimum: 2, maximum: 2 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 4, maximum: 5 },
+      P: { minimum: 2, maximum: 5 },
+      N: { minimum: 1, maximum: 2 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "Ward 6": { // Rehab
-    RN:   { A: { minimum: 2, maximum: 2 }, P: { minimum: 2, maximum: 2 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 4, maximum: 5 }, P: { minimum: 2, maximum: 5 }, N: { minimum: 1, maximum: 2 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  "Ward 6": {
+    // Rehab
+    RN: {
+      A: { minimum: 2, maximum: 2 },
+      P: { minimum: 2, maximum: 2 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 4, maximum: 5 },
+      P: { minimum: 2, maximum: 5 },
+      N: { minimum: 1, maximum: 2 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "Ward 7": { // Rehab
-    RN:   { A: { minimum: 2, maximum: 2 }, P: { minimum: 2, maximum: 2 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 4, maximum: 5 }, P: { minimum: 2, maximum: 5 }, N: { minimum: 1, maximum: 2 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  "Ward 7": {
+    // Rehab
+    RN: {
+      A: { minimum: 2, maximum: 2 },
+      P: { minimum: 2, maximum: 2 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 4, maximum: 5 },
+      P: { minimum: 2, maximum: 5 },
+      N: { minimum: 1, maximum: 2 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "Ward 8": { // Subacute
-    RN:   { A: { minimum: 3, maximum: 3 }, P: { minimum: 3, maximum: 3 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 3, maximum: 5 }, P: { minimum: 2, maximum: 4 }, N: { minimum: 1, maximum: 3 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  "Ward 8": {
+    // Subacute
+    RN: {
+      A: { minimum: 3, maximum: 3 },
+      P: { minimum: 3, maximum: 3 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 3, maximum: 5 },
+      P: { minimum: 2, maximum: 4 },
+      N: { minimum: 1, maximum: 3 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "Ward 9": { // Subacute
-    RN:   { A: { minimum: 3, maximum: 3 }, P: { minimum: 3, maximum: 3 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 3, maximum: 5 }, P: { minimum: 2, maximum: 4 }, N: { minimum: 1, maximum: 3 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  "Ward 9": {
+    // Subacute
+    RN: {
+      A: { minimum: 3, maximum: 3 },
+      P: { minimum: 3, maximum: 3 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 3, maximum: 5 },
+      P: { minimum: 2, maximum: 4 },
+      N: { minimum: 1, maximum: 3 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "Ward 10": { // Paying Class
-    RN:   { A: { minimum: 2, maximum: 2 }, P: { minimum: 2, maximum: 2 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 4, maximum: 4 }, P: { minimum: 2, maximum: 4 }, N: { minimum: 2, maximum: 2 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 1, maximum: 1 }, P: { minimum: 0, maximum: 1 }, N: { minimum: 0, maximum: 0 } },
+  "Ward 10": {
+    // Paying Class
+    RN: {
+      A: { minimum: 2, maximum: 2 },
+      P: { minimum: 2, maximum: 2 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 4, maximum: 4 },
+      P: { minimum: 2, maximum: 4 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 1, maximum: 1 },
+      P: { minimum: 0, maximum: 1 },
+      N: { minimum: 0, maximum: 0 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "Ward 11": { // Palliative
-    RN:   { A: { minimum: 3, maximum: 3 }, P: { minimum: 3, maximum: 3 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 3, maximum: 5 }, P: { minimum: 2, maximum: 4 }, N: { minimum: 1, maximum: 2 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  "Ward 11": {
+    // Palliative
+    RN: {
+      A: { minimum: 3, maximum: 3 },
+      P: { minimum: 3, maximum: 3 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 3, maximum: 5 },
+      P: { minimum: 2, maximum: 4 },
+      N: { minimum: 1, maximum: 2 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
   // ── SACH Bedok ───────────────────────────────────────────────────────────
 
-  "CH": { // Community Hospital
-    RN:   { A: { minimum: 2, maximum: 2 }, P: { minimum: 2, maximum: 2 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 1, maximum: 3 }, P: { minimum: 1, maximum: 3 }, N: { minimum: 1, maximum: 2 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 2 }, N: { minimum: 0, maximum: 1 } },
+  CH: {
+    // Community Hospital
+    RN: {
+      A: { minimum: 2, maximum: 2 },
+      P: { minimum: 2, maximum: 2 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 1, maximum: 3 },
+      P: { minimum: 1, maximum: 3 },
+      N: { minimum: 1, maximum: 2 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 2 },
+      N: { minimum: 0, maximum: 1 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
 
-  "TCF": { // Transitional Care — 12hr shifts, no PM
-    RN:   { A: { minimum: 2, maximum: 2 }, P: { minimum: 0, maximum: 0 }, N: { minimum: 2, maximum: 2 } },
-    EN:   { A: { minimum: 2, maximum: 5 }, P: { minimum: 0, maximum: 0 }, N: { minimum: 1, maximum: 5 } },
-    NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-    HCA12: { A: { minimum: 0, maximum: 2 }, P: { minimum: 0, maximum: 0 }, N: { minimum: 0, maximum: 2 } },
+  TCF: {
+    // Transitional Care — 12hr shifts, no PM
+    RN: {
+      A: { minimum: 2, maximum: 2 },
+      P: { minimum: 0, maximum: 0 },
+      N: { minimum: 2, maximum: 2 },
+    },
+    EN: {
+      A: { minimum: 2, maximum: 5 },
+      P: { minimum: 0, maximum: 0 },
+      N: { minimum: 1, maximum: 5 },
+    },
+    NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+    HCA12: {
+      A: { minimum: 0, maximum: 2 },
+      P: { minimum: 0, maximum: 0 },
+      N: { minimum: 0, maximum: 2 },
+    },
     HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   },
-};
+}
 
 const DEFAULT_GUIDELINE: DailyStaffingGuideline = {
-  RN:   { A: { minimum: 2 }, P: { minimum: 2 }, N: { minimum: 2 } },
-  EN:   { A: { minimum: 2 }, P: { minimum: 2 }, N: { minimum: 2 } },
-  NA:   { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
+  RN: { A: { minimum: 2 }, P: { minimum: 2 }, N: { minimum: 2 } },
+  EN: { A: { minimum: 2 }, P: { minimum: 2 }, N: { minimum: 2 } },
+  NA: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   HCA12: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
   HCA3: { A: { minimum: 0 }, P: { minimum: 0 }, N: { minimum: 0 } },
-};
+}
 
 function parseStoredGuidelines(
   staffingJson: string | null | undefined,
 ): DailyStaffingGuideline | null {
-  if (!staffingJson) return null;
+  if (!staffingJson) return null
   try {
-    const parsed = JSON.parse(staffingJson) as DailyStaffingGuideline;
-    if (parsed?.RN?.A?.minimum === undefined) return null;
-    return parsed;
+    const parsed = JSON.parse(staffingJson) as DailyStaffingGuideline
+    if (parsed?.RN?.A?.minimum === undefined) return null
+    return parsed
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -148,21 +279,23 @@ function requirement(
   return {
     minimum: minimum ?? 0,
     maximum: maximum ?? undefined,
-  };
+  }
 }
 
 function exactRequirement(value: number | null | undefined) {
-  return requirement(value, value);
+  return requirement(value, value)
 }
 
 function getWardName(input: string | WardStaffingSource | null | undefined) {
-  if (typeof input === "string") return input;
-  return input?.wardName ?? input?.wardname ?? undefined;
+  if (typeof input === "string") return input
+  return input?.wardName ?? input?.wardname ?? undefined
 }
 
-function getStoredStaffingJson(input: string | WardStaffingSource | null | undefined) {
-  if (typeof input === "string") return undefined;
-  return input?.staffingJson ?? input?.staffing_json ?? undefined;
+function getStoredStaffingJson(
+  input: string | WardStaffingSource | null | undefined,
+) {
+  if (typeof input === "string") return undefined
+  return input?.staffingJson ?? input?.staffing_json ?? undefined
 }
 
 function getBackendColumnGuidelines(
@@ -176,17 +309,18 @@ function getBackendColumnGuidelines(
     ward.pm_en_na_min == null &&
     ward.pm_hca_min == null &&
     ward.nd_rn == null &&
+    ward.nd_rn_max == null &&
     ward.nd_en_na_min == null &&
     ward.nd_hca_min == null
   ) {
-    return null;
+    return null
   }
 
   return {
     RN: {
       A: exactRequirement(ward.am_rn),
       P: exactRequirement(ward.pm_rn),
-      N: exactRequirement(ward.nd_rn),
+      N: requirement(ward.nd_rn, ward.nd_rn_max ?? ward.nd_rn),
     },
     EN: {
       A: requirement(ward.am_en_na_min, ward.am_en_na_max),
@@ -208,22 +342,22 @@ function getBackendColumnGuidelines(
       P: { minimum: 0 },
       N: { minimum: 0 },
     },
-  };
+  }
 }
 
 /** Returns staffing guidelines from saved JSON, backend ward columns, or ward-name defaults. */
 export function getWardGuidelines(
   input: string | WardStaffingSource | null | undefined,
 ): DailyStaffingGuideline {
-  const storedGuidelines = parseStoredGuidelines(getStoredStaffingJson(input));
-  if (storedGuidelines) return storedGuidelines;
+  const storedGuidelines = parseStoredGuidelines(getStoredStaffingJson(input))
+  if (storedGuidelines) return storedGuidelines
 
   if (input && typeof input !== "string") {
-    const backendColumnGuidelines = getBackendColumnGuidelines(input);
-    if (backendColumnGuidelines) return backendColumnGuidelines;
+    const backendColumnGuidelines = getBackendColumnGuidelines(input)
+    if (backendColumnGuidelines) return backendColumnGuidelines
   }
 
-  const wardName = getWardName(input);
-  if (!wardName) return DEFAULT_GUIDELINE;
-  return WARD_GUIDELINES[wardName] ?? DEFAULT_GUIDELINE;
+  const wardName = getWardName(input)
+  if (!wardName) return DEFAULT_GUIDELINE
+  return WARD_GUIDELINES[wardName] ?? DEFAULT_GUIDELINE
 }

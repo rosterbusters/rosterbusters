@@ -1,38 +1,38 @@
-import { Box, Text, VStack } from "@chakra-ui/react";
-import { MessageSquare, Clock, Check, X } from "lucide-react";
-import { Tooltip } from "@/components/ui/tooltip";
+import { Box, Text, VStack } from "@chakra-ui/react"
+import { Check, Clock, MessageSquare, X } from "lucide-react"
+import { Tooltip } from "@/components/ui/tooltip"
 import {
-  type ShiftCode,
-  type ViewMode,
-  type ShiftRequestOverlay,
-  SHIFT_CODE_MAP,
   getShiftColor,
-} from "./types";
+  SHIFT_CODE_MAP,
+  type ShiftCode,
+  type ShiftRequestOverlay,
+  type ViewMode,
+} from "./types"
 
 interface ShiftBadgeProps {
-  shiftCode: ShiftCode | null;
-  onClick?: () => void;
-  isEditable?: boolean;
-  size?: "sm" | "md";
-  viewMode?: ViewMode;
-  comment?: string;
-  onCommentIconClick?: (e: React.MouseEvent) => void;
-  shiftRequestOverlay?: ShiftRequestOverlay;
-  shiftDurationMap?: Map<string, number>;
-  shiftTimeMap?: Map<string, { start?: string; end?: string }>;
+  shiftCode: ShiftCode | null
+  onClick?: () => void
+  isEditable?: boolean
+  size?: "sm" | "md"
+  viewMode?: ViewMode
+  comment?: string
+  onCommentIconClick?: (e: React.MouseEvent) => void
+  shiftRequestOverlay?: ShiftRequestOverlay
+  shiftDurationMap?: Map<string, number>
+  shiftTimeMap?: Map<string, { start?: string; end?: string }>
 }
 
 // Format time from "HH:MM" to "H:MMAM/PM" format
 function formatTime(time: string): string {
-  const [hoursRaw, minutesRaw] = time.split(":");
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
+  const [hoursRaw, minutesRaw] = time.split(":")
+  const hours = Number(hoursRaw)
+  const minutes = Number(minutesRaw)
   if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return time;
+    return time
   }
-  const period = hours >= 12 ? "PM" : "AM";
-  const displayHours = hours % 12 || 12;
-  return `${displayHours}:${minutes.toString().padStart(2, "0")}${period}`;
+  const period = hours >= 12 ? "PM" : "AM"
+  const displayHours = hours % 12 || 12
+  return `${displayHours}:${minutes.toString().padStart(2, "0")}${period}`
 }
 
 // Get formatted time range for a shift
@@ -40,32 +40,32 @@ function getTimeRange(
   shiftCode: ShiftCode,
   shiftTimeMap?: Map<string, { start?: string; end?: string }>,
 ): string | null {
-  const shiftInfo = SHIFT_CODE_MAP[shiftCode];
+  const shiftInfo = SHIFT_CODE_MAP[shiftCode]
   if (!shiftInfo?.isWorking) {
-    return null;
+    return null
   }
-  const timeInfo = shiftTimeMap?.get(shiftCode);
-  const start = timeInfo?.start ?? shiftInfo.defaultStart;
-  const end = timeInfo?.end ?? shiftInfo.defaultEnd;
+  const timeInfo = shiftTimeMap?.get(shiftCode)
+  const start = timeInfo?.start ?? shiftInfo.defaultStart
+  const end = timeInfo?.end ?? shiftInfo.defaultEnd
   if (!start || !end) {
-    return null;
+    return null
   }
-  return `${formatTime(start)}-${formatTime(end)}`;
+  return `${formatTime(start)}-${formatTime(end)}`
 }
 
 function getDurationHours(
   shiftCode: ShiftCode,
   shiftDurationMap?: Map<string, number>,
 ): number | null {
-  const shiftInfo = SHIFT_CODE_MAP[shiftCode];
+  const shiftInfo = SHIFT_CODE_MAP[shiftCode]
   if (!shiftInfo?.isWorking) {
-    return null;
+    return null
   }
-  const mapValue = shiftDurationMap?.get(shiftCode);
+  const mapValue = shiftDurationMap?.get(shiftCode)
   if (typeof mapValue === "number") {
-    return mapValue;
+    return mapValue
   }
-  return shiftInfo?.durationHours ?? null;
+  return shiftInfo?.durationHours ?? null
 }
 
 export function ShiftBadge({
@@ -82,7 +82,7 @@ export function ShiftBadge({
 }: ShiftBadgeProps) {
   if (!shiftCode) {
     // Empty shift - show "Select" placeholder
-    const isWeekView = viewMode === "week";
+    const isWeekView = viewMode === "week"
     return (
       <Box
         w={isWeekView ? "140px" : size === "sm" ? "32px" : "60px"}
@@ -108,35 +108,35 @@ export function ShiftBadge({
           Select
         </Text>
       </Box>
-    );
+    )
   }
 
-  const bgColor = getShiftColor(shiftCode);
-  const shiftInfo = SHIFT_CODE_MAP[shiftCode];
-  const isWorkingShift = shiftInfo?.isWorking ?? true;
-  const timeRange = getTimeRange(shiftCode, shiftTimeMap);
-  const durationHours = getDurationHours(shiftCode, shiftDurationMap);
-  const isWeekView = viewMode === "week";
-  const hasComment = !!comment;
+  const bgColor = getShiftColor(shiftCode)
+  const shiftInfo = SHIFT_CODE_MAP[shiftCode]
+  const isWorkingShift = shiftInfo?.isWorking ?? true
+  const timeRange = getTimeRange(shiftCode, shiftTimeMap)
+  const durationHours = getDurationHours(shiftCode, shiftDurationMap)
+  const isWeekView = viewMode === "week"
+  const hasComment = !!comment
 
-  const hasOverlay = !!shiftRequestOverlay;
+  const hasOverlay = !!shiftRequestOverlay
 
   const OVERLAY_CONFIG = {
     Pending: { borderColor: "#f97316", Icon: Clock, iconBg: "#f97316" },
     Approved: { borderColor: "#22c55e", Icon: Check, iconBg: "#22c55e" },
     Rejected: { borderColor: "#ef4444", Icon: X, iconBg: "#ef4444" },
-  } as const;
+  } as const
 
   const overlayConfig = hasOverlay
     ? OVERLAY_CONFIG[shiftRequestOverlay!.status]
-    : null;
+    : null
 
   // Tooltip content for comment
   const commentTooltipContent = hasComment ? (
     <Text fontSize="xs" color="whiteAlpha.900" fontStyle="italic" py={1}>
       "{comment}"
     </Text>
-  ) : null;
+  ) : null
 
   // Comment indicator icon - always top-right circle
   const commentIcon = hasComment ? (
@@ -155,14 +155,14 @@ export function ShiftBadge({
         boxShadow="0 0 0 1.5px white, 0 1px 3px rgba(0,0,0,0.2)"
         cursor="pointer"
         onClick={(e) => {
-          e.stopPropagation();
-          onCommentIconClick?.(e);
+          e.stopPropagation()
+          onCommentIconClick?.(e)
         }}
       >
         <MessageSquare size={isWeekView ? 12 : 10} color="white" fill="white" />
       </Box>
     </Tooltip>
-  ) : null;
+  ) : null
 
   // Shift request status icon - bottom-left rounded square, inside the border
   const requestStatusIcon =
@@ -195,7 +195,7 @@ export function ShiftBadge({
           />
         </Box>
       </Tooltip>
-    ) : null;
+    ) : null
 
   // Week view - all badges same size (with or without time)
   if (isWeekView) {
@@ -255,7 +255,7 @@ export function ShiftBadge({
         {commentIcon}
         {requestStatusIcon}
       </Box>
-    );
+    )
 
     if (durationHours != null) {
       return (
@@ -269,15 +269,15 @@ export function ShiftBadge({
         >
           {weekBadge}
         </Tooltip>
-      );
+      )
     }
 
-    return weekBadge;
+    return weekBadge
   }
 
   // 2-week view - compact badges with tooltip on hover
-  const showShiftTooltip = viewMode === "twoWeeks" && timeRange;
-  const showDurationTooltip = durationHours != null;
+  const showShiftTooltip = viewMode === "twoWeeks" && timeRange
+  const showDurationTooltip = durationHours != null
 
   const twoWeekBadge = (
     <Box position="relative" display="inline-block">
@@ -325,7 +325,7 @@ export function ShiftBadge({
       {commentIcon}
       {requestStatusIcon}
     </Box>
-  );
+  )
 
   // Wrap with tooltip for 2-week shift info (comment tooltip is on the icon itself)
   if (showShiftTooltip) {
@@ -350,7 +350,7 @@ export function ShiftBadge({
       >
         {twoWeekBadge}
       </Tooltip>
-    );
+    )
   }
 
   if (showDurationTooltip) {
@@ -365,10 +365,10 @@ export function ShiftBadge({
       >
         {twoWeekBadge}
       </Tooltip>
-    );
+    )
   }
 
-  return twoWeekBadge;
+  return twoWeekBadge
 }
 
-export default ShiftBadge;
+export default ShiftBadge

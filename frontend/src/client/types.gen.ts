@@ -177,6 +177,7 @@ export type Ward = {
     pm_hca_max?: (number | null);
     nd_total?: (number | null);
     nd_rn?: (number | null);
+    nd_rn_max?: (number | null);
     nd_en_na_min?: (number | null);
     nd_en_na_max?: (number | null);
     nd_hca_min?: (number | null);

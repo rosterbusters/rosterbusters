@@ -1,36 +1,51 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useState, useEffect, useRef, type ChangeEvent } from "react"
-import { useForm, type SubmitHandler } from "react-hook-form"
+import {
+  ChevronLeft,
+  ChevronRight,
+  KeyRound,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+  Users,
+  X,
+} from "lucide-react"
+import { type ChangeEvent, useEffect, useRef, useState } from "react"
+import { type SubmitHandler, useForm } from "react-hook-form"
 import { z } from "zod"
 import {
   AdminService,
   type AdminUser,
   type AdminUserCreate,
+  type AdminUserFilters,
   type AdminUserUpdate,
   type DesignationOption,
   type WardOption,
 } from "@/client/adminService"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import { emailPattern } from "@/utils"
-import {
-  Users,
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  Upload,
-  KeyRound,
-} from "lucide-react"
 
 const usersSearchSchema = z.object({
   page: z.number().catch(1),
 })
 
 const PER_PAGE = 10
+
+const joinDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+})
+
+const formatJoinDate = (value?: string | null) => {
+  if (!value) return null
+  const parsed = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return joinDateFormatter.format(parsed)
+}
 
 export const Route = createFileRoute("/admin/users")({
   component: AdminUsers,
@@ -46,6 +61,7 @@ interface UserFormData {
   name: string
   email: string
   employee_id: string
+  join_date: string
   designation: string
   password: string
   confirm_password: string
@@ -66,6 +82,7 @@ interface ParsedImportRow {
   name?: string
   email?: string
   employee_id?: string
+  join_date?: string
   designation?: string
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
@@ -114,6 +131,74 @@ const findCellValue = (
     }
   }
   return ""
+}
+
+const findCellRawValue = (
+  row: Record<string, unknown>,
+  aliases: string[],
+): unknown => {
+  const normalizedAliases = new Set(aliases.map(normalizeHeader))
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizedAliases.has(normalizeHeader(key))) {
+      return value
+    }
+  }
+  return undefined
+}
+
+const JOIN_DATE_IMPORT_ALIASES = [
+  "join date",
+  "join_date",
+  "date joined",
+  "joined date",
+  "hired date",
+  "hire date",
+  "date hired",
+  "date of hire",
+  "start date",
+  "commencement date",
+]
+
+const parseImportedJoinDate = (
+  XLSX: typeof import("xlsx"),
+  value: unknown,
+): string | undefined => {
+  if (value == null || value === "") return undefined
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
+
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value)
+    if (!parsed) {
+      throw new Error(`Unsupported join date value "${value}".`)
+    }
+    const year = String(parsed.y).padStart(4, "0")
+    const month = String(parsed.m).padStart(2, "0")
+    const day = String(parsed.d).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  const text = textValue(value)
+  if (!text) return undefined
+
+  const normalized = text
+    .replace(/\./g, "-")
+    .replace(/\//g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(normalized)) {
+    const [year, month, day] = normalized.split("-")
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+  }
+
+  const parsed = new Date(normalized)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Unsupported join date "${text}". Use a valid date.`)
+  }
+  return parsed.toISOString().slice(0, 10)
 }
 
 const slugifyUsername = (value: string) =>
@@ -243,21 +328,21 @@ const normalizeWardName = (value: string) =>
     .replace(/[^a-z0-9]+/g, "")
 
 const STAFF_LIST_WARD_ALIASES: Record<string, string[]> = {
-  "acaciaward": ["acaciaward"],
-  "angsanaward": ["angsanaward"],
-  "banyanward": ["banyanward"],
-  "casuarinaward": ["casuarinaward"],
-  "cedarward": ["cedarward"],
-  "dahliaward": ["dahliaward", "dahilaward"],
-  "daisyward": ["daisyward"],
-  "ward4": ["ward4", "ward04"],
-  "ward5": ["ward5", "ward05"],
-  "ward6": ["ward6", "ward06"],
-  "ward7": ["ward7", "ward07"],
-  "ward8": ["ward8", "ward08"],
-  "ward9": ["ward9", "ward09"],
-  "ward10": ["ward10"],
-  "ward11": ["ward11"],
+  acaciaward: ["acaciaward"],
+  angsanaward: ["angsanaward"],
+  banyanward: ["banyanward"],
+  casuarinaward: ["casuarinaward"],
+  cedarward: ["cedarward"],
+  dahliaward: ["dahliaward", "dahilaward"],
+  daisyward: ["daisyward"],
+  ward4: ["ward4", "ward04"],
+  ward5: ["ward5", "ward05"],
+  ward6: ["ward6", "ward06"],
+  ward7: ["ward7", "ward07"],
+  ward8: ["ward8", "ward08"],
+  ward9: ["ward9", "ward09"],
+  ward10: ["ward10"],
+  ward11: ["ward11"],
 }
 
 const parseWorkbookRole = (
@@ -314,9 +399,13 @@ const parseExactStaffWorkbook = (
     nurseRows.forEach((row, index) => {
       const employeeId = textValue(row["Employee ID"])
       const name = textValue(row["EMP NAME"])
-      const occupation = textValue(row["OCCUPATION"])
+      const occupation = textValue(row.OCCUPATION)
       const department = textValue(row["DEPARTMENT CODE"])
       const email = findCellValue(row, ["email", "email address", "e-mail"])
+      const joinDate = parseImportedJoinDate(
+        XLSX,
+        findCellRawValue(row, JOIN_DATE_IMPORT_ALIASES),
+      )
       const shiftPattern = parseShiftPatternValue(
         findCellValue(row, [
           "shift pattern",
@@ -341,7 +430,9 @@ const parseExactStaffWorkbook = (
       }
 
       if (!role) {
-        skipped.push(`NUR row ${index + 2} skipped because "${occupation}" is not a Nurse or Nurse Manager role.`)
+        skipped.push(
+          `NUR row ${index + 2} skipped because "${occupation}" is not a Nurse or Nurse Manager role.`,
+        )
         return
       }
 
@@ -353,6 +444,7 @@ const parseExactStaffWorkbook = (
           name: name || undefined,
           email: email || undefined,
           employee_id: employeeId || undefined,
+          join_date: joinDate,
           designation: occupation || undefined,
           shift_pattern: shiftPattern,
           is_active: true,
@@ -365,7 +457,9 @@ const parseExactStaffWorkbook = (
           )
         }
       } catch (error: any) {
-        skipped.push(`NUR row ${index + 2} skipped: ${error?.message ?? "Unknown ward."}`)
+        skipped.push(
+          `NUR row ${index + 2} skipped: ${error?.message ?? "Unknown ward."}`,
+        )
       }
     })
   }
@@ -381,6 +475,10 @@ const parseExactStaffWorkbook = (
       const position = textValue(row.Position)
       const department = textValue(row.Department)
       const email = findCellValue(row, ["email", "email address", "e-mail"])
+      const joinDate = parseImportedJoinDate(
+        XLSX,
+        findCellRawValue(row, JOIN_DATE_IMPORT_ALIASES),
+      )
       const shiftPattern = parseShiftPatternValue(
         findCellValue(row, [
           "shift pattern",
@@ -393,7 +491,9 @@ const parseExactStaffWorkbook = (
       const role = parseWorkbookRole(position)
 
       if (!name) {
-        skipped.push(`CEN Listing row ${index + 2} skipped because name is missing.`)
+        skipped.push(
+          `CEN Listing row ${index + 2} skipped because name is missing.`,
+        )
         return
       }
 
@@ -419,6 +519,7 @@ const parseExactStaffWorkbook = (
           name: name || undefined,
           email: email || undefined,
           employee_id: undefined,
+          join_date: joinDate,
           designation: position || undefined,
           shift_pattern: shiftPattern,
           is_active: true,
@@ -445,7 +546,7 @@ async function parseStaffWorkbook(
   file: File,
   wards: WardOption[],
   password?: string,
-) : Promise<ParsedImportResult> {
+): Promise<ParsedImportResult> {
   const XLSX = await import("xlsx")
   const workbook = XLSX.read(await file.arrayBuffer(), {
     type: "array",
@@ -487,6 +588,10 @@ async function parseStaffWorkbook(
       "position",
       "job title",
     ])
+    const joinDate = parseImportedJoinDate(
+      XLSX,
+      findCellRawValue(row, JOIN_DATE_IMPORT_ALIASES),
+    )
     const roleText = findCellValue(row, [
       "role",
       "designation",
@@ -500,20 +605,20 @@ async function parseStaffWorkbook(
       return
     }
     const role = inferRole(roleText)
-      const email = findCellValue(row, ["email", "email address", "e-mail"])
-      const rawUsername = findCellValue(row, [
-        "username",
-        "user name",
-        "name",
+    const email = findCellValue(row, ["email", "email address", "e-mail"])
+    const rawUsername = findCellValue(row, [
+      "username",
+      "user name",
+      "name",
       "staff name",
       "employee name",
       "full name",
     ])
-      const username = rawUsername
-        ? (rawUsername.trim().includes(" ")
-            ? buildUsernameFromName(rawUsername)
-            : slugifyUsername(rawUsername))
-        : slugifyUsername(email.split("@")[0] || employeeId)
+    const username = rawUsername
+      ? rawUsername.trim().includes(" ")
+        ? buildUsernameFromName(rawUsername)
+        : slugifyUsername(rawUsername)
+      : slugifyUsername(email.split("@")[0] || employeeId)
     const name = rawUsername || username
     const wardText = findCellValue(row, [
       "ward",
@@ -550,6 +655,7 @@ async function parseStaffWorkbook(
       name: name || undefined,
       email: email || undefined,
       employee_id: employeeId || undefined,
+      join_date: joinDate,
       designation: designation || undefined,
       shift_pattern: shiftPattern,
       password: password || undefined,
@@ -624,6 +730,7 @@ function UserFormDialog({
           name: editUser.name ?? "",
           email: editUser.email ?? "",
           employee_id: editUser.employee_id ?? "",
+          join_date: editUser.join_date ?? "",
           designation: editUser.designation ?? "",
           password: "",
           confirm_password: "",
@@ -635,6 +742,7 @@ function UserFormDialog({
           name: "",
           email: "",
           employee_id: "",
+          join_date: "",
           designation: "",
           password: "",
           confirm_password: "",
@@ -660,7 +768,9 @@ function UserFormDialog({
       onClose()
     },
     onError: (err: any) => {
-      showErrorToast(err.body?.detail ?? err.message ?? "Failed to create user.")
+      showErrorToast(
+        err.body?.detail ?? err.message ?? "Failed to create user.",
+      )
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
@@ -675,7 +785,9 @@ function UserFormDialog({
       onClose()
     },
     onError: (err: any) => {
-      showErrorToast(err.body?.detail ?? err.message ?? "Failed to update user.")
+      showErrorToast(
+        err.body?.detail ?? err.message ?? "Failed to update user.",
+      )
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
@@ -693,6 +805,7 @@ function UserFormDialog({
         payload.employee_id = data.employee_id.trim()
       }
       if (currentRole === "Nurse") {
+        payload.join_date = data.join_date || null
         payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
@@ -712,6 +825,7 @@ function UserFormDialog({
         payload.employee_id = data.employee_id.trim()
       }
       if (data.role === "Nurse") {
+        if (data.join_date) payload.join_date = data.join_date
         payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
@@ -731,12 +845,18 @@ function UserFormDialog({
           <h2 className="text-lg font-semibold">
             {isEdit ? "Edit User" : "Add User"}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit as SubmitHandler<UserFormData>)} className="flex flex-col overflow-hidden">
+        <form
+          onSubmit={handleSubmit(onSubmit as SubmitHandler<UserFormData>)}
+          className="flex flex-col overflow-hidden"
+        >
           <div className="p-6 space-y-4 overflow-y-auto">
             {/* Username */}
             <div>
@@ -758,7 +878,9 @@ function UserFormDialog({
                 placeholder="LEE Chuen Shu"
               />
               {errors.name && (
-                <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>
+                <p className="text-red-500 text-xs mt-1">
+                  {errors.name.message}
+                </p>
               )}
             </div>
 
@@ -768,13 +890,17 @@ function UserFormDialog({
                   Username <span className="text-red-500">*</span>
                 </label>
                 <input
-                  {...register("username", { required: "Username is required" })}
+                  {...register("username", {
+                    required: "Username is required",
+                  })}
                   type="text"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="johndoe"
                 />
                 {errors.username && (
-                  <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.username.message}
+                  </p>
                 )}
               </div>
             ) : (
@@ -788,7 +914,9 @@ function UserFormDialog({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Email{" "}
                 {!isEdit && (
-                  <span className="text-gray-400 text-xs">(optional — user can add on first login)</span>
+                  <span className="text-gray-400 text-xs">
+                    (optional — user can add on first login)
+                  </span>
                 )}
               </label>
               <input
@@ -800,7 +928,9 @@ function UserFormDialog({
                 placeholder="user@example.com"
               />
               {errors.email && (
-                <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
+                <p className="text-red-500 text-xs mt-1">
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
@@ -847,8 +977,8 @@ function UserFormDialog({
 
             {(isEdit
               ? currentRole === "Nurse" || currentRole === "NurseManager"
-              : selectedRole === "Nurse" || selectedRole === "NurseManager"
-            ) && (
+              : selectedRole === "Nurse" ||
+                selectedRole === "NurseManager") && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Employee ID
@@ -860,7 +990,27 @@ function UserFormDialog({
                   placeholder="EMP00123"
                 />
                 {errors.employee_id && (
-                  <p className="text-red-500 text-xs mt-1">{errors.employee_id.message}</p>
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.employee_id.message}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Join Date
+                </label>
+                <input
+                  {...register("join_date")}
+                  type="date"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {errors.join_date && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.join_date.message}
+                  </p>
                 )}
               </div>
             )}
@@ -877,7 +1027,8 @@ function UserFormDialog({
                         ? currentRole === "Nurse"
                         : selectedRole === "Nurse"
                       if (!isNurse) return true
-                      if (!value?.trim()) return "Designation is required for nurses"
+                      if (!value?.trim())
+                        return "Designation is required for nurses"
                       return true
                     },
                   })}
@@ -892,11 +1043,15 @@ function UserFormDialog({
                   {isEdit &&
                     editUser?.designation &&
                     !designationOptions.includes(editUser.designation) && (
-                      <option value={editUser.designation}>{editUser.designation}</option>
+                      <option value={editUser.designation}>
+                        {editUser.designation}
+                      </option>
                     )}
                 </select>
                 {errors.designation && (
-                  <p className="text-red-500 text-xs mt-1">{errors.designation.message}</p>
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.designation.message}
+                  </p>
                 )}
               </div>
             )}
@@ -906,22 +1061,31 @@ function UserFormDialog({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Password{" "}
                 {!isEdit && (
-                  <span className="text-gray-400 text-xs">(leave blank to auto-generate)</span>
+                  <span className="text-gray-400 text-xs">
+                    (leave blank to auto-generate)
+                  </span>
                 )}
                 {isEdit && (
-                  <span className="text-gray-400 text-xs">(leave blank to keep current)</span>
+                  <span className="text-gray-400 text-xs">
+                    (leave blank to keep current)
+                  </span>
                 )}
               </label>
               <input
                 {...register("password", {
-                  minLength: { value: 8, message: "Password must be at least 8 characters" },
+                  minLength: {
+                    value: 8,
+                    message: "Password must be at least 8 characters",
+                  },
                 })}
                 type="password"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="********"
               />
               {errors.password && (
-                <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>
+                <p className="text-red-500 text-xs mt-1">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
@@ -942,27 +1106,33 @@ function UserFormDialog({
                 placeholder="********"
               />
               {errors.confirm_password && (
-                <p className="text-red-500 text-xs mt-1">{errors.confirm_password.message}</p>
+                <p className="text-red-500 text-xs mt-1">
+                  {errors.confirm_password.message}
+                </p>
               )}
             </div>
 
             {/* Ward assignment — show for Nurse / NurseManager */}
             {(isEdit
               ? currentRole === "Nurse" || currentRole === "NurseManager"
-              : selectedRole === "Nurse" || selectedRole === "NurseManager"
-            ) && (
+              : selectedRole === "Nurse" ||
+                selectedRole === "NurseManager") && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {(isEdit ? currentRole : selectedRole) === "NurseManager"
                     ? "Manages Wards"
                     : "Assigned Wards"}
                   {(isEdit ? currentRole : selectedRole) === "Nurse" && (
-                    <span className="text-gray-400 text-xs ml-1">(first = primary ward for scheduling)</span>
+                    <span className="text-gray-400 text-xs ml-1">
+                      (first = primary ward for scheduling)
+                    </span>
                   )}
                 </label>
                 <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
                   {wards.filter((w) => w.isactive).length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-gray-400">No wards available</p>
+                    <p className="px-3 py-2 text-sm text-gray-400">
+                      No wards available
+                    </p>
                   ) : (
                     wards
                       .filter((w) => w.isactive)
@@ -979,7 +1149,9 @@ function UserFormDialog({
                           />
                           <span className="text-gray-900">{w.wardname}</span>
                           {w.location && (
-                            <span className="text-gray-400 text-xs">({w.location})</span>
+                            <span className="text-gray-400 text-xs">
+                              ({w.location})
+                            </span>
                           )}
                         </label>
                       ))
@@ -987,7 +1159,8 @@ function UserFormDialog({
                 </div>
                 {selectedWardIds.length > 0 && (
                   <p className="text-xs text-gray-500 mt-1">
-                    {selectedWardIds.length} ward{selectedWardIds.length !== 1 ? "s" : ""} selected
+                    {selectedWardIds.length} ward
+                    {selectedWardIds.length !== 1 ? "s" : ""} selected
                   </p>
                 )}
               </div>
@@ -1064,10 +1237,13 @@ function DeleteDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete User</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">
+          Delete User
+        </h2>
         <p className="text-sm text-gray-600 mb-6">
           Are you sure you want to delete{" "}
-          <strong>{user.username || user.email}</strong>? This action cannot be undone.
+          <strong>{user.username || user.email}</strong>? This action cannot be
+          undone.
         </p>
         <div className="flex justify-end gap-3">
           <button
@@ -1088,7 +1264,11 @@ function DeleteDialog({
             disabled={deleting || isAdminUser}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting ? "Deleting..." : isAdminUser ? "Cannot Delete Admin" : "Delete"}
+            {deleting
+              ? "Deleting..."
+              : isAdminUser
+                ? "Cannot Delete Admin"
+                : "Delete"}
           </button>
         </div>
       </div>
@@ -1168,15 +1348,24 @@ function AdminUsers() {
   const [formOpen, setFormOpen] = useState(false)
   const [editUser, setEditUser] = useState<AdminUser | null>(null)
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
-  const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null)
-  const [createdUserInfo, setCreatedUserInfo] = useState<CreatedUserInfo | null>(null)
+  const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(
+    null,
+  )
+  const [createdUserInfo, setCreatedUserInfo] =
+    useState<CreatedUserInfo | null>(null)
   const [passwordCopied, setPasswordCopied] = useState(false)
-  const [copiedDefaultPasswordUserId, setCopiedDefaultPasswordUserId] = useState<number | null>(null)
-  const [knownDefaultPasswords, setKnownDefaultPasswords] = useState<Record<number, string>>({})
+  const [copiedDefaultPasswordUserId, setCopiedDefaultPasswordUserId] =
+    useState<number | null>(null)
+  const [knownDefaultPasswords, setKnownDefaultPasswords] = useState<
+    Record<number, string>
+  >({})
   const [isImporting, setIsImporting] = useState(false)
-  const [pendingImport, setPendingImport] = useState<PendingImportState | null>(null)
+  const [pendingImport, setPendingImport] = useState<PendingImportState | null>(
+    null,
+  )
   const [importPassword, setImportPassword] = useState("")
-  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null)
+  const [importProgress, setImportProgress] =
+    useState<ImportProgressState | null>(null)
   const [importCancelRequested, setImportCancelRequested] = useState(false)
   const [importFailures, setImportFailures] = useState<string[] | null>(null)
   const importCancelRequestedRef = useRef(false)
@@ -1234,6 +1423,7 @@ function AdminUsers() {
           name: row.name,
           email: row.email,
           employee_id: row.employee_id,
+          join_date: row.join_date,
           designation: row.designation,
           shift_pattern: row.shift_pattern,
           password: row.password,
@@ -1249,7 +1439,9 @@ function AdminUsers() {
         }
         importedCount += 1
       } catch (error: any) {
-        const detail = String(error?.body?.detail ?? error?.message ?? "Import failed.")
+        const detail = String(
+          error?.body?.detail ?? error?.message ?? "Import failed.",
+        )
         const isDuplicateUsername =
           detail.toLowerCase().includes("username already exists") ||
           detail.toLowerCase().includes("this username already exists")
@@ -1265,7 +1457,11 @@ function AdminUsers() {
             let existingUser: AdminUser | undefined
 
             for (const searchTerm of searchTerms) {
-              const existingPage = await AdminService.listUsers(0, 20, searchTerm)
+              const existingPage = await AdminService.listUsers(
+                0,
+                20,
+                searchTerm,
+              )
               existingUser = existingPage.data.find(
                 (user) =>
                   user.username === row.username ||
@@ -1277,7 +1473,9 @@ function AdminUsers() {
             }
 
             if (!existingUser) {
-              throw new Error("Existing user not found for duplicate import row.")
+              throw new Error(
+                "Existing user not found for duplicate import row.",
+              )
             }
 
             const updatePayload: AdminUserUpdate = {
@@ -1289,6 +1487,9 @@ function AdminUsers() {
             if (row.employee_id) updatePayload.employee_id = row.employee_id
             if (row.role === "Nurse" && row.designation) {
               updatePayload.designation = row.designation
+            }
+            if (row.role === "Nurse" && row.join_date) {
+              updatePayload.join_date = row.join_date
             }
             if (row.shift_pattern !== undefined) {
               updatePayload.shift_pattern = row.shift_pattern
@@ -1367,12 +1568,27 @@ function AdminUsers() {
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [search])
+  }, [search, navigate, page])
+
+  const activeFilters: AdminUserFilters = {
+    role: roleFilter,
+    status: statusFilter,
+    passwordState: passwordFilter,
+    wardId: wardFilter === "all" ? undefined : Number(wardFilter),
+  }
 
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-users", { page, search: debouncedSearch }],
+    queryKey: [
+      "admin-users",
+      { page, search: debouncedSearch, ...activeFilters },
+    ],
     queryFn: () =>
-      AdminService.listUsers((page - 1) * PER_PAGE, PER_PAGE, debouncedSearch),
+      AdminService.listUsers(
+        (page - 1) * PER_PAGE,
+        PER_PAGE,
+        debouncedSearch,
+        activeFilters,
+      ),
     placeholderData: (prev) => prev,
   })
 
@@ -1385,8 +1601,8 @@ function AdminUsers() {
   const selectedWardName =
     wardFilter === "all"
       ? "all-wards"
-      : wards.find((ward) => String(ward.wardid) === wardFilter)?.wardname ??
-        `ward-${wardFilter}`
+      : (wards.find((ward) => String(ward.wardid) === wardFilter)?.wardname ??
+        `ward-${wardFilter}`)
 
   const users = data?.data ?? []
   const count = data?.count ?? 0
@@ -1407,29 +1623,19 @@ function AdminUsers() {
     })
   }, [users])
 
-  const filteredUsers = users.filter((user) => {
-    const matchesRole =
-      roleFilter === "all" || user.roles.includes(roleFilter)
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "active" ? user.isactive : !user.isactive)
-    const matchesPassword =
-      passwordFilter === "all" ||
-      (passwordFilter === "temporary"
-        ? user.must_change_password
-        : !user.must_change_password)
-    const matchesWard =
-      wardFilter === "all" ||
-      user.wards.some((ward) => String(ward.ward_id) === wardFilter)
-
-    return matchesRole && matchesStatus && matchesPassword && matchesWard
-  })
-
   const setPage = (p: number) =>
     navigate({ search: (prev: any) => ({ ...prev, page: p }) })
 
+  const updateFilter = (setter: (value: string) => void, value: string) => {
+    setter(value)
+    if (page !== 1) {
+      setPage(1)
+    }
+  }
+
   const resetPasswordMutation = useMutation({
-    mutationFn: (user: AdminUser) => AdminService.resetUserPassword(user.userid),
+    mutationFn: (user: AdminUser) =>
+      AdminService.resetUserPassword(user.userid),
     onSuccess: (result) => {
       if (resetPasswordUser?.userid) {
         setKnownDefaultPasswords((prev) => ({
@@ -1446,7 +1652,9 @@ function AdminUsers() {
       showSuccessToast("Temporary password generated.")
     },
     onError: (err: any) => {
-      showErrorToast(err.body?.detail ?? err.message ?? "Failed to reset password.")
+      showErrorToast(
+        err.body?.detail ?? err.message ?? "Failed to reset password.",
+      )
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] })
@@ -1462,7 +1670,8 @@ function AdminUsers() {
       setIsImporting(true)
       await importRows(file)
     } catch (error: any) {
-      const message = error?.message ?? "Failed to parse the selected Excel file."
+      const message =
+        error?.message ?? "Failed to parse the selected Excel file."
       if (message.toLowerCase().includes("password-protected")) {
         setPendingImport({ file })
         setImportPassword("")
@@ -1483,7 +1692,8 @@ function AdminUsers() {
       setPendingImport(null)
       setImportPassword("")
     } catch (error: any) {
-      const message = error?.message ?? "Failed to read the protected Excel file."
+      const message =
+        error?.message ?? "Failed to read the protected Excel file."
       if (
         message.toLowerCase().includes("password") ||
         message.toLowerCase().includes("unsupported")
@@ -1530,14 +1740,22 @@ function AdminUsers() {
       await navigator.clipboard.writeText(password)
       setCopiedDefaultPasswordUserId(userId)
       showSuccessToast("Password copied to clipboard.")
-      setTimeout(() => setCopiedDefaultPasswordUserId((prev) => (prev === userId ? null : prev)), 1500)
+      setTimeout(
+        () =>
+          setCopiedDefaultPasswordUserId((prev) =>
+            prev === userId ? null : prev,
+          ),
+        1500,
+      )
     } catch {
       showErrorToast("Unable to copy password. Please copy it manually.")
     }
   }
 
   const progressPercent = importProgress
-    ? Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)
+    ? Math.round(
+        (importProgress.processed / Math.max(importProgress.total, 1)) * 100,
+      )
     : 0
 
   const handleExportDefaultPasswords = async () => {
@@ -1566,9 +1784,7 @@ function AdminUsers() {
     }
 
     const rows = allUsers
-      .filter((user) =>
-        user.wards.some((ward) => ward.ward_id === wardId),
-      )
+      .filter((user) => user.wards.some((ward) => ward.ward_id === wardId))
       .filter(
         (user) =>
           user.must_change_password && knownDefaultPasswords[user.userid],
@@ -1603,7 +1819,9 @@ function AdminUsers() {
       ),
     ]
 
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/csv;charset=utf-8;",
+    })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     const dateStamp = new Date().toISOString().slice(0, 10)
@@ -1624,7 +1842,9 @@ function AdminUsers() {
             <Users className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Users Management</h1>
+            <h1 className="text-xl font-bold text-gray-900">
+              Users Management
+            </h1>
             <p className="text-sm text-gray-500">{count} total users</p>
           </div>
         </div>
@@ -1680,7 +1900,7 @@ function AdminUsers() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <select
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
+          onChange={(e) => updateFilter(setRoleFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Roles</option>
@@ -1691,7 +1911,7 @@ function AdminUsers() {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => updateFilter(setStatusFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Statuses</option>
@@ -1701,7 +1921,7 @@ function AdminUsers() {
 
         <select
           value={passwordFilter}
-          onChange={(e) => setPasswordFilter(e.target.value)}
+          onChange={(e) => updateFilter(setPasswordFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Password States</option>
@@ -1711,7 +1931,7 @@ function AdminUsers() {
 
         <select
           value={wardFilter}
-          onChange={(e) => setWardFilter(e.target.value)}
+          onChange={(e) => updateFilter(setWardFilter, e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Wards</option>
@@ -1732,49 +1952,92 @@ function AdminUsers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Username</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Employee ID</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Roles</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Ward</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Default Password</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Name
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Username
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Employee ID
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Join Date
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Email
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Roles
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Designation
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Ward
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Status
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    Default Password
+                  </th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.userid} className="border-b last:border-0 hover:bg-gray-50">
+                {users.map((user) => (
+                  <tr
+                    key={user.userid}
+                    className="border-b last:border-0 hover:bg-gray-50"
+                  >
                     <td className="px-4 py-3 text-gray-600">
                       {user.name || <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-medium text-gray-900">{user.username}</span>
+                      <span className="font-medium text-gray-900">
+                        {user.username}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      {user.employee_id || <span className="text-gray-400">—</span>}
+                      {user.employee_id || (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {formatJoinDate(user.join_date) || (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">
-                      {user.email || <span className="text-gray-400 italic">Not set</span>}
+                      {user.email || (
+                        <span className="text-gray-400 italic">Not set</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {user.roles.length > 0
-                          ? user.roles.map((role) => (
-                              <span
-                                key={role}
-                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role] ?? "bg-gray-100 text-gray-700"}`}
-                              >
-                                {role}
-                              </span>
-                            ))
-                          : <span className="text-xs text-gray-400">No roles</span>}
+                        {user.roles.length > 0 ? (
+                          user.roles.map((role) => (
+                            <span
+                              key={role}
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role] ?? "bg-gray-100 text-gray-700"}`}
+                            >
+                              {role}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-gray-400">
+                            No roles
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      {user.designation || <span className="text-gray-400">—</span>}
+                      {user.designation || (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {user.wards && user.wards.length > 0 ? (
@@ -1805,16 +2068,21 @@ function AdminUsers() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {user.must_change_password && knownDefaultPasswords[user.userid] ? (
+                      {user.must_change_password &&
+                      knownDefaultPasswords[user.userid] ? (
                         <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
                           <span className="font-mono text-xs text-gray-900">
                             {knownDefaultPasswords[user.userid]}
                           </span>
                           <button
-                            onClick={() => handleCopyDefaultPassword(user.userid)}
+                            onClick={() =>
+                              handleCopyDefaultPassword(user.userid)
+                            }
                             className="text-xs px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-white"
                           >
-                            {copiedDefaultPasswordUserId === user.userid ? "Copied!" : "Copy"}
+                            {copiedDefaultPasswordUserId === user.userid
+                              ? "Copied!"
+                              : "Copy"}
                           </button>
                         </div>
                       ) : (
@@ -1825,7 +2093,9 @@ function AdminUsers() {
                               : "bg-gray-100 text-gray-700"
                           }`}
                         >
-                          {user.must_change_password ? "Temporary Password" : "Updated"}
+                          {user.must_change_password
+                            ? "Temporary Password"
+                            : "Updated"}
                         </span>
                       )}
                     </td>
@@ -1861,9 +2131,12 @@ function AdminUsers() {
                     </td>
                   </tr>
                 ))}
-                {filteredUsers.length === 0 && (
+                {users.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
+                    <td
+                      colSpan={11}
+                      className="px-4 py-12 text-center text-gray-500"
+                    >
                       No users found.
                     </td>
                   </tr>
@@ -1876,7 +2149,9 @@ function AdminUsers() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t">
-            <p className="text-sm text-gray-500">Page {page} of {totalPages}</p>
+            <p className="text-sm text-gray-500">
+              Page {page} of {totalPages}
+            </p>
             <div className="flex gap-1">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
@@ -1934,7 +2209,9 @@ function AdminUsers() {
       {createdUserInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">User Created</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
+              User Created
+            </h2>
             <p className="text-sm text-gray-600 mb-4">
               Share these credentials with{" "}
               <strong>{createdUserInfo.username}</strong>. They will be required
@@ -1982,7 +2259,8 @@ function AdminUsers() {
               Excel Password Required
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-              This staff list is password protected. Enter the workbook password to continue the import.
+              This staff list is password protected. Enter the workbook password
+              to continue the import.
             </p>
             <input
               type="password"
@@ -2020,7 +2298,8 @@ function AdminUsers() {
               Import Progress
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-              Processing {importProgress.processed} of {importProgress.total} rows.
+              Processing {importProgress.processed} of {importProgress.total}{" "}
+              rows.
             </p>
 
             <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden mb-4">
@@ -2051,7 +2330,9 @@ function AdminUsers() {
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="text-gray-500">Progress</p>
-                <p className="font-semibold text-gray-900">{progressPercent}%</p>
+                <p className="font-semibold text-gray-900">
+                  {progressPercent}%
+                </p>
               </div>
             </div>
 
@@ -2082,12 +2363,16 @@ function AdminUsers() {
               Import Failures
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-              {importFailures.length} row{importFailures.length !== 1 ? "s" : ""} failed to import.
+              {importFailures.length} row
+              {importFailures.length !== 1 ? "s" : ""} failed to import.
             </p>
             <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50">
               <ul className="divide-y divide-gray-200">
                 {importFailures.map((failure, index) => (
-                  <li key={`${failure}-${index}`} className="px-4 py-2 text-sm text-gray-700">
+                  <li
+                    key={`${failure}-${index}`}
+                    className="px-4 py-2 text-sm text-gray-700"
+                  >
                     {failure}
                   </li>
                 ))}

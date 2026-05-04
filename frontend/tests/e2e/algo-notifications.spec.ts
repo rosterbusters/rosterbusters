@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 
 const API_URL = process.env.VITE_API_URL || "http://127.0.0.1:8000"
@@ -349,8 +349,9 @@ async function listRecentMessages(
   const payload = (await response.json()) as {
     notifications?: Array<{ messagebody?: string }>
   }
-  return (payload.notifications || [])
-    .map((n) => (n.messagebody || "").replace(/\s+/g, " ").trim())
+  return (payload.notifications || []).map((n) =>
+    (n.messagebody || "").replace(/\s+/g, " ").trim(),
+  )
 }
 
 async function waitForMessage(
@@ -361,9 +362,9 @@ async function waitForMessage(
   const normalized = expected.replace(/\s+/g, " ").trim()
   const intervals = [500, 1000, 1500, 2000, 3000, 4000]
   for (const delay of intervals) {
-    const found = (await findNotificationMessages(request, managerToken, [
-      normalized,
-    ]))[0]
+    const found = (
+      await findNotificationMessages(request, managerToken, [normalized])
+    )[0]
     if (found) {
       return true
     }

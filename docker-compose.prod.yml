@@ -27,6 +27,11 @@ services:
     volumes:
       - ./gurobi.lic:/root/gurobi.lic:ro
 
+  celery_beat:
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_SERVER=${POSTGRES_SERVER}
+
   frontend:
     depends_on:
       backend:

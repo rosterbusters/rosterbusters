@@ -1,43 +1,43 @@
-import { useState, useMemo, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
+  Badge,
   Box,
   Button,
   Flex,
   HStack,
+  Spinner,
   Table,
   Text,
-  Badge,
   VStack,
-  Spinner,
-} from "@chakra-ui/react";
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
-import { ShiftRequestsService } from "@/client";
-import { LeaveRequestsService } from "@/client/LeaveRequestsService";
-import { getShiftColor } from "@/components/NurseManager/RosterTable/types";
-import { type UnifiedRequest, type RequestStatus } from "./RequestReviewModal";
-import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest";
-import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest";
+} from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react"
+import { type ReactNode, useMemo, useState } from "react"
+import { ShiftRequestsService } from "@/client"
+import { LeaveRequestsService } from "@/client/LeaveRequestsService"
+import { getShiftColor } from "@/components/NurseManager/RosterTable/types"
+import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest"
+import type { RequestStatus, UnifiedRequest } from "./RequestReviewModal"
+import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest"
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
-type TabFilter = "all" | "shift" | "leave";
+type TabFilter = "all" | "shift" | "leave"
 
 const TABS: { id: TabFilter; label: string }[] = [
   { id: "all", label: "All Types" },
   { id: "shift", label: "Shift Requests" },
   { id: "leave", label: "Leave Requests" },
-];
+]
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 30
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  const day = d.getDate();
-  const month = d.getMonth() + 1;
-  const year = d.getFullYear();
-  return `${day}/${month < 10 ? "0" + month : month}/${year}`;
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return dateStr
+  const day = d.getDate()
+  const month = d.getMonth() + 1
+  const year = d.getFullYear()
+  return `${day}/${month < 10 ? `0${month}` : month}/${year}`
 }
 
 // ─── Status cell ─────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ function StatusCell({ status }: { status: RequestStatus }) {
           Pending
         </Badge>
       </Flex>
-    );
+    )
   }
   if (status === "Approved") {
     return (
@@ -78,7 +78,7 @@ function StatusCell({ status }: { status: RequestStatus }) {
           Approved
         </Badge>
       </Flex>
-    );
+    )
   }
   if (status === "Rejected") {
     return (
@@ -97,13 +97,13 @@ function StatusCell({ status }: { status: RequestStatus }) {
           Rejected
         </Badge>
       </Flex>
-    );
+    )
   }
   return (
     <Text fontSize="xs" color="gray.400">
       {status}
     </Text>
-  );
+  )
 }
 
 // ─── Type label cell ─────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ function TypeCell({ type }: { type: "ShiftRequest" | "LeaveRequest" }) {
     >
       {type === "ShiftRequest" ? "Shift Request" : "Leave Request"}
     </Text>
-  );
+  )
 }
 
 // Fallback: resolve code from full name (covers both shift and leave)
@@ -139,18 +139,18 @@ const NAME_TO_CODE: Record<string, string> = {
   "Compassionate Leave": "CL",
   "Extended Marriage Leave": "EML",
   "Day Off": "DO",
-};
+}
 
 // ─── Request type badge ───────────────────────────────────────────────────────
 function RequestTypeBadge({
   name,
   shiftCode,
 }: {
-  name: string;
-  shiftCode?: string | null;
+  name: string
+  shiftCode?: string | null
 }) {
-  const code = shiftCode ?? NAME_TO_CODE[name] ?? null;
-  const color = code ? getShiftColor(code) : null;
+  const code = shiftCode ?? NAME_TO_CODE[name] ?? null
+  const color = code ? getShiftColor(code) : null
 
   if (code && color) {
     return (
@@ -173,7 +173,7 @@ function RequestTypeBadge({
           {name}
         </Text>
       </HStack>
-    );
+    )
   }
 
   // Unknown type fallback
@@ -191,45 +191,45 @@ function RequestTypeBadge({
     >
       {name}
     </Badge>
-  );
+  )
 }
 
 // ─── Sort icon ────────────────────────────────────────────────────────────────
 function SortIcon({ direction }: { direction: "asc" | "desc" | null }) {
   if (direction === "asc")
-    return <ChevronUp className="h-3.5 w-3.5 inline ml-0.5" />;
+    return <ChevronUp className="h-3.5 w-3.5 inline ml-0.5" />
   if (direction === "desc")
-    return <ChevronDown className="h-3.5 w-3.5 inline ml-0.5" />;
-  return <ChevronsUpDown className="h-3.5 w-3.5 inline ml-0.5 opacity-40" />;
+    return <ChevronDown className="h-3.5 w-3.5 inline ml-0.5" />
+  return <ChevronsUpDown className="h-3.5 w-3.5 inline ml-0.5 opacity-40" />
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 interface RequestsOverviewTableProps {
-  wardId?: number | null;
-  wardSelector?: ReactNode;
+  wardId?: number | null
+  wardSelector?: ReactNode
 }
 
 export function RequestsOverviewTable({
   wardId,
   wardSelector,
 }: RequestsOverviewTableProps) {
-  const [activeTab, setActiveTab] = useState<TabFilter>("all");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<TabFilter>("all")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  const [page, setPage] = useState(1)
   const [selectedShiftRequest, setSelectedShiftRequest] =
-    useState<UnifiedRequest | null>(null);
+    useState<UnifiedRequest | null>(null)
   const [selectedLeaveRequest, setSelectedLeaveRequest] =
-    useState<UnifiedRequest | null>(null);
+    useState<UnifiedRequest | null>(null)
   const [expandedComments, setExpandedComments] = useState<Set<number>>(
     new Set(),
-  );
+  )
 
   const toggleComment = (id: number) =>
     setExpandedComments((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
 
   // Local overrides for optimistic status updates
   // ── Fetch shift requests ──────────────────────────────────────────────────
@@ -239,7 +239,7 @@ export function RequestsOverviewTable({
       ShiftRequestsService.getShiftRequestsByWard({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 30_000,
-  });
+  })
 
   const { data: leaveRequests = [], isLoading: leaveLoading } = useQuery({
     queryKey: ["ward-leave-requests", wardId],
@@ -247,14 +247,14 @@ export function RequestsOverviewTable({
       LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 30_000,
-  });
+  })
 
   // ── Fetch shift codes for display names ──────────────────────────────────
   const { data: shiftCodes = [] } = useQuery({
     queryKey: ["shift-codes", "all"],
     queryFn: () => ShiftRequestsService.getAllShiftCodes(),
     staleTime: 5 * 60_000,
-  });
+  })
 
   // ── Fetch ward nurses for nurse name display ──────────────────────────────
   const { data: wardNurses = [] } = useQuery({
@@ -262,19 +262,19 @@ export function RequestsOverviewTable({
     queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 5 * 60_000,
-  });
+  })
 
   const shiftCodeMap = useMemo(() => {
-    const map = new Map<string, string>();
-    shiftCodes.forEach((sc) => map.set(sc.shiftcode, sc.description));
-    return map;
-  }, [shiftCodes]);
+    const map = new Map<string, string>()
+    shiftCodes.forEach((sc) => map.set(sc.shiftcode, sc.description))
+    return map
+  }, [shiftCodes])
 
   const nurseMap = useMemo(() => {
-    const map = new Map<number, string>();
-    wardNurses.forEach((n) => map.set(n.nurseid, n.name));
-    return map;
-  }, [wardNurses]);
+    const map = new Map<number, string>()
+    wardNurses.forEach((n) => map.set(n.nurseid, n.name))
+    return map
+  }, [wardNurses])
 
   // ── Build unified list ────────────────────────────────────────────────────
   const allRequests: UnifiedRequest[] = useMemo(() => {
@@ -292,7 +292,7 @@ export function RequestsOverviewTable({
           comments: sr.reason,
           nurseName: nurseMap.get(sr.nurseid) ?? null,
         }))
-      : [];
+      : []
 
     const fromLeave: UnifiedRequest[] = wardId
       ? leaveRequests.map((lr) => ({
@@ -310,87 +310,87 @@ export function RequestsOverviewTable({
           comments: lr.reason,
           nurseName: nurseMap.get(lr.nurseid) ?? null,
         }))
-      : [];
+      : []
 
-    return [...fromShift, ...fromLeave];
-  }, [wardId, shiftRequests, leaveRequests, shiftCodeMap, nurseMap]);
+    return [...fromShift, ...fromLeave]
+  }, [wardId, shiftRequests, leaveRequests, shiftCodeMap, nurseMap])
 
   // ── Filter by tab ─────────────────────────────────────────────────────────
   const filteredRequests = useMemo(() => {
     if (activeTab === "shift")
-      return allRequests.filter((r) => r.type === "ShiftRequest");
+      return allRequests.filter((r) => r.type === "ShiftRequest")
     if (activeTab === "leave")
-      return allRequests.filter((r) => r.type === "LeaveRequest");
-    return allRequests;
-  }, [allRequests, activeTab]);
+      return allRequests.filter((r) => r.type === "LeaveRequest")
+    return allRequests
+  }, [allRequests, activeTab])
 
   // ── Sort by application date (Pending always first) ──────────────────────
   const sortedRequests = useMemo(() => {
     return [...filteredRequests].sort((a, b) => {
       // Pending items always float to the top
-      const pendingFirst = (s: RequestStatus) => (s === "Pending" ? 0 : 1);
-      const statusDiff = pendingFirst(a.status) - pendingFirst(b.status);
-      if (statusDiff !== 0) return statusDiff;
+      const pendingFirst = (s: RequestStatus) => (s === "Pending" ? 0 : 1)
+      const statusDiff = pendingFirst(a.status) - pendingFirst(b.status)
+      if (statusDiff !== 0) return statusDiff
 
       const parse = (d: string) => {
         // d may be "D/MM/YYYY" or "D/MM/YYYY – D/MM/YYYY"
-        const first = d.split("–")[0].trim();
-        const parts = first.split("/");
+        const first = d.split("–")[0].trim()
+        const parts = first.split("/")
         if (parts.length === 3) {
           return new Date(
-            parseInt(parts[2]),
-            parseInt(parts[1]) - 1,
-            parseInt(parts[0]),
-          ).getTime();
+            parseInt(parts[2], 10),
+            parseInt(parts[1], 10) - 1,
+            parseInt(parts[0], 10),
+          ).getTime()
         }
-        return new Date(d).getTime();
-      };
-      const diff = parse(a.applicationDate) - parse(b.applicationDate);
-      return sortDir === "asc" ? diff : -diff;
-    });
-  }, [filteredRequests, sortDir]);
+        return new Date(d).getTime()
+      }
+      const diff = parse(a.applicationDate) - parse(b.applicationDate)
+      return sortDir === "asc" ? diff : -diff
+    })
+  }, [filteredRequests, sortDir])
 
   // ── Paginate ──────────────────────────────────────────────────────────────
-  const totalPages = Math.max(1, Math.ceil(sortedRequests.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedRequests.length / PAGE_SIZE))
   const currentPageData = sortedRequests.slice(
     (page - 1) * PAGE_SIZE,
     page * PAGE_SIZE,
-  );
+  )
 
   const handleTabChange = (tab: TabFilter) => {
-    setActiveTab(tab);
-    setPage(1);
-  };
+    setActiveTab(tab)
+    setPage(1)
+  }
 
   const handleSortToggle = () => {
-    setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    setPage(1);
-  };
+    setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    setPage(1)
+  }
 
   const handleOpenModal = (request: UnifiedRequest) => {
     if (request.type === "ShiftRequest") {
-      setSelectedShiftRequest(request);
+      setSelectedShiftRequest(request)
     } else {
-      setSelectedLeaveRequest(request);
+      setSelectedLeaveRequest(request)
     }
-  };
+  }
 
   const competingLeaveRequests = useMemo(() => {
-    if (!selectedLeaveRequest || !wardId) return [];
-    const selectedStart = selectedLeaveRequest.rawStartDate;
+    if (!selectedLeaveRequest || !wardId) return []
+    const selectedStart = selectedLeaveRequest.rawStartDate
     const selectedEnd =
-      selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate;
-    if (!selectedStart || !selectedEnd) return [];
+      selectedLeaveRequest.rawEndDate ?? selectedLeaveRequest.rawStartDate
+    if (!selectedStart || !selectedEnd) return []
 
-    const toDate = (value: string) => new Date(value);
-    const selStart = toDate(selectedStart);
-    const selEnd = toDate(selectedEnd);
+    const toDate = (value: string) => new Date(value)
+    const selStart = toDate(selectedStart)
+    const selEnd = toDate(selectedEnd)
 
     return leaveRequests
       .filter((lr) => {
-        const lrStart = toDate(lr.startdate);
-        const lrEnd = toDate(lr.enddate);
-        return lrStart <= selEnd && lrEnd >= selStart;
+        const lrStart = toDate(lr.startdate)
+        const lrEnd = toDate(lr.enddate)
+        return lrStart <= selEnd && lrEnd >= selStart
       })
       .map((lr) => ({
         requestId: lr.leaveid,
@@ -399,10 +399,10 @@ export function RequestsOverviewTable({
         startDate: lr.startdate,
         endDate: lr.enddate,
         status: lr.status as RequestStatus,
-      }));
-  }, [leaveRequests, nurseMap, selectedLeaveRequest, wardId]);
+      }))
+  }, [leaveRequests, nurseMap, selectedLeaveRequest, wardId])
 
-  const isLoading = shiftLoading || leaveLoading;
+  const isLoading = shiftLoading || leaveLoading
 
   return (
     <VStack align="stretch" gap={4} w="full" maxW="1200px" mx="auto">
@@ -438,9 +438,9 @@ export function RequestsOverviewTable({
           flexShrink={0}
         >
           {TABS.map((tab, idx) => {
-            const isFirst = idx === 0;
-            const isLast = idx === TABS.length - 1;
-            const isActive = activeTab === tab.id;
+            const isFirst = idx === 0
+            const isLast = idx === TABS.length - 1
+            const isActive = activeTab === tab.id
             return (
               <Button
                 key={tab.id}
@@ -461,7 +461,7 @@ export function RequestsOverviewTable({
               >
                 {tab.label}
               </Button>
-            );
+            )
           })}
         </HStack>
         <Box
@@ -646,7 +646,7 @@ export function RequestsOverviewTable({
                     {/* Comments */}
                     <Table.Cell py={2} px={4} maxW="160px">
                       {(() => {
-                        const displayComment = req.comments ?? null;
+                        const displayComment = req.comments ?? null
                         return displayComment ? (
                           <Text
                             fontSize="sm"
@@ -674,14 +674,14 @@ export function RequestsOverviewTable({
                             {expandedComments.has(req.id)
                               ? displayComment
                               : displayComment.length > 10
-                                ? displayComment.slice(0, 10) + "..."
+                                ? `${displayComment.slice(0, 10)}...`
                                 : displayComment}
                           </Text>
                         ) : (
                           <Text fontSize="sm" color="gray.300">
                             –
                           </Text>
-                        );
+                        )
                       })()}
                     </Table.Cell>
 
@@ -818,5 +818,5 @@ export function RequestsOverviewTable({
         />
       )}
     </VStack>
-  );
+  )
 }

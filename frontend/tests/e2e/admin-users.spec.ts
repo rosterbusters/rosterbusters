@@ -1,11 +1,11 @@
-import { expect, test } from "@playwright/test"
 import { execFileSync } from "node:child_process"
+import { expect, test } from "@playwright/test"
 import {
   createUser,
   deleteUser,
+  findUserIdByUsername,
   getAdminToken,
   getAnyWard,
-  findUserIdByUsername,
   getUserByUsername,
 } from "./admin-helpers"
 
@@ -26,7 +26,10 @@ const getDbContainerName = () => {
       ["ps", "--format", "{{.Names}} {{.Image}}"],
       { encoding: "utf8" },
     )
-    const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    const lines = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
     const match = lines.find((line) => {
       const [, image] = line.split(/\s+/, 2)
       if (!image) return false
@@ -48,7 +51,19 @@ const runScalarQuery = (sql: string) => {
   const container = getDbContainerName()
   return execFileSync(
     "docker",
-    ["exec", container, "psql", "-U", DB_USER, "-d", DB_NAME, "-t", "-A", "-c", sql],
+    [
+      "exec",
+      container,
+      "psql",
+      "-U",
+      DB_USER,
+      "-d",
+      DB_NAME,
+      "-t",
+      "-A",
+      "-c",
+      sql,
+    ],
     { encoding: "utf8" },
   ).trim()
 }
@@ -229,35 +244,61 @@ test("admin deletion removes nurse and nurse manager records", async ({
     await nurseRow.getByTitle("Delete user").click()
     await page.getByRole("button", { name: "Delete", exact: true }).click()
 
-    await expect.poll(async () => {
-      const id = await findUserIdByUsername(request, token, nurseUsername)
-      return id ?? null
-    }).toBe(null)
+    await expect
+      .poll(async () => {
+        const id = await findUserIdByUsername(request, token, nurseUsername)
+        return id ?? null
+      })
+      .toBe(null)
 
-    await expect.poll(() =>
-      countRows(`select count(*) from "User" where userid = ${nurseDetails.userid};`),
-    ).toBe(0)
-    await expect.poll(() =>
-      countRows(`select count(*) from nurse where nurseid = ${nurseDetails.nurseid};`),
-    ).toBe(0)
+    await expect
+      .poll(() =>
+        countRows(
+          `select count(*) from "User" where userid = ${nurseDetails.userid};`,
+        ),
+      )
+      .toBe(0)
+    await expect
+      .poll(() =>
+        countRows(
+          `select count(*) from nurse where nurseid = ${nurseDetails.nurseid};`,
+        ),
+      )
+      .toBe(0)
 
     await search.fill(nurseManagerEmail)
-    const managerRow = page.getByRole("row").filter({ hasText: nurseManagerUsername })
+    const managerRow = page
+      .getByRole("row")
+      .filter({ hasText: nurseManagerUsername })
     await expect(managerRow).toContainText(nurseManagerUsername)
     await managerRow.getByTitle("Delete user").click()
     await page.getByRole("button", { name: "Delete", exact: true }).click()
 
-    await expect.poll(async () => {
-      const id = await findUserIdByUsername(request, token, nurseManagerUsername)
-      return id ?? null
-    }).toBe(null)
+    await expect
+      .poll(async () => {
+        const id = await findUserIdByUsername(
+          request,
+          token,
+          nurseManagerUsername,
+        )
+        return id ?? null
+      })
+      .toBe(null)
 
-    await expect.poll(() =>
-      countRows(`select count(*) from "User" where userid = ${managerDetails.userid};`),
-    ).toBe(0)
-    await expect.poll(() =>
-      countRows(`select count(*) from nursemanager where managerid = ${managerDetails.managerid};`),
-    ).toBe(0)
+    await expect
+      .poll(() =>
+        countRows(
+          `select count(*) from "User" where userid = ${managerDetails.userid};`,
+        ),
+      )
+      .toBe(0)
+    await expect
+      .poll(() =>
+        countRows(
+          `select count(*) from nursemanager where managerid = ${managerDetails.managerid};`,
+        ),
+      )
+      .toBe(0)
   } finally {
     for (const userid of createdUserIds.reverse()) {
       await deleteUser(request, token, userid)

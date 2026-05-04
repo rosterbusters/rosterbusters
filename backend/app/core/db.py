@@ -20,6 +20,7 @@ def ensure_bootstrap_schema(session: Session) -> None:
     inspector = inspect(bind)
     user_columns = {column["name"] for column in inspector.get_columns("User")}
     ward_columns = {column["name"] for column in inspector.get_columns("ward")}
+    nurse_columns = {column["name"] for column in inspector.get_columns("nurse")}
 
     if "defaultpassword" not in user_columns:
         session.exec(sa.text('ALTER TABLE "User" ADD COLUMN defaultpassword VARCHAR'))
@@ -67,6 +68,10 @@ def ensure_bootstrap_schema(session: Session) -> None:
                 """
             )
         )
+        session.commit()
+
+    if "join_date" not in nurse_columns:
+        session.exec(sa.text("ALTER TABLE nurse ADD COLUMN join_date DATE"))
         session.commit()
 
 

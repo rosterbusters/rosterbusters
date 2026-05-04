@@ -1,32 +1,29 @@
-import { useState } from "react"
 import { Link, useLocation } from "@tanstack/react-router"
 import {
-  LayoutDashboard,
-  Users,
   Building2,
-  Settings,
-  Menu,
-  X,
-  LogOut,
   ChevronDown,
+  LayoutDashboard,
+  LogOut,
+  Menu,
   ShieldCheck,
+  Users,
+  X,
 } from "lucide-react"
-import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu"
+import { useState } from "react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn } from "@/lib/utils"
+import {
+  NavigationMenu,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+} from "@/components/ui/navigation-menu"
 import useAuth from "@/hooks/useAuth"
+import { cn } from "@/lib/utils"
 
 function AdminNavbar() {
   const location = useLocation()
@@ -40,8 +37,7 @@ function AdminNavbar() {
   const navPillBase =
     "px-3 inline-flex h-9 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2"
   const navPillActive = "bg-[#DDE8EA] !text-[#4B8798]"
-  const navPillInactive =
-    "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50"
+  const navPillInactive = "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50"
 
   const navItems = [
     {

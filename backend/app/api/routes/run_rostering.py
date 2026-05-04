@@ -328,6 +328,7 @@ def _queue_algorithm_notification(
     ward_id: int,
     period_id: int,
     notification_type: NotificationType,
+    send_email_notification: bool = False,
 ) -> None:
     """Queue an algorithm notification (and email) for the ward's nurse manager, if applicable."""
     if not manager_id:
@@ -352,7 +353,7 @@ def _queue_algorithm_notification(
     )
     session.commit()
 
-    if not settings.emails_enabled:
+    if not send_email_notification or not settings.emails_enabled:
         return
 
     manager = session.get(NurseManager, manager_id)
@@ -496,6 +497,8 @@ def get_ward_statistics(ward_id: int, db: Session = Depends(get_db)):
                 )
                 else None,
                 "employeeId": n.employeeid,
+                "joinDate": n.join_date.isoformat() if n.join_date else None,
+                "join_date": n.join_date.isoformat() if n.join_date else None,
                 "designation": n.designation,
                 "email": n.email,
                 "contactNumber": n.contactnumber or "",
@@ -1267,52 +1270,16 @@ def trigger_scheduled_generation(
     db: Session = Depends(get_db),
 ):
     """
-    Called by AWS Lambda on a schedule. No user auth required.
-    Finds RosterPeriods starting in `days_ahead` days, queues generate_and_save_roster_task
-    for every active ward. Existing rosters are overwritten by the task.
+    Operational helper to queue scheduled roster generation.
+    Uses the same selection rules as the hourly scheduler task.
     """
-    target_date = date.today() + timedelta(days=days_ahead)
+    from app.services.roster_period_service import ensure_roster_period_window
+    from app.tasks.roster_tasks import queue_scheduled_roster_generation
 
-    periods = db.exec(
-        select(RosterPeriod).where(
-            RosterPeriod.startdate == target_date,
-            RosterPeriod.status == "RequestOpen",
-        )
-    ).all()
-
-    active_wards = db.exec(
-        select(Ward).where(Ward.isactive == True)  # noqa: E712
-    ).all()
-
-    triggered: list[dict] = []
-    skipped: list[dict] = []
-
-    for period in periods:
-        for ward in active_wards:
-            task_id = str(uuid4())
-            if not acquire_ward_algorithm_lock(ward.wardid, task_id):
-                skipped.append({
-                    "ward_id": ward.wardid,
-                    "period_id": period.periodid,
-                    "reason": "algorithm_generation_in_progress",
-                })
-                continue
-            try:
-                task = _get_celery_app().send_task(
-                    "tasks.generate_and_save_roster",
-                    args=[ward.wardid, period.periodid],
-                    task_id=task_id,
-                )
-            except Exception:
-                release_ward_algorithm_lock(ward.wardid, task_id)
-                raise
-            triggered.append({
-                "ward_id": ward.wardid,
-                "period_id": period.periodid,
-                "task_id": task.id,
-            })
-
-    return {"triggered": triggered, "skipped": skipped}
+    ensure_roster_period_window(db)
+    result = queue_scheduled_roster_generation(db, days_ahead=days_ahead)
+    db.commit()
+    return result
 
 
 @router.get("/task/{task_id}/status")
@@ -1781,7 +1748,11 @@ def _staffing_to_algo_inputs(ward: Ward, rank_map: dict[str, str] | None = None)
                 rank_min["A"],
                 rank_min["B"],
                 rank_min["C"],
-                rn_max_night_per_day=ward.nd_rn,
+                rn_max_night_per_day=(
+                    rank_night_max["A"]
+                    if rank_night_max["A"] is not None
+                    else ward.nd_rn_max if ward.nd_rn_max is not None else ward.nd_rn
+                ),
                 hca_max_night_per_day=rank_night_max["C"] if rank_night_max["C"] is not None else ward.nd_hca_max,
                 policy=milp_policy,
             )
@@ -1797,7 +1768,7 @@ def _staffing_to_algo_inputs(ward: Ward, rank_map: dict[str, str] | None = None)
         rn_min,
         en_min,
         hca_min,
-        rn_max_night_per_day=ward.nd_rn,
+        rn_max_night_per_day=ward.nd_rn_max if ward.nd_rn_max is not None else ward.nd_rn,
         hca_max_night_per_day=ward.nd_hca_max,
     )
 

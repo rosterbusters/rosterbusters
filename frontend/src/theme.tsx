@@ -1,20 +1,20 @@
-import { createSystem, defaultConfig } from "@chakra-ui/react";
-import { buttonRecipe } from "./theme/button.recipe";
-import { badgeRecipe } from "./theme/badge.recipe";
-import { tableRecipe } from "./theme/table.recipe";
+import { createSystem, defaultConfig } from "@chakra-ui/react"
+import { badgeRecipe } from "./theme/badge.recipe"
+import { buttonRecipe } from "./theme/button.recipe"
+import { tableRecipe } from "./theme/table.recipe"
 
 export const system = createSystem(defaultConfig, {
   preflight: false,
-  
+
   globalCss: {
     html: {
       fontSize: "16px",
       fontFamily: "Poppins, sans-serif",
     },
-    h1:{
+    h1: {
       fontFamily: "Poppins, sans-serif",
     },
-    h2:{
+    h2: {
       fontFamily: "Poppins, sans-serif",
     },
     body: {
@@ -33,7 +33,7 @@ export const system = createSystem(defaultConfig, {
       colors: {
         danger: { value: "#BE123C" },
         success: { value: "#65A30D" },
-        alert:{value:"#EAB308"},
+        alert: { value: "#EAB308" },
         faintforeground: { value: "neutral-400" },
         menuactive: { value: "#DDE8EA" },
         brand: {
@@ -78,4 +78,4 @@ export const system = createSystem(defaultConfig, {
       table: tableRecipe,
     },
   },
-});
+})

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import {
   completeLogin2faInUi,
   loginForE2E,
@@ -78,17 +78,20 @@ async function completeFirstLogin(
     })
   }
 
-  const res = await request.post(`${API_BASE_URL}/api/v1/users/me/first-login-setup`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const res = await request.post(
+    `${API_BASE_URL}/api/v1/users/me/first-login-setup`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        new_password: newPassword,
+        employee_id: employeeId,
+        ...(email ? { email } : {}),
+      },
     },
-    data: {
-      new_password: newPassword,
-      employee_id: employeeId,
-      ...(email ? { email } : {}),
-    },
-  })
+  )
   if (!res.ok()) {
     const body = await res.text()
     throw new Error(`Failed to complete first login: ${res.status()} ${body}`)
@@ -114,7 +117,10 @@ async function updateWardManager(
   }
 }
 
-test("roster planning shows a ward selection for nurse managers", async ({ page, request }) => {
+test("roster planning shows a ward selection for nurse managers", async ({
+  page,
+  request,
+}) => {
   test.setTimeout(120_000)
 
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
@@ -168,13 +174,21 @@ test("roster planning shows a ward selection for nurse managers", async ({ page,
       ward_ids: [ward.wardid],
     })
     const nmToken = await loginToken(request, nmUsername, nmPassword, nmEmail)
-    await completeFirstLogin(request, nmToken, nmPassword, nmEmployeeId, nmEmail)
+    await completeFirstLogin(
+      request,
+      nmToken,
+      nmPassword,
+      nmEmployeeId,
+      nmEmail,
+    )
     const meRes = await request.get(`${API_BASE_URL}/api/v1/users/me`, {
       headers: { Authorization: `Bearer ${nmToken}` },
     })
     if (!meRes.ok()) {
       const body = await meRes.text()
-      throw new Error(`Failed to fetch current manager profile: ${meRes.status()} ${body}`)
+      throw new Error(
+        `Failed to fetch current manager profile: ${meRes.status()} ${body}`,
+      )
     }
     const currentManager = (await meRes.json()) as { managerid?: number | null }
     await updateWardManager(
@@ -231,7 +245,6 @@ test("roster planning shows a ward selection for nurse managers", async ({ page,
     const wardTrigger = page.getByTestId("roster-ward-trigger")
     await expect(wardTrigger).toBeVisible()
     await expect(wardTrigger).not.toContainText("Select Ward")
-
   } finally {
     if (nmUser?.userid) {
       await deleteUser(request, adminToken, nmUser.userid)

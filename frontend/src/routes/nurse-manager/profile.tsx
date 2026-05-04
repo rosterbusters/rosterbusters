@@ -1,31 +1,39 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Box, Flex, Grid, GridItem, Text, VStack } from "@chakra-ui/react";
+import { Box, Flex, Grid, GridItem, Text, VStack } from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import { createFileRoute } from "@tanstack/react-router"
 
-import useAuth from "@/hooks/useAuth";
+import { AdminService, type WardOption } from "@/client/adminService"
+import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/nurse-manager/profile")({
   component: ProfilePage,
-});
+})
 
 function formatValue(value: string | null | undefined) {
-  return value && value.trim().length > 0 ? value : "Not available";
+  return value && value.trim().length > 0 ? value : "Not available"
 }
 
 function ProfilePage() {
-  const { user } = useAuth();
+  const { user } = useAuth()
+  const { data: wards = [] } = useQuery<WardOption[]>({
+    queryKey: ["wards"],
+    queryFn: () => AdminService.listWards(),
+    staleTime: 60_000,
+  })
 
-  const profileName = formatValue(user?.name ?? user?.username ?? user?.email);
-  const email = formatValue(user?.email);
-  const designation = "Nurse Manager";
-  const ward = "Not available";
-  const phoneNumber = "Not available";
+  const profileName = formatValue(user?.name ?? user?.username ?? user?.email)
+  const email = formatValue(user?.email)
+  const designation = "Nurse Manager"
+  const wardName = wards.find((item) => item.wardid === user?.wardid)?.wardname
+  const ward = formatValue(wardName)
+  const phoneNumber = "Not available"
 
   const details = [
     { label: "Ward", value: ward },
     { label: "Designation", value: designation },
     { label: "Email", value: email },
     { label: "Phone Number", value: phoneNumber },
-  ];
+  ]
 
   return (
     <Flex
@@ -48,17 +56,30 @@ function ProfilePage() {
         align="stretch"
         mx="auto"
       >
-        <Text color="primary" fontWeight="semibold" fontSize="lg" textAlign="center">
+        <Text
+          color="primary"
+          fontWeight="semibold"
+          fontSize="lg"
+          textAlign="center"
+        >
           Profile
         </Text>
 
         <Box>
-          <Text color="foreground" fontWeight="semibold" fontSize={{ base: "2xl", md: "3xl" }}>
+          <Text
+            color="foreground"
+            fontWeight="semibold"
+            fontSize={{ base: "2xl", md: "3xl" }}
+          >
             {profileName}
           </Text>
         </Box>
 
-        <Grid templateColumns={{ base: "1fr", md: "160px 1fr" }} gap={4} maxW="2xl">
+        <Grid
+          templateColumns={{ base: "1fr", md: "160px 1fr" }}
+          gap={4}
+          maxW="2xl"
+        >
           {details.map((item) => (
             <GridItem key={item.label} colSpan={2}>
               <Grid templateColumns={{ base: "1fr", md: "160px 1fr" }} gap={2}>
@@ -76,7 +97,7 @@ function ProfilePage() {
         </Grid>
       </VStack>
     </Flex>
-  );
+  )
 }
 
-export default ProfilePage;
+export default ProfilePage

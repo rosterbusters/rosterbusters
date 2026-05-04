@@ -35,6 +35,7 @@ export interface NurseManagerStaffUser {
   name: string
   email: string | null
   employee_id: string | null
+  join_date: string | null
   designation: string | null
   shift_pattern: "AM_ONLY" | "PM_ONLY" | null
   isactive: boolean
@@ -58,6 +59,7 @@ export interface NurseManagerStaffCreate {
   name: string
   email?: string
   employee_id?: string
+  join_date?: string
   designation: string
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
@@ -70,6 +72,7 @@ export interface NurseManagerStaffUpdate {
   name?: string
   email?: string | null
   employee_id?: string
+  join_date?: string | null
   designation?: string
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string

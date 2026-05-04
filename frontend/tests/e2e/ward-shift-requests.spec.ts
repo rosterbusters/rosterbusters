@@ -1,10 +1,7 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
-import {
-  completeFirstLoginSetup,
-  withCleanupRequest,
-} from "./admin-helpers"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
+import { completeFirstLoginSetup, withCleanupRequest } from "./admin-helpers"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
 const ADMIN_EMAIL =
@@ -54,7 +51,19 @@ const runScalarQuery = (sql: string) => {
   const container = getDbContainerName()
   return execFileSync(
     "docker",
-    ["exec", container, "psql", "-U", DB_USER, "-d", DB_NAME, "-t", "-A", "-c", sql],
+    [
+      "exec",
+      container,
+      "psql",
+      "-U",
+      DB_USER,
+      "-d",
+      DB_NAME,
+      "-t",
+      "-A",
+      "-c",
+      sql,
+    ],
     { encoding: "utf8" },
   ).trim()
 }
@@ -68,12 +77,17 @@ const parseCodes = (value: string) =>
 const formatDateOnly = (value: Date) => value.toISOString().slice(0, 10)
 
 async function getRosterPeriods(request: APIRequestContext, token: string) {
-  const periodsRes = await request.get(`${API_BASE_URL}/api/v1/shift-requests/periods`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const periodsRes = await request.get(
+    `${API_BASE_URL}/api/v1/shift-requests/periods`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
   if (!periodsRes.ok()) {
     const body = await periodsRes.text()
-    throw new Error(`Failed to fetch roster periods: ${periodsRes.status()} ${body}`)
+    throw new Error(
+      `Failed to fetch roster periods: ${periodsRes.status()} ${body}`,
+    )
   }
 
   return (await periodsRes.json()) as Array<{
@@ -132,7 +146,9 @@ async function pickRosterPeriod(request: APIRequestContext, token: string) {
   }
 
   const periods = await getRosterPeriods(request, token)
-  const sorted = [...periods].sort((a, b) => a.startdate.localeCompare(b.startdate))
+  const sorted = [...periods].sort((a, b) =>
+    a.startdate.localeCompare(b.startdate),
+  )
   const writableFuturePeriod = sorted.find(
     (period) => period.startdate >= minimumWritableStartDateKey,
   )
@@ -149,7 +165,9 @@ async function pickRosterPeriod(request: APIRequestContext, token: string) {
     ) ||
     sorted.find((period) => period.status === "RequestOpen") ||
     sorted.find((period) => period.startdate > today) ||
-    sorted.find((period) => period.startdate <= today && period.enddate >= today) ||
+    sorted.find(
+      (period) => period.startdate <= today && period.enddate >= today,
+    ) ||
     sorted[0]
 
   if (!fallbackPeriod) {
@@ -306,20 +324,25 @@ test("ward staff can create a shift request from the calendar", async ({
       requestclosedate: formatDateOnly(requestWindowEnd),
     }
 
-    await page.route("**/api/v1/shift-requests/periods/current-upcoming", async (route) => {
-      await route.fulfill({
-        json: {
-          current_period: null,
-          upcoming_period: mockedActivePeriod,
-          request_open_period: mockedActivePeriod,
-        },
-      })
-    })
+    await page.route(
+      "**/api/v1/shift-requests/periods/current-upcoming",
+      async (route) => {
+        await route.fulfill({
+          json: {
+            current_period: null,
+            upcoming_period: mockedActivePeriod,
+            request_open_period: mockedActivePeriod,
+          },
+        })
+      },
+    )
 
     await page.route("**/api/v1/shift-requests/periods", async (route) => {
       await route.fulfill({
         json: periods.map((period) =>
-          period.periodid === activePeriod.periodid ? mockedActivePeriod : period,
+          period.periodid === activePeriod.periodid
+            ? mockedActivePeriod
+            : period,
         ),
       })
     })
@@ -343,9 +366,7 @@ test("ward staff can create a shift request from the calendar", async ({
 
     await expect(page.getByText("Create Shift Request")).toBeVisible()
     const dialog = page.getByRole("dialog")
-    await page
-      .getByRole("combobox", { name: "Requested Shift Type" })
-      .click()
+    await page.getByRole("combobox", { name: "Requested Shift Type" }).click()
 
     const expectedCodes = getWardShiftCodes(ward.wardid)
     if (!expectedCodes.length) {

@@ -1,3 +1,4 @@
+from datetime import date
 import re
 from typing import Any, Optional
 
@@ -83,6 +84,7 @@ class NurseManagerStaffPublic(SQLModel):
     name: str
     email: Optional[str] = None
     employee_id: Optional[str] = None
+    join_date: Optional[date] = None
     designation: Optional[str] = None
     shift_pattern: Optional[str] = None
     isactive: bool
@@ -106,6 +108,7 @@ class NurseManagerStaffCreate(SQLModel):
     name: str = Field(min_length=1, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    join_date: Optional[date] = None
     designation: str = Field(min_length=1, max_length=100)
     shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
@@ -118,6 +121,7 @@ class NurseManagerStaffUpdate(SQLModel):
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     employee_id: Optional[str] = Field(default=None, max_length=100)
+    join_date: Optional[date] = None
     designation: Optional[str] = Field(default=None, max_length=100)
     shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
@@ -188,6 +192,7 @@ def _build_staff_public(
         name=nurse.name,
         email=user.email,
         employee_id=nurse.employeeid,
+        join_date=nurse.join_date,
         designation=nurse.designation,
         shift_pattern=nurse.shiftpattern,
         isactive=user.isactive,
@@ -455,6 +460,7 @@ def create_nurse_manager_staff(
     nurse = Nurse(
         name=body.name.strip(),
         employeeid=employee_id,
+        join_date=body.join_date,
         designation=designation,
         email=body.email or "",
         contactnumber="",
@@ -557,6 +563,9 @@ def update_nurse_manager_staff(
                 detail="This employee ID is already assigned to a nurse manager.",
             )
         nurse.employeeid = employee_id
+
+    if "join_date" in body.model_fields_set:
+        nurse.join_date = body.join_date
 
     if body.designation is not None:
         designation_value = body.designation.strip()
@@ -911,6 +920,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     wardid = None
     name = None
     employee_id = None
+    join_date = None
     roles = get_user_roles_by_userid(session, current_user.userid)
     is_superuser = "Admin" in roles
     if current_user.nurseid:
@@ -922,6 +932,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
             wardid = nurse.wardid
             name = nurse.name
             employee_id = nurse.employeeid
+            join_date = nurse.join_date
     elif current_user.managerid:
         manager = session.exec(
             select(NurseManager).where(NurseManager.managerid == current_user.managerid)
@@ -929,17 +940,26 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         if manager:
             name = manager.name
             employee_id = manager.employeeid
-        ward = session.exec(
-            select(Ward).where(Ward.managerid == current_user.managerid, Ward.isactive == True)  # noqa: E712
+        managed_ward_id = session.exec(
+            select(UserRole.wardid)
+            .join(Role, UserRole.roleid == Role.roleid)
+            .where(
+                UserRole.userid == current_user.userid,
+                UserRole.isactive == True,  # noqa: E712
+                UserRole.wardid.is_not(None),
+                Role.rolename == "NurseManager",
+            )
+            .order_by(UserRole.userroleid.asc())
         ).first()
-        if ward:
-            wardid = ward.wardid
+        if managed_ward_id is not None:
+            wardid = managed_ward_id
 
     return RBACUserPublic(
         userid=current_user.userid,
         username=current_user.username,
         email=current_user.email,
         employee_id=employee_id,
+        join_date=join_date,
         nurseid=current_user.nurseid,
         managerid=current_user.managerid,
         isactive=current_user.isactive,

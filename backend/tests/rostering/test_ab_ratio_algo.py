@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from app.rostering import ab_ratio_algo
@@ -170,7 +172,36 @@ def test_ab_ratio_no_night_nurse_can_still_receive_day_shifts() -> None:
     assert any(shift in {"A", "P"} for shift in no_night_schedule)
 
 
-def test_ab_ratio_class_c_min_nights_follow_backend_night_max() -> None:
+def test_ab_ratio_class_c_min_nights_without_explicit_night_cap() -> None:
+    nurses = [
+        {"id": 1, "name": "HCA One", "rank": "C"},
+        {"id": 2, "name": "HCA Two", "rank": "C"},
+        {"id": 3, "name": "HCA Three", "rank": "C"},
+    ]
+    shifts = [
+        {
+            "AM": {"A": 0, "B": 0, "C": 0},
+            "PM": {"A": 0, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+        for _ in range(14)
+    ]
+
+    result = run_ab_ratio_pipeline(
+        nurses,
+        shifts,
+        milp_config={"ab_ratio_time_limit_s": 5},
+    )
+
+    for nurse in result["nurses"]:
+        night_days = [idx for idx, shift in enumerate(nurse["schedule"]) if shift == "NIGHT"]
+        assert len(night_days) >= 2
+        assert len(night_days) <= 4
+        assert sum(1 for day_idx in night_days if day_idx < 7) <= 2
+        assert sum(1 for day_idx in night_days if day_idx >= 7) <= 2
+
+
+def test_ab_ratio_class_c_explicit_zero_night_cap_blocks_nights() -> None:
     nurses = [
         {"id": 1, "name": "HCA One", "rank": "C"},
         {"id": 2, "name": "HCA Two", "rank": "C"},
@@ -190,15 +221,12 @@ def test_ab_ratio_class_c_min_nights_follow_backend_night_max() -> None:
         shifts,
         milp_config={
             "ab_ratio_time_limit_s": 5,
-            "HCA": {"max_night_per_day": 1},
+            "HCA": {"max_night_per_day": 0},
         },
     )
 
     for nurse in result["nurses"]:
-        assert nurse["schedule"].count("NIGHT") >= 2
-
-    for day_idx in range(14):
-        assert sum(nurse["schedule"][day_idx] == "NIGHT" for nurse in result["nurses"]) <= 1
+        assert nurse["schedule"].count("NIGHT") == 0
 
 
 def test_ab_ratio_allows_four_nights_only_as_two_per_week() -> None:
@@ -331,3 +359,107 @@ def test_ab_ratio_does_not_penalize_last_day_night_as_isolated(monkeypatch: pyte
     assert nurse_rows["A1"][12] in {"DO", "RD"}
     assert nurse_rows["A1"][13] == "NIGHT"
     assert result["metadata"]["penalty_score"] == 0
+
+
+def test_ab_ratio_parses_long_service_sn_rank_a_fallback_nurses() -> None:
+    cutoff = ab_ratio_algo._long_service_join_date_cutoff()
+    eligible_join_date = date.fromordinal(cutoff.toordinal() - 1)
+    nurses = [
+        {"id": 1, "name": "SSN Eligible", "rank": "A", "designation": "SSN", "join_date": date(2020, 1, 1)},
+        {"id": 2, "name": "SN Eligible", "rank": "A", "designation": "SN", "join_date": eligible_join_date},
+        {"id": 3, "name": "SN Boundary", "rank": "A", "designation": "SN", "join_date": cutoff},
+        {"id": 4, "name": "SN Missing", "rank": "A", "designation": "SN", "join_date": None},
+        {"id": 5, "name": "SN Invalid", "rank": "A", "designation": "SN", "join_date": "not-a-date"},
+        {"id": 6, "name": "APN Not Eligible", "rank": "A", "designation": "APN", "join_date": date(2010, 1, 1)},
+    ]
+    shifts = [
+        {
+            "AM": {"A": 0, "B": 0, "C": 0},
+            "PM": {"A": 0, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+        for _ in range(14)
+    ]
+
+    parsed = ab_ratio_algo.parse_ab_ratio_inputs(nurses, shifts)
+
+    assert parsed["ssn_rank_a_daily_balance_nurses"] == [0]
+    assert parsed["ssn_rank_a_fallback_nurses"] == [1]
+
+
+def test_ab_ratio_requires_ssn_or_long_service_sn_on_rank_a_am_shift() -> None:
+    cutoff = ab_ratio_algo._long_service_join_date_cutoff()
+    newer_than_cutoff = date.fromordinal(cutoff.toordinal() + 1)
+    nurses = [
+        {"id": 1, "name": "SSN PM Only", "rank": "A", "designation": "SSN", "join_date": date(2020, 1, 1)},
+        {"id": 2, "name": "SN Too New", "rank": "A", "designation": "SN", "join_date": newer_than_cutoff},
+        {"id": 3, "name": "EN Support", "rank": "B", "designation": "EN"},
+        {"id": 4, "name": "HCA Support", "rank": "C", "designation": "HCA3"},
+    ]
+    shifts = [
+        {
+            "AM": {"A": 1, "B": 0, "C": 0},
+            "PM": {"A": 1, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+    ] + [
+        {
+            "AM": {"A": 0, "B": 0, "C": 0},
+            "PM": {"A": 0, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+        for _ in range(13)
+    ]
+    hard_requests = {
+        1: [(0, "PM")] + [(day_idx, "OFF") for day_idx in range(1, 14)],
+        2: [(0, "AM")] + [(day_idx, "OFF") for day_idx in range(1, 14)],
+        3: [(day_idx, "OFF") for day_idx in range(14)],
+        4: [(day_idx, "OFF") for day_idx in range(14)],
+    }
+
+    with pytest.raises(ABRatioInfeasibilityError):
+        run_ab_ratio_pipeline(
+            nurses,
+            shifts,
+            hard_requests=hard_requests,
+            milp_config={"ab_ratio_time_limit_s": 5},
+        )
+
+
+def test_ab_ratio_long_service_sn_fallback_counts_as_one_replacement(monkeypatch: pytest.MonkeyPatch) -> None:
+    test_weights = {key: 0 for key in ab_ratio_algo._DEFAULT_WEIGHTS}
+    test_weights["ssn_rank_a_daily_shift_balance"] = 100
+    monkeypatch.setattr(ab_ratio_algo, "_DEFAULT_WEIGHTS", test_weights)
+
+    nurses = [
+        {"id": 1, "name": "SN AM 1", "rank": "A", "designation": "SN", "join_date": date(2020, 1, 1)},
+        {"id": 2, "name": "SN AM 2", "rank": "A", "designation": "SN", "join_date": date(2020, 1, 2)},
+        {"id": 3, "name": "SN PM", "rank": "A", "designation": "SN", "join_date": date(2020, 1, 3)},
+    ]
+    shifts = [
+        {
+            "AM": {"A": 0, "B": 0, "C": 0},
+            "PM": {"A": 0, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+        for _ in range(14)
+    ]
+    hard_requests = {
+        1: [(0, "AM")] + [(day_idx, "OFF") for day_idx in range(1, 14)],
+        2: [(0, "AM")] + [(day_idx, "OFF") for day_idx in range(1, 14)],
+        3: [(0, "PM")] + [(day_idx, "OFF") for day_idx in range(1, 14)],
+    }
+
+    result = run_ab_ratio_pipeline(
+        nurses,
+        shifts,
+        hard_requests=hard_requests,
+        milp_config={
+            "ab_ratio_time_limit_s": 5,
+            "ab_ratio_min_nights": 0,
+            "daily_total_shift_balance_enabled": False,
+            "ssn_rank_a_shift_gap_target": 0,
+        },
+    )
+
+    assert result["metadata"]["penalty_score"] == 100.0

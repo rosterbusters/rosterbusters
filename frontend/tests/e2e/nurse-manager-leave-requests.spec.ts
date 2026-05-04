@@ -1,9 +1,9 @@
 import {
+  type APIRequestContext,
   expect,
   type Page,
   request as playwrightRequest,
   test,
-  type APIRequestContext,
 } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 import {
@@ -37,7 +37,10 @@ async function navigateLeaveCalendarToDate(page: Page, targetDate: Date) {
   const toolbar = page.locator(".rbc-toolbar").first()
   await expect(toolbar).toBeVisible()
 
-  await toolbar.locator("select").first().selectOption(String(targetDate.getMonth()))
+  await toolbar
+    .locator("select")
+    .first()
+    .selectOption(String(targetDate.getMonth()))
   await toolbar
     .locator("select")
     .nth(1)
@@ -54,7 +57,9 @@ async function getLeaveCode(request: APIRequestContext, token: string) {
   }
 
   const leaveCodes = (await res.json()) as Array<{ shiftcode: string }>
-  const leaveCode = leaveCodes.find((code) => code.shiftcode !== "MC")?.shiftcode
+  const leaveCode = leaveCodes.find(
+    (code) => code.shiftcode !== "MC",
+  )?.shiftcode
   if (!leaveCode) {
     throw new Error("No leave codes available for nurse manager leave tests.")
   }
@@ -221,10 +226,13 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     const editDialog = page.getByRole("dialog")
     await expect(editDialog.getByText("Edit Leave Request")).toBeVisible()
     await editDialog.getByRole("combobox", { name: "Nurse" }).click()
-    await page.locator('[role="option"]').filter({ hasText: nurseTwoName }).click({
-      force: true,
-      timeout: 10_000,
-    })
+    await page
+      .locator('[role="option"]')
+      .filter({ hasText: nurseTwoName })
+      .click({
+        force: true,
+        timeout: 10_000,
+      })
 
     const [updateResponse] = await Promise.all([
       page.waitForResponse(
@@ -254,10 +262,13 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     })
 
     await createDialog.getByRole("combobox", { name: "Nurse" }).click()
-    await page.locator('[role="option"]').filter({ hasText: nurseOneName }).click({
-      force: true,
-      timeout: 10_000,
-    })
+    await page
+      .locator('[role="option"]')
+      .filter({ hasText: nurseOneName })
+      .click({
+        force: true,
+        timeout: 10_000,
+      })
     await createDialog
       .getByRole("combobox", { name: "Requested Leave Type" })
       .click()
@@ -288,7 +299,9 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     }
     createdLeaveIds.push(created.leaveid)
 
-    await expect(page.getByTestId(`leave-request-${created.leaveid}`)).toBeVisible()
+    await expect(
+      page.getByTestId(`leave-request-${created.leaveid}`),
+    ).toBeVisible()
   } finally {
     const cleanupRequest = await playwrightRequest.newContext()
     try {

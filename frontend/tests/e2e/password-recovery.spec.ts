@@ -1,9 +1,8 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
-const MAILCATCHER_HOST =
-  process.env.MAILCATCHER_HOST || "http://localhost:1080"
+const MAILCATCHER_HOST = process.env.MAILCATCHER_HOST || "http://localhost:1080"
 const ADMIN_EMAIL =
   process.env.E2E_SUPERUSER || process.env.FIRST_SUPERUSER || ""
 const ADMIN_PASSWORD =
@@ -96,17 +95,18 @@ async function fetchMailCatcherMessages(request: APIRequestContext) {
       }>
     }
   }
-  throw new Error(`Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`)
+  throw new Error(
+    `Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`,
+  )
 }
 
-async function fetchMailCatcherMessage(
-  request: APIRequestContext,
-  id: number,
-) {
+async function fetchMailCatcherMessage(request: APIRequestContext, id: number) {
   const res = await request.get(`${MAILCATCHER_HOST}/messages/${id}.json`)
   if (!res.ok()) {
     const body = await res.text()
-    throw new Error(`Failed to fetch MailCatcher message: ${res.status()} ${body}`)
+    throw new Error(
+      `Failed to fetch MailCatcher message: ${res.status()} ${body}`,
+    )
   }
   const message = (await res.json()) as {
     id: number
@@ -206,7 +206,9 @@ test("shows an error when email is not registered", async ({ page }) => {
   ).toBeVisible()
 })
 
-test("shows invalid token page when reset token is invalid", async ({ page }) => {
+test("shows invalid token page when reset token is invalid", async ({
+  page,
+}) => {
   const invalidToken = `invalid-${Date.now()}`
 
   await page.goto(`/reset-password?token=${invalidToken}`)
@@ -257,11 +259,7 @@ test("password recovery sends an email and allows reset with token", async ({
     const message = await waitForResetEmail(request, email)
     expect(message.subject || "").toMatch(/password recovery/i)
 
-    const body =
-      message.body ||
-      message.body_html ||
-      message.body_text ||
-      ""
+    const body = message.body || message.body_html || message.body_text || ""
     const resetLink = extractResetLink(body)
     const resetUrl = new URL(resetLink)
     await page.goto(`${resetUrl.pathname}${resetUrl.search}`)

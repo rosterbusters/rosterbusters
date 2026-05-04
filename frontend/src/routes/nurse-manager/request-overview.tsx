@@ -1,41 +1,40 @@
-import { createFileRoute } from "@tanstack/react-router";
 import {
+  createListCollection,
   Flex,
   HStack,
+  Portal,
   Select,
   Text,
   VStack,
-  Portal,
-  createListCollection,
-} from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { RequestsOverviewTable } from "@/components/NurseManager/Requests/RequestsOverviewTable";
-import useAuth from "@/hooks/useAuth";
-import { WardsService, type Ward } from "@/client";
+} from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import { createFileRoute } from "@tanstack/react-router"
+import { useEffect, useMemo, useState } from "react"
+import { type Ward, WardsService } from "@/client"
+import { RequestsOverviewTable } from "@/components/NurseManager/Requests/RequestsOverviewTable"
+import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/nurse-manager/request-overview")({
   component: ShiftOverviewPage,
-});
+})
 
 function ShiftOverviewPage() {
-  const { user } = useAuth();
-  const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
+  const { user } = useAuth()
+  const [selectedWard, setSelectedWard] = useState<Ward | null>(null)
 
   const { data: wards = [] } = useQuery<Ward[]>({
     queryKey: ["wards"],
     queryFn: WardsService.getWards,
-  });
+  })
 
   useEffect(() => {
-    if (wards.length === 0 || selectedWard !== null) return;
+    if (wards.length === 0 || selectedWard !== null) return
 
     const defaultWard =
-      wards.find((ward) => ward.wardid === user?.wardid) ??
-      wards[0];
+      wards.find((ward) => ward.wardid === user?.wardid) ?? wards[0]
 
-    setSelectedWard(defaultWard);
-  }, [selectedWard, user, wards]);
+    setSelectedWard(defaultWard)
+  }, [selectedWard, user, wards])
 
   const wardCollection = useMemo(
     () =>
@@ -45,7 +44,7 @@ function ShiftOverviewPage() {
         itemToValue: (ward) => String(ward.wardid),
       }),
     [wards],
-  );
+  )
 
   return (
     <Flex
@@ -81,9 +80,10 @@ function ShiftOverviewPage() {
                 value={selectedWard ? [String(selectedWard.wardid)] : []}
                 onValueChange={(details) => {
                   const ward = wards.find(
-                    (candidate) => String(candidate.wardid) === details.value[0],
-                  );
-                  if (ward) setSelectedWard(ward);
+                    (candidate) =>
+                      String(candidate.wardid) === details.value[0],
+                  )
+                  if (ward) setSelectedWard(ward)
                 }}
               >
                 <Select.HiddenSelect />
@@ -112,7 +112,7 @@ function ShiftOverviewPage() {
         />
       </VStack>
     </Flex>
-  );
+  )
 }
 
-export default ShiftOverviewPage;
+export default ShiftOverviewPage

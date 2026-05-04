@@ -1,35 +1,35 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Box,
   Button,
   Flex,
-  Text,
-  Table,
-  Input,
   HStack,
   IconButton,
-} from "@chakra-ui/react";
-import { X, Filter, MessageSquare } from "lucide-react";
+  Input,
+  Table,
+  Text,
+} from "@chakra-ui/react"
+import { Filter, MessageSquare, X } from "lucide-react"
+import moment from "moment"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  DialogRoot,
+  DialogBody,
   DialogContent,
   DialogHeader,
-  DialogBody,
+  DialogRoot,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { ShiftBadge } from "./ShiftBadge";
-import type { EditHistoryEntry } from "./types";
-import moment from "moment";
+} from "@/components/ui/dialog"
+import { ShiftBadge } from "./ShiftBadge"
+import type { EditHistoryEntry } from "./types"
 
 interface EditHistoryDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  entries: EditHistoryEntry[];
-  onUndo?: (entryId: number) => void | Promise<void>;
+  isOpen: boolean
+  onClose: () => void
+  entries: EditHistoryEntry[]
+  onUndo?: (entryId: number) => void | Promise<void>
 }
 
 function formatDateTime(dateStr: string): string {
-  return moment(dateStr).format("M/D/YYYY h:mmA");
+  return moment(dateStr).format("M/D/YYYY h:mmA")
 }
 
 export function EditHistoryDialog({
@@ -38,10 +38,10 @@ export function EditHistoryDialog({
   entries,
   onUndo,
 }: EditHistoryDialogProps) {
-  const [filterModifiedBy, setFilterModifiedBy] = useState("");
-  const [filterShiftDate, setFilterShiftDate] = useState("");
-  const [activeFilter, setActiveFilter] = useState<string | null>(null);
-  const [pendingUndoId, setPendingUndoId] = useState<number | null>(null);
+  const [filterModifiedBy, setFilterModifiedBy] = useState("")
+  const [filterShiftDate, setFilterShiftDate] = useState("")
+  const [activeFilter, setActiveFilter] = useState<string | null>(null)
+  const [pendingUndoId, setPendingUndoId] = useState<number | null>(null)
 
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
@@ -49,56 +49,56 @@ export function EditHistoryDialog({
         filterModifiedBy &&
         !entry.modifiedBy.toLowerCase().includes(filterModifiedBy.toLowerCase())
       ) {
-        return false;
+        return false
       }
       if (
         filterShiftDate &&
         !moment(entry.shiftDate).format("M/D/YYYY").includes(filterShiftDate)
       ) {
-        return false;
+        return false
       }
-      return true;
-    });
-  }, [entries, filterModifiedBy, filterShiftDate]);
+      return true
+    })
+  }, [entries, filterModifiedBy, filterShiftDate])
 
   const handleKeyboardUndo = useCallback(async () => {
-    if (!onUndo || filteredEntries.length === 0 || pendingUndoId != null) return;
-    const targetId = filteredEntries[0].id;
-    setPendingUndoId(targetId);
+    if (!onUndo || filteredEntries.length === 0 || pendingUndoId != null) return
+    const targetId = filteredEntries[0].id
+    setPendingUndoId(targetId)
     try {
-      await onUndo(targetId);
+      await onUndo(targetId)
     } finally {
-      setPendingUndoId(null);
+      setPendingUndoId(null)
     }
-  }, [onUndo, filteredEntries, pendingUndoId]);
+  }, [onUndo, filteredEntries, pendingUndoId])
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
-        e.preventDefault();
-        handleKeyboardUndo();
+        e.preventDefault()
+        handleKeyboardUndo()
       }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, handleKeyboardUndo]);
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, handleKeyboardUndo])
 
   useEffect(() => {
     if (!isOpen) {
-      setPendingUndoId(null);
+      setPendingUndoId(null)
     }
-  }, [isOpen]);
+  }, [isOpen])
 
   const toggleFilter = (column: string) => {
-    setActiveFilter(activeFilter === column ? null : column);
-  };
+    setActiveFilter(activeFilter === column ? null : column)
+  }
 
   return (
     <DialogRoot
       open={isOpen}
       onOpenChange={(details) => {
-        if (!details.open) onClose();
+        if (!details.open) onClose()
       }}
       size="xl"
       placement="center"
@@ -136,7 +136,13 @@ export function EditHistoryDialog({
           </Flex>
         </DialogHeader>
 
-        <DialogBody p={0} overflow="hidden" display="flex" flexDirection="column" flex={1}>
+        <DialogBody
+          p={0}
+          overflow="hidden"
+          display="flex"
+          flexDirection="column"
+          flex={1}
+        >
           <Box overflowY="auto" overflowX="auto" flex={1}>
             <Table.Root size="sm" variant="outline">
               <Table.Header position="sticky" top={0} zIndex={1}>
@@ -373,12 +379,12 @@ export function EditHistoryDialog({
                           variant="outline"
                           colorScheme="red"
                           onClick={async () => {
-                            if (!onUndo || pendingUndoId != null) return;
-                            setPendingUndoId(entry.id);
+                            if (!onUndo || pendingUndoId != null) return
+                            setPendingUndoId(entry.id)
                             try {
-                              await onUndo(entry.id);
+                              await onUndo(entry.id)
                             } finally {
-                              setPendingUndoId(null);
+                              setPendingUndoId(null)
                             }
                           }}
                           loading={pendingUndoId === entry.id}
@@ -401,7 +407,7 @@ export function EditHistoryDialog({
         </DialogBody>
       </DialogContent>
     </DialogRoot>
-  );
+  )
 }
 
-export default EditHistoryDialog;
+export default EditHistoryDialog

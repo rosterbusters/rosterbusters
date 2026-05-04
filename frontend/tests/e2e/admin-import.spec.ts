@@ -1,6 +1,6 @@
+import fs from "node:fs"
 import { expect, test } from "@playwright/test"
 import * as XLSX from "xlsx"
-import fs from "fs"
 import {
   buildUsernameFromName,
   buildWorkbook,
@@ -21,7 +21,6 @@ function buildCenWorkbook(rows: Array<Record<string, string>>) {
   XLSX.utils.book_append_sheet(wb, ws, "CEN Listing")
   return wb
 }
-
 
 test("imports staff list from Excel with duplicates flagged", async ({
   page,
@@ -92,37 +91,37 @@ test("imports staff list from Excel with duplicates flagged", async ({
       {
         "Employee ID": duplicateEmployeeId,
         "EMP NAME": `Duplicate Nurse ${suffix}`,
-        "OCCUPATION": "Staff Nurse",
+        OCCUPATION: "Staff Nurse",
         "DEPARTMENT CODE": wardA.wardname,
       },
       {
         "Employee ID": `N${suffix}01`,
         "EMP NAME": `Nurse${suffix} A`,
-        "OCCUPATION": "Staff Nurse",
+        OCCUPATION: "Staff Nurse",
         "DEPARTMENT CODE": wardA.wardname,
       },
       {
         "Employee ID": `N${suffix}02`,
         "EMP NAME": `Nurse${suffix} B`,
-        "OCCUPATION": "Staff Nurse",
+        OCCUPATION: "Staff Nurse",
         "DEPARTMENT CODE": wardA.wardname,
       },
       {
         "Employee ID": `M${suffix}01`,
         "EMP NAME": `Manager${suffix} A`,
-        "OCCUPATION": "Nurse Manager",
+        OCCUPATION: "Nurse Manager",
         "DEPARTMENT CODE": wardA.wardname,
       },
       {
         "Employee ID": `M${suffix}02`,
         "EMP NAME": `Manager${suffix} B`,
-        "OCCUPATION": "Nurse Manager",
+        OCCUPATION: "Nurse Manager",
         "DEPARTMENT CODE": wardB.wardname,
       },
       ...psaEntries.map((entry) => ({
         "Employee ID": entry.employeeId,
         "EMP NAME": entry.name,
-        "OCCUPATION": entry.occupation,
+        OCCUPATION: entry.occupation,
         "DEPARTMENT CODE": wardA.wardname,
       })),
     ]
@@ -155,15 +154,15 @@ test("imports staff list from Excel with duplicates flagged", async ({
         hasText: "Row 2: This employee ID is already assigned to a nurse.",
       }),
     ).toBeVisible()
-    await expect(
-      page.getByTestId("toast-container"),
-    ).toContainText('skipped because "SNR PATIENT SERVICE ASST" is a PSA role')
-    await expect(
-      page.getByTestId("toast-container"),
-    ).toContainText('skipped because "PATIENT SERVICE ASST I" is a PSA role')
-    await expect(
-      page.getByTestId("toast-container"),
-    ).toContainText('skipped because "PATIENT SERVICE ASST II" is a PSA role')
+    await expect(page.getByTestId("toast-container")).toContainText(
+      'skipped because "SNR PATIENT SERVICE ASST" is a PSA role',
+    )
+    await expect(page.getByTestId("toast-container")).toContainText(
+      'skipped because "PATIENT SERVICE ASST I" is a PSA role',
+    )
+    await expect(page.getByTestId("toast-container")).toContainText(
+      'skipped because "PATIENT SERVICE ASST II" is a PSA role',
+    )
 
     const importFailuresDialog = page.getByText("Import Failures")
     if (await importFailuresDialog.count()) {
@@ -208,7 +207,9 @@ test("imports staff list from Excel with duplicates flagged", async ({
       if (createdUser.userid) {
         createdUserIds.push(createdUser.userid)
       }
-      const wardIds = createdUser.wards.map((w: { ward_id: number }) => w.ward_id)
+      const wardIds = createdUser.wards.map(
+        (w: { ward_id: number }) => w.ward_id,
+      )
       if (!wardIds.includes(entry.wardId)) {
         const toastText = await page
           .getByTestId("toast-container")
@@ -238,7 +239,6 @@ test("imports staff list from Excel with duplicates flagged", async ({
       await search.fill(psaUsername)
       await expect(page.getByText("No users found.")).toBeVisible()
     }
-
   } finally {
     if (filePath && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
@@ -282,7 +282,7 @@ test("imports nurse manager designation from staff list", async ({
       {
         "Employee ID": employeeId,
         "EMP NAME": managerName,
-        "OCCUPATION": "Nurse Manager II",
+        OCCUPATION: "Nurse Manager II",
         "DEPARTMENT CODE": ward.wardname,
       },
     ]
@@ -315,7 +315,9 @@ test("imports nurse manager designation from staff list", async ({
       )
     }
 
-    const wardIds: number[] = createdUser.wards.map((w: { ward_id: number }) => w.ward_id)
+    const wardIds: number[] = createdUser.wards.map(
+      (w: { ward_id: number }) => w.ward_id,
+    )
     if (!wardIds.includes(ward.wardid)) {
       throw new Error(
         `Imported user ${managerUsername} not assigned to ward ${ward.wardid}.`,
@@ -341,7 +343,7 @@ test("imports CEN Listing staff rows", async ({ page, request }) => {
   const suffix = Date.now().toString().slice(-6)
   const name = `Cen Manager ${suffix} Extra`
   const username = buildUsernameFromName(name)
-  const employeeId = `CEN${suffix}`
+  const _employeeId = `CEN${suffix}`
 
   let filePath = ""
 

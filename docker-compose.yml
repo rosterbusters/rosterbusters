@@ -199,6 +199,31 @@ services:
       - traefik-public
       - default
 
+  celery_beat:
+    image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
+    build:
+      context: ./backend
+    restart: always
+    command: uv run celery -A app.worker beat --loglevel=info
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+        required: false
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_SERVER=db
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - traefik-public
+      - default
+
 volumes:
   app-db-data:
   redis-data:
