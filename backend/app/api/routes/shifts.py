@@ -880,6 +880,7 @@ def add_shift_to_ward(
     session.add(WardShiftCode(wardid=ward_id, shiftcode=normalized_shift_code))
     session.commit()
     cache_delete(_shift_codes_cache_key(f"ward:{ward_id}"))
+    cache_delete(_shift_codes_cache_key(f"requestable:ward:{ward_id}"))
 
 
 @router.delete("/admin/ward/{ward_id}/shift-codes/{shift_code}", status_code=204)
@@ -908,6 +909,7 @@ def remove_shift_from_ward(
     session.delete(mapping)
     session.commit()
     cache_delete(_shift_codes_cache_key(f"ward:{ward_id}"))
+    cache_delete(_shift_codes_cache_key(f"requestable:ward:{ward_id}"))
 
 
 @router.patch("/nurses/{nurse_id}/shift-pattern", response_model=NursePublic)

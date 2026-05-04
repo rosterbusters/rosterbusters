@@ -121,11 +121,9 @@ export const NewShiftRequest = ({
   })
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", "requestable", "ward", wardId ?? "default"],
-    queryFn: () =>
-      wardId != null
-        ? fetchRequestableShiftCodesByWard(wardId)
-        : ShiftRequestsService.getAllShiftCodes(),
+    queryKey: ["shift-codes", "requestable", "ward", wardId],
+    queryFn: () => fetchRequestableShiftCodesByWard(wardId!),
+    enabled: wardId != null,
   })
 
   const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes])
@@ -212,6 +210,10 @@ export const NewShiftRequest = ({
   }, [isOpen, selectedDate])
 
   const handleSubmit = () => {
+    if (wardId == null) {
+      showErrorToast("Please select a ward first.")
+      return
+    }
     if (!activePeriod) {
       showErrorToast("There is no open request period available.")
       return
@@ -307,6 +309,9 @@ export const NewShiftRequest = ({
                   size="sm"
                   value={shiftType}
                   onValueChange={(e) => setShiftType(e.value)}
+                  disabled={
+                    wardId == null || shiftCollection.items.length === 0
+                  }
                 >
                   <Select.Label>Requested Shift Type</Select.Label>
                   <Select.Control>

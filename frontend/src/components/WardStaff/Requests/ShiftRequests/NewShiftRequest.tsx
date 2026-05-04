@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react"
 import { type ShiftRequestCreate, ShiftRequestsService } from "@/client"
 import type { ShiftCodePublic } from "@/client/types.gen"
 import { DatePickerDemo } from "@/components/Common/DatePicker"
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import {
   getRequestTargetPeriod,
@@ -63,6 +64,11 @@ export const NewShiftRequest = ({
   )
   const queryClient = useQueryClient()
 
+  const handleClose = () => {
+    onClose()
+    window.setTimeout(cleanupOrphanedDialogState, 350)
+  }
+
   const { data: periodWindow } = useRequestPeriodWindow()
 
   const { data: shiftCodes = [] } = useQuery({
@@ -89,7 +95,7 @@ export const NewShiftRequest = ({
     onSuccess: () => {
       showSuccessToast("Shift request created!")
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] })
-      onClose()
+      handleClose()
     },
     onError: (error: unknown) => {
       const detail = (error as any)?.body?.detail
@@ -101,8 +107,19 @@ export const NewShiftRequest = ({
     if (isOpen) {
       setRequestDate(selectedDate ?? undefined)
       setShiftType([])
+      return
     }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
+    return () => window.clearTimeout(timeoutId)
   }, [isOpen, selectedDate])
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0)
+    },
+    [],
+  )
 
   const handleSubmit = () => {
     if (wardId == null) {
@@ -134,8 +151,10 @@ export const NewShiftRequest = ({
     <Dialog.Root
       placement={"center"}
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
-      onOpenChange={(e) => !e.open && onClose()}
+      onOpenChange={(e) => !e.open && handleClose()}
       onInteractOutside={(event) => {
         const target = event.target as HTMLElement | null
         if (target?.closest("[data-datepicker-popup='true']")) {
@@ -205,7 +224,7 @@ export const NewShiftRequest = ({
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
-              <Button variant="outline" onClick={onClose}>
+              <Button variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
               <Button onClick={handleSubmit} loading={mutation.isPending}>

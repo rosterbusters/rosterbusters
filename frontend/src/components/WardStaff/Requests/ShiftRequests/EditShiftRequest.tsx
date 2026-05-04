@@ -81,6 +81,11 @@ export const EditShiftRequest = ({
   )
   const queryClient = useQueryClient()
 
+  const handleClose = () => {
+    onClose()
+    window.setTimeout(cleanupOrphanedDialogState, 350)
+  }
+
   const { data: shiftCodes = [] } = useQuery({
     queryKey: ["shift-codes", "requestable", "ward", wardId],
     queryFn: () => fetchRequestableShiftCodesByWard(wardId!),
@@ -134,7 +139,7 @@ export const EditShiftRequest = ({
     onSuccess: () => {
       showSuccessToast("Shift request updated!")
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] })
-      onClose()
+      handleClose()
     },
     onError: (error: unknown) => {
       const detail = (error as any)?.body?.detail
@@ -147,7 +152,7 @@ export const EditShiftRequest = ({
     onSuccess: () => {
       showSuccessToast("Shift request deleted!")
       queryClient.invalidateQueries({ queryKey: ["shift-requests"] })
-      onClose()
+      handleClose()
     },
     onError: (error: unknown) => {
       const detail = (error as any)?.body?.detail
@@ -178,7 +183,7 @@ export const EditShiftRequest = ({
       lazyMount
       unmountOnExit
       open={isOpen}
-      onOpenChange={(e) => !e.open && onClose()}
+      onOpenChange={(e) => !e.open && handleClose()}
       onInteractOutside={(event) => {
         const target = event.target as HTMLElement | null
         if (target?.closest("[data-datepicker-popup='true']")) {

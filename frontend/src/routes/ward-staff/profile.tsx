@@ -1,6 +1,8 @@
 import { Box, Flex, Grid, GridItem, Text, VStack } from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 
+import { AdminService, type WardOption } from "@/client/adminService"
 import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/ward-staff/profile")({
@@ -25,11 +27,17 @@ function formatJoinDate(value: string | null | undefined) {
 
 function ProfilePage() {
   const { user } = useAuth()
+  const { data: wards = [] } = useQuery<WardOption[]>({
+    queryKey: ["wards"],
+    queryFn: () => AdminService.listWards(),
+    staleTime: 60_000,
+  })
 
   const profileName = formatValue(user?.name ?? user?.username ?? user?.email)
   const email = formatValue(user?.email)
   const designation = user?.managerid ? "Nurse Manager" : "Ward Staff"
-  const ward = user?.wardid ? `Ward ${user.wardid}` : "Not available"
+  const wardName = wards.find((item) => item.wardid === user?.wardid)?.wardname
+  const ward = formatValue(wardName)
   const phoneNumber = "Not available"
   const joinDate = formatJoinDate(user?.join_date)
 
