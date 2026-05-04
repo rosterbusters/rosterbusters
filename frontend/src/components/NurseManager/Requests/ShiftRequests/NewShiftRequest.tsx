@@ -17,7 +17,7 @@ import { Trash2 } from "lucide-react"
 import moment from "moment"
 import { useEffect, useMemo, useState } from "react"
 import { type ShiftRequestCreate, ShiftRequestsService } from "@/client"
-import type { NursePublic } from "@/client/types.gen"
+import type { NursePublic, ShiftCodePublic } from "@/client/types.gen"
 import { DatePickerDemo } from "@/components/Common/DatePicker"
 import {
   useRosterPeriods,
@@ -26,6 +26,27 @@ import {
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 
 const MAX_REQUESTS = 3
+const API_BASE = import.meta.env.VITE_API_URL || ""
+
+async function fetchRequestableShiftCodesByWard(
+  wardId: number,
+): Promise<ShiftCodePublic[]> {
+  const token = localStorage.getItem("access_token") || ""
+  const response = await fetch(
+    `${API_BASE}/api/v1/shift-requests/shift-codes/requestable/ward/${wardId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error("Failed to load ward shift codes")
+  }
+
+  return response.json()
+}
 
 interface NewShiftRequestProps {
   isOpen: boolean
@@ -100,10 +121,10 @@ export const NewShiftRequest = ({
   })
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", wardId ?? "default"],
+    queryKey: ["shift-codes", "requestable", "ward", wardId ?? "default"],
     queryFn: () =>
       wardId != null
-        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
+        ? fetchRequestableShiftCodesByWard(wardId)
         : ShiftRequestsService.getAllShiftCodes(),
   })
 

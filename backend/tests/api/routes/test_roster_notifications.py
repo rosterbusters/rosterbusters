@@ -338,6 +338,36 @@ def test_phase_2a_is_idempotent(db: Session) -> None:
     assert len(_notifs(db, manager.managerid, "NurseManager", NotificationType.SHIFT_REQUEST_REVIEW_OPEN, p)) == 1
 
 
+def test_roster_period_duplicates_are_self_healed(db: Session) -> None:
+    _, manager = _setup(db, "heal2a")
+    ensure_roster_period_window(db, now=_sgt(2026, 3, 14, 7))
+    p = _get_target_period(db)
+    assert p is not None
+
+    db.add(
+        NotificationQueue(
+            recipienttype="NurseManager",
+            recipientid=manager.managerid,
+            notificationtype=NotificationType.SHIFT_REQUEST_REVIEW_OPEN.value,
+            channel="Email",
+            priority="Normal",
+            subject=NotificationType.SHIFT_REQUEST_REVIEW_OPEN.value,
+            messagebody=NotificationType.SHIFT_REQUEST_REVIEW_OPEN.template.format(
+                roster_period=p.name,
+            ),
+            relatedentitytype="RosterPeriod",
+            relatedentityid=p.periodid,
+            status="Pending",
+        )
+    )
+    db.commit()
+    assert len(_notifs(db, manager.managerid, "NurseManager", NotificationType.SHIFT_REQUEST_REVIEW_OPEN, p)) == 2
+
+    ensure_roster_period_window(db, now=_sgt(2026, 3, 14, 18))
+
+    assert len(_notifs(db, manager.managerid, "NurseManager", NotificationType.SHIFT_REQUEST_REVIEW_OPEN, p)) == 1
+
+
 # ===========================================================================
 # 5. Bounded-window catch-up (missed day recovery)
 # ===========================================================================

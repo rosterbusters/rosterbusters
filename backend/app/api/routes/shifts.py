@@ -487,6 +487,23 @@ def get_shift_codes_by_ward(
     return payload
 
 
+@router.get("/shift-codes/requestable/ward/{ward_id}", response_model=list[ShiftCodePublic])
+def get_requestable_shift_codes_by_ward(
+    ward_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Any:
+    """Get requestable shift codes assigned to a ward."""
+    cache_key = _shift_codes_cache_key(f"requestable:ward:{ward_id}")
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
+    codes = _get_requestable_shift_codes(session, ward_id=ward_id)
+    payload = [ShiftCodePublic.model_validate(code).model_dump(mode="json") for code in codes]
+    cache_set_json(cache_key, payload, CACHE_TTL_SHIFT_CODES_SECONDS)
+    return payload
+
+
 # ─────────────────────────────────────────────
 # ROSTER PERIOD ENDPOINTS
 # ─────────────────────────────────────────────
