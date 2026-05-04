@@ -1,46 +1,45 @@
-import { useState, useEffect, useMemo } from "react";
 import {
+  Badge,
   Button,
   CloseButton,
   createListCollection,
   Dialog,
+  HStack,
   Portal,
   Select,
-  Badge,
   Text,
   VStack,
-  HStack,
-} from "@chakra-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
-
-import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
-import { LeaveRequestsService } from "@/client";
-import type { DateRange } from "react-day-picker";
+} from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
+import type { DateRange } from "react-day-picker"
+import { LeaveRequestsService } from "@/client"
+import { DatePickerDemo } from "@/components/Common/DatePicker"
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 
 export interface LeaveRequestEntry {
-  requestId: number;
-  nurseName: string;
-  initialLeaveType: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  requestId: number
+  nurseName: string
+  initialLeaveType: string
+  startDate: string // YYYY-MM-DD
+  endDate: string // YYYY-MM-DD
 }
 
 function parseRequestDate(value: string) {
-  const normalized = value.split("–")[0]?.trim() ?? value;
-  const [day, month, year] = normalized.split("/");
+  const normalized = value.split("–")[0]?.trim() ?? value
+  const [day, month, year] = normalized.split("/")
   if (day && month && year) {
-    return new Date(Number(year), Number(month) - 1, Number(day));
+    return new Date(Number(year), Number(month) - 1, Number(day))
   }
-  return new Date(normalized);
+  return new Date(normalized)
 }
 
 interface EditLeaveRequestProps {
-  isOpen: boolean;
-  onClose: () => void;
-  requests: LeaveRequestEntry[];
-  selectedRequestId?: number;
+  isOpen: boolean
+  onClose: () => void
+  requests: LeaveRequestEntry[]
+  selectedRequestId?: number
 }
 
 export const EditLeaveRequest = ({
@@ -55,47 +54,54 @@ export const EditLeaveRequest = ({
         ? requests.find((request) => request.requestId === selectedRequestId)
         : undefined) ?? requests[0],
     [requests, selectedRequestId],
-  );
+  )
 
-  const [leaveType, setLeaveType] = useState<string[]>([active?.initialLeaveType ?? ""]);
-  const [requestDateRange, setRequestDateRange] = useState<DateRange | undefined>(
+  const [leaveType, setLeaveType] = useState<string[]>([
+    active?.initialLeaveType ?? "",
+  ])
+  const [requestDateRange, setRequestDateRange] = useState<
+    DateRange | undefined
+  >(
     active
-      ? { from: parseRequestDate(active.startDate), to: parseRequestDate(active.endDate) }
+      ? {
+          from: parseRequestDate(active.startDate),
+          to: parseRequestDate(active.endDate),
+        }
       : undefined,
-  );
-  const queryClient = useQueryClient();
+  )
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     if (active) {
-      setLeaveType([active.initialLeaveType]);
+      setLeaveType([active.initialLeaveType])
       setRequestDateRange({
         from: parseRequestDate(active.startDate),
         to: parseRequestDate(active.endDate),
-      });
+      })
     }
-  }, [active]);
+  }, [active])
 
   useEffect(() => {
     if (isOpen) {
-      return;
+      return
     }
 
-    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
-    return () => window.clearTimeout(timeoutId);
-  }, [isOpen]);
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
+    return () => window.clearTimeout(timeoutId)
+  }, [isOpen])
 
   useEffect(
     () => () => {
-      window.setTimeout(cleanupOrphanedDialogState, 0);
+      window.setTimeout(cleanupOrphanedDialogState, 0)
     },
     [],
-  );
+  )
 
   const { data: leaveCodes } = useQuery({
     queryKey: ["leave-codes"],
     queryFn: () => LeaveRequestsService.getLeaveCodes(),
     staleTime: 5 * 60 * 1000,
-  });
+  })
 
   const leaveCollection = useMemo(
     () =>
@@ -109,59 +115,62 @@ export const EditLeaveRequest = ({
           })),
       }),
     [leaveCodes],
-  );
-
+  )
 
   const toDateStr = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   const updateMutation = useMutation({
     mutationFn: () =>
       LeaveRequestsService.updateLeaveRequest({
         leaveId: active.requestId,
         leavetype: leaveType[0],
-        startdate: requestDateRange?.from ? toDateStr(requestDateRange.from) : undefined,
-        enddate: requestDateRange?.to ? toDateStr(requestDateRange.to) : undefined,
+        startdate: requestDateRange?.from
+          ? toDateStr(requestDateRange.from)
+          : undefined,
+        enddate: requestDateRange?.to
+          ? toDateStr(requestDateRange.to)
+          : undefined,
       }),
     onSuccess: () => {
-      showSuccessToast("Leave request updated!");
-      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
-      onClose();
+      showSuccessToast("Leave request updated!")
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] })
+      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] })
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to update request");
+      const detail = (error as any)?.body?.detail
+      showErrorToast(detail || "Failed to update request")
     },
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: () =>
       LeaveRequestsService.deleteLeaveRequest({ leaveId: active.requestId }),
     onSuccess: () => {
-      showSuccessToast("Leave request withdrawn.");
-      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] });
-      onClose();
+      showSuccessToast("Leave request withdrawn.")
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] })
+      queryClient.invalidateQueries({ queryKey: ["my-leave-requests"] })
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to withdraw request");
+      const detail = (error as any)?.body?.detail
+      showErrorToast(detail || "Failed to withdraw request")
     },
-  });
+  })
 
   const handleSave = () => {
     if (leaveType.length === 0) {
-      showErrorToast("Please select a leave type.");
-      return;
+      showErrorToast("Please select a leave type.")
+      return
     }
     if (!requestDateRange?.from || !requestDateRange?.to) {
-      showErrorToast("Please select a start and end date.");
-      return;
+      showErrorToast("Please select a start and end date.")
+      return
     }
-    updateMutation.mutate();
-  };
+    updateMutation.mutate()
+  }
 
-  if (!active) return null;
+  if (!active) return null
 
   return (
     <Dialog.Root
@@ -172,9 +181,9 @@ export const EditLeaveRequest = ({
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {
-        const target = event.target as HTMLElement | null;
+        const target = event.target as HTMLElement | null
         if (target?.closest("[data-datepicker-popup='true']")) {
-          event.preventDefault();
+          event.preventDefault()
         }
       }}
     >
@@ -258,5 +267,5 @@ export const EditLeaveRequest = ({
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
-  );
-};
+  )
+}

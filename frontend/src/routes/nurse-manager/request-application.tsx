@@ -1,47 +1,46 @@
-import { createFileRoute } from "@tanstack/react-router";
 import {
-  HStack,
-  VStack,
   Box,
-  Flex,
-  Text,
-  GridItem,
-  Grid,
   Button,
-  Select,
-  Portal,
   createListCollection,
-} from "@chakra-ui/react";
-import { useState, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-
-import RequestCalendar from "@/components/NurseManager/Requests/ShiftRequests/RequestCalendar";
-import LeaveRequestCalendar from "@/components/NurseManager/Requests/LeaveRequests/LeaveRequestCalendar";
-import { WardsService, type Ward } from "@/client";
-import useAuth from "@/hooks/useAuth";
+  Flex,
+  Grid,
+  GridItem,
+  HStack,
+  Portal,
+  Select,
+  Text,
+  VStack,
+} from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import { createFileRoute } from "@tanstack/react-router"
+import { useEffect, useMemo, useState } from "react"
+import { type Ward, WardsService } from "@/client"
+import LeaveRequestCalendar from "@/components/NurseManager/Requests/LeaveRequests/LeaveRequestCalendar"
+import RequestCalendar from "@/components/NurseManager/Requests/ShiftRequests/RequestCalendar"
+import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/nurse-manager/request-application")({
   component: RouteComponent,
-});
+})
 
-type ActiveTab = "shift" | "leave";
+type ActiveTab = "shift" | "leave"
 
 function RouteComponent() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("shift");
-  const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
-  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<ActiveTab>("shift")
+  const [selectedWard, setSelectedWard] = useState<Ward | null>(null)
+  const { user } = useAuth()
 
   const { data: wards = [] } = useQuery<Ward[]>({
     queryKey: ["wards"],
     queryFn: WardsService.getWards,
-  });
+  })
 
   useEffect(() => {
     if (wards.length > 0 && selectedWard === null) {
-      const nmWard = wards.find((w) => w.wardid === user?.wardid) ?? wards[0];
-      setSelectedWard(nmWard);
+      const nmWard = wards.find((w) => w.wardid === user?.wardid) ?? wards[0]
+      setSelectedWard(nmWard)
     }
-  }, [wards, selectedWard, user?.wardid]);
+  }, [wards, selectedWard, user?.wardid])
 
   const wardCollection = useMemo(
     () =>
@@ -51,7 +50,7 @@ function RouteComponent() {
         itemToValue: (ward) => String(ward.wardid),
       }),
     [wards],
-  );
+  )
 
   return (
     <Flex
@@ -108,8 +107,8 @@ function RouteComponent() {
               onValueChange={(details) => {
                 const ward = wards.find(
                   (w) => String(w.wardid) === details.value[0],
-                );
-                if (ward) setSelectedWard(ward);
+                )
+                if (ward) setSelectedWard(ward)
               }}
             >
               <Select.HiddenSelect />
@@ -157,7 +156,7 @@ function RouteComponent() {
         </Box>
       </VStack>
     </Flex>
-  );
+  )
 }
 
-export default RouteComponent;
+export default RouteComponent

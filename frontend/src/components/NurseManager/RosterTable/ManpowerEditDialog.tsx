@@ -1,25 +1,25 @@
-import { useState, useEffect } from "react";
 import {
+  Box,
   Button,
   ButtonGroup,
+  Flex,
+  Input,
+  Stack,
   Text,
   VStack,
-  Box,
-  Input,
-  Flex,
-  Stack,
-} from "@chakra-ui/react";
+} from "@chakra-ui/react"
+import { useEffect, useState } from "react"
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import {
-  DialogRoot,
-  DialogContent,
-  DialogHeader,
   DialogBody,
-  DialogFooter,
-  DialogTitle,
   DialogCloseTrigger,
-} from "@/components/ui/dialog";
-import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
-import type { StaffRole, SummaryShiftType } from "./types";
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogRoot,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import type { StaffRole, SummaryShiftType } from "./types"
 
 const ROLE_LABEL: Record<StaffRole, string> = {
   RN: "RN",
@@ -27,31 +27,31 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   NA: "NA",
   HCA12: "HCA1&2",
   HCA3: "HCA3",
-};
+}
 
 const SHIFT_LABEL: Record<SummaryShiftType, string> = {
   A: "AM",
   P: "PM",
   N: "Night",
-};
+}
 
 interface ManpowerEditDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  role: StaffRole;
-  shiftType: SummaryShiftType;
+  isOpen: boolean
+  onClose: () => void
+  role: StaffRole
+  shiftType: SummaryShiftType
   /** Human-readable date label, e.g. "Mon, Feb 24" */
-  dateLabel: string;
-  currentMin: number;
-  currentMax?: number;
+  dateLabel: string
+  currentMin: number
+  currentMax?: number
   /** Original unmodified ward default values — used for the reset action. */
-  originalMin: number;
-  originalMax?: number;
+  originalMin: number
+  originalMax?: number
   onSave: (
     min: number,
     max: number | undefined,
     applyToAllDays: boolean,
-  ) => void;
+  ) => void
 }
 
 export function ManpowerEditDialog({
@@ -66,46 +66,46 @@ export function ManpowerEditDialog({
   originalMax,
   onSave,
 }: ManpowerEditDialogProps) {
-  const [minValue, setMinValue] = useState<string>(String(currentMin));
+  const [minValue, setMinValue] = useState<string>(String(currentMin))
   const [maxValue, setMaxValue] = useState<string>(
     currentMax !== undefined ? String(currentMax) : "",
-  );
-  const [applyToAllDays, setApplyToAllDays] = useState(true);
+  )
+  const [applyToAllDays, setApplyToAllDays] = useState(true)
 
   // Reset form whenever the dialog opens or the cell selection changes
   useEffect(() => {
     if (isOpen) {
-      setMinValue(String(currentMin));
-      setMaxValue(currentMax !== undefined ? String(currentMax) : "");
-      setApplyToAllDays(true);
+      setMinValue(String(currentMin))
+      setMaxValue(currentMax !== undefined ? String(currentMax) : "")
+      setApplyToAllDays(true)
     }
-  }, [isOpen, currentMin, currentMax]);
+  }, [isOpen, currentMin, currentMax])
 
   useEffect(() => {
     if (isOpen) {
-      return;
+      return
     }
 
-    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
-    return () => window.clearTimeout(timeoutId);
-  }, [isOpen]);
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
+    return () => window.clearTimeout(timeoutId)
+  }, [isOpen])
 
   useEffect(
     () => () => {
-      window.setTimeout(cleanupOrphanedDialogState, 0);
+      window.setTimeout(cleanupOrphanedDialogState, 0)
     },
     [],
-  );
+  )
 
   const handleSave = () => {
-    const parsedMin = Math.max(0, parseInt(minValue, 10) || 0);
+    const parsedMin = Math.max(0, parseInt(minValue, 10) || 0)
     const parsedMax =
       maxValue.trim() === ""
         ? undefined
-        : Math.max(0, parseInt(maxValue, 10) || 0);
-    onSave(parsedMin, parsedMax, applyToAllDays);
-    onClose();
-  };
+        : Math.max(0, parseInt(maxValue, 10) || 0)
+    onSave(parsedMin, parsedMax, applyToAllDays)
+    onClose()
+  }
 
   return (
     <DialogRoot
@@ -115,7 +115,7 @@ export function ManpowerEditDialog({
       unmountOnExit
       open={isOpen}
       onOpenChange={({ open }) => {
-        if (!open) onClose();
+        if (!open) onClose()
       }}
     >
       <DialogContent>
@@ -127,7 +127,8 @@ export function ManpowerEditDialog({
               Edit Staffing Requirements
             </DialogTitle>
             <Text fontSize="xs" color="gray.500" mt={1}>
-              {ROLE_LABEL[role]} &bull; {SHIFT_LABEL[shiftType]} Shift &bull; {dateLabel}
+              {ROLE_LABEL[role]} &bull; {SHIFT_LABEL[shiftType]} Shift &bull;{" "}
+              {dateLabel}
             </Text>
           </Stack>
         </DialogHeader>
@@ -228,8 +229,8 @@ export function ManpowerEditDialog({
               _hover={{ color: "#C62828", textDecoration: "underline" }}
               transition="color 0.15s ease"
               onClick={() => {
-                onSave(originalMin, originalMax, applyToAllDays);
-                onClose();
+                onSave(originalMin, originalMax, applyToAllDays)
+                onClose()
               }}
             >
               ↺ Reset to ward default
@@ -258,5 +259,5 @@ export function ManpowerEditDialog({
         </DialogFooter>
       </DialogContent>
     </DialogRoot>
-  );
+  )
 }

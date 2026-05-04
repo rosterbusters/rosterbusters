@@ -1,11 +1,15 @@
 "use client"
 
-import * as React from "react"
 import { Button } from "@chakra-ui/react"
+import { addDays, format, isAfter, isBefore, startOfDay } from "date-fns"
+import { Calendar as CalendarIcon, ChevronDownIcon } from "lucide-react"
+import * as React from "react"
+import {
+  type DateRange,
+  dateMatchModifiers,
+  type Matcher,
+} from "react-day-picker"
 import { Calendar } from "@/components/ui/calendar"
-import { addDays, format, isAfter, isBefore, isSameDay, startOfDay } from "date-fns"
-import { ChevronDownIcon, Calendar as CalendarIcon } from "lucide-react"
-import { dateMatchModifiers, type DateRange, type Matcher } from "react-day-picker"
 
 interface BaseDatePickerProps {
   placeholder?: string
@@ -48,7 +52,10 @@ function buildRange(first: Date, second: Date): DateRange {
     : { from: normalizeDate(first), to: normalizeDate(second) }
 }
 
-function rangeContainsDisabled(range: DateRange | undefined, disabled?: Matcher | Matcher[]) {
+function rangeContainsDisabled(
+  range: DateRange | undefined,
+  disabled?: Matcher | Matcher[],
+) {
   if (!range?.from || !range?.to || !disabled) {
     return false
   }
@@ -75,8 +82,8 @@ export function DatePickerDemo(props: DatePickerProps) {
   const wrapperRef = React.useRef<HTMLDivElement>(null)
 
   const isRange = props.mode === "range"
-  const date = !isRange ? props.selected ?? internalDate : undefined
-  const range = isRange ? props.selected ?? internalRange : undefined
+  const date = !isRange ? (props.selected ?? internalDate) : undefined
+  const range = isRange ? (props.selected ?? internalRange) : undefined
   const previewRange =
     isRange &&
     range?.from &&
@@ -85,21 +92,23 @@ export function DatePickerDemo(props: DatePickerProps) {
     !rangeContainsDisabled(buildRange(range.from, hoveredDate), props.disabled)
       ? buildRange(range.from, hoveredDate)
       : range
-  const displayMonth = isRange ? range?.from ?? new Date() : date ?? new Date()
+  const displayMonth = isRange
+    ? (range?.from ?? new Date())
+    : (date ?? new Date())
   const isEmpty = isRange ? !range?.from : !date
 
   React.useEffect(() => {
     if (props.mode !== "range") {
       setInternalDate(props.selected)
     }
-  }, [props.mode, props.mode !== "range" ? props.selected : undefined])
+  }, [props.mode, props.selected])
 
   React.useEffect(() => {
     if (props.mode === "range") {
       setInternalRange(props.selected)
       setHoveredDate(undefined)
     }
-  }, [props.mode, props.mode === "range" ? props.selected : undefined])
+  }, [props.mode, props.selected])
 
   const handleSingleSelect = (selectedDate: Date | undefined) => {
     if (props.mode === "range") {
@@ -128,7 +137,10 @@ export function DatePickerDemo(props: DatePickerProps) {
     }
   }
 
-  const handleRangeDayClick = (day: Date, modifiers: { disabled?: boolean }) => {
+  const handleRangeDayClick = (
+    day: Date,
+    modifiers: { disabled?: boolean },
+  ) => {
     if (props.mode !== "range" || modifiers.disabled) {
       return
     }
@@ -153,8 +165,16 @@ export function DatePickerDemo(props: DatePickerProps) {
     handleRangeSelect(nextRange)
   }
 
-  const handleRangeDayMouseEnter = (day: Date, modifiers: { disabled?: boolean }) => {
-    if (props.mode !== "range" || !range?.from || range.to || modifiers.disabled) {
+  const handleRangeDayMouseEnter = (
+    day: Date,
+    modifiers: { disabled?: boolean },
+  ) => {
+    if (
+      props.mode !== "range" ||
+      !range?.from ||
+      range.to ||
+      modifiers.disabled
+    ) {
       setHoveredDate(undefined)
       return
     }
@@ -221,12 +241,11 @@ export function DatePickerDemo(props: DatePickerProps) {
   )
 
   return (
-    <div ref={wrapperRef} style={{ position: "relative", display: "inline-block" }}>
-      <Button
-        variant="outline"
-        data-empty={isEmpty}
-        onClick={handleToggle}
-      >
+    <div
+      ref={wrapperRef}
+      style={{ position: "relative", display: "inline-block" }}
+    >
+      <Button variant="outline" data-empty={isEmpty} onClick={handleToggle}>
         <CalendarIcon />
         {isRange ? (
           <span>{formatRange(range, placeholder)}</span>

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 
 const API_URL = process.env.VITE_API_URL || "http://127.0.0.1:8000"

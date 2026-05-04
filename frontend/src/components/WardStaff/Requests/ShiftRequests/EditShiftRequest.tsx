@@ -1,48 +1,47 @@
-import { useState, useEffect, useMemo } from "react";
 import {
+  Badge,
   Button,
   CloseButton,
   createListCollection,
   Dialog,
+  HStack,
   Portal,
   Select,
-  Badge,
-  HStack,
   Text,
   VStack,
-} from "@chakra-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast";
+} from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
+import { ShiftRequestsService } from "@/client"
 
-import { DatePickerDemo } from "@/components/Common/DatePicker";
-import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup";
-import { ShiftRequestsService } from "@/client";
-
+import { DatePickerDemo } from "@/components/Common/DatePicker"
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 
 interface EditShiftRequestProps {
-  isOpen: boolean;
-  onClose: () => void;
-  requestId: number;
-  initialShiftType: string;
-  initialDate: string; // YYYY-MM-DD
-  wardId?: number | null;
+  isOpen: boolean
+  onClose: () => void
+  requestId: number
+  initialShiftType: string
+  initialDate: string // YYYY-MM-DD
+  wardId?: number | null
 }
 
 function parseRequestDate(value?: string | null): Date | undefined {
-  if (!value) return undefined;
+  if (!value) return undefined
 
-  const firstSegment = value.split("–")[0]?.trim() ?? value;
-  const normalizedValue = firstSegment.replace(/\s+/g, " ").trim();
-  const slashMatch = normalizedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const firstSegment = value.split("–")[0]?.trim() ?? value
+  const normalizedValue = firstSegment.replace(/\s+/g, " ").trim()
+  const slashMatch = normalizedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
 
   if (slashMatch) {
-    const [, day, month, year] = slashMatch;
-    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+    const [, day, month, year] = slashMatch
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day))
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed
   }
 
-  const parsed = new Date(normalizedValue);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  const parsed = new Date(normalizedValue)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
 }
 
 export const EditShiftRequest = ({
@@ -53,54 +52,51 @@ export const EditShiftRequest = ({
   initialDate,
   wardId,
 }: EditShiftRequestProps) => {
-  const [shiftType, setShiftType] = useState<string[]>([initialShiftType]);
+  const [shiftType, setShiftType] = useState<string[]>([initialShiftType])
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     parseRequestDate(initialDate),
-  );
-  const queryClient = useQueryClient();
+  )
+  const queryClient = useQueryClient()
 
-  const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", wardId ?? "default"],
+  const { data: shiftCodes = [] } = useQuery({
+    queryKey: ["shift-codes", "ward", wardId],
     queryFn: () =>
-      wardId != null
-        ? ShiftRequestsService.getShiftCodesByWard({ wardId })
-        : ShiftRequestsService.getAllShiftCodes(),
-  });
-
-  const requestableShiftCodes = useMemo(() => shiftCodes ?? [], [shiftCodes]);
+      ShiftRequestsService.getShiftCodesByWard({ wardId: wardId! }),
+    enabled: wardId != null,
+  })
 
   const shiftCollection = useMemo(
     () =>
       createListCollection({
-        items: requestableShiftCodes.map((sc) => ({
+        items: shiftCodes.map((sc) => ({
           value: sc.shiftcode,
           label: sc.shiftcode,
           description: sc.description,
         })),
       }),
-    [requestableShiftCodes],
-  );
+    [shiftCodes],
+  )
 
   useEffect(() => {
-    setShiftType([initialShiftType]);
-    setRequestDate(parseRequestDate(initialDate));
-  }, [initialShiftType, initialDate]);
+    setShiftType([initialShiftType])
+    setRequestDate(parseRequestDate(initialDate))
+  }, [initialShiftType, initialDate])
 
   useEffect(() => {
     if (isOpen) {
-      return;
+      return
     }
 
-    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350);
-    return () => window.clearTimeout(timeoutId);
-  }, [isOpen]);
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
+    return () => window.clearTimeout(timeoutId)
+  }, [isOpen])
 
   useEffect(
     () => () => {
-      window.setTimeout(cleanupOrphanedDialogState, 0);
+      window.setTimeout(cleanupOrphanedDialogState, 0)
     },
     [],
-  );
+  )
 
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -108,45 +104,50 @@ export const EditShiftRequest = ({
         requestId,
         requestBody: {
           preferredshifttype: shiftType[0],
-          preferreddate: requestDate ? `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}` : undefined,
+          preferreddate: requestDate
+            ? `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`
+            : undefined,
         },
       }),
     onSuccess: () => {
-      showSuccessToast("Shift request updated!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
-      onClose();
+      showSuccessToast("Shift request updated!")
+      queryClient.invalidateQueries({ queryKey: ["shift-requests"] })
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to update request");
+      const detail = (error as any)?.body?.detail
+      showErrorToast(detail || "Failed to update request")
     },
-  });
+  })
 
   const deleteMutation = useMutation({
-    mutationFn: () =>
-      ShiftRequestsService.deleteShiftRequest({ requestId }),
+    mutationFn: () => ShiftRequestsService.deleteShiftRequest({ requestId }),
     onSuccess: () => {
-      showSuccessToast("Shift request deleted!");
-      queryClient.invalidateQueries({ queryKey: ["shift-requests"] });
-      onClose();
+      showSuccessToast("Shift request deleted!")
+      queryClient.invalidateQueries({ queryKey: ["shift-requests"] })
+      onClose()
     },
     onError: (error: unknown) => {
-      const detail = (error as any)?.body?.detail;
-      showErrorToast(detail || "Failed to delete request");
+      const detail = (error as any)?.body?.detail
+      showErrorToast(detail || "Failed to delete request")
     },
-  });
+  })
 
   const handleSave = () => {
+    if (wardId == null) {
+      showErrorToast("No ward is linked to your account.")
+      return
+    }
     if (shiftType.length === 0) {
-      showErrorToast("Please select a shift type.");
-      return;
+      showErrorToast("Please select a shift type.")
+      return
     }
     if (!requestDate) {
-      showErrorToast("Please select a date.");
-      return;
+      showErrorToast("Please select a date.")
+      return
     }
-    updateMutation.mutate();
-  };
+    updateMutation.mutate()
+  }
 
   return (
     <Dialog.Root
@@ -157,9 +158,9 @@ export const EditShiftRequest = ({
       open={isOpen}
       onOpenChange={(e) => !e.open && onClose()}
       onInteractOutside={(event) => {
-        const target = event.target as HTMLElement | null;
+        const target = event.target as HTMLElement | null
         if (target?.closest("[data-datepicker-popup='true']")) {
-          event.preventDefault();
+          event.preventDefault()
         }
       }}
     >
@@ -179,6 +180,9 @@ export const EditShiftRequest = ({
                   size="sm"
                   value={shiftType}
                   onValueChange={(e) => setShiftType(e.value)}
+                  disabled={
+                    wardId == null || shiftCollection.items.length === 0
+                  }
                 >
                   <Select.Label>Requested Shift Type</Select.Label>
                   <Select.Control>
@@ -217,16 +221,15 @@ export const EditShiftRequest = ({
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
-              
               <VStack gap={2} flexDirection="row">
-                <Button variant="outline" onClick={() => deleteMutation.mutate()}
-                loading={deleteMutation.isPending}>
+                <Button
+                  variant="outline"
+                  onClick={() => deleteMutation.mutate()}
+                  loading={deleteMutation.isPending}
+                >
                   Withdraw
                 </Button>
-                <Button
-                  onClick={handleSave}
-                  loading={updateMutation.isPending}
-                >
+                <Button onClick={handleSave} loading={updateMutation.isPending}>
                   Save
                 </Button>
               </VStack>
@@ -238,5 +241,5 @@ export const EditShiftRequest = ({
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
-  );
-};
+  )
+}

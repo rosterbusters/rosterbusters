@@ -80,6 +80,64 @@ def test_get_access_token_requires_email_2fa_for_post_first_login_user(
         assert check_response.status_code == 200
 
 
+def test_email_2fa_verification_accepts_recent_code_after_duplicate_login_challenge(
+    client: TestClient, db: Session
+) -> None:
+    email = random_email()
+    password = random_lower_string()
+
+    user = RBACUser(
+        username=email.split("@")[0],
+        email=email,
+        passwordhash=get_password_hash(password),
+        isactive=True,
+        must_change_password=False,
+        createdat=datetime.now(timezone.utc),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    with (
+        patch("app.core.config.settings.SMTP_HOST", "smtp.example.com"),
+        patch("app.core.config.settings.EMAILS_FROM_EMAIL", "info@example.com"),
+        patch("app.utils.generate_login_2fa_code", side_effect=["111111", "222222"]),
+        patch("app.utils.send_email"),
+    ):
+        login_data = {
+            "username": email,
+            "password": password,
+        }
+        first_response = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data=login_data,
+        )
+        second_response = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data=login_data,
+        )
+
+        first_tokens = first_response.json()
+        second_tokens = second_response.json()
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert first_tokens["two_factor_required"] is True
+        assert second_tokens["two_factor_required"] is True
+
+        verify_response = client.post(
+            f"{settings.API_V1_STR}/login/email-2fa/verify",
+            json={
+                "two_factor_token": second_tokens["two_factor_token"],
+                "code": "111111",
+            },
+        )
+
+        verify_tokens = verify_response.json()
+        assert verify_response.status_code == 200
+        assert verify_tokens["access_token"]
+
+
 def test_get_access_token_skips_email_2fa_for_first_login_user(
     client: TestClient, db: Session
 ) -> None:

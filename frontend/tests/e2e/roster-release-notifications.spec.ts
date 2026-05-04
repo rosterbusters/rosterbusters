@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
@@ -78,9 +78,12 @@ async function deleteUser(
 }
 
 async function getFuturePeriod(request: APIRequestContext, token: string) {
-  const res = await request.get(`${API_BASE_URL}/api/v1/shift-requests/periods`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const res = await request.get(
+    `${API_BASE_URL}/api/v1/shift-requests/periods`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
   if (!res.ok()) {
     const body = await res.text()
     throw new Error(`Failed to load roster periods: ${res.status()} ${body}`)
@@ -145,14 +148,19 @@ async function publishWardRoster(
   }>
 }
 
-async function getNurseNotifications(request: APIRequestContext, token: string) {
+async function getNurseNotifications(
+  request: APIRequestContext,
+  token: string,
+) {
   const res = await request.get(`${API_BASE_URL}/api/v1/notifications/nurse`, {
     headers: { Authorization: `Bearer ${token}` },
     params: { notification_type: "RosterRelease" },
   })
   if (!res.ok()) {
     const body = await res.text()
-    throw new Error(`Failed to fetch nurse notifications: ${res.status()} ${body}`)
+    throw new Error(
+      `Failed to fetch nurse notifications: ${res.status()} ${body}`,
+    )
   }
   return res.json() as Promise<{
     notifications: Array<{
@@ -183,17 +191,18 @@ async function fetchMailCatcherMessages(request: APIRequestContext) {
       }>
     }
   }
-  throw new Error(`Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`)
+  throw new Error(
+    `Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`,
+  )
 }
 
-async function fetchMailCatcherMessage(
-  request: APIRequestContext,
-  id: number,
-) {
+async function fetchMailCatcherMessage(request: APIRequestContext, id: number) {
   const res = await request.get(`${MAILCATCHER_HOST}/messages/${id}.json`)
   if (!res.ok()) {
     const body = await res.text()
-    throw new Error(`Failed to fetch MailCatcher message: ${res.status()} ${body}`)
+    throw new Error(
+      `Failed to fetch MailCatcher message: ${res.status()} ${body}`,
+    )
   }
   const message = (await res.json()) as {
     id: number
@@ -370,11 +379,7 @@ test.describe("roster release notifications", () => {
         new RegExp(`${escapeRegExp(`${period.name} Roster Released.`)}$`),
       )
 
-      const emailBody = [
-        message.body,
-        message.body_html,
-        message.body_text,
-      ]
+      const emailBody = [message.body, message.body_html, message.body_text]
         .filter(Boolean)
         .join(" ")
 
@@ -384,13 +389,10 @@ test.describe("roster release notifications", () => {
     } finally {
       if (createdRosterId) {
         await request
-          .delete(
-            `${API_BASE_URL}/api/v1/roster/ward/${ward.wardid}/clear`,
-            {
-              headers: { Authorization: `Bearer ${adminToken}` },
-              params: { period_id: period.periodid },
-            },
-          )
+          .delete(`${API_BASE_URL}/api/v1/roster/ward/${ward.wardid}/clear`, {
+            headers: { Authorization: `Bearer ${adminToken}` },
+            params: { period_id: period.periodid },
+          })
           .catch(() => null)
       }
       if (createdUserId) {

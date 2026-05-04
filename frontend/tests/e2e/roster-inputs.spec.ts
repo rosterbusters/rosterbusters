@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { type APIRequestContext, expect, test } from "@playwright/test"
 import { loginForE2E } from "../utils/auth"
 
 const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8000"
@@ -273,7 +273,12 @@ test("generation inputs classify shift requests", async ({ request }) => {
       priority: 1,
     })
     createdRequestIds.push(approvedReq.requestid)
-    await reviewShiftRequest(request, managerToken, approvedReq.requestid, "Approved")
+    await reviewShiftRequest(
+      request,
+      managerToken,
+      approvedReq.requestid,
+      "Approved",
+    )
 
     const pendingReq = await createShiftRequest(request, managerToken, {
       nurseid: nurseUser.nurseid,
@@ -347,7 +352,9 @@ test("generation inputs classify shift requests", async ({ request }) => {
   }
 })
 
-test("generation inputs include only approved leave requests", async ({ request }) => {
+test("generation inputs include only approved leave requests", async ({
+  request,
+}) => {
   test.setTimeout(90_000)
 
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
@@ -451,7 +458,9 @@ test("generation inputs include only approved leave requests", async ({ request 
     )
     if (!leaveCodesRes.ok()) {
       const body = await leaveCodesRes.text()
-      throw new Error(`Failed to fetch leave codes: ${leaveCodesRes.status()} ${body}`)
+      throw new Error(
+        `Failed to fetch leave codes: ${leaveCodesRes.status()} ${body}`,
+      )
     }
     const leaveCodes = (await leaveCodesRes.json()) as Array<{
       shiftcode: string

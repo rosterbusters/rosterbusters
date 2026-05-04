@@ -1,23 +1,23 @@
-import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Flex,
-  Text,
-  VStack,
   Popover,
+  Text,
   Textarea,
-} from "@chakra-ui/react";
-import { X, Trash2 } from "lucide-react";
-import { usePopoverContext } from "@chakra-ui/react";
+  usePopoverContext,
+  VStack,
+} from "@chakra-ui/react"
+import { Trash2, X } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 interface ShiftCommentPopoverProps {
-  isOpen: boolean;
-  onClose: () => void;
-  currentComment: string;
-  nurseName: string;
-  date: string;
-  onCommentChange: (comment: string) => void;
-  anchorEl: HTMLElement | null;
+  isOpen: boolean
+  onClose: () => void
+  currentComment: string
+  nurseName: string
+  date: string
+  onCommentChange: (comment: string) => void
+  anchorEl: HTMLElement | null
 }
 
 export function ShiftCommentPopover({
@@ -29,60 +29,60 @@ export function ShiftCommentPopover({
   onCommentChange,
   anchorEl,
 }: ShiftCommentPopoverProps) {
-  const [comment, setComment] = useState<string>(currentComment || "");
+  const [comment, setComment] = useState<string>(currentComment || "")
 
   // Snapshot of the comment at the moment the popover was opened — used for Ctrl+Z revert
-  const originalCommentRef = useRef<string>("");
+  const originalCommentRef = useRef<string>("")
 
   // Reset state when popover opens with new data and capture the original snapshot
   useEffect(() => {
     if (isOpen) {
-      const origComment = currentComment || "";
-      setComment(origComment);
+      const origComment = currentComment || ""
+      setComment(origComment)
       // Capture snapshot for Ctrl+Z
-      originalCommentRef.current = origComment;
+      originalCommentRef.current = origComment
     }
-  }, [isOpen, currentComment]);
+  }, [isOpen, currentComment])
 
   // Ctrl+Z: revert comment back to the snapshot taken when popover opened
   const handleUndoAll = useCallback(() => {
-    setComment(originalCommentRef.current);
-  }, []);
+    setComment(originalCommentRef.current)
+  }, [])
 
   // Listen for Ctrl+Z while the popover is open
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
-        e.preventDefault();
-        handleUndoAll();
+        e.preventDefault()
+        handleUndoAll()
       }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, handleUndoAll]);
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, handleUndoAll])
 
   const handleSave = () => {
-    onCommentChange(comment);
-    onClose();
-  };
+    onCommentChange(comment)
+    onClose()
+  }
 
   const CloseButton = () => {
-    const popover = usePopoverContext();
+    const popover = usePopoverContext()
     return (
       <X
         size={16}
         onClick={() => popover.setOpen(false)}
         style={{ cursor: "pointer" }}
       />
-    );
-  };
+    )
+  }
 
   return (
     <Popover.Root
       open={isOpen}
       onOpenChange={(details) => {
-        if (!details.open) onClose();
+        if (!details.open) onClose()
       }}
       positioning={{
         getAnchorRect: () => anchorEl?.getBoundingClientRect() ?? null,
@@ -90,7 +90,13 @@ export function ShiftCommentPopover({
       }}
     >
       <Popover.Positioner zIndex={1400} overflow="visible">
-        <Popover.Content w="300px" borderRadius="lg" boxShadow="lg" overflow="auto" maxH="90vh">
+        <Popover.Content
+          w="300px"
+          borderRadius="lg"
+          boxShadow="lg"
+          overflow="auto"
+          maxH="90vh"
+        >
           {/* Header */}
           <Popover.Header
             p={3}
@@ -114,12 +120,7 @@ export function ShiftCommentPopover({
           {/* Content */}
           <Popover.Body p={3}>
             <Box>
-              <Text
-                fontSize="xs"
-                fontWeight="medium"
-                color="gray.500"
-                mb={1}
-              >
+              <Text fontSize="xs" fontWeight="medium" color="gray.500" mb={1}>
                 Comment
               </Text>
               <Box position="relative">
@@ -130,7 +131,10 @@ export function ShiftCommentPopover({
                   size="sm"
                   borderRadius="md"
                   borderColor="gray.200"
-                  _focus={{ borderColor: "#4B8798", boxShadow: "0 0 0 1px #4B8798" }}
+                  _focus={{
+                    borderColor: "#4B8798",
+                    boxShadow: "0 0 0 1px #4B8798",
+                  }}
                   resize="none"
                   rows={3}
                   fontSize="sm"
@@ -167,8 +171,8 @@ export function ShiftCommentPopover({
                     cursor="pointer"
                     _hover={{ color: "gray.700" }}
                     onClick={() => {
-                      setComment(currentComment || "");
-                      onClose();
+                      setComment(currentComment || "")
+                      onClose()
                     }}
                   >
                     Cancel
@@ -199,8 +203,7 @@ export function ShiftCommentPopover({
         </Popover.Content>
       </Popover.Positioner>
     </Popover.Root>
-  );
+  )
 }
 
-export default ShiftCommentPopover;
-
+export default ShiftCommentPopover

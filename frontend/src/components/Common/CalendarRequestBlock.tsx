@@ -1,25 +1,25 @@
-import { Badge, HStack, Box, Text } from "@chakra-ui/react";
-import { Check, X } from "lucide-react";
-import { Tooltip } from "@/components/ui/tooltip";
+import { Badge, Box, HStack, Text } from "@chakra-ui/react"
+import { Check, X } from "lucide-react"
+import { Tooltip } from "@/components/ui/tooltip"
 
 export interface NurseStatus {
-  name: string;
-  status: string;
-  reason?: string | null;
+  name: string
+  status: string
+  reason?: string | null
 }
 
 interface CalendarRequestBlockProps {
-  shift: string;
-  owned?: boolean;
-  nurseName?: string;
-  nurseStatuses?: NurseStatus[];
-  onClick?: () => void;
+  shift: string
+  owned?: boolean
+  nurseName?: string
+  nurseStatuses?: NurseStatus[]
+  onClick?: () => void
 }
 
 const OVERLAY_CONFIG = {
   Approved: { outlineColor: "#22c55e", Icon: Check, iconBg: "#22c55e" },
   Rejected: { outlineColor: "#ef4444", Icon: X, iconBg: "#ef4444" },
-} as const;
+} as const
 
 export function CalendarRequestBlock({
   shift,
@@ -28,7 +28,7 @@ export function CalendarRequestBlock({
   nurseStatuses,
   onClick,
 }: CalendarRequestBlockProps) {
-  const hasStatuses = nurseStatuses && nurseStatuses.length > 0;
+  const hasStatuses = nurseStatuses && nurseStatuses.length > 0
 
   return (
     <Badge
@@ -39,8 +39,8 @@ export function CalendarRequestBlock({
       onClick={
         onClick
           ? (e) => {
-              e.stopPropagation();
-              onClick();
+              e.stopPropagation()
+              onClick()
             }
           : undefined
       }
@@ -53,9 +53,9 @@ export function CalendarRequestBlock({
       {hasStatuses ? (
         <HStack gap={1} flexWrap="wrap" align="center">
           {nurseStatuses!.flatMap((nurse, i) => {
-            const isLast = i === nurseStatuses!.length - 1;
+            const isLast = i === nurseStatuses!.length - 1
             const config =
-              OVERLAY_CONFIG[nurse.status as keyof typeof OVERLAY_CONFIG];
+              OVERLAY_CONFIG[nurse.status as keyof typeof OVERLAY_CONFIG]
 
             const chip = config ? (
               <Box
@@ -90,32 +90,40 @@ export function CalendarRequestBlock({
               </Box>
             ) : (
               <span key={`name-${i}`}>{nurse.name}</span>
-            );
+            )
 
-            const withTooltip = config && nurse.reason ? (
-              <Tooltip
-                key={`chip-${i}`}
-                content={
-                  <Text fontSize="xs" color="whiteAlpha.900" py={1}>
-                    {nurse.reason}
-                  </Text>
-                }
-                showArrow
-              >
-                {chip}
-              </Tooltip>
-            ) : (
-              <Box key={`chip-${i}`} display="contents">{chip}</Box>
-            );
+            const withTooltip =
+              config && nurse.reason ? (
+                <Tooltip
+                  key={`chip-${i}`}
+                  content={
+                    <Text fontSize="xs" color="whiteAlpha.900" py={1}>
+                      {nurse.reason}
+                    </Text>
+                  }
+                  showArrow
+                >
+                  {chip}
+                </Tooltip>
+              ) : (
+                <Box key={`chip-${i}`} display="contents">
+                  {chip}
+                </Box>
+              )
 
             return isLast
               ? [withTooltip]
-              : [withTooltip, <span key={`comma-${i}`} style={{ marginInline: "1px" }}>,</span>];
+              : [
+                  withTooltip,
+                  <span key={`comma-${i}`} style={{ marginInline: "1px" }}>
+                    ,
+                  </span>,
+                ]
           })}
         </HStack>
       ) : (
         (nurseName ?? "")
       )}
     </Badge>
-  );
+  )
 }

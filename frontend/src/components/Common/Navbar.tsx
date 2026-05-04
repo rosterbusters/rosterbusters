@@ -1,21 +1,25 @@
-import { useState } from "react";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router"
 import {
-  Home,
-  Table,
-  NotebookPen,
-  Settings,
-  User,
-  Menu,
-  X,
   ChevronDown,
-  Pencil,
-  NotepadText,
-  Bell,
-  LogOut,
   CircleUserRound,
-} from "lucide-react";
-import useAuth from "@/hooks/useAuth";
+  Home,
+  LogOut,
+  Menu,
+  NotebookPen,
+  NotepadText,
+  Pencil,
+  Settings,
+  Table,
+  User,
+  X,
+} from "lucide-react"
+import { useState } from "react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -23,46 +27,41 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu";
-import { cn } from "@/lib/utils";
-import NotificationDropdown from "./NotificationDropdown";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ui/navigation-menu"
+import useAuth from "@/hooks/useAuth"
+import { cn } from "@/lib/utils"
+import NotificationDropdown from "./NotificationDropdown"
 
 function Navbar() {
-  const location = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false);
-  const { user, logout } = useAuth();
+  const location = useLocation()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [leaveShiftExpanded, setLeaveShiftExpanded] = useState(false)
+  const { user, logout } = useAuth()
 
-  const userName = user?.name || user?.email || "Staff Name";
+  const userName = user?.name || user?.email || "Staff Name"
 
   // Check if current path matches exactly
   const isActive = (path: string) => {
-    return location.pathname === path;
-  };
+    return location.pathname === path
+  }
 
   // Check if current path is within a section (for dropdown parent highlighting)
   const isSectionActive = (paths: string[]) => {
-    return paths.some((path) => location.pathname === path);
-  };
+    return paths.some((path) => location.pathname === path)
+  }
 
-  const leaveShiftPaths = ["/leave-request", "/request-overview"];
-  const isLeaveShiftActive = isSectionActive(leaveShiftPaths);
+  const leaveShiftPaths = ["/leave-request", "/request-overview"]
+  const isLeaveShiftActive = isSectionActive(leaveShiftPaths)
 
   // Standardized nav pill styles - ensures consistent height, spacing, and alignment
   const navPillBaseStyles =
-    "px-1 inline-flex h-8 items-center justify-center gap-1 rounded-lg text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2";
-  const navPillActiveStyles = "bg-[#DDE8EA] !text-[#4B8798]";
+    "px-1 inline-flex h-8 items-center justify-center gap-1 rounded-lg text-sm font-medium tracking-[0.07px] transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2"
+  const navPillActiveStyles = "bg-[#DDE8EA] !text-[#4B8798]"
   const navPillInactiveStyles =
-    "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50";
+    "bg-transparent text-[#4A4A4A] hover:bg-[#DDE8EA]/50"
   // Utility pill for non-clickable elements (like staff name display)
   const utilityPillStyles =
-    "cursor-pointer inline-flex h-10 items-center gap-1 rounded-xl px-6 text-sm font-medium tracking-[0.07px]";
+    "cursor-pointer inline-flex h-10 items-center gap-1 rounded-xl px-6 text-sm font-medium tracking-[0.07px]"
 
   return (
     <nav
@@ -81,7 +80,7 @@ function Navbar() {
               alt="SACH Logo"
               className="h-9"
               onError={(e) => {
-                e.currentTarget.src = "/assets/images/sach-navbarlogo.png";
+                e.currentTarget.src = "/assets/images/sach-navbarlogo.png"
               }}
             />
           </Link>
@@ -103,7 +102,7 @@ function Navbar() {
                         : navPillInactiveStyles,
                     )}
                   >
-                      <Home className="h-4 w-4 text-[#4B8798]" />
+                    <Home className="h-4 w-4 text-[#4B8798]" />
                     <span>Home</span>
                   </Link>
                 </NavigationMenuLink>
@@ -121,7 +120,7 @@ function Navbar() {
                         : navPillInactiveStyles,
                     )}
                   >
-                      <Table className="h-4 w-4 text-[#4B8798]" />
+                    <Table className="h-4 w-4 text-[#4B8798]" />
                     <span>Staff Roster Schedule</span>
                   </Link>
                 </NavigationMenuLink>
@@ -141,8 +140,8 @@ function Navbar() {
                     "data-[state=open]:!bg-[#DDE8EA]/50",
                   )}
                 >
-                    <NotebookPen className="h-4 w-4 text-[#4B8798]" />
-                    <span>Leave and Shift Request </span>
+                  <NotebookPen className="h-4 w-4 text-[#4B8798]" />
+                  <span>Leave and Shift Request </span>
                 </NavigationMenuTrigger>
                 <NavigationMenuContent className="left-0 w-full min-w-full translate-y-1 rounded-md border border-[#E6E6E6] bg-white p-1 shadow-md">
                   <ul className="flex flex-col gap-0.5">
@@ -194,8 +193,8 @@ function Navbar() {
                         : navPillInactiveStyles,
                     )}
                   >
-                      <Settings className="h-4 w-4 text-[#4B8798]" />
-                      Settings
+                    <Settings className="h-4 w-4 text-[#4B8798]" />
+                    Settings
                   </Link>
                 </NavigationMenuLink>
               </NavigationMenuItem>
@@ -206,12 +205,17 @@ function Navbar() {
         {/* RIGHT ZONE: Utilities */}
         <div className="flex items-center shrink-0">
           {/* Notification Bell Dropdown */}
-          <NotificationDropdown role="nurse" />
+          <NotificationDropdown />
 
           {/* Staff Name Display with Logout Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className={cn(utilityPillStyles, "text-[#4A4A4A] hover:bg-[#DDE8EA]/50")}>
+              <button
+                className={cn(
+                  utilityPillStyles,
+                  "text-[#4A4A4A] hover:bg-[#DDE8EA]/50",
+                )}
+              >
                 <User className="h-5 w-5 shrink-0 text-[#4B8798]" />
                 <span>{userName}</span>
                 <ChevronDown className="h-4 w-4 text-[#4B8798]" />
@@ -221,7 +225,10 @@ function Navbar() {
               align="end"
               className="w-44 border border-[#E6E6E6] bg-white p-1 shadow-md"
             >
-              <DropdownMenuItem asChild className="cursor-pointer bg-white text-[#4A4A4A] focus:bg-[#DDE8EA]/50 focus:text-[#4A4A4A]">
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer bg-white text-[#4A4A4A] focus:bg-[#DDE8EA]/50 focus:text-[#4A4A4A]"
+              >
                 <Link
                   to="/ward-staff/profile"
                   className="flex w-full items-center rounded-sm"
@@ -273,14 +280,14 @@ function Navbar() {
               className="h-6 max-h-7"
               style={{ width: "auto", maxWidth: "120px" }}
               onError={(e) => {
-                e.currentTarget.src = "/assets/images/sach-navbarlogo.png";
+                e.currentTarget.src = "/assets/images/sach-navbarlogo.png"
               }}
             />
           </Link>
         </div>
 
         {/* Right: Notification Bell Dropdown */}
-        <NotificationDropdown role="nurse" />
+        <NotificationDropdown />
       </div>
 
       {/* Mobile Dropdown Panel (appears below navbar) - NO backdrop */}
@@ -292,7 +299,9 @@ function Navbar() {
               <div className="space-y-3">
                 <div className="flex items-center gap-1">
                   <User className="h-[18px] w-[18px] text-[#4B8798]" />
-                  <span className="text-sm font-medium text-[#4A4A4A]">{userName}</span>
+                  <span className="text-sm font-medium text-[#4A4A4A]">
+                    {userName}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Link
@@ -305,8 +314,8 @@ function Navbar() {
                   </Link>
                   <button
                     onClick={() => {
-                      setMobileMenuOpen(false);
-                      logout();
+                      setMobileMenuOpen(false)
+                      logout()
                     }}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
                   >
@@ -448,7 +457,7 @@ function Navbar() {
         </div>
       )}
     </nav>
-  );
+  )
 }
 
-export default Navbar;
+export default Navbar

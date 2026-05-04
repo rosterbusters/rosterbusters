@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import {
   Box,
   Button,
@@ -7,42 +6,43 @@ import {
   Portal,
   Text,
   VStack,
-} from "@chakra-ui/react";
-import { useGenerationInputs } from "@/components/NurseManager/RosterTable";
-import type { RosterRow } from "@/components/NurseManager/RosterTable";
-import { buildRequestReview } from "./requestReview";
-import moment from "moment";
+} from "@chakra-ui/react"
+import moment from "moment"
+import { useMemo } from "react"
+import type { RosterRow } from "@/components/NurseManager/RosterTable"
+import { useGenerationInputs } from "@/components/NurseManager/RosterTable"
+import { buildRequestReview } from "./requestReview"
 
 interface AlgorithmInputsDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  wardId: number | null;
-  wardName?: string | null;
-  periodId: number | null;
-  periodName?: string | null;
-  periodStartDate?: string | null;
-  algorithmType?: "MILP" | "AB-RATIO" | "V2" | null;
-  lastRunAt?: Date | null;
-  lastRunMs?: number | null;
-  rosterData?: RosterRow[];
+  isOpen: boolean
+  onClose: () => void
+  wardId: number | null
+  wardName?: string | null
+  periodId: number | null
+  periodName?: string | null
+  periodStartDate?: string | null
+  algorithmType?: "MILP" | "AB-RATIO" | "V2" | null
+  lastRunAt?: Date | null
+  lastRunMs?: number | null
+  rosterData?: RosterRow[]
 }
 
 type StaffingCounts = {
-  AM: { A: number; B: number; C: number };
-  PM: { A: number; B: number; C: number };
-  NIGHT: { A: number; B: number; C: number };
-};
+  AM: { A: number; B: number; C: number }
+  PM: { A: number; B: number; C: number }
+  NIGHT: { A: number; B: number; C: number }
+}
 
 type StaffingSummaryRow = {
-  label: string;
-  counts: { A: number; B: number; C: number };
-};
+  label: string
+  counts: { A: number; B: number; C: number }
+}
 
 const emptyStaffing: StaffingCounts = {
   AM: { A: 0, B: 0, C: 0 },
   PM: { A: 0, B: 0, C: 0 },
   NIGHT: { A: 0, B: 0, C: 0 },
-};
+}
 
 export function AlgorithmInputsDialog({
   isOpen,
@@ -57,21 +57,21 @@ export function AlgorithmInputsDialog({
   lastRunMs,
   rosterData = [],
 }: AlgorithmInputsDialogProps) {
-  const generationInputsQuery = useGenerationInputs(wardId, periodId, isOpen);
+  const generationInputsQuery = useGenerationInputs(wardId, periodId, isOpen)
 
   const hardRequestCount = useMemo(() => {
-    const requests = generationInputsQuery.data?.hard_requests ?? {};
-    return Object.values(requests).reduce((sum, items) => sum + items.length, 0);
-  }, [generationInputsQuery.data?.hard_requests]);
+    const requests = generationInputsQuery.data?.hard_requests ?? {}
+    return Object.values(requests).reduce((sum, items) => sum + items.length, 0)
+  }, [generationInputsQuery.data?.hard_requests])
 
   const softRequestCount = useMemo(() => {
-    const requests = generationInputsQuery.data?.soft_requests ?? {};
-    return Object.values(requests).reduce((sum, items) => sum + items.length, 0);
-  }, [generationInputsQuery.data?.soft_requests]);
+    const requests = generationInputsQuery.data?.soft_requests ?? {}
+    return Object.values(requests).reduce((sum, items) => sum + items.length, 0)
+  }, [generationInputsQuery.data?.soft_requests])
 
   const staffingSummary = useMemo<StaffingCounts>(() => {
-    const firstDay = generationInputsQuery.data?.shifts?.[0];
-    if (!firstDay) return emptyStaffing;
+    const firstDay = generationInputsQuery.data?.shifts?.[0]
+    if (!firstDay) return emptyStaffing
     return {
       AM: {
         A: firstDay.AM?.A ?? 0,
@@ -88,22 +88,27 @@ export function AlgorithmInputsDialog({
         B: firstDay.NIGHT?.B ?? 0,
         C: firstDay.NIGHT?.C ?? 0,
       },
-    };
-  }, [generationInputsQuery.data?.shifts]);
+    }
+  }, [generationInputsQuery.data?.shifts])
 
   const staffingSummaryRows = useMemo<StaffingSummaryRow[]>(() => {
-    const firstDay = generationInputsQuery.data?.shifts?.[0];
+    const firstDay = generationInputsQuery.data?.shifts?.[0]
     if (!firstDay) {
       return [
         { label: "AM", counts: emptyStaffing.AM },
         { label: "PM", counts: emptyStaffing.PM },
         { label: "NIGHT", counts: emptyStaffing.NIGHT },
-      ];
+      ]
     }
 
-    if ("A-12" in firstDay || "N-12" in firstDay || "A12" in firstDay || "N12" in firstDay) {
-      const a12 = firstDay["A-12"] ?? firstDay.A12 ?? { A: 0, B: 0, C: 0 };
-      const n12 = firstDay["N-12"] ?? firstDay.N12 ?? { A: 0, B: 0, C: 0 };
+    if (
+      "A-12" in firstDay ||
+      "N-12" in firstDay ||
+      "A12" in firstDay ||
+      "N12" in firstDay
+    ) {
+      const a12 = firstDay["A-12"] ?? firstDay.A12 ?? { A: 0, B: 0, C: 0 }
+      const n12 = firstDay["N-12"] ?? firstDay.N12 ?? { A: 0, B: 0, C: 0 }
       return [
         {
           label: "A-12",
@@ -121,80 +126,80 @@ export function AlgorithmInputsDialog({
             C: n12.C ?? 0,
           },
         },
-      ];
+      ]
     }
 
     return [
       { label: "AM", counts: staffingSummary.AM },
       { label: "PM", counts: staffingSummary.PM },
       { label: "NIGHT", counts: staffingSummary.NIGHT },
-    ];
-  }, [generationInputsQuery.data?.shifts, staffingSummary]);
+    ]
+  }, [generationInputsQuery.data?.shifts, staffingSummary])
 
   const generationInputsJson = useMemo(() => {
-    if (!generationInputsQuery.data) return "";
-    return JSON.stringify(generationInputsQuery.data, null, 2);
-  }, [generationInputsQuery.data]);
+    if (!generationInputsQuery.data) return ""
+    return JSON.stringify(generationInputsQuery.data, null, 2)
+  }, [generationInputsQuery.data])
 
   const requestReview = useMemo(() => {
-    if (!generationInputsQuery.data) return null;
+    if (!generationInputsQuery.data) return null
     return buildRequestReview({
       periodStartDate: periodStartDate ?? null,
       rosterData,
       hardRequests: generationInputsQuery.data.hard_requests ?? {},
       softRequests: generationInputsQuery.data.soft_requests ?? {},
-    });
-  }, [generationInputsQuery.data, periodStartDate, rosterData]);
+    })
+  }, [generationInputsQuery.data, periodStartDate, rosterData])
 
   const requestReviewText = useMemo(() => {
-    if (!requestReview) return "";
+    if (!requestReview) return ""
     const lines = requestReview.rows.slice(0, 100).map((row) => {
-      const status = row.matched ? "MATCHED" : "NOT MATCHED";
-      const assigned = row.assigned ?? "—";
-      return `${row.requestType.toUpperCase()} | Nurse ${row.nurseId} | ${row.date} | requested ${row.requested} | assigned ${assigned} | ${status}`;
-    });
+      const status = row.matched ? "MATCHED" : "NOT MATCHED"
+      const assigned = row.assigned ?? "—"
+      return `${row.requestType.toUpperCase()} | Nurse ${row.nurseId} | ${row.date} | requested ${row.requested} | assigned ${assigned} | ${status}`
+    })
     if (requestReview.rows.length > 100) {
-      lines.push(`…and ${requestReview.rows.length - 100} more`);
+      lines.push(`…and ${requestReview.rows.length - 100} more`)
     }
-    return lines.join("\n");
-  }, [requestReview]);
+    return lines.join("\n")
+  }, [requestReview])
 
   const hardRequestPreviewText = useMemo(() => {
-    const requests = generationInputsQuery.data?.hard_requests ?? {};
-    const lines: string[] = [];
+    const requests = generationInputsQuery.data?.hard_requests ?? {}
+    const lines: string[] = []
 
     for (const [nurseId, items] of Object.entries(requests)) {
       for (const item of items) {
-        const [dayIdx, requestCode] = item;
+        const [dayIdx, requestCode] = item
         const dateLabel =
           periodStartDate != null
             ? moment(periodStartDate).add(dayIdx, "days").format("YYYY-MM-DD")
-            : `Day ${dayIdx + 1}`;
-        lines.push(`Nurse ${nurseId} | ${dateLabel} | ${requestCode}`);
+            : `Day ${dayIdx + 1}`
+        lines.push(`Nurse ${nurseId} | ${dateLabel} | ${requestCode}`)
       }
     }
 
-    return lines.sort().join("\n");
-  }, [generationInputsQuery.data?.hard_requests, periodStartDate]);
+    return lines.sort().join("\n")
+  }, [generationInputsQuery.data?.hard_requests, periodStartDate])
 
   const formattedLastRun = useMemo(() => {
-    if (!lastRunAt) return "—";
-    return lastRunAt.toLocaleString();
-  }, [lastRunAt]);
+    if (!lastRunAt) return "—"
+    return lastRunAt.toLocaleString()
+  }, [lastRunAt])
 
   const formattedDuration = useMemo(() => {
-    if (!lastRunMs || lastRunMs <= 0) return "—";
-    const totalSeconds = Math.round(lastRunMs / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
+    if (!lastRunMs || lastRunMs <= 0) return "—"
+    const totalSeconds = Math.round(lastRunMs / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
     if (minutes > 0) {
-      return `${minutes}m ${seconds}s`;
+      return `${minutes}m ${seconds}s`
     }
-    return `${seconds}s`;
-  }, [lastRunMs]);
+    return `${seconds}s`
+  }, [lastRunMs])
 
-  const cpuCount = generationInputsQuery.data?.cpu_count;
-  const gaWorkers = generationInputsQuery.data?.ga_worker_count;
+  const cpuCount = generationInputsQuery.data?.cpu_count
+  const gaWorkers = generationInputsQuery.data?.ga_worker_count
 
   return (
     <Dialog.Root
@@ -202,7 +207,7 @@ export function AlgorithmInputsDialog({
       motionPreset="slide-in-bottom"
       open={isOpen}
       onOpenChange={(e) => {
-        if (!e.open) onClose();
+        if (!e.open) onClose()
       }}
     >
       <Portal>
@@ -220,7 +225,10 @@ export function AlgorithmInputsDialog({
                     Ward: {wardName ?? "—"} • Period: {periodName ?? "—"}
                   </Text>
                   <Text fontSize="sm" color="gray.600">
-                    Algorithm: {algorithmType === "AB-RATIO" ? "CP-SAT" : (algorithmType ?? "Auto")}
+                    Algorithm:{" "}
+                    {algorithmType === "AB-RATIO"
+                      ? "CP-SAT"
+                      : (algorithmType ?? "Auto")}
                   </Text>
                   <Text fontSize="sm" color="gray.600">
                     Last run: {formattedLastRun} • Duration: {formattedDuration}
@@ -244,30 +252,43 @@ export function AlgorithmInputsDialog({
                   <>
                     <Box>
                       <Text fontSize="sm" color="gray.600" mb={2}>
-                        Summary: {generationInputsQuery.data.nurses.length} nurses •{" "}
-                        {hardRequestCount} hard requests • {softRequestCount} soft requests
+                        Summary: {generationInputsQuery.data.nurses.length}{" "}
+                        nurses • {hardRequestCount} hard requests •{" "}
+                        {softRequestCount} soft requests
                       </Text>
                     </Box>
 
                     <Box>
-                      <Text fontSize="sm" color="gray.700" fontWeight="semibold" mb={1}>
+                      <Text
+                        fontSize="sm"
+                        color="gray.700"
+                        fontWeight="semibold"
+                        mb={1}
+                      >
                         Staffing Requirements (per day)
                       </Text>
                       {staffingSummaryRows.map((row) => (
                         <Text key={row.label} fontSize="sm" color="gray.600">
-                          {row.label}: A {row.counts.A} • B {row.counts.B} • C {row.counts.C}
+                          {row.label}: A {row.counts.A} • B {row.counts.B} • C{" "}
+                          {row.counts.C}
                         </Text>
                       ))}
                     </Box>
 
                     <Box>
-                      <Text fontSize="sm" color="gray.700" fontWeight="semibold" mb={1}>
+                      <Text
+                        fontSize="sm"
+                        color="gray.700"
+                        fontWeight="semibold"
+                        mb={1}
+                      >
                         Request Compliance Preview
                       </Text>
                       {requestReview ? (
                         <>
                           <Text fontSize="sm" color="gray.600" mb={2}>
-                            Matched: {requestReview.matchedCount} • Not matched: {requestReview.unmatchedCount}
+                            Matched: {requestReview.matchedCount} • Not matched:{" "}
+                            {requestReview.unmatchedCount}
                           </Text>
                           <Box
                             as="pre"
@@ -290,7 +311,12 @@ export function AlgorithmInputsDialog({
                     </Box>
 
                     <Box>
-                      <Text fontSize="sm" color="gray.700" fontWeight="semibold" mb={1}>
+                      <Text
+                        fontSize="sm"
+                        color="gray.700"
+                        fontWeight="semibold"
+                        mb={1}
+                      >
                         Hard Requests / Leave
                       </Text>
                       <Box
@@ -308,7 +334,12 @@ export function AlgorithmInputsDialog({
                     </Box>
 
                     <Box>
-                      <Text fontSize="sm" color="gray.700" fontWeight="semibold" mb={2}>
+                      <Text
+                        fontSize="sm"
+                        color="gray.700"
+                        fontWeight="semibold"
+                        mb={2}
+                      >
                         Raw Inputs
                       </Text>
                       <Box
@@ -344,7 +375,7 @@ export function AlgorithmInputsDialog({
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
-  );
+  )
 }
 
-export default AlgorithmInputsDialog;
+export default AlgorithmInputsDialog

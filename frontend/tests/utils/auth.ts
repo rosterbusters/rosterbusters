@@ -1,7 +1,7 @@
-import { expect, type APIRequestContext, type Page } from "@playwright/test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { type APIRequestContext, expect, type Page } from "@playwright/test"
 
 type LoginResponse = {
   access_token?: string
@@ -87,7 +87,7 @@ function extract6DigitCode(contents: string[]) {
 
 function normalizeRecipient(recipientEmail?: string) {
   const trimmed = recipientEmail?.trim().toLowerCase()
-  return trimmed && trimmed.includes("@") ? trimmed : undefined
+  return trimmed?.includes("@") ? trimmed : undefined
 }
 
 function toLockKey(value: string) {
@@ -202,12 +202,16 @@ export async function loginForE2E(params: {
     recipientEmail,
   } = params
 
-  const lockKey = normalizeRecipient(recipientEmail) || username.trim().toLowerCase()
+  const lockKey =
+    normalizeRecipient(recipientEmail) || username.trim().toLowerCase()
 
   return withRecipientLock(lockKey, async () => {
-    const loginRes = await request.post(`${apiBaseUrl}/api/v1/login/access-token`, {
-      form: { username, password },
-    })
+    const loginRes = await request.post(
+      `${apiBaseUrl}/api/v1/login/access-token`,
+      {
+        form: { username, password },
+      },
+    )
 
     if (!loginRes.ok()) {
       const body = await loginRes.text()
@@ -233,12 +237,17 @@ export async function loginForE2E(params: {
       (await listMailMessages(request, mailcatcherHost)).map((m) => m.id),
     )
 
-    const resendRes = await request.post(`${apiBaseUrl}/api/v1/login/email-2fa/resend`, {
-      data: { two_factor_token: loginJson.two_factor_token },
-    })
+    const resendRes = await request.post(
+      `${apiBaseUrl}/api/v1/login/email-2fa/resend`,
+      {
+        data: { two_factor_token: loginJson.two_factor_token },
+      },
+    )
     if (!resendRes.ok()) {
       const body = await resendRes.text()
-      throw new Error(`Failed to resend login 2FA: ${resendRes.status()} ${body}`)
+      throw new Error(
+        `Failed to resend login 2FA: ${resendRes.status()} ${body}`,
+      )
     }
 
     const code = await waitForVerificationCode({
@@ -249,21 +258,28 @@ export async function loginForE2E(params: {
       subjectIncludes: "login verification code",
     })
 
-    const verifyRes = await request.post(`${apiBaseUrl}/api/v1/login/email-2fa/verify`, {
-      data: {
-        two_factor_token: loginJson.two_factor_token,
-        code,
+    const verifyRes = await request.post(
+      `${apiBaseUrl}/api/v1/login/email-2fa/verify`,
+      {
+        data: {
+          two_factor_token: loginJson.two_factor_token,
+          code,
+        },
       },
-    })
+    )
 
     if (!verifyRes.ok()) {
       const body = await verifyRes.text()
-      throw new Error(`Failed to verify login 2FA: ${verifyRes.status()} ${body}`)
+      throw new Error(
+        `Failed to verify login 2FA: ${verifyRes.status()} ${body}`,
+      )
     }
 
     const verifyJson = (await verifyRes.json()) as LoginResponse
     if (!verifyJson.access_token) {
-      throw new Error("2FA verification succeeded but returned no access token.")
+      throw new Error(
+        "2FA verification succeeded but returned no access token.",
+      )
     }
 
     return verifyJson.access_token
@@ -321,13 +337,16 @@ export async function verifyEmailForCurrentUser(params: {
     subjectIncludes: "verify your email address",
   })
 
-  const verifyRes = await request.post(`${apiBaseUrl}/api/v1/users/me/verify-email-code`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const verifyRes = await request.post(
+    `${apiBaseUrl}/api/v1/users/me/verify-email-code`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: { email, code },
     },
-    data: { email, code },
-  })
+  )
 
   if (!verifyRes.ok()) {
     const body = await verifyRes.text()
@@ -351,40 +370,41 @@ export async function completeLogin2faInUi(params: {
   const lockKey = normalizeRecipient(recipientEmail)
 
   return withRecipientLock(lockKey, async () => {
-
-  const verifyHeading = page.getByRole("heading", { name: /verify login/i })
-  if (!(await verifyHeading.isVisible().catch(() => false))) {
-    await verifyHeading.waitFor({ state: "visible", timeout: 4_000 }).catch(() => {
-      // No 2FA step was shown for this login attempt.
-    })
+    const verifyHeading = page.getByRole("heading", { name: /verify login/i })
     if (!(await verifyHeading.isVisible().catch(() => false))) {
-      return
+      await verifyHeading
+        .waitFor({ state: "visible", timeout: 4_000 })
+        .catch(() => {
+          // No 2FA step was shown for this login attempt.
+        })
+      if (!(await verifyHeading.isVisible().catch(() => false))) {
+        return
+      }
     }
-  }
 
-  if (!mailcatcherHost) {
-    throw new Error(
-      "2FA UI step is visible but MAILCATCHER_HOST is not set for Playwright tests.",
+    if (!mailcatcherHost) {
+      throw new Error(
+        "2FA UI step is visible but MAILCATCHER_HOST is not set for Playwright tests.",
+      )
+    }
+
+    const existingMessageIds = new Set(
+      (await listMailMessages(page.request, mailcatcherHost)).map((m) => m.id),
     )
-  }
 
-  const existingMessageIds = new Set(
-    (await listMailMessages(page.request, mailcatcherHost)).map((m) => m.id),
-  )
+    // Trigger resend so tests always verify against a fresh challenge email.
+    await page.getByRole("button", { name: /resend code/i }).click()
 
-  // Trigger resend so tests always verify against a fresh challenge email.
-  await page.getByRole("button", { name: /resend code/i }).click()
+    const code = await waitForVerificationCode({
+      request: page.request,
+      mailcatcherHost,
+      existingMessageIds,
+      recipientEmail,
+      subjectIncludes: "login verification code",
+    })
 
-  const code = await waitForVerificationCode({
-    request: page.request,
-    mailcatcherHost,
-    existingMessageIds,
-    recipientEmail,
-    subjectIncludes: "login verification code",
-  })
-
-  await page.getByLabel(/verification code/i).fill(code)
-  await page.getByRole("button", { name: /verify code/i }).click()
+    await page.getByLabel(/verification code/i).fill(code)
+    await page.getByRole("button", { name: /verify code/i }).click()
 
     await expect(page).not.toHaveURL(/\/login$/)
   })

@@ -1,14 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
-import React from "react"
+import { createFileRoute } from "@tanstack/react-router"
+import { Activity, Building2, ShieldCheck, Users } from "lucide-react"
+import type React from "react"
 import { WardsService } from "@/client"
 import { AdminService } from "@/client/adminService"
-import {
-  Users,
-  Building2,
-  ShieldCheck,
-  Activity,
-} from "lucide-react"
 
 export const Route = createFileRoute("/admin/dashboard")({
   component: AdminDashboard,

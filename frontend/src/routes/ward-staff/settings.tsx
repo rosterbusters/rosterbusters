@@ -1,7 +1,7 @@
+import { Box, Center, Flex, Spinner, Switch, Text } from "@chakra-ui/react"
 import { createFileRoute } from "@tanstack/react-router"
-import { useState, useEffect, useCallback } from "react"
-import { Flex, Box, Text, Switch, Spinner, Center } from "@chakra-ui/react"
 import { Mail } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 
 export const Route = createFileRoute("/ward-staff/settings")({
@@ -20,27 +20,32 @@ const WS_TOGGLEABLE_NOTIFICATIONS: {
   {
     label: "Shift Request Period Open",
     types: ["ShiftRequestPeriodOpen"],
-    description: "Get notified when the shift request window opens for a new roster period.",
+    description:
+      "Get notified when the shift request window opens for a new roster period.",
   },
   {
     label: "Shift Request Period Close",
     types: ["ShiftRequestPeriodClosingSoon"],
-    description: "Get a reminder 12 hours before the shift request window closes.",
+    description:
+      "Get a reminder 12 hours before the shift request window closes.",
   },
   {
     label: "Shift Request Status",
     types: ["ShiftRequestApproved", "ShiftRequestRejected"],
-    description: "Get notified when your shift request is approved or rejected by the manager.",
+    description:
+      "Get notified when your shift request is approved or rejected by the manager.",
   },
   {
     label: "Roster Released",
     types: ["RosterRelease"],
-    description: "Get notified when your roster for the upcoming period is published.",
+    description:
+      "Get notified when your roster for the upcoming period is published.",
   },
   {
     label: "Leave Request Status",
     types: ["LeaveApproved", "LeaveRejected"],
-    description: "Get notified when your leave request is approved or rejected.",
+    description:
+      "Get notified when your leave request is approved or rejected.",
   },
 ]
 
@@ -48,7 +53,10 @@ const WS_TOGGLEABLE_NOTIFICATIONS: {
 const ALL_TYPES = WS_TOGGLEABLE_NOTIFICATIONS.flatMap((n) => n.types)
 
 // All types in the group must be true for the group toggle to show as ON.
-function isGroupEnabled(prefs: Record<string, boolean>, types: string[]): boolean {
+function isGroupEnabled(
+  prefs: Record<string, boolean>,
+  types: string[],
+): boolean {
   return types.every((t) => prefs[t] !== false)
 }
 
@@ -59,7 +67,9 @@ function isMasterEnabled(prefs: Record<string, boolean>): boolean {
 
 const BASE = import.meta.env.VITE_API_URL || ""
 
-async function fetchPreferences(token: string): Promise<Record<string, boolean>> {
+async function fetchPreferences(
+  token: string,
+): Promise<Record<string, boolean>> {
   const res = await fetch(`${BASE}/api/v1/notifications/preferences`, {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -68,7 +78,10 @@ async function fetchPreferences(token: string): Promise<Record<string, boolean>>
   return (data.preferences as Record<string, boolean>) ?? {}
 }
 
-async function patchPreferences(token: string, update: Record<string, boolean>): Promise<void> {
+async function patchPreferences(
+  token: string,
+  update: Record<string, boolean>,
+): Promise<void> {
   const res = await fetch(`${BASE}/api/v1/notifications/preferences`, {
     method: "PATCH",
     headers: {
@@ -104,13 +117,17 @@ function SettingsPage() {
     async (label: string, types: string[], newValue: boolean) => {
       const previous = { ...prefs }
       const update: Record<string, boolean> = {}
-      types.forEach((t) => { update[t] = newValue })
+      types.forEach((t) => {
+        update[t] = newValue
+      })
       setPrefs((prev) => ({ ...prev, ...update }))
       setSaving(label)
       try {
         await patchPreferences(token, update)
         showSuccessToast(
-          newValue ? "Email notification enabled." : "Email notification disabled.",
+          newValue
+            ? "Email notification enabled."
+            : "Email notification disabled.",
           { title: label },
         )
       } catch {
@@ -129,7 +146,9 @@ function SettingsPage() {
       const previous = { ...prefs }
       // Build an update that sets every individual type to the new value
       const update: Record<string, boolean> = {}
-      ALL_TYPES.forEach((t) => { update[t] = newValue })
+      ALL_TYPES.forEach((t) => {
+        update[t] = newValue
+      })
       setPrefs((prev) => ({ ...prev, ...update }))
       setSaving("__master__")
       try {
@@ -206,7 +225,10 @@ function SettingsPage() {
                   alignItems="center"
                   justifyContent="center"
                 >
-                  <Mail size={16} color={masterEnabled ? "#4B8798" : "#9CA3AF"} />
+                  <Mail
+                    size={16}
+                    color={masterEnabled ? "#4B8798" : "#9CA3AF"}
+                  />
                 </Box>
                 <Box>
                   <Text fontSize="sm" fontWeight="medium" color="#374151">
@@ -220,13 +242,17 @@ function SettingsPage() {
                 </Box>
               </Flex>
               <Flex align="center" gap={2}>
-                {saving === "__master__" && <Spinner size="xs" color="#4B8798" />}
+                {saving === "__master__" && (
+                  <Spinner size="xs" color="#4B8798" />
+                )}
                 <Switch.Root
                   checked={masterEnabled}
                   disabled={saving === "__master__"}
                   size="md"
                   colorPalette="teal"
-                  onCheckedChange={(details) => handleMasterToggle(details.checked)}
+                  onCheckedChange={(details) =>
+                    handleMasterToggle(details.checked)
+                  }
                 >
                   <Switch.HiddenInput />
                   <Switch.Control>
@@ -253,7 +279,8 @@ function SettingsPage() {
             ) : (
               <Flex direction="column" gap={3}>
                 {WS_TOGGLEABLE_NOTIFICATIONS.map((item, idx) => {
-                  const enabled = masterEnabled && isGroupEnabled(prefs, item.types)
+                  const enabled =
+                    masterEnabled && isGroupEnabled(prefs, item.types)
                   const isSavingThis = saving === item.label
                   const isDisabled = !masterEnabled || isSavingThis
                   return (
@@ -269,7 +296,11 @@ function SettingsPage() {
                       bgColor={enabled ? "#F0F9FB" : "white"}
                       opacity={!masterEnabled ? 0.5 : 1}
                       transition="all 0.15s ease"
-                      _hover={masterEnabled ? { borderColor: "#4B8798", shadow: "sm" } : {}}
+                      _hover={
+                        masterEnabled
+                          ? { borderColor: "#4B8798", shadow: "sm" }
+                          : {}
+                      }
                     >
                       <Box flex={1} pr={4}>
                         <Text fontSize="sm" fontWeight="medium" color="#374151">
@@ -287,7 +318,11 @@ function SettingsPage() {
                           size="md"
                           colorPalette="teal"
                           onCheckedChange={(details) =>
-                            handleToggle(item.label, item.types, details.checked)
+                            handleToggle(
+                              item.label,
+                              item.types,
+                              details.checked,
+                            )
                           }
                         >
                           <Switch.HiddenInput />
@@ -306,7 +341,8 @@ function SettingsPage() {
           {/* Footer note */}
           <Box mt={6} pt={4} borderTopWidth="1px" borderColor="#F0F4F5">
             <Text fontSize="xs" color="#9CA3AF">
-              Some notifications (e.g. shift change alerts) are always enabled and cannot be turned off.
+              Some notifications (e.g. shift change alerts) are always enabled
+              and cannot be turned off.
             </Text>
           </Box>
         </Box>

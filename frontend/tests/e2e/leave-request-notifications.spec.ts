@@ -1,5 +1,6 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
 import { execFileSync } from "node:child_process"
+import { type APIRequestContext, expect, test } from "@playwright/test"
+import { loginForE2E } from "../utils/auth"
 import {
   API_BASE_URL,
   createUser,
@@ -8,7 +9,6 @@ import {
   getAnyWard,
   getUserByUsername,
 } from "./admin-helpers"
-import { loginForE2E } from "../utils/auth"
 
 const MAILCATCHER_HOST = process.env.MAILCATCHER_HOST
 const DB_CONTAINER_ENV =
@@ -52,7 +52,19 @@ const runScalarQuery = (sql: string) => {
   const container = getDbContainerName()
   return execFileSync(
     "docker",
-    ["exec", container, "psql", "-U", DB_USER, "-d", DB_NAME, "-t", "-A", "-c", sql],
+    [
+      "exec",
+      container,
+      "psql",
+      "-U",
+      DB_USER,
+      "-d",
+      DB_NAME,
+      "-t",
+      "-A",
+      "-c",
+      sql,
+    ],
     { encoding: "utf8" },
   ).trim()
 }
@@ -95,14 +107,18 @@ async function fetchMailCatcherMessages(request: APIRequestContext) {
       }>
     }
   }
-  throw new Error(`Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`)
+  throw new Error(
+    `Failed to fetch MailCatcher messages from ${MAILCATCHER_HOST}`,
+  )
 }
 
 async function fetchMailCatcherMessage(request: APIRequestContext, id: number) {
   const res = await request.get(`${MAILCATCHER_HOST}/messages/${id}.json`)
   if (!res.ok()) {
     const body = await res.text()
-    throw new Error(`Failed to fetch MailCatcher message: ${res.status()} ${body}`)
+    throw new Error(
+      `Failed to fetch MailCatcher message: ${res.status()} ${body}`,
+    )
   }
   const message = (await res.json()) as {
     id: number
@@ -250,7 +266,9 @@ test.describe("leave request notifications", () => {
       )
       if (!leaveCodesRes.ok()) {
         const body = await leaveCodesRes.text()
-        throw new Error(`Failed to load leave codes: ${leaveCodesRes.status()} ${body}`)
+        throw new Error(
+          `Failed to load leave codes: ${leaveCodesRes.status()} ${body}`,
+        )
       }
       const leaveCodes = (await leaveCodesRes.json()) as Array<{
         shiftcode: string
@@ -278,16 +296,20 @@ test.describe("leave request notifications", () => {
       })
       if (!leaveRes.ok()) {
         const body = await leaveRes.text()
-        throw new Error(`Failed to create leave request: ${leaveRes.status()} ${body}`)
+        throw new Error(
+          `Failed to create leave request: ${leaveRes.status()} ${body}`,
+        )
       }
       const leave = (await leaveRes.json()) as { leaveid: number }
       leaveId = leave.leaveid
 
-      await expect.poll(() =>
-        countRows(
-          `select count(*) from notificationqueue where recipienttype = 'NurseManager' and recipientid = ${managerDetails.managerid} and notificationtype = 'LeaveRequest' and relatedentitytype = 'LeaveRequest' and relatedentityid = ${leaveId};`,
-        ),
-      ).toBe(1)
+      await expect
+        .poll(() =>
+          countRows(
+            `select count(*) from notificationqueue where recipienttype = 'NurseManager' and recipientid = ${managerDetails.managerid} and notificationtype = 'LeaveRequest' and relatedentitytype = 'LeaveRequest' and relatedentityid = ${leaveId};`,
+          ),
+        )
+        .toBe(1)
 
       const email = await waitForEmail(
         request,

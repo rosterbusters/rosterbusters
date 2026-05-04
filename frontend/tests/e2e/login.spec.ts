@@ -27,10 +27,10 @@ test("login successfully into admin account", async ({ page }) => {
   await page.getByTestId("login-username").fill(ADMIN_EMAIL)
   await page.getByTestId("login-password").fill(ADMIN_PASSWORD)
 
-  await page.getByRole('button', { name: 'Log In' }).click()
+  await page.getByRole("button", { name: "Log In" }).click()
   await completeLogin2faInUi({ page, recipientEmail: ADMIN_EMAIL })
   await expect(page).toHaveURL("/admin/dashboard")
   await page.getByTestId("admin-navbar-user").click()
-  await page.getByTestId("admin-navbar-signout").click()  
+  await page.getByTestId("admin-navbar-signout").click()
   await expect(page).toHaveURL(/\/login$/)
 })

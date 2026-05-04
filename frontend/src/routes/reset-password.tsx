@@ -1,11 +1,25 @@
-import { Box, Button, Container, Flex, Heading, Image, Text, VStack } from "@chakra-ui/react"
+import {
+  Box,
+  Button,
+  Container,
+  Flex,
+  Heading,
+  Image,
+  Text,
+  VStack,
+} from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
-import { createFileRoute, Link as RouterLink, redirect, useNavigate } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link as RouterLink,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router"
+import { useState } from "react"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiArrowLeft, FiLock } from "react-icons/fi"
-import { useState } from "react"
 
-import { type ApiError } from "@/client"
+import type { ApiError } from "@/client"
 import { PasswordInput } from "@/components/ui/password-input"
 import { showSuccessToast } from "@/components/ui/toast"
 import { isLoggedIn } from "@/hooks/useAuth"
@@ -135,11 +149,18 @@ function ResetPassword() {
           {invalidToken ? (
             <VStack gap={5} align="stretch">
               <VStack gap={1} align="center">
-                <Heading as="h1" size="lg" fontWeight="700" color="teal.700" textAlign="center">
+                <Heading
+                  as="h1"
+                  size="lg"
+                  fontWeight="700"
+                  color="teal.700"
+                  textAlign="center"
+                >
                   Invalid or expired link
                 </Heading>
                 <Text color="gray.500" fontSize="sm" textAlign="center">
-                  This password reset link is not valid. Please request a new reset link to continue.
+                  This password reset link is not valid. Please request a new
+                  reset link to continue.
                 </Text>
               </VStack>
 
@@ -179,7 +200,8 @@ function ResetPassword() {
                     Reset Password
                   </Heading>
                   <Text color="gray.500" fontSize="sm">
-                    Please enter your new password and confirm it to reset your password.
+                    Please enter your new password and confirm it to reset your
+                    password.
                   </Text>
                 </VStack>
 
@@ -197,7 +219,10 @@ function ResetPassword() {
                   startElement={<FiLock color="gray" />}
                   type="confirm_password"
                   errors={errors}
-                  {...register("confirm_password", confirmPasswordRules(getValues))}
+                  {...register(
+                    "confirm_password",
+                    confirmPasswordRules(getValues),
+                  )}
                   placeholder="Confirm Password"
                   size="md"
                   variant="subtle"

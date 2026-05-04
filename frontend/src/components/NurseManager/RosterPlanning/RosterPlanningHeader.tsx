@@ -1,42 +1,42 @@
 import {
-  Box,
-  Flex,
-  Text,
-  Button,
   Badge,
+  Box,
+  Button,
+  createListCollection,
+  Flex,
   HStack,
   IconButton,
-  Spinner,
-  Select,
   Portal,
-  createListCollection,
-} from "@chakra-ui/react";
-import { useMemo } from "react";
+  Select,
+  Spinner,
+  Text,
+} from "@chakra-ui/react"
 import {
   ChevronLeft,
   ChevronRight,
-  Eye,
-  MoreVertical,
-  Upload,
   Download,
-  Wand2,
-  RefreshCw,
-  X,
+  Eye,
   FlaskConical,
-} from "lucide-react";
-import moment from "moment";
-import type { Ward, RosterPeriod, ViewMode } from "../RosterTable/types";
+  MoreVertical,
+  RefreshCw,
+  Upload,
+  Wand2,
+  X,
+} from "lucide-react"
+import moment from "moment"
+import { useMemo } from "react"
 import {
-  MenuRoot,
-  MenuTrigger,
   MenuContent,
   MenuItem,
+  MenuItemGroup,
   MenuRadioItem,
   MenuRadioItemGroup,
+  MenuRoot,
   MenuSeparator,
-  MenuItemGroup,
-} from "@/components/ui/menu";
-import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge";
+  MenuTrigger,
+} from "@/components/ui/menu"
+import type { RosterPeriod, ViewMode, Ward } from "../RosterTable/types"
+import { AlgorithmGeneratedBadge } from "./AlgorithmGeneratedBadge"
 
 const MOCK_DATA_OPTIONS = [
   { value: "", label: "Load mock data" },
@@ -50,39 +50,39 @@ const MOCK_DATA_OPTIONS = [
   { value: "milp_ward7_run2", label: "MILP Ward 7 Run 2" },
   { value: "milp_ward8_run1", label: "MILP Ward 8 Run 1" },
   { value: "milp_ward8_run2", label: "MILP Ward 8 Run 2" },
-];
+]
 
 interface RosterPlanningHeaderProps {
-  currentStartDate: Date;
-  viewMode: ViewMode;
-  selectedWard: Ward | null;
-  selectedPeriod: RosterPeriod | null;
-  currentPeriodId?: number | null;
-  upcomingPeriodId?: number | null;
-  wards: Ward[];
-  periods: RosterPeriod[];
-  isAlgorithmGenerated?: boolean;
-  isGenerating?: boolean;
-  isPublishing?: boolean;
-  generationProgress?: number;
-  algorithmType?: "MILP" | "AB-RATIO" | null;
-  onAlgorithmTypeChange?: (type: "MILP" | "AB-RATIO" | null) => void;
-  onDateChange: (date: Date) => void;
-  onViewModeChange: (mode: ViewMode) => void;
-  onWardChange: (ward: Ward) => void;
-  onPeriodChange: (period: RosterPeriod) => void;
-  onPublishRoster: () => void;
-  onDownloadRoster: () => void;
-  onViewEditHistory: () => void;
-  onGenerateAlgorithm?: () => void;
-  onAutoRegenerate?: () => void;
-  showAutoRegenerate?: boolean;
-  onClearRoster?: () => void;
-  onLoadMockData?: (mockKey: string) => void;
-  onSeedRequests?: () => void;
-  onSeedAnonymizedRequests?: () => void;
-  onSeedApr2026PreviewRequests?: () => void;
-  isSeedingRequests?: boolean;
+  currentStartDate: Date
+  viewMode: ViewMode
+  selectedWard: Ward | null
+  selectedPeriod: RosterPeriod | null
+  currentPeriodId?: number | null
+  upcomingPeriodId?: number | null
+  wards: Ward[]
+  periods: RosterPeriod[]
+  isAlgorithmGenerated?: boolean
+  isGenerating?: boolean
+  isPublishing?: boolean
+  generationProgress?: number
+  algorithmType?: "MILP" | "AB-RATIO" | null
+  onAlgorithmTypeChange?: (type: "MILP" | "AB-RATIO" | null) => void
+  onDateChange: (date: Date) => void
+  onViewModeChange: (mode: ViewMode) => void
+  onWardChange: (ward: Ward) => void
+  onPeriodChange: (period: RosterPeriod) => void
+  onPublishRoster: () => void
+  onDownloadRoster: () => void
+  onViewEditHistory: () => void
+  onGenerateAlgorithm?: () => void
+  onAutoRegenerate?: () => void
+  showAutoRegenerate?: boolean
+  onClearRoster?: () => void
+  onLoadMockData?: (mockKey: string) => void
+  onSeedRequests?: () => void
+  onSeedAnonymizedRequests?: () => void
+  onSeedApr2026PreviewRequests?: () => void
+  isSeedingRequests?: boolean
 }
 
 export function RosterPlanningHeader({
@@ -118,26 +118,32 @@ export function RosterPlanningHeader({
   isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
   const showAlgorithmControls =
-    !import.meta.env.PROD || import.meta.env.MODE === "staging";
+    !import.meta.env.PROD || import.meta.env.MODE === "staging"
   const normalizedGenerationProgress = Math.min(
     100,
-    Math.max(0, Math.round(Number.isFinite(generationProgress) ? generationProgress : 0)),
-  );
-  const endDate = moment(currentStartDate).add(viewMode === "week" ? 6 : 13, "days");
+    Math.max(
+      0,
+      Math.round(Number.isFinite(generationProgress) ? generationProgress : 0),
+    ),
+  )
+  const endDate = moment(currentStartDate).add(
+    viewMode === "week" ? 6 : 13,
+    "days",
+  )
   const sortedPeriods = useMemo(
     () =>
       [...periods].sort((left, right) =>
         moment(left.startDate).diff(moment(right.startDate)),
       ),
     [periods],
-  );
+  )
   const effectiveSelectedPeriod = useMemo(() => {
     if (selectedPeriod) {
       const matchingVisiblePeriod = sortedPeriods.find(
         (period) => period.periodId === selectedPeriod.periodId,
-      );
+      )
       if (matchingVisiblePeriod) {
-        return matchingVisiblePeriod;
+        return matchingVisiblePeriod
       }
     }
 
@@ -148,95 +154,95 @@ export function RosterPlanningHeader({
         "day",
         "[]",
       ),
-    );
-    return periodForCurrentDate ?? sortedPeriods[0] ?? null;
-  }, [currentStartDate, selectedPeriod, sortedPeriods]);
-  const earliestVisibleStartDate = sortedPeriods[0]?.startDate ?? null;
-  const latestVisibleEndDate = sortedPeriods[sortedPeriods.length - 1]?.endDate ?? null;
-  const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`;
+    )
+    return periodForCurrentDate ?? sortedPeriods[0] ?? null
+  }, [currentStartDate, selectedPeriod, sortedPeriods])
+  const earliestVisibleStartDate = sortedPeriods[0]?.startDate ?? null
+  const latestVisibleEndDate =
+    sortedPeriods[sortedPeriods.length - 1]?.endDate ?? null
+  const dateRangeText = `${moment(currentStartDate).format("MMMM DD")} - ${endDate.format("MMMM DD")}`
 
   const getPeriodFlag = (period: RosterPeriod) => {
-    if (upcomingPeriodId != null && period.periodId === upcomingPeriodId) return "Upcoming";
-    if (currentPeriodId != null && period.periodId === currentPeriodId) return "Current";
-    return null;
-  };
+    if (upcomingPeriodId != null && period.periodId === upcomingPeriodId)
+      return "Upcoming"
+    if (currentPeriodId != null && period.periodId === currentPeriodId)
+      return "Current"
+    return null
+  }
 
   const renderPeriodLabel = (period: RosterPeriod) => {
-    const flag = getPeriodFlag(period);
+    const flag = getPeriodFlag(period)
     return (
       <HStack gap={2} minW={0} flexWrap="nowrap">
         <Text whiteSpace="nowrap">{period.name}</Text>
-        {flag ? (
-          <Badge
-            variant={"upcomingPeriod" as any}
-          >
-            {flag}
-          </Badge>
-        ) : null}
+        {flag ? <Badge variant={"upcomingPeriod" as any}>{flag}</Badge> : null}
       </HStack>
-    );
-  };
+    )
+  }
 
   const canGoBack = useMemo(() => {
     if (!earliestVisibleStartDate) {
-      return true;
+      return true
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const previousStart = moment(currentStartDate).subtract(days, "days").startOf("day");
+    const days = viewMode === "week" ? 7 : 14
+    const previousStart = moment(currentStartDate)
+      .subtract(days, "days")
+      .startOf("day")
 
-    return previousStart.isSameOrAfter(moment(earliestVisibleStartDate).startOf("day"));
-  }, [currentStartDate, earliestVisibleStartDate, viewMode]);
+    return previousStart.isSameOrAfter(
+      moment(earliestVisibleStartDate).startOf("day"),
+    )
+  }, [currentStartDate, earliestVisibleStartDate, viewMode])
 
   const canGoNext = useMemo(() => {
     if (!latestVisibleEndDate) {
-      return true;
+      return true
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const nextStart = moment(currentStartDate).add(days, "days").startOf("day");
+    const days = viewMode === "week" ? 7 : 14
+    const nextStart = moment(currentStartDate).add(days, "days").startOf("day")
     const latestAllowedStart = moment(latestVisibleEndDate)
       .subtract(days - 1, "days")
-      .startOf("day");
+      .startOf("day")
 
-    return nextStart.isSameOrBefore(latestAllowedStart);
-  }, [currentStartDate, latestVisibleEndDate, viewMode]);
+    return nextStart.isSameOrBefore(latestAllowedStart)
+  }, [currentStartDate, latestVisibleEndDate, viewMode])
 
   const handleBack = () => {
     if (!canGoBack) {
-      return;
+      return
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const newDate = moment(currentStartDate).subtract(days, "days").toDate();
-    onDateChange(newDate);
-  };
+    const days = viewMode === "week" ? 7 : 14
+    const newDate = moment(currentStartDate).subtract(days, "days").toDate()
+    onDateChange(newDate)
+  }
 
   const handleNext = () => {
     if (!canGoNext) {
-      return;
+      return
     }
-    const days = viewMode === "week" ? 7 : 14;
-    const newDate = moment(currentStartDate).add(days, "days").toDate();
-    onDateChange(newDate);
-  };
-  
-  
+    const days = viewMode === "week" ? 7 : 14
+    const newDate = moment(currentStartDate).add(days, "days").toDate()
+    onDateChange(newDate)
+  }
+
   const wardCollection = createListCollection({
     items: wards,
     itemToString: (ward: Ward) => ward.wardName,
     itemToValue: (ward: Ward) => String(ward.wardId),
-  });
+  })
 
   const periodCollection = createListCollection({
     items: sortedPeriods,
     itemToString: (period: RosterPeriod) => {
-      const flag = getPeriodFlag(period);
-      return flag ? `${period.name} ${flag}` : period.name;
+      const flag = getPeriodFlag(period)
+      return flag ? `${period.name} ${flag}` : period.name
     },
     itemToValue: (period: RosterPeriod) => String(period.periodId),
-  });
+  })
 
-  const showSeedRequests = !import.meta.env.PROD;
-  const showMockData = !import.meta.env.PROD;
-  
+  const showSeedRequests = !import.meta.env.PROD
+  const showMockData = !import.meta.env.PROD
+
   return (
     <Box w="full" position="relative">
       {/* Top Row: Algorithm Badge (Left) + Ward/Menu (Right) - Absolute positioned */}
@@ -254,8 +260,6 @@ export function RosterPlanningHeader({
 
         {/* Right Section: Ward Dropdown + Hamburger Menu */}
         <HStack gap={2}>
-          
-
           <HStack gap={2}>
             <Text fontSize="sm" color="foreground" fontWeight="medium">
               Ward:
@@ -269,8 +273,8 @@ export function RosterPlanningHeader({
               onValueChange={(details) => {
                 const ward = wards.find(
                   (w) => String(w.wardId) === details.value[0],
-                );
-                if (ward) onWardChange(ward);
+                )
+                if (ward) onWardChange(ward)
               }}
             >
               <Select.HiddenSelect />
@@ -299,7 +303,6 @@ export function RosterPlanningHeader({
               </Portal>
             </Select.Root>
           </HStack>
-          
 
           {/* Hamburger Menu */}
           <MenuRoot>
@@ -320,12 +323,12 @@ export function RosterPlanningHeader({
                     <MenuRadioItemGroup
                       value={algorithmType ?? "AUTO"}
                       onValueChange={(details) => {
-                        const nextValue = details.value;
+                        const nextValue = details.value
                         onAlgorithmTypeChange?.(
                           nextValue === "AUTO"
                             ? null
                             : (nextValue as "MILP" | "AB-RATIO"),
-                        );
+                        )
                       }}
                     >
                       <MenuRadioItem
@@ -363,7 +366,9 @@ export function RosterPlanningHeader({
               >
                 <HStack gap={2}>
                   <Upload className="h-4 w-4" />
-                  <Text>{isPublishing ? "Publishing..." : "Publish Roster"}</Text>
+                  <Text>
+                    {isPublishing ? "Publishing..." : "Publish Roster"}
+                  </Text>
                 </HStack>
               </MenuItem>
               <MenuItem
@@ -387,7 +392,11 @@ export function RosterPlanningHeader({
                 >
                   <HStack gap={2}>
                     <RefreshCw className="h-4 w-4" />
-                    <Text>{isGenerating ? "Regenerating..." : "Regenerate Roster (Auto)"}</Text>
+                    <Text>
+                      {isGenerating
+                        ? "Regenerating..."
+                        : "Regenerate Roster (Auto)"}
+                    </Text>
                   </HStack>
                 </MenuItem>
               )}
@@ -401,7 +410,9 @@ export function RosterPlanningHeader({
                 >
                   <HStack gap={2}>
                     <FlaskConical className="h-4 w-4" />
-                    <Text>{isSeedingRequests ? "Seeding..." : "Seed Test Requests"}</Text>
+                    <Text>
+                      {isSeedingRequests ? "Seeding..." : "Seed Test Requests"}
+                    </Text>
                   </HStack>
                 </MenuItem>
               )}
@@ -416,7 +427,9 @@ export function RosterPlanningHeader({
                   <HStack gap={2}>
                     <FlaskConical className="h-4 w-4" />
                     <Text>
-                      {isSeedingRequests ? "Seeding..." : "Seed Anonymized Requests"}
+                      {isSeedingRequests
+                        ? "Seeding..."
+                        : "Seed Anonymized Requests"}
                     </Text>
                   </HStack>
                 </MenuItem>
@@ -432,7 +445,9 @@ export function RosterPlanningHeader({
                   <HStack gap={2}>
                     <FlaskConical className="h-4 w-4" />
                     <Text>
-                      {isSeedingRequests ? "Seeding..." : "Seed Apr 2026 Preview Requests"}
+                      {isSeedingRequests
+                        ? "Seeding..."
+                        : "Seed Apr 2026 Preview Requests"}
                     </Text>
                   </HStack>
                 </MenuItem>
@@ -448,7 +463,6 @@ export function RosterPlanningHeader({
         <Text color="primary" fontWeight="semibold" fontSize={"lg"}>
           Staff Roster Schedule
         </Text>
-
 
         {/* Date Range Row: Navigation (Left) + Date Range (Center) + View Mode (Right) */}
         <Flex
@@ -472,24 +486,24 @@ export function RosterPlanningHeader({
             </Button>
             <HStack gap={0}>
               <Button
-              size="sm"
-              variant={"outlinegrey" as any}
-              onClick={handleBack}
-              disabled={!canGoBack}
-              _hover={{ bg: "#F8FAFC" }}
-              p={2}
-            >
+                size="sm"
+                variant={"outlinegrey" as any}
+                onClick={handleBack}
+                disabled={!canGoBack}
+                _hover={{ bg: "#F8FAFC" }}
+                p={2}
+              >
                 <ChevronLeft className="h-4 w-4" />
                 Back
               </Button>
               <Button
-              size="sm"
-              variant={"outlinegrey" as any}
-              onClick={handleNext}
-              disabled={!canGoNext}
-              _hover={{ bg: "#F8FAFC" }}
-              p={2}
-            >
+                size="sm"
+                variant={"outlinegrey" as any}
+                onClick={handleNext}
+                disabled={!canGoNext}
+                _hover={{ bg: "#F8FAFC" }}
+                p={2}
+              >
                 Next
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -561,12 +575,16 @@ export function RosterPlanningHeader({
             size="sm"
             width="270px"
             color="foreground"
-            value={effectiveSelectedPeriod ? [String(effectiveSelectedPeriod.periodId)] : []}
+            value={
+              effectiveSelectedPeriod
+                ? [String(effectiveSelectedPeriod.periodId)]
+                : []
+            }
             onValueChange={(details) => {
               const period = sortedPeriods.find(
                 (p) => String(p.periodId) === details.value[0],
-              );
-              if (period) onPeriodChange(period);
+              )
+              if (period) onPeriodChange(period)
             }}
           >
             <Select.HiddenSelect />
@@ -601,7 +619,13 @@ export function RosterPlanningHeader({
           <>
             {isGenerating && (
               <Flex direction="column" align="center" gap={2} w="full">
-                <Box w="250px" h="6px" bg="gray.200" borderRadius="full" overflow="hidden">
+                <Box
+                  w="250px"
+                  h="6px"
+                  bg="gray.200"
+                  borderRadius="full"
+                  overflow="hidden"
+                >
                   <Box
                     h="full"
                     bg="#4B8798"
@@ -621,74 +645,74 @@ export function RosterPlanningHeader({
               // Generate + Mock Data row
               <Flex direction="column" align="center" gap={2} w="full">
                 <HStack gap={4} flexWrap="wrap" justify="center">
-                <Button
-                  size="md"
-                  bg="#4B8798"
-                  color="white"
-                  _hover={{ bg: "#3d6f7d" }}
-                  _active={{ bg: "#2d5a68" }}
-                  onClick={onGenerateAlgorithm}
-                  disabled={isGenerating}
-                  px={6}
-                  py={2}
-                  borderRadius="lg"
-                  fontWeight="semibold"
-                  boxShadow="md"
-                >
-                  {isGenerating ? (
+                  <Button
+                    size="md"
+                    bg="#4B8798"
+                    color="white"
+                    _hover={{ bg: "#3d6f7d" }}
+                    _active={{ bg: "#2d5a68" }}
+                    onClick={onGenerateAlgorithm}
+                    disabled={isGenerating}
+                    px={6}
+                    py={2}
+                    borderRadius="lg"
+                    fontWeight="semibold"
+                    boxShadow="md"
+                  >
+                    {isGenerating ? (
+                      <HStack gap={2}>
+                        <Spinner size="sm" />
+                        <Text>Generating… {normalizedGenerationProgress}%</Text>
+                      </HStack>
+                    ) : (
+                      <HStack gap={2}>
+                        <Wand2 className="h-5 w-5" />
+                        <Text>Generate Algorithm Roster</Text>
+                      </HStack>
+                    )}
+                  </Button>
+
+                  {/* Mock Data Selector */}
+                  {showMockData && onLoadMockData && (
                     <HStack gap={2}>
-                      <Spinner size="sm" />
-                      <Text>Generating… {normalizedGenerationProgress}%</Text>
-                    </HStack>
-                  ) : (
-                    <HStack gap={2}>
-                      <Wand2 className="h-5 w-5" />
-                      <Text>Generate Algorithm Roster</Text>
+                      <Text
+                        fontSize="sm"
+                        color="#6B7280"
+                        fontWeight="medium"
+                        whiteSpace="nowrap"
+                      >
+                        Mock data:
+                      </Text>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (e.target.value) onLoadMockData(e.target.value)
+                          e.target.value = ""
+                        }}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "6px",
+                          border: "1px solid #E6E6E6",
+                          fontSize: "14px",
+                          color: "#4A4A4A",
+                          backgroundColor: "white",
+                          cursor: "pointer",
+                          minWidth: "160px",
+                        }}
+                      >
+                        {MOCK_DATA_OPTIONS.map((opt) => (
+                          <option
+                            key={opt.value}
+                            value={opt.value}
+                            disabled={opt.value === ""}
+                          >
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
                     </HStack>
                   )}
-                </Button>
-
-                {/* Mock Data Selector */}
-                {showMockData && onLoadMockData && (
-                  <HStack gap={2}>
-                    <Text
-                      fontSize="sm"
-                      color="#6B7280"
-                      fontWeight="medium"
-                      whiteSpace="nowrap"
-                    >
-                      Mock data:
-                    </Text>
-                    <select
-                      defaultValue=""
-                      onChange={(e) => {
-                        if (e.target.value) onLoadMockData(e.target.value);
-                        e.target.value = "";
-                      }}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: "6px",
-                        border: "1px solid #E6E6E6",
-                        fontSize: "14px",
-                        color: "#4A4A4A",
-                        backgroundColor: "white",
-                        cursor: "pointer",
-                        minWidth: "160px",
-                      }}
-                    >
-                      {MOCK_DATA_OPTIONS.map((opt) => (
-                        <option
-                          key={opt.value}
-                          value={opt.value}
-                          disabled={opt.value === ""}
-                        >
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </HStack>
-                )}
-              </HStack>
+                </HStack>
               </Flex>
             ) : (
               // Regenerate / Clear Buttons (after generation)
@@ -738,7 +762,7 @@ export function RosterPlanningHeader({
         )}
       </Flex>
     </Box>
-  );
+  )
 }
 
-export default RosterPlanningHeader;
+export default RosterPlanningHeader

@@ -1,32 +1,32 @@
-import { Calendar, momentLocalizer, View } from "react-big-calendar";
-import moment from "moment";
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
-import CustomWeekView from "./CustomRequestView";
-import { Box, VStack } from "@chakra-ui/react";
-import { ShiftRequestsService } from "@/client";
-import useAuth from "@/hooks/useAuth";
-import { LockdownBanner } from "@/components/Common/LockdownBanner";
+import { Box, VStack } from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import moment from "moment"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Calendar, momentLocalizer, type View } from "react-big-calendar"
+import { ShiftRequestsService } from "@/client"
+import { LockdownBanner } from "@/components/Common/LockdownBanner"
 import {
-  useRequestPeriodWindow,
   getRequestTargetPeriod,
-} from "@/hooks/useApplicationLockStatus";
+  useRequestPeriodWindow,
+} from "@/hooks/useApplicationLockStatus"
+import useAuth from "@/hooks/useAuth"
+import CustomWeekView from "./CustomRequestView"
 
-const localizer = momentLocalizer(moment);
+const localizer = momentLocalizer(moment)
 
 interface Event {
-  title: string;
-  start: Date;
-  end: Date;
-  allDay?: boolean;
-  resource?: any;
+  title: string
+  start: Date
+  end: Date
+  allDay?: boolean
+  resource?: any
 }
 
 interface RequestCalendarProps {
-  wardId: number | null | undefined;
-  isLocked?: boolean;
-  nextWindowStart?: string;
-  nextWindowEnd?: string;
+  wardId: number | null | undefined
+  isLocked?: boolean
+  nextWindowStart?: string
+  nextWindowEnd?: string
 }
 
 /**
@@ -46,24 +46,24 @@ export default function RequestCalendar({
   nextWindowStart,
   nextWindowEnd,
 }: RequestCalendarProps) {
-  const { user } = useAuth();
-  const currentNurseId = user?.nurseid;
+  const { user } = useAuth()
+  const currentNurseId = user?.nurseid
 
-  const { data: periodWindow } = useRequestPeriodWindow();
+  const { data: periodWindow } = useRequestPeriodWindow()
   const activePeriod = useMemo(
     () => getRequestTargetPeriod(periodWindow),
     [periodWindow],
-  );
+  )
 
-  const [date, setDate] = useState(() => moment().startOf("isoWeek").toDate());
+  const [date, setDate] = useState(() => moment().startOf("isoWeek").toDate())
 
   useEffect(() => {
     if (activePeriod?.startdate) {
-      setDate(moment(activePeriod.startdate).toDate());
+      setDate(moment(activePeriod.startdate).toDate())
     }
-  }, [activePeriod?.startdate]);
+  }, [activePeriod?.startdate])
 
-  const periodId = activePeriod?.periodid;
+  const periodId = activePeriod?.periodid
 
   const { data: shiftRequests } = useQuery({
     queryKey: ["shift-requests", "ward", wardId, periodId],
@@ -75,22 +75,22 @@ export default function RequestCalendar({
     enabled: !!wardId && !!periodId,
     // After invalidation in request create/edit flows, refetch immediately.
     staleTime: 0,
-  });
+  })
 
   const { data: wardNurses } = useQuery({
     queryKey: ["ward-nurses", wardId],
     queryFn: () => ShiftRequestsService.getWardNurses({ wardId: wardId! }),
     enabled: !!wardId,
     staleTime: 5 * 60 * 1000,
-  });
+  })
 
   const nurseMap = useMemo(() => {
-    if (!wardNurses) return new Map<number, string>();
-    return new Map(wardNurses.map((n) => [n.nurseid, n.name]));
-  }, [wardNurses]);
+    if (!wardNurses) return new Map<number, string>()
+    return new Map(wardNurses.map((n) => [n.nurseid, n.name]))
+  }, [wardNurses])
 
   const events: Event[] = useMemo(() => {
-    if (!shiftRequests) return [];
+    if (!shiftRequests) return []
     return shiftRequests.map((sr) => ({
       title: sr.preferredshifttype,
       start: new Date(sr.preferreddate),
@@ -103,8 +103,8 @@ export default function RequestCalendar({
         preferredDate: sr.preferreddate,
         shiftType: sr.preferredshifttype,
       },
-    }));
-  }, [shiftRequests, nurseMap, currentNurseId]);
+    }))
+  }, [shiftRequests, nurseMap, currentNurseId])
 
   const { views, defaultView } = useMemo(() => {
     const FortnightView = ((props) => (
@@ -114,23 +114,23 @@ export default function RequestCalendar({
         periodStartDate={activePeriod?.startdate}
         periodEndDate={activePeriod?.enddate}
       />
-    )) as typeof CustomWeekView;
-    FortnightView.range = CustomWeekView.range;
-    FortnightView.navigate = CustomWeekView.navigate;
-    FortnightView.title = CustomWeekView.title;
+    )) as typeof CustomWeekView
+    FortnightView.range = CustomWeekView.range
+    FortnightView.navigate = CustomWeekView.navigate
+    FortnightView.title = CustomWeekView.title
 
     const customViews = {
       fortnight: FortnightView,
       week: false,
       day: false,
-    };
+    }
     return {
       views: customViews,
       defaultView: "fortnight" as View,
-    };
-  }, [activePeriod?.enddate, activePeriod?.startdate, isLocked]);
+    }
+  }, [activePeriod?.enddate, activePeriod?.startdate, isLocked])
 
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), []);
+  const onNavigate = useCallback((newDate: Date) => setDate(newDate), [])
 
   return (
     <VStack h="100%" w="100%" gap={0} align="stretch">
@@ -173,5 +173,5 @@ export default function RequestCalendar({
         />
       </Box>
     </VStack>
-  );
+  )
 }
