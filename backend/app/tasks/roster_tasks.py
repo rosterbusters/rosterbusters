@@ -1,6 +1,8 @@
 import logging
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from uuid import uuid4
 
 from celery.exceptions import MaxRetriesExceededError
 from sqlmodel import Session, delete, select
@@ -16,6 +18,7 @@ from app.rostering.milp_algo import MILPInfeasibilityError
 from app.rostering.twelve_hour_algo import TwelveHourInfeasibilityError
 from app.rostering.algo_scheduler import generate_roster
 from app.services.algorithm_lock_service import (
+    acquire_ward_algorithm_lock,
     refresh_ward_algorithm_lock,
     release_ward_algorithm_lock,
 )
@@ -36,6 +39,125 @@ def check_roster_period_notifications_task() -> None:
         logger.info("Successfully ran scheduled check for roster period notifications.")
     except Exception as exc:
         logger.exception("Failed to run scheduled check for roster period notifications: %s", exc)
+
+
+def queue_scheduled_roster_generation(
+    db: Session,
+    *,
+    days_ahead: int = 8,
+    now: datetime | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    actual_now = now or datetime.now(timezone.utc)
+    tz_offset = timedelta(hours=settings.NOTIFICATION_TIMEZONE_OFFSET_HOURS)
+    local_today = (actual_now + tz_offset).date()
+    target_date = local_today + timedelta(days=days_ahead)
+
+    periods = db.exec(
+        select(RosterPeriod).where(
+            RosterPeriod.startdate == target_date,
+            RosterPeriod.status.in_(["Pending", "RequestOpen"]),
+        )
+    ).all()
+
+    active_wards = db.exec(
+        select(Ward).where(Ward.isactive == True)  # noqa: E712
+    ).all()
+
+    triggered: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for period in periods:
+        if period.periodid is None:
+            continue
+
+        for ward in active_wards:
+            if ward.wardid is None:
+                continue
+
+            existing_roster = db.exec(
+                select(Roster.rosterid).where(
+                    Roster.wardid == ward.wardid,
+                    Roster.periodid == period.periodid,
+                )
+            ).first()
+            if existing_roster is not None:
+                skipped.append(
+                    {
+                        "ward_id": ward.wardid,
+                        "period_id": period.periodid,
+                        "reason": "roster_already_exists",
+                    }
+                )
+                continue
+
+            task_id = str(uuid4())
+            if not acquire_ward_algorithm_lock(ward.wardid, task_id):
+                skipped.append(
+                    {
+                        "ward_id": ward.wardid,
+                        "period_id": period.periodid,
+                        "reason": "algorithm_generation_in_progress",
+                    }
+                )
+                continue
+
+            try:
+                task = celery_app.send_task(
+                    "tasks.generate_and_save_roster",
+                    args=[ward.wardid, period.periodid],
+                    task_id=task_id,
+                )
+            except Exception:
+                release_ward_algorithm_lock(ward.wardid, task_id)
+                raise
+
+            _queue_algorithm_notification(
+                db,
+                ward_id=ward.wardid,
+                period_id=period.periodid,
+                notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+            )
+            triggered.append(
+                {
+                    "ward_id": ward.wardid,
+                    "period_id": period.periodid,
+                    "task_id": task.id,
+                }
+            )
+
+    return {"triggered": triggered, "skipped": skipped}
+
+
+@celery_app.task(name="tasks.check_scheduled_roster_generation")
+def check_scheduled_roster_generation_task(days_ahead: int = 8) -> dict[str, int]:
+    """
+    Scheduled hourly to queue roster generation for periods whose planning
+    window has opened.
+    """
+    logger.info(
+        "Running scheduled check for roster generation days_ahead=%s.",
+        days_ahead,
+    )
+    try:
+        from app.services.roster_period_service import ensure_roster_period_window
+
+        with Session(engine) as db:
+            ensure_roster_period_window(db)
+            result = queue_scheduled_roster_generation(db, days_ahead=days_ahead)
+            db.commit()
+
+        logger.info(
+            "Scheduled roster generation check complete: triggered=%s skipped=%s",
+            len(result["triggered"]),
+            len(result["skipped"]),
+        )
+        return {
+            "triggered_count": len(result["triggered"]),
+            "skipped_count": len(result["skipped"]),
+        }
+    except Exception as exc:
+        logger.exception("Failed to run scheduled roster generation check: %s", exc)
+        raise
 
 
 SHIFT_CODE_TO_DB = {
