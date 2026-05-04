@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Filter, KeyRound, Mail, Pencil, Plus, Trash2, X } from "lucide-react"
 import {
+  type FormEvent,
   type MouseEvent,
   type RefObject,
   useEffect,
@@ -109,6 +110,17 @@ const joinDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
   timeZone: "UTC",
+})
+
+const createEmptyStaffForm = (): StaffFormState => ({
+  name: "",
+  username: "",
+  employeeId: "",
+  joinDate: "",
+  designation: "",
+  email: "",
+  password: "",
+  isActive: true,
 })
 
 function formatJoinDate(value: string | null | undefined) {
@@ -331,16 +343,8 @@ function WardStaffDirectoryPage() {
   const [generatedPasswordInfo, setGeneratedPasswordInfo] =
     useState<GeneratedPasswordInfo | null>(null)
   const [passwordCopied, setPasswordCopied] = useState(false)
-  const [staffForm, setStaffForm] = useState<StaffFormState>({
-    name: "",
-    username: "",
-    employeeId: "",
-    joinDate: "",
-    designation: "",
-    email: "",
-    password: "",
-    isActive: true,
-  })
+  const [staffForm, setStaffForm] =
+    useState<StaffFormState>(createEmptyStaffForm)
   const nameFilterAnchorRef = useRef<HTMLDivElement>(null)
   const employeeIdFilterAnchorRef = useRef<HTMLDivElement>(null)
   const designationFilterAnchorRef = useRef<HTMLDivElement>(null)
@@ -377,7 +381,6 @@ function WardStaffDirectoryPage() {
   const {
     data: statistics,
     isLoading: isStatisticsLoading,
-    isError: isStatisticsError,
   } = useWardStatistics(selectedWard?.wardid ?? null)
 
   const updateShiftPattern = useUpdateNurseShiftPattern()
@@ -405,16 +408,7 @@ function WardStaffDirectoryPage() {
       }
       setIsStaffFormOpen(false)
       setEditingStaff(null)
-      setStaffForm({
-        name: "",
-        username: "",
-        employeeId: "",
-        joinDate: "",
-        designation: "",
-        email: "",
-        password: "",
-        isActive: true,
-      })
+      setStaffForm(createEmptyStaffForm())
       invalidateDirectoryData()
     },
     onError: (error: unknown) => {
@@ -434,16 +428,7 @@ function WardStaffDirectoryPage() {
       showSuccessToast("User updated successfully.")
       setIsStaffFormOpen(false)
       setEditingStaff(null)
-      setStaffForm({
-        name: "",
-        username: "",
-        employeeId: "",
-        joinDate: "",
-        designation: "",
-        email: "",
-        password: "",
-        isActive: true,
-      })
+      setStaffForm(createEmptyStaffForm())
       invalidateDirectoryData()
     },
     onError: (error: unknown) => {
@@ -670,16 +655,7 @@ function WardStaffDirectoryPage() {
   }
 
   const resetStaffForm = () => {
-    setStaffForm({
-      name: "",
-      username: "",
-      employeeId: "",
-      joinDate: "",
-      designation: "",
-      email: "",
-      password: "",
-      isActive: true,
-    })
+    setStaffForm(createEmptyStaffForm())
   }
 
   const openAddStaffDialog = () => {
@@ -709,7 +685,9 @@ function WardStaffDirectoryPage() {
     resetStaffForm()
   }
 
-  const submitStaffForm = () => {
+  const submitStaffForm = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+
     if (!selectedWard || selectedWard.wardid == null) {
       showErrorToast("Please select a ward first.")
       return
@@ -729,22 +707,27 @@ function WardStaffDirectoryPage() {
     }
 
     const employeeId = staffForm.employeeId.trim()
+    const trimmedName = staffForm.name.trim()
+    const trimmedUsername = staffForm.username.trim()
+    const trimmedDesignation = staffForm.designation.trim()
+    const trimmedEmail = staffForm.email.trim()
+    const trimmedPassword = staffForm.password.trim()
 
     if (editingStaff) {
       const payload: NurseManagerStaffUpdate = {
-        name: staffForm.name.trim(),
-        username: staffForm.username.trim(),
+        name: trimmedName,
+        username: trimmedUsername,
         join_date: staffForm.joinDate || null,
-        designation: staffForm.designation.trim(),
-        email: staffForm.email.trim() || null,
+        designation: trimmedDesignation,
+        email: trimmedEmail || null,
         is_active: staffForm.isActive,
         ward_id: selectedWardId,
       }
       if (employeeId) {
         payload.employee_id = employeeId
       }
-      if (staffForm.password.trim()) {
-        payload.password = staffForm.password.trim()
+      if (trimmedPassword) {
+        payload.password = trimmedPassword
       }
       if (!editingStaff.userId) {
         showErrorToast("No linked user account was found for this nurse.")
@@ -755,21 +738,21 @@ function WardStaffDirectoryPage() {
     }
 
     const payload: NurseManagerStaffCreate = {
-      name: staffForm.name.trim(),
+      name: trimmedName,
       join_date: staffForm.joinDate || undefined,
-      designation: staffForm.designation.trim(),
-      email: staffForm.email.trim() || undefined,
+      designation: trimmedDesignation,
+      email: trimmedEmail || undefined,
       is_active: staffForm.isActive,
       ward_id: selectedWardId,
     }
     if (employeeId) {
       payload.employee_id = employeeId
     }
-    if (staffForm.username.trim()) {
-      payload.username = staffForm.username.trim()
+    if (trimmedUsername) {
+      payload.username = trimmedUsername
     }
-    if (staffForm.password.trim()) {
-      payload.password = staffForm.password.trim()
+    if (trimmedPassword) {
+      payload.password = trimmedPassword
     }
     createStaffMutation.mutate(payload)
   }
@@ -856,6 +839,9 @@ function WardStaffDirectoryPage() {
       setTimeout(() => setPasswordCopied(false), 1500)
     })
   }
+
+  const isSavingStaff =
+    createStaffMutation.isPending || updateStaffMutation.isPending
 
   const isLoading =
     wardsLoading || (!!selectedWard && (isStaffLoading || isStatisticsLoading))
@@ -1637,215 +1623,196 @@ function WardStaffDirectoryPage() {
               </Box>
             </Flex>
 
-            <VStack align="stretch" gap={3} p={5}>
-              <Box>
-                <Text fontSize="sm" mb={1} color="gray.700">
-                  Name
-                </Text>
-                <Input
-                  value={staffForm.name}
-                  onChange={(event) =>
-                    setStaffForm((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }))
-                  }
-                  placeholder="Staff name"
-                />
-              </Box>
-
-              {editingStaff ? (
+            <form onSubmit={submitStaffForm}>
+              <VStack align="stretch" gap={3} p={5}>
                 <Box>
                   <Text fontSize="sm" mb={1} color="gray.700">
-                    Username
+                    Name
                   </Text>
                   <Input
-                    value={staffForm.username}
+                    value={staffForm.name}
                     onChange={(event) =>
                       setStaffForm((prev) => ({
                         ...prev,
-                        username: event.target.value,
+                        name: event.target.value,
                       }))
                     }
-                    placeholder="username"
+                    placeholder="Staff name"
                   />
                 </Box>
-              ) : (
-                <Text fontSize="xs" color="gray.500">
-                  Username will be auto-generated from Name.
-                </Text>
-              )}
 
-              <HStack gap={3} align="start">
-                <Box flex="1">
-                  <Text fontSize="sm" mb={1} color="gray.700">
-                    Employee ID (optional)
+                {editingStaff ? (
+                  <Box>
+                    <Text fontSize="sm" mb={1} color="gray.700">
+                      Username
+                    </Text>
+                    <Input
+                      value={staffForm.username}
+                      onChange={(event) =>
+                        setStaffForm((prev) => ({
+                          ...prev,
+                          username: event.target.value,
+                        }))
+                      }
+                      placeholder="username"
+                    />
+                  </Box>
+                ) : (
+                  <Text fontSize="xs" color="gray.500">
+                    Username will be auto-generated from Name.
                   </Text>
-                  <Input
-                    value={staffForm.employeeId}
-                    onChange={(event) =>
-                      setStaffForm((prev) => ({
-                        ...prev,
-                        employeeId: event.target.value,
-                      }))
-                    }
-                    placeholder="Employee can enter on first login"
-                  />
-                </Box>
-                <Box flex="1">
-                  <Text fontSize="sm" mb={1} color="gray.700">
-                    Join Date
-                  </Text>
-                  <Input
-                    type="date"
-                    value={staffForm.joinDate}
-                    onChange={(event) =>
-                      setStaffForm((prev) => ({
-                        ...prev,
-                        joinDate: event.target.value,
-                      }))
-                    }
-                  />
-                </Box>
-              </HStack>
+                )}
 
-              <HStack gap={3} align="start">
-                <Box flex="1">
+                <HStack gap={3} align="start">
+                  <Box flex="1">
+                    <Text fontSize="sm" mb={1} color="gray.700">
+                      Employee ID (optional)
+                    </Text>
+                    <Input
+                      value={staffForm.employeeId}
+                      onChange={(event) =>
+                        setStaffForm((prev) => ({
+                          ...prev,
+                          employeeId: event.target.value,
+                        }))
+                      }
+                      placeholder="Employee can enter on first login"
+                    />
+                  </Box>
+                  <Box flex="1">
+                    <Text fontSize="sm" mb={1} color="gray.700">
+                      Join Date
+                    </Text>
+                    <Input
+                      type="date"
+                      value={staffForm.joinDate}
+                      onChange={(event) =>
+                        setStaffForm((prev) => ({
+                          ...prev,
+                          joinDate: event.target.value,
+                        }))
+                      }
+                    />
+                  </Box>
+                </HStack>
+
+                <HStack gap={3} align="start">
+                  <Box flex="1">
+                    <Text fontSize="sm" mb={1} color="gray.700">
+                      Designation
+                    </Text>
+                    <select
+                      value={staffForm.designation}
+                      onChange={(event) =>
+                        setStaffForm((prev) => ({
+                          ...prev,
+                          designation: event.target.value,
+                        }))
+                      }
+                      className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 focus:border-[#4B8798] focus:shadow-[0_0_0_1px_#4B8798] focus:outline-none"
+                      style={{
+                        color: staffForm.designation ? "#111827" : "#6B7280",
+                      }}
+                    >
+                      <option value="">Select designation</option>
+                      {designationOptions.map((designation) => (
+                        <option key={designation} value={designation}>
+                          {designation}
+                        </option>
+                      ))}
+                      {editingStaff &&
+                        staffForm.designation &&
+                        !designationOptions.includes(staffForm.designation) && (
+                          <option value={staffForm.designation}>
+                            {staffForm.designation}
+                          </option>
+                        )}
+                    </select>
+                  </Box>
+                </HStack>
+
+                <Box>
                   <Text fontSize="sm" mb={1} color="gray.700">
-                    Designation
+                    Email (optional)
                   </Text>
-                  <select
-                    value={staffForm.designation}
+                  <Input
+                    value={staffForm.email}
                     onChange={(event) =>
                       setStaffForm((prev) => ({
                         ...prev,
-                        designation: event.target.value,
+                        email: event.target.value,
                       }))
                     }
-                    className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 focus:border-[#4B8798] focus:shadow-[0_0_0_1px_#4B8798] focus:outline-none"
+                    placeholder="user@example.com"
+                  />
+                </Box>
+
+                <Box>
+                  <Text fontSize="sm" mb={1} color="gray.700">
+                    Password{" "}
+                    {editingStaff
+                      ? "(leave blank to keep current)"
+                      : "(leave blank to auto-generate)"}
+                  </Text>
+                  <Input
+                    type="password"
+                    value={staffForm.password}
+                    onChange={(event) =>
+                      setStaffForm((prev) => ({
+                        ...prev,
+                        password: event.target.value,
+                      }))
+                    }
+                    placeholder="********"
+                  />
+                </Box>
+
+                <HStack gap={2}>
+                  <input
+                    id="staff-active"
+                    type="checkbox"
+                    checked={staffForm.isActive}
+                    onChange={(event) =>
+                      setStaffForm((prev) => ({
+                        ...prev,
+                        isActive: event.target.checked,
+                      }))
+                    }
+                  />
+                  <label
+                    htmlFor="staff-active"
                     style={{
-                      color: staffForm.designation ? "#111827" : "#6B7280",
+                      color: "#374151",
+                      fontSize: "0.875rem",
                     }}
                   >
-                    <option value="">Select designation</option>
-                    {designationOptions.map((designation) => (
-                      <option key={designation} value={designation}>
-                        {designation}
-                      </option>
-                    ))}
-                    {editingStaff &&
-                      staffForm.designation &&
-                      !designationOptions.includes(staffForm.designation) && (
-                        <option value={staffForm.designation}>
-                          {staffForm.designation}
-                        </option>
-                      )}
-                  </select>
-                </Box>
-              </HStack>
+                    Active
+                  </label>
+                </HStack>
+              </VStack>
 
-              <Box>
-                <Text fontSize="sm" mb={1} color="gray.700">
-                  Email (optional)
-                </Text>
-                <Input
-                  value={staffForm.email}
-                  onChange={(event) =>
-                    setStaffForm((prev) => ({
-                      ...prev,
-                      email: event.target.value,
-                    }))
-                  }
-                  placeholder="user@example.com"
-                />
-              </Box>
-
-              <Box>
-                <Text fontSize="sm" mb={1} color="gray.700">
-                  Password{" "}
-                  {editingStaff
-                    ? "(leave blank to keep current)"
-                    : "(leave blank to auto-generate)"}
-                </Text>
-                <Input
-                  type="password"
-                  value={staffForm.password}
-                  onChange={(event) =>
-                    setStaffForm((prev) => ({
-                      ...prev,
-                      password: event.target.value,
-                    }))
-                  }
-                  placeholder="********"
-                />
-              </Box>
-
-              <HStack gap={2}>
-                <input
-                  id="staff-active"
-                  type="checkbox"
-                  checked={staffForm.isActive}
-                  onChange={(event) =>
-                    setStaffForm((prev) => ({
-                      ...prev,
-                      isActive: event.target.checked,
-                    }))
-                  }
-                />
-                <label
-                  htmlFor="staff-active"
-                  style={{
-                    color: "#374151",
-                    fontSize: "0.875rem",
-                  }}
+              <Flex justify="end" gap={3} p={5} borderTopWidth="1px">
+                <button
+                  type="button"
+                  onClick={closeStaffDialog}
+                  className="rounded-md border border-gray-200 px-4 py-2 text-gray-700"
                 >
-                  Active
-                </label>
-              </HStack>
-            </VStack>
-
-            <Flex justify="end" gap={3} p={5} borderTopWidth="1px">
-              <Box
-                as="button"
-                px={4}
-                py={2}
-                rounded="md"
-                borderWidth="1px"
-                borderColor="gray.200"
-                color="gray.700"
-                onClick={closeStaffDialog}
-              >
-                Cancel
-              </Box>
-              <Box
-                as="button"
-                px={4}
-                py={2}
-                rounded="md"
-                bg="primary"
-                color="white"
-                onClick={submitStaffForm}
-                aria-disabled={
-                  createStaffMutation.isPending || updateStaffMutation.isPending
-                }
-                opacity={
-                  createStaffMutation.isPending || updateStaffMutation.isPending
-                    ? 0.6
-                    : 1
-                }
-                cursor={
-                  createStaffMutation.isPending || updateStaffMutation.isPending
-                    ? "not-allowed"
-                    : "pointer"
-                }
-              >
-                {createStaffMutation.isPending || updateStaffMutation.isPending
-                  ? "Saving..."
-                  : editingStaff
-                    ? "Update"
-                    : "Create"}
-              </Box>
-            </Flex>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  aria-disabled={isSavingStaff}
+                  className="rounded-md bg-[var(--chakra-colors-primary)] px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isSavingStaff}
+                >
+                  {isSavingStaff
+                    ? "Saving..."
+                    : editingStaff
+                      ? "Update"
+                      : "Create"}
+                </button>
+              </Flex>
+            </form>
           </Box>
         </Box>
       )}
