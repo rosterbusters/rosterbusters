@@ -1,16 +1,17 @@
 import logging
+import random
+import string
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-import random
-import string
 from uuid import uuid4
 
 import emails  # type: ignore
 import jwt
 from jinja2 import Template
 from jwt.exceptions import InvalidTokenError
+from redis import Redis
 
 from app.core import security
 from app.core.config import settings
@@ -238,6 +239,8 @@ _email_verification_codes: dict[str, dict[str, Any]] = {}
 
 
 _login_2fa_codes: dict[str, dict[str, Any]] = {}
+_login_2fa_redis_client: Redis | None = None
+_login_2fa_redis_retry_after: datetime | None = None
 
 
 def generate_email_verification_code() -> str:
@@ -260,7 +263,7 @@ def store_email_verification_code(email: str, user_id: int) -> str:
     """
     code = generate_email_verification_code()
     expiry = datetime.now(timezone.utc) + timedelta(minutes=10)  # 10 minute expiry
-    
+
     normalized_email = email.strip().lower()
     verification_key = _email_verification_key(normalized_email, user_id)
 
@@ -270,7 +273,7 @@ def store_email_verification_code(email: str, user_id: int) -> str:
         "email": normalized_email,
         "expiry": expiry,
     }
-    
+
     logger.info(f"Generated verification code for email: {email} (expires at {expiry})")
     return code
 
@@ -286,25 +289,25 @@ def verify_email_code(email: str, code: str, user_id: int) -> bool:
 
     if verification_key not in _email_verification_codes:
         return False
-    
+
     stored_data = _email_verification_codes[verification_key]
-    
+
     # Check if code has expired
     if datetime.now(timezone.utc) > stored_data["expiry"]:
         del _email_verification_codes[verification_key]
         logger.warning(f"Verification code for {normalized_email} has expired")
         return False
-    
+
     # Check if user_id matches
     if stored_data["user_id"] != user_id:
         logger.warning(f"User ID mismatch for email verification: {normalized_email}")
         return False
-    
+
     # Check if code matches
     if stored_data["code"] != normalized_code:
         logger.warning(f"Invalid verification code for {normalized_email}")
         return False
-    
+
     # Code is valid, clean up
     del _email_verification_codes[verification_key]
     logger.info(f"Email verification successful for: {normalized_email}")
@@ -315,21 +318,104 @@ def generate_login_2fa_challenge_id() -> str:
     return uuid4().hex
 
 
-def store_login_2fa_code(challenge_id: str, user_id: int) -> str:
-    code = generate_login_2fa_code()
-    expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+def _get_login_2fa_redis_client() -> Redis | None:
+    global _login_2fa_redis_client
 
+    if (
+        _login_2fa_redis_retry_after is not None
+        and datetime.now(timezone.utc) < _login_2fa_redis_retry_after
+    ):
+        return None
+
+    if _login_2fa_redis_client is None:
+        _login_2fa_redis_client = Redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+        )
+
+    return _login_2fa_redis_client
+
+
+def _login_2fa_redis_key(challenge_id: str) -> str:
+    return f"login_2fa:{challenge_id}"
+
+
+def _disable_login_2fa_redis_temporarily() -> None:
+    global _login_2fa_redis_client, _login_2fa_redis_retry_after
+
+    _login_2fa_redis_client = None
+    _login_2fa_redis_retry_after = datetime.now(timezone.utc) + timedelta(minutes=1)
+
+
+def _store_login_2fa_code_in_memory(
+    challenge_id: str, user_id: int, code: str, expiry: datetime
+) -> None:
     _login_2fa_codes[challenge_id] = {
         "code": code,
         "user_id": user_id,
         "expiry": expiry,
     }
 
+
+def store_login_2fa_code(challenge_id: str, user_id: int) -> str:
+    code = generate_login_2fa_code()
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    redis_client = _get_login_2fa_redis_client()
+    if redis_client is not None:
+        try:
+            redis_client.hset(
+                _login_2fa_redis_key(challenge_id),
+                mapping={
+                    "code": code,
+                    "user_id": str(user_id),
+                },
+            )
+            redis_client.expire(_login_2fa_redis_key(challenge_id), timedelta(minutes=10))
+            logger.info(
+                "Generated login 2FA code for user %s in Redis (expires at %s)",
+                user_id,
+                expiry,
+            )
+            return code
+        except Exception:
+            _disable_login_2fa_redis_temporarily()
+            logger.warning(
+                "Failed to store login 2FA code in Redis for user %s; falling back to in-memory storage",
+                user_id,
+            )
+
+    _store_login_2fa_code_in_memory(challenge_id, user_id, code, expiry)
+
     logger.info("Generated login 2FA code for user %s (expires at %s)", user_id, expiry)
     return code
 
 
 def verify_login_2fa_code(challenge_id: str, code: str, user_id: int) -> bool:
+    normalized_code = "".join(ch for ch in code if ch.isdigit())
+    redis_client = _get_login_2fa_redis_client()
+    if redis_client is not None:
+        try:
+            stored_data = redis_client.hgetall(_login_2fa_redis_key(challenge_id))
+            if stored_data:
+                if stored_data.get("user_id") != str(user_id):
+                    logger.warning("User ID mismatch for login 2FA challenge %s", challenge_id)
+                    return False
+
+                if stored_data.get("code") != normalized_code:
+                    logger.warning("Invalid login 2FA code for challenge %s", challenge_id)
+                    return False
+
+                redis_client.delete(_login_2fa_redis_key(challenge_id))
+                logger.info("Login 2FA successful for challenge %s", challenge_id)
+                return True
+        except Exception:
+            _disable_login_2fa_redis_temporarily()
+            logger.warning(
+                "Failed to verify login 2FA code in Redis for challenge %s; falling back to in-memory storage",
+                challenge_id,
+            )
+
     if challenge_id not in _login_2fa_codes:
         return False
 
@@ -344,7 +430,7 @@ def verify_login_2fa_code(challenge_id: str, code: str, user_id: int) -> bool:
         logger.warning("User ID mismatch for login 2FA challenge %s", challenge_id)
         return False
 
-    if stored_data["code"] != code:
+    if stored_data["code"] != normalized_code:
         logger.warning("Invalid login 2FA code for challenge %s", challenge_id)
         return False
 

@@ -10,30 +10,32 @@ export const buttonRecipe = defineRecipe({
   },
   variants: {
     variant: {
-      solid:{
-        bg:"primary",
-        color:'white',
-        fontWeight:'normal',
+      solid: {
+        bg: "primary",
+        color: "white",
+        fontWeight: "normal",
         _hover: {
           bg: "cyan.800",
         },
       },
-      outline:{
-        bg:"white",
-        color:'primary',
-        fontWeight:'normal',
+      outline: {
+        bg: "white",
+        color: "primary",
+        fontWeight: "normal",
         _hover: {
           bg: "gray.100",
         },
       },
-      outlinegrey:{
-        bg:"white",
-        color:'foreground',
-        fontWeight:'normal',
-        borderWidth:"1px",
-        borderColor:"border",
+      outlinegrey: {
+        bg: "white",
+        color: "gray.600",
+        fontWeight: "normal",
+        borderWidth: "1px",
+        borderStyle: "solid",
+        borderColor: "gray.300",
         _hover: {
-          bg: "gray.100",
+          bg: "gray.50",
+          borderColor: "gray.400",
         },
       },
       ghost: {
