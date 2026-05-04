@@ -1270,52 +1270,16 @@ def trigger_scheduled_generation(
     db: Session = Depends(get_db),
 ):
     """
-    Called by AWS Lambda on a schedule. No user auth required.
-    Finds RosterPeriods starting in `days_ahead` days, queues generate_and_save_roster_task
-    for every active ward. Existing rosters are overwritten by the task.
+    Operational helper to queue scheduled roster generation.
+    Uses the same selection rules as the hourly scheduler task.
     """
-    target_date = date.today() + timedelta(days=days_ahead)
+    from app.services.roster_period_service import ensure_roster_period_window
+    from app.tasks.roster_tasks import queue_scheduled_roster_generation
 
-    periods = db.exec(
-        select(RosterPeriod).where(
-            RosterPeriod.startdate == target_date,
-            RosterPeriod.status == "RequestOpen",
-        )
-    ).all()
-
-    active_wards = db.exec(
-        select(Ward).where(Ward.isactive == True)  # noqa: E712
-    ).all()
-
-    triggered: list[dict] = []
-    skipped: list[dict] = []
-
-    for period in periods:
-        for ward in active_wards:
-            task_id = str(uuid4())
-            if not acquire_ward_algorithm_lock(ward.wardid, task_id):
-                skipped.append({
-                    "ward_id": ward.wardid,
-                    "period_id": period.periodid,
-                    "reason": "algorithm_generation_in_progress",
-                })
-                continue
-            try:
-                task = _get_celery_app().send_task(
-                    "tasks.generate_and_save_roster",
-                    args=[ward.wardid, period.periodid],
-                    task_id=task_id,
-                )
-            except Exception:
-                release_ward_algorithm_lock(ward.wardid, task_id)
-                raise
-            triggered.append({
-                "ward_id": ward.wardid,
-                "period_id": period.periodid,
-                "task_id": task.id,
-            })
-
-    return {"triggered": triggered, "skipped": skipped}
+    ensure_roster_period_window(db)
+    result = queue_scheduled_roster_generation(db, days_ahead=days_ahead)
+    db.commit()
+    return result
 
 
 @router.get("/task/{task_id}/status")

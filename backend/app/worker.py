@@ -22,5 +22,10 @@ celery_app.conf.update(
             "task": "tasks.check_roster_period_notifications",
             "schedule": 3600.0,  # every hour
         },
+        "check-scheduled-roster-generation-hourly": {
+            "task": "tasks.check_scheduled_roster_generation",
+            "schedule": 3600.0,  # every hour
+            "kwargs": {"days_ahead": 8},
+        },
     },
 )
