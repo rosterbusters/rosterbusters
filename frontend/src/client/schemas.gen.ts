@@ -911,6 +911,17 @@ export const WardSchema = {
             ],
             title: 'Nd Rn'
         },
+        nd_rn_max: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Nd Rn Max'
+        },
         nd_en_na_min: {
             anyOf: [
                 {

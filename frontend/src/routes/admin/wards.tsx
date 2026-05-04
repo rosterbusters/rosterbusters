@@ -1,24 +1,23 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useMemo, useState } from "react"
-import { useForm, type SubmitHandler } from "react-hook-form"
-import { WardsService, ShiftRequestsService } from "@/client"
-import type { Ward, ShiftCodePublic } from "@/client/types.gen"
-import type { ApiError } from "@/client/core/ApiError"
-import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
-
 import {
   Building2,
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  X,
-  MapPin,
   ChevronDown,
   ChevronUp,
+  MapPin,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
   Zap,
 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { type SubmitHandler, useForm } from "react-hook-form"
+import { ShiftRequestsService, WardsService } from "@/client"
+import type { ApiError } from "@/client/core/ApiError"
+import type { ShiftCodePublic, Ward } from "@/client/types.gen"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 
 export const Route = createFileRoute("/admin/wards")({
   component: AdminWards,
@@ -84,6 +83,7 @@ function WardFormDialog({
           pm_hca_max: null,
           nd_total: null,
           nd_rn: null,
+          nd_rn_max: null,
           nd_en_na_min: null,
           nd_en_na_max: null,
           nd_hca_min: null,
@@ -103,7 +103,9 @@ function WardFormDialog({
     queryKey: ["ward-shift-codes", editWard?.wardid],
     queryFn: () =>
       editWard?.wardid
-        ? ShiftRequestsService.getWardShiftCodesAdmin({ wardId: editWard.wardid })
+        ? ShiftRequestsService.getWardShiftCodesAdmin({
+            wardId: editWard.wardid,
+          })
         : Promise.resolve([] as ShiftCodePublic[]),
     enabled: open && !!editWard?.wardid,
   })
@@ -113,15 +115,15 @@ function WardFormDialog({
     () => getAllowedShiftCodesByHourType(selectedWardHourType),
     [selectedWardHourType],
   )
-  const shiftCodesForHourType = useMemo(
-    () => {
-      const order = new Map(allowedShiftCodes.map((code, index) => [code, index]))
-      return (allShiftCodes ?? [])
-        .filter((shift) => allowedShiftCodes.includes(shift.shiftcode))
-        .sort((a, b) => (order.get(a.shiftcode) ?? 999) - (order.get(b.shiftcode) ?? 999))
-    },
-    [allShiftCodes, allowedShiftCodes],
-  )
+  const shiftCodesForHourType = useMemo(() => {
+    const order = new Map(allowedShiftCodes.map((code, index) => [code, index]))
+    return (allShiftCodes ?? [])
+      .filter((shift) => allowedShiftCodes.includes(shift.shiftcode))
+      .sort(
+        (a, b) =>
+          (order.get(a.shiftcode) ?? 999) - (order.get(b.shiftcode) ?? 999),
+      )
+  }, [allShiftCodes, allowedShiftCodes])
 
   useEffect(() => {
     if (!open) return
@@ -151,6 +153,7 @@ function WardFormDialog({
         pm_hca_max: null,
         nd_total: null,
         nd_rn: null,
+        nd_rn_max: null,
         nd_en_na_min: null,
         nd_en_na_max: null,
         nd_hca_min: null,
@@ -163,8 +166,12 @@ function WardFormDialog({
   useEffect(() => {
     if (!open || !isEdit || !wardShiftCodes) return
     const wardCodes = wardShiftCodes.map((shift) => shift.shiftcode)
-    const filtered = wardCodes.filter((code) => allowedShiftCodes.includes(code))
-    setSelectedShiftCodes(filtered.length > 0 ? filtered : [...allowedShiftCodes])
+    const filtered = wardCodes.filter((code) =>
+      allowedShiftCodes.includes(code),
+    )
+    setSelectedShiftCodes(
+      filtered.length > 0 ? filtered : [...allowedShiftCodes],
+    )
   }, [open, isEdit, wardShiftCodes, allowedShiftCodes])
 
   useEffect(() => {
@@ -176,8 +183,7 @@ function WardFormDialog({
   }, [open, allowedShiftCodes])
 
   const createMutation = useMutation({
-    mutationFn: (data: Ward) =>
-      WardsService.createWard({ requestBody: data }),
+    mutationFn: (data: Ward) => WardsService.createWard({ requestBody: data }),
     onError: (err: ApiError) => {
       console.error(err)
     },
@@ -195,12 +201,20 @@ function WardFormDialog({
   })
 
   const syncWardShiftCodes = async (wardId: number, currentCodes: string[]) => {
-    const toAdd = selectedShiftCodes.filter((code) => !currentCodes.includes(code))
-    const toRemove = currentCodes.filter((code) => !selectedShiftCodes.includes(code))
+    const toAdd = selectedShiftCodes.filter(
+      (code) => !currentCodes.includes(code),
+    )
+    const toRemove = currentCodes.filter(
+      (code) => !selectedShiftCodes.includes(code),
+    )
 
     await Promise.all([
-      ...toAdd.map((shiftCode) => ShiftRequestsService.addShiftToWard({ wardId, shiftCode })),
-      ...toRemove.map((shiftCode) => ShiftRequestsService.removeShiftFromWard({ wardId, shiftCode })),
+      ...toAdd.map((shiftCode) =>
+        ShiftRequestsService.addShiftToWard({ wardId, shiftCode }),
+      ),
+      ...toRemove.map((shiftCode) =>
+        ShiftRequestsService.removeShiftFromWard({ wardId, shiftCode }),
+      ),
     ])
   }
 
@@ -222,6 +236,7 @@ function WardFormDialog({
       "pm_hca_max",
       "nd_total",
       "nd_rn",
+      "nd_rn_max",
       "nd_en_na_min",
       "nd_en_na_max",
       "nd_hca_min",
@@ -252,10 +267,14 @@ function WardFormDialog({
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["wards"] }),
-        queryClient.invalidateQueries({ queryKey: ["ward-shift-codes", wardId] }),
+        queryClient.invalidateQueries({
+          queryKey: ["ward-shift-codes", wardId],
+        }),
       ])
 
-      showSuccessToast(isEdit ? "Ward updated successfully." : "Ward created successfully.")
+      showSuccessToast(
+        isEdit ? "Ward updated successfully." : "Ward created successfully.",
+      )
       reset()
       onClose()
     } catch (error: any) {
@@ -278,7 +297,7 @@ function WardFormDialog({
     </div>
   )
 
-  const wardId = editWard?.wardid
+  const _wardId = editWard?.wardid
 
   if (!open) return null
 
@@ -362,7 +381,9 @@ function WardFormDialog({
                   Ward Hour Type <span className="text-red-500">*</span>
                 </label>
                 <select
-                  {...register("wardhourtype", { required: "Ward hour type is required" })}
+                  {...register("wardhourtype", {
+                    required: "Ward hour type is required",
+                  })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="8_HOURS">8-hours Ward</option>
@@ -403,7 +424,9 @@ function WardFormDialog({
                     <div className="space-y-2">
                       {shiftCodesForHourType.length > 0 ? (
                         shiftCodesForHourType.map((shift) => {
-                          const isAssigned = selectedShiftCodes.includes(shift.shiftcode)
+                          const isAssigned = selectedShiftCodes.includes(
+                            shift.shiftcode,
+                          )
                           return (
                             <label
                               key={shift.shiftcode}
@@ -421,7 +444,9 @@ function WardFormDialog({
                                     )
                                   } else {
                                     setSelectedShiftCodes((prev) =>
-                                      prev.filter((code) => code !== shift.shiftcode),
+                                      prev.filter(
+                                        (code) => code !== shift.shiftcode,
+                                      ),
                                     )
                                   }
                                 }}
@@ -434,7 +459,9 @@ function WardFormDialog({
                           )
                         })
                       ) : (
-                        <p className="text-xs text-gray-400">No shift options available for this ward hour type.</p>
+                        <p className="text-xs text-gray-400">
+                          No shift options available for this ward hour type.
+                        </p>
                       )}
                     </div>
                   </div>
@@ -494,9 +521,10 @@ function WardFormDialog({
                     <h4 className="text-sm font-medium text-indigo-600 mb-2">
                       Night Shift
                     </h4>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
                       {numInput("nd_total", "Total")}
-                      {numInput("nd_rn", "RN")}
+                      {numInput("nd_rn", "RN Min")}
+                      {numInput("nd_rn_max", "RN Max")}
                       {numInput("nd_en_na_min", "EN/NA Min")}
                       {numInput("nd_en_na_max", "EN/NA Max")}
                       {numInput("nd_hca_min", "HCA Min")}
@@ -518,10 +546,16 @@ function WardFormDialog({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || createMutation.isPending || updateMutation.isPending}
+              disabled={
+                isSubmitting ||
+                createMutation.isPending ||
+                updateMutation.isPending
+              }
               className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
             >
-              {isSubmitting || createMutation.isPending || updateMutation.isPending
+              {isSubmitting ||
+              createMutation.isPending ||
+              updateMutation.isPending
                 ? "Saving..."
                 : isEdit
                   ? "Update Ward"
@@ -572,8 +606,8 @@ function DeleteWardDialog({
           Delete Ward
         </h2>
         <p className="text-sm text-gray-600 mb-6">
-          Are you sure you want to delete{" "}
-          <strong>{ward.wardname}</strong>? This action cannot be undone.
+          Are you sure you want to delete <strong>{ward.wardname}</strong>? This
+          action cannot be undone.
         </p>
         <div className="flex justify-end gap-3">
           <button
