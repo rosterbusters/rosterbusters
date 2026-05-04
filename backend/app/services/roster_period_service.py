@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlmodel import Session, select
 
@@ -21,6 +23,10 @@ from app.utils import (
     generate_hris_portal_closing_soon_email,
     generate_algorithm_notification_email,
     send_email,
+)
+from app.services.algorithm_lock_service import (
+    acquire_roster_period_notification_lock,
+    release_roster_period_notification_lock,
 )
 
 from app.models import RosterPeriod
@@ -147,13 +153,79 @@ def ensure_roster_period_window(
     periods = list(
         session.exec(select(RosterPeriod).order_by(RosterPeriod.startdate.desc())).all()
     )
+    lock_owner = f"roster-period-service:{uuid4()}"
+    lock_acquired = False
+    should_release_lock = False
     try:
-        _queue_roster_period_notifications(session, periods, now=actual_now)
+        try:
+            lock_acquired = acquire_roster_period_notification_lock(lock_owner)
+            should_release_lock = lock_acquired
+        except Exception:
+            logger.warning(
+                "Roster period notification lock unavailable; continuing without distributed lock.",
+                exc_info=True,
+            )
+            lock_acquired = True
+        if not lock_acquired:
+            logger.info("Skipping roster period notification queue; another worker holds the lock.")
+        else:
+            _dedupe_roster_period_notifications(session)
+            _queue_roster_period_notifications(session, periods, now=actual_now)
+            session.commit()
     except Exception:
         logger.exception("Failed to queue roster period notifications")
-    session.commit()
+        session.rollback()
+    finally:
+        if should_release_lock:
+            try:
+                release_roster_period_notification_lock(lock_owner)
+            except Exception:
+                logger.exception("Failed to release roster period notification lock")
 
     return periods
+
+
+def _dedupe_roster_period_notifications(session: Session) -> int:
+    rows = list(
+        session.exec(
+            select(NotificationQueue).where(
+                NotificationQueue.relatedentitytype == "RosterPeriod",
+                NotificationQueue.relatedentityid.is_not(None),
+            )
+        ).all()
+    )
+    grouped_rows: dict[tuple[str, int, str, str, int], list[NotificationQueue]] = defaultdict(list)
+    for row in rows:
+        if row.notificationid is None or row.relatedentityid is None:
+            continue
+        grouped_rows[
+            (
+                row.recipienttype,
+                row.recipientid,
+                row.notificationtype,
+                row.relatedentitytype,
+                row.relatedentityid,
+            )
+        ].append(row)
+
+    deleted = 0
+    for duplicates in grouped_rows.values():
+        if len(duplicates) < 2:
+            continue
+        duplicates.sort(
+            key=lambda row: (
+                row.status != "Read",
+                row.createdat,
+                row.notificationid,
+            )
+        )
+        for duplicate in duplicates[1:]:
+            session.delete(duplicate)
+            deleted += 1
+
+    if deleted:
+        logger.info("Removed %s duplicate roster period notifications.", deleted)
+    return deleted
 
 
 def _queue_roster_period_notifications(

@@ -13,10 +13,33 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import { ShiftRequestsService } from "@/client"
+import type { ShiftCodePublic } from "@/client/types.gen"
 
 import { DatePickerDemo } from "@/components/Common/DatePicker"
 import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
+
+const API_BASE = import.meta.env.VITE_API_URL || ""
+
+async function fetchRequestableShiftCodesByWard(
+  wardId: number,
+): Promise<ShiftCodePublic[]> {
+  const token = localStorage.getItem("access_token") || ""
+  const response = await fetch(
+    `${API_BASE}/api/v1/shift-requests/shift-codes/requestable/ward/${wardId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error("Failed to load ward shift codes")
+  }
+
+  return response.json()
+}
 
 interface EditShiftRequestProps {
   isOpen: boolean
@@ -59,9 +82,8 @@ export const EditShiftRequest = ({
   const queryClient = useQueryClient()
 
   const { data: shiftCodes = [] } = useQuery({
-    queryKey: ["shift-codes", "ward", wardId],
-    queryFn: () =>
-      ShiftRequestsService.getShiftCodesByWard({ wardId: wardId! }),
+    queryKey: ["shift-codes", "requestable", "ward", wardId],
+    queryFn: () => fetchRequestableShiftCodesByWard(wardId!),
     enabled: wardId != null,
   })
 
