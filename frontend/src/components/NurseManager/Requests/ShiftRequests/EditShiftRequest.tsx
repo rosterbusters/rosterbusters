@@ -121,11 +121,9 @@ export const EditShiftRequest = ({
   const queryClient = useQueryClient()
 
   const { data: shiftCodes } = useQuery({
-    queryKey: ["shift-codes", "requestable", "ward", wardId ?? "default"],
-    queryFn: () =>
-      wardId != null
-        ? fetchRequestableShiftCodesByWard(wardId)
-        : ShiftRequestsService.getAllShiftCodes(),
+    queryKey: ["shift-codes", "requestable", "ward", wardId],
+    queryFn: () => fetchRequestableShiftCodesByWard(wardId!),
+    enabled: wardId != null,
   })
 
   const shiftCollection = useMemo(
@@ -177,6 +175,10 @@ export const EditShiftRequest = ({
   })
 
   const handleSave = () => {
+    if (wardId == null) {
+      showErrorToast("Please select a ward first.")
+      return
+    }
     if (shiftType.length === 0) {
       showErrorToast("Please select a shift type.")
       return
@@ -226,6 +228,9 @@ export const EditShiftRequest = ({
                   size="sm"
                   value={shiftType}
                   onValueChange={(e) => setShiftType(e.value)}
+                  disabled={
+                    wardId == null || shiftCollection.items.length === 0
+                  }
                 >
                   <Select.Label>Requested Shift Type</Select.Label>
                   <Select.Control>
