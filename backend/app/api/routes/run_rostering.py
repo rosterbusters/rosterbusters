@@ -1784,7 +1784,11 @@ def _staffing_to_algo_inputs(ward: Ward, rank_map: dict[str, str] | None = None)
                 rank_min["A"],
                 rank_min["B"],
                 rank_min["C"],
-                rn_max_night_per_day=ward.nd_rn,
+                rn_max_night_per_day=(
+                    rank_night_max["A"]
+                    if rank_night_max["A"] is not None
+                    else ward.nd_rn_max if ward.nd_rn_max is not None else ward.nd_rn
+                ),
                 hca_max_night_per_day=rank_night_max["C"] if rank_night_max["C"] is not None else ward.nd_hca_max,
                 policy=milp_policy,
             )
@@ -1800,7 +1804,7 @@ def _staffing_to_algo_inputs(ward: Ward, rank_map: dict[str, str] | None = None)
         rn_min,
         en_min,
         hca_min,
-        rn_max_night_per_day=ward.nd_rn,
+        rn_max_night_per_day=ward.nd_rn_max if ward.nd_rn_max is not None else ward.nd_rn,
         hca_max_night_per_day=ward.nd_hca_max,
     )
 

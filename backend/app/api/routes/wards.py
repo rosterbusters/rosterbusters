@@ -74,7 +74,7 @@ def _sync_legacy_staffing_columns(ward: Ward, staffing_json: str) -> None:
         raise HTTPException(status_code=422, detail="staffing_json must decode to an object")
 
     for shift, prefix in (("A", "am"), ("P", "pm"), ("N", "nd")):
-        rn_min, _ = _extract_requirement(payload, "RN", shift)
+        rn_min, rn_max = _extract_requirement(payload, "RN", shift)
         en_min, en_max = _extract_requirement(payload, "EN", shift)
         na_min, na_max = _extract_requirement(payload, "NA", shift)
         hca12_min, hca12_max = _extract_requirement(payload, "HCA12", shift)
@@ -86,6 +86,8 @@ def _sync_legacy_staffing_columns(ward: Ward, staffing_json: str) -> None:
         rank_c_max = hca3_max
 
         setattr(ward, f"{prefix}_rn", rn_min)
+        if shift == "N":
+            ward.nd_rn_max = rn_max
         setattr(ward, f"{prefix}_en_na_min", rank_b_min)
         setattr(ward, f"{prefix}_en_na_max", rank_b_max)
         setattr(ward, f"{prefix}_hca_min", rank_c_min)

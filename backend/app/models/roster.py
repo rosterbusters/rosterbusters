@@ -45,6 +45,7 @@ class Ward(SQLModel, table=True):
     # Staffing requirements - ND (Night) shift
     nd_total: Optional[int] = Field(default=None)
     nd_rn: Optional[int] = Field(default=None)
+    nd_rn_max: Optional[int] = Field(default=None)
     nd_en_na_min: Optional[int] = Field(default=None)
     nd_en_na_max: Optional[int] = Field(default=None)
     nd_hca_min: Optional[int] = Field(default=None)
