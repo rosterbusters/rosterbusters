@@ -1,16 +1,28 @@
-import { Box, Container, Flex, Heading, Image, Text, VStack, IconButton } from "@chakra-ui/react"
-import { redirect,createFileRoute, Link as RouterLink } from "@tanstack/react-router"
-import { FiLock, FiUser, FiEye, FiEyeOff, FiArrowLeft } from "react-icons/fi"
-import { FcGoogle } from "react-icons/fc"
-import { useEffect, useState } from "react"; 
-import { useForm, SubmitHandler } from 'react-hook-form';
+import {
+  Box,
+  Button,
+  Container,
+  Flex,
+  Heading,
+  IconButton,
+  Image,
+  Input,
+  Text,
+  VStack,
+} from "@chakra-ui/react"
+import {
+  createFileRoute,
+  Link as RouterLink,
+  redirect,
+} from "@tanstack/react-router"
+import { useEffect, useState } from "react"
+import { type SubmitHandler, useForm } from "react-hook-form"
+import { FiArrowLeft, FiEye, FiEyeOff, FiLock, FiUser } from "react-icons/fi"
 import type { Body_login_access_token as AccessToken } from "@/client"
 import { UsersService } from "@/client"
-import { Button } from "@chakra-ui/react";
-import { showErrorToast } from "@/components/ui/toast"
 import { Field } from "@/components/ui/field"
-import { Input } from "@chakra-ui/react"
 import { InputGroup } from "@/components/ui/input-group"
+import { showErrorToast } from "@/components/ui/toast"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 import { passwordRules } from "../utils"
 
@@ -20,7 +32,7 @@ export const Route = createFileRoute("/login")({
     if (isLoggedIn()) {
       let user: any
       try {
-        user = await UsersService.readUserMe() as any
+        user = (await UsersService.readUserMe()) as any
       } catch {
         // Invalid/expired token — clear it and let the user log in again
         localStorage.removeItem("access_token")
@@ -73,7 +85,7 @@ function Login() {
     }, 1000)
     return () => clearTimeout(timer)
   }, [resendCooldown])
-  
+
   const {
     register,
     handleSubmit,
@@ -116,23 +128,23 @@ function Login() {
     setResendCooldown(0)
   }
 
-  const handleGoogleLogin = () => {
+  const _handleGoogleLogin = () => {
     window.location.href = `${import.meta.env.VITE_API_URL}/api/v1/login/google`
   }
 
   const togglePasswordVisibility = () => setShowPassword(!showPassword)
 
   return (
-    <Flex 
-      h="100vh" 
-      w="100vw" 
+    <Flex
+      h="100vh"
+      w="100vw"
       direction={{ base: "column", lg: "row" }}
       overflowY={{ base: "auto", lg: "hidden" }}
       bg="white"
     >
       {/* Visual Side */}
-      <Box 
-        flex={{ base: "0 0 50%", lg: "1" }} 
+      <Box
+        flex={{ base: "0 0 50%", lg: "1" }}
         position="relative"
         overflow="hidden"
       >
@@ -142,18 +154,18 @@ function Login() {
           objectFit="cover"
           w="100%"
           h="100%"
-          objectPosition="center" 
+          objectPosition="center"
         />
         {/* Gradient Overlay */}
-        <Box 
-          position="absolute" 
-          bottom="0" 
-          left="0" 
-          right="0" 
-          h="32" 
-          bgGradient="to-t" 
-          gradientFrom="blackAlpha.700" 
-          gradientTo="transparent" 
+        <Box
+          position="absolute"
+          bottom="0"
+          left="0"
+          right="0"
+          h="32"
+          bgGradient="to-t"
+          gradientFrom="blackAlpha.700"
+          gradientTo="transparent"
         />
       </Box>
 
@@ -162,7 +174,7 @@ function Login() {
         flex="1"
         direction="column"
         bg="white"
-        mt={{ base: "-10vh", lg: "0" }} 
+        mt={{ base: "-10vh", lg: "0" }}
         roundedTop="none"
         position="relative"
         zIndex="2"
@@ -173,26 +185,25 @@ function Login() {
       >
         <Container maxW="md" w="100%" px={6}>
           <VStack gap={3} align="stretch">
-            
             {/* Header */}
             <VStack gap={0} align="start" mb={1}>
-              <Heading 
-                as="h1" 
-                size="lg"
-                fontWeight="700"
-                color="teal.700"
-              >
+              <Heading as="h1" size="lg" fontWeight="700" color="teal.700">
                 {isTwoFactorStep ? "Verify Login" : "Sign In"}
               </Heading>
               <Text color="gray.500" fontSize="sm">
                 {isTwoFactorStep ? (
                   "Enter your verification code to continue."
                 ) : (
-                  <>Login with your <Text as="span" fontWeight="700" color="teal.600">SACH</Text> account.</>
+                  <>
+                    Login with your{" "}
+                    <Text as="span" fontWeight="700" color="teal.600">
+                      SACH
+                    </Text>{" "}
+                    account.
+                  </>
                 )}
               </Text>
             </VStack>
-
 
             {/* Login Form */}
             <Box
@@ -206,12 +217,18 @@ function Login() {
                 handleSubmit(onSubmit)(e)
               }}
             >
-              <VStack gap={3} align="stretch"> 
+              <VStack gap={3} align="stretch">
                 {!isTwoFactorStep && (
                   <>
                     {/* Username */}
-                    <Field invalid={!!errors.username} errorText={errors.username?.message}>
-                      <InputGroup startElement={<FiUser color="gray" />} w="100%">
+                    <Field
+                      invalid={!!errors.username}
+                      errorText={errors.username?.message}
+                    >
+                      <InputGroup
+                        startElement={<FiUser color="gray" />}
+                        w="100%"
+                      >
                         <Input
                           {...register("username", { required: "Required" })}
                           data-testid="login-username"
@@ -225,12 +242,17 @@ function Login() {
                     </Field>
 
                     {/* Password */}
-                    <Field invalid={!!errors.password} errorText={errors.password?.message}>
+                    <Field
+                      invalid={!!errors.password}
+                      errorText={errors.password?.message}
+                    >
                       <InputGroup
                         startElement={<FiLock color="gray" />}
                         endElement={
                           <IconButton
-                            aria-label={showPassword ? "Hide password" : "Show password"}
+                            aria-label={
+                              showPassword ? "Hide password" : "Show password"
+                            }
                             onClick={togglePasswordVisibility}
                             variant="ghost"
                             size="sm"
@@ -256,17 +278,27 @@ function Login() {
                 )}
 
                 {isTwoFactorStep && (
-                  <Field
-                    label="Verification Code"
-                  >
-                    <Flex gap={2} w="100%" direction={{ base: "column", sm: "row" }} align="stretch">
+                  <Field label="Verification Code">
+                    <Flex
+                      gap={2}
+                      w="100%"
+                      direction={{ base: "column", sm: "row" }}
+                      align="stretch"
+                    >
                       <Input
                         value={verificationCode}
-                        onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        onChange={(e) =>
+                          setVerificationCode(
+                            e.target.value.replace(/\D/g, "").slice(0, 6),
+                          )
+                        }
                         onPaste={(event) => {
                           event.preventDefault()
                           setVerificationCode(
-                            event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6),
+                            event.clipboardData
+                              .getData("text")
+                              .replace(/\D/g, "")
+                              .slice(0, 6),
                           )
                         }}
                         placeholder="6-digit code"
@@ -292,9 +324,13 @@ function Login() {
                           }
                         }}
                         loading={resendEmail2faMutation.isPending}
-                        disabled={resendCooldown > 0 || resendEmail2faMutation.isPending}
+                        disabled={
+                          resendCooldown > 0 || resendEmail2faMutation.isPending
+                        }
                       >
-                        {resendCooldown > 0 ? `Resend (${resendCooldown}s)` : "Resend Code"}
+                        {resendCooldown > 0
+                          ? `Resend (${resendCooldown}s)`
+                          : "Resend Code"}
                       </Button>
                     </Flex>
                     <Text fontSize="sm" color="gray.500" mt={2}>
@@ -303,9 +339,13 @@ function Login() {
                     <Flex justify="center" mt={2} w="100%">
                       <Button
                         type="button"
-                        variant="outlinegrey"
+                        variant="outline"
                         size="sm"
                         mx="auto"
+                        bg="white"
+                        color="gray.600"
+                        borderColor="gray.300"
+                        _hover={{ bg: "gray.50", borderColor: "gray.400" }}
                         onClick={handleBackToLogin}
                       >
                         <Flex align="center" gap={2}>
@@ -318,15 +358,21 @@ function Login() {
                 )}
 
                 {error && (
-                  <Text color="red.500" fontSize="xs" textAlign="center">{error}</Text>
+                  <Text color="red.500" fontSize="xs" textAlign="center">
+                    {error}
+                  </Text>
                 )}
 
                 <Button
                   type={isTwoFactorStep ? "button" : "submit"}
-                  variant='solid'
+                  variant="solid"
                   size="md"
                   w="100%"
-                  loading={isSubmitting || loginMutation.isPending || verifyEmail2faMutation.isPending}
+                  loading={
+                    isSubmitting ||
+                    loginMutation.isPending ||
+                    verifyEmail2faMutation.isPending
+                  }
                   mt={1}
                   onClick={isTwoFactorStep ? handleVerifyCode : undefined}
                 >
@@ -334,23 +380,25 @@ function Login() {
                 </Button>
 
                 {/* Forgot Password Link */}
-                <Flex justify="center" pt={1} display={isTwoFactorStep ? "none" : "flex"}>
-                  <RouterLink 
-                    to="/recover-password" 
-                    style={{ 
-                      color: "var(--chakra-colors-teal-600)", 
-                      fontSize: "13px", 
+                <Flex
+                  justify="center"
+                  pt={1}
+                  display={isTwoFactorStep ? "none" : "flex"}
+                >
+                  <RouterLink
+                    to="/recover-password"
+                    style={{
+                      color: "var(--chakra-colors-teal-600)",
+                      fontSize: "13px",
                       fontWeight: 600,
-                      textDecoration: "none"
+                      textDecoration: "none",
                     }}
                   >
                     Forgot Password?
                   </RouterLink>
                 </Flex>
-
               </VStack>
             </Box>
-
           </VStack>
         </Container>
       </Flex>
