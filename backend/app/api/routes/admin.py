@@ -823,6 +823,7 @@ def delete_user(session: SessionDep, userid: int) -> Message:
 
     nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
     manager = session.get(NurseManager, user.managerid) if user.managerid else None
+    manager_ward_ids = _get_manager_ward_ids(session, userid) if manager else []
 
     user_roles = get_user_roles_by_userid(session, userid)
     if "Admin" in user_roles:

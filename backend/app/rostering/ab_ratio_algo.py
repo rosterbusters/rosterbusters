@@ -243,6 +243,10 @@ _DEFAULT_WEIGHTS = {
     "rank_b_night": 300_000,
     "rank_b_night_over": 500_000,
     "rank_c_night_over": 14_000,
+    "dayoff_under": 800_000,
+    "dayoff_over": 700_000,
+    "consec_night": 300_000,
+    "post_night_rest": 900_000,
     "min_nights": 100_000,
     "isolated_night": 80_000,
     "double_night_pref": 120_000,
@@ -1441,6 +1445,10 @@ def run_ab_ratio_pipeline(
     ssn_rank_a_shift_gap_target = parsed["ssn_rank_a_shift_gap_target"]
     weights = parsed["weights"]
 
+    dayoff_violation_vars: list[tuple[int, int, object, object]] = []
+    consec_violation_vars: list[tuple[int, int, object]] = []
+    post_night_violation_vars: list[tuple[int, int, object]] = []
+
     x = {}
     for nurse_idx in range(num_nurses):
         for day_idx in range(num_days):
@@ -1570,24 +1578,56 @@ def run_ab_ratio_pipeline(
         for week_index, week_start in enumerate(range(0, num_days, 7)):
             week_end = min(week_start + 7, num_days)
             week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
+            target = ab_weekly_do_targets[nurse_idx][week_index]
             if not relax_weekly_off:
-                model.Add(week_do == ab_weekly_do_targets[nurse_idx][week_index])
+                model.Add(week_do == target)
+            else:
+                under = model.NewIntVar(0, max(target, 1), f"ab_week_off_under_{nurse_idx}_{week_index}")
+                over = model.NewIntVar(0, max(week_end - week_start, 1), f"ab_week_off_over_{nurse_idx}_{week_index}")
+                model.Add(under >= target - week_do)
+                model.Add(over >= week_do - target)
+                add_penalty(under, weights["dayoff_under"])
+                add_penalty(over, weights["dayoff_over"])
+                dayoff_violation_vars.append((nurse_idx, week_index, under, over))
 
-        if nurse_idx not in no_night_ids and not relax_no_three_nights:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 2):
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT]
-                    + x[nurse_idx, day_idx + 1, NIGHT]
-                    + x[nurse_idx, day_idx + 2, NIGHT]
-                    <= 2
-                )
+                if not relax_no_three_nights:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        <= 2
+                    )
+                else:
+                    ov = model.NewIntVar(0, 1, f"consec_night_ab_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        ov
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        - 2
+                    )
+                    add_penalty(ov, weights["consec_night"])
+                    consec_violation_vars.append((nurse_idx, day_idx, ov))
 
-        if nurse_idx not in no_night_ids and not relax_post_night_rest:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 1):
                 next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
-                )
+                if not relax_post_night_rest:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
+                    )
+                else:
+                    viol = model.NewIntVar(0, 1, f"post_night_rest_ab_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        viol
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        - x[nurse_idx, day_idx + 1, NIGHT]
+                        - next_non_working
+                    )
+                    add_penalty(viol, weights["post_night_rest"])
+                    post_night_violation_vars.append((nurse_idx, day_idx, viol))
 
         # Carry-N continuation: if prev roster ended on N, prefer starting this roster
         # with N (completing the 2N block) rather than resting. Single-N carry is allowed
@@ -1649,24 +1689,56 @@ def run_ab_ratio_pipeline(
         for week_index, week_start in enumerate(range(0, num_days, 7)):
             week_end = min(week_start + 7, num_days)
             week_do = sum(x[nurse_idx, day_idx, OFF] for day_idx in range(week_start, week_end))
+            target = c_weekly_do_targets[nurse_idx][week_index]
             if not relax_weekly_off:
-                model.Add(week_do == c_weekly_do_targets[nurse_idx][week_index])
+                model.Add(week_do == target)
+            else:
+                under = model.NewIntVar(0, max(target, 1), f"c_week_off_under_{nurse_idx}_{week_index}")
+                over = model.NewIntVar(0, max(week_end - week_start, 1), f"c_week_off_over_{nurse_idx}_{week_index}")
+                model.Add(under >= target - week_do)
+                model.Add(over >= week_do - target)
+                add_penalty(under, weights["dayoff_under"])
+                add_penalty(over, weights["dayoff_over"])
+                dayoff_violation_vars.append((nurse_idx, week_index, under, over))
 
-        if nurse_idx not in no_night_ids and not relax_no_three_nights:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 2):
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT]
-                    + x[nurse_idx, day_idx + 1, NIGHT]
-                    + x[nurse_idx, day_idx + 2, NIGHT]
-                    <= 2
-                )
+                if not relax_no_three_nights:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        <= 2
+                    )
+                else:
+                    ov = model.NewIntVar(0, 1, f"consec_night_c_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        ov
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        + x[nurse_idx, day_idx + 1, NIGHT]
+                        + x[nurse_idx, day_idx + 2, NIGHT]
+                        - 2
+                    )
+                    add_penalty(ov, weights["consec_night"])
+                    consec_violation_vars.append((nurse_idx, day_idx, ov))
 
-        if nurse_idx not in no_night_ids and not relax_post_night_rest:
+        if nurse_idx not in no_night_ids:
             for day_idx in range(num_days - 1):
                 next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
-                model.Add(
-                    x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
-                )
+                if not relax_post_night_rest:
+                    model.Add(
+                        x[nurse_idx, day_idx, NIGHT] - x[nurse_idx, day_idx + 1, NIGHT] <= next_non_working
+                    )
+                else:
+                    viol = model.NewIntVar(0, 1, f"post_night_rest_c_{nurse_idx}_{day_idx}")
+                    model.Add(
+                        viol
+                        >= x[nurse_idx, day_idx, NIGHT]
+                        - x[nurse_idx, day_idx + 1, NIGHT]
+                        - next_non_working
+                    )
+                    add_penalty(viol, weights["post_night_rest"])
+                    post_night_violation_vars.append((nurse_idx, day_idx, viol))
 
         if nurse_idx not in no_night_ids:
             for day_idx in range(num_days):
@@ -2300,6 +2372,29 @@ def run_ab_ratio_pipeline(
     penalty_score = solver.ObjectiveValue() if penalty_vars else 0.0
     if progress_callback:
         progress_callback(4, 4, penalty_score)
+
+    if relax_weekly_off:
+        for nurse_idx, week_index, under, over in dayoff_violation_vars:
+            u, o = solver.Value(under), solver.Value(over)
+            if u or o:
+                logger.warning(
+                    "[AB-DEBUG] relax_weekly_off: nurse %s week %d off-day deviation -%d/+%d",
+                    nurse_names[nurse_idx], week_index, u, o,
+                )
+    if relax_no_three_nights:
+        for nurse_idx, day_idx, ov in consec_violation_vars:
+            if solver.Value(ov):
+                logger.warning(
+                    "[AB-DEBUG] relax_no_three_nights: nurse %s 3-consecutive-night violation at day %d",
+                    nurse_names[nurse_idx], day_idx,
+                )
+    if relax_post_night_rest:
+        for nurse_idx, day_idx, viol in post_night_violation_vars:
+            if solver.Value(viol):
+                logger.warning(
+                    "[AB-DEBUG] relax_post_night_rest: nurse %s missing rest after night on day %d",
+                    nurse_names[nurse_idx], day_idx,
+                )
 
     return _format_output(
         parsed["nurses_sorted"],

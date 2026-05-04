@@ -52,8 +52,8 @@ _WEEKLY_DAYOFFS = 3
 _DEFAULT_WEIGHTS = {
     "dayoff_under": 1_600_000,
     "dayoff_over": 1_440_000,
-    "overall_ratio_a12": 30_000,
-    "overall_ratio_n12": 30_000,
+    "overall_ratio_a12": 200_000,
+    "overall_ratio_n12": 200_000,
     "rank_a_ratio": 80_000,
     "c_ratio_a12": 4_000,
     "c_ratio_n12": 4_200,
@@ -741,11 +741,13 @@ def _parse_inputs(
     )
 
     hca_policy = cfg.get("HCA") if isinstance(cfg.get("HCA"), dict) else {}
-    default_rank_c_caps = [demand[day_idx][N12]["C"] for day_idx in range(num_days)]
-    rank_c_night_caps = _resolve_daily_targets(
-        cfg.get("rank_c_night_cap_per_day", cfg.get("c_night_cap_per_day", hca_policy.get("max_night_per_day"))),
-        default_rank_c_caps,
-    )
+    _explicit_rank_c_cap = cfg.get("rank_c_night_cap_per_day", cfg.get("c_night_cap_per_day", hca_policy.get("max_night_per_day")))
+    _uncapped = len(working_rank_c) if working_rank_c else 0
+    default_rank_c_caps = [
+        demand[day_idx][N12]["C"] if _explicit_rank_c_cap is not None else _uncapped
+        for day_idx in range(num_days)
+    ]
+    rank_c_night_caps = _resolve_daily_targets(_explicit_rank_c_cap, default_rank_c_caps)
     rank_c_night_allowed_excess = _coerce_int(
         cfg.get("rank_c_night_allowed_excess", cfg.get("c_night_allowed_excess", _DEFAULT_RN_NIGHT_ALLOWED_EXCESS)),
         _DEFAULT_RN_NIGHT_ALLOWED_EXCESS,
@@ -1048,6 +1050,10 @@ def run_twelve_hour_pipeline(
             if 0 not in al_day_req[nurse_idx]:
                 model.Add(x[nurse_idx, 0, OFF] == 1)
 
+    dayoff_violation_vars: list[tuple[int, int, object, object]] = []
+    consec_violation_vars: list[tuple[int, int, object]] = []
+    post_night_violation_vars: list[tuple[int, int, object]] = []
+
     penalty_vars: list[cp_model.IntVar] = []
     penalty_weights: list[int] = []
 
@@ -1104,6 +1110,7 @@ def run_twelve_hour_pipeline(
                 model.Add(over >= week_off - target)
                 add_penalty(under, weights["dayoff_under"])
                 add_penalty(over, weights["dayoff_over"])
+                dayoff_violation_vars.append((nurse_idx, week_index, under, over))
 
         if nurse_idx not in no_night_ids:
             if (
@@ -1135,6 +1142,7 @@ def run_twelve_hour_pipeline(
                         - 2
                     )
                     add_penalty(over, weights["consec_n12"])
+                    consec_violation_vars.append((nurse_idx, day_idx, over))
 
             for day_idx in range(num_days - 1):
                 next_non_working = x[nurse_idx, day_idx + 1, OFF] + x[nurse_idx, day_idx + 1, AL]
@@ -1144,6 +1152,7 @@ def run_twelve_hour_pipeline(
                     violation = model.NewIntVar(0, 1, f"post_night_rest_{nurse_idx}_{day_idx}")
                     model.Add(violation >= x[nurse_idx, day_idx, N12] - x[nurse_idx, day_idx + 1, N12] - next_non_working)
                     add_penalty(violation, weights["post_night_rest"])
+                    post_night_violation_vars.append((nurse_idx, day_idx, violation))
 
             for day_idx in range(num_days):
                 if day_idx == 0 and nurse_idx in post_night_off:
@@ -1681,6 +1690,29 @@ def run_twelve_hour_pipeline(
     penalty_score = solver.ObjectiveValue() if penalty_vars else 0.0
     if progress_callback:
         progress_callback(4, 4, penalty_score)
+
+    if relax_weekly_off:
+        for nurse_idx, week_index, under, over in dayoff_violation_vars:
+            u, o = solver.Value(under), solver.Value(over)
+            if u or o:
+                logger.warning(
+                    "[12HR-DEBUG] relax_weekly_off: nurse %s week %d off-day deviation -%d/+%d",
+                    nurse_names[nurse_idx], week_index, u, o,
+                )
+    if relax_no_three_nights:
+        for nurse_idx, day_idx, ov in consec_violation_vars:
+            if solver.Value(ov):
+                logger.warning(
+                    "[12HR-DEBUG] relax_no_three_nights: nurse %s 3-consecutive-night violation at day %d",
+                    nurse_names[nurse_idx], day_idx,
+                )
+    if relax_post_night_rest:
+        for nurse_idx, day_idx, viol in post_night_violation_vars:
+            if solver.Value(viol):
+                logger.warning(
+                    "[12HR-DEBUG] relax_post_night_rest: nurse %s missing rest after night on day %d",
+                    nurse_names[nurse_idx], day_idx,
+                )
 
     return _format_output(
         parsed["nurses_sorted"],

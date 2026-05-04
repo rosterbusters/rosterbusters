@@ -404,7 +404,9 @@ function RosterPlanningPage() {
 
   // Set default ward when there is no valid selection yet.
   useEffect(() => {
-    if (displayWards.length === 0 || isUserLoading) return;
+    // Use `wards` (real API data) not `displayWards` so the mock fallback wards
+    // don't trigger a premature selection before real data has loaded.
+    if (wards.length === 0 || isUserLoading) return;
 
     const designatedWard =
       (user?.wardid != null
@@ -424,7 +426,7 @@ function RosterPlanningPage() {
         setSelectedWard(fallbackWard);
       }
     }
-  }, [displayWards, getDefaultWard, isUserLoading, selectedWard, user?.managerid, user?.wardid]);
+  }, [displayWards, getDefaultWard, isUserLoading, selectedWard, user?.managerid, user?.wardid, wards.length]);
 
   // Reset guidelines and per-date overrides when the selected ward changes
   useEffect(() => {
@@ -1399,7 +1401,19 @@ function RosterPlanningPage() {
         },
       });
 
-      setRosterData(result.rosterData);
+      const mergedRegenData = result.rosterData.map((row) => {
+        const meta = nurseMetaById.get(row.nurseId);
+        if (!meta) return row;
+        return {
+          ...row,
+          designation: meta.designation ?? row.designation,
+          staffingRole: meta.staffing_role ?? row.staffingRole ?? null,
+          rosterRank: meta.roster_rank ?? row.rosterRank ?? null,
+          employeeId: meta.employeeId ?? row.employeeId ?? null,
+          joinDate: meta.joinDate ?? meta.join_date ?? row.joinDate ?? null,
+        };
+      });
+      setRosterData(mergedRegenData);
       setIsAlgorithmGenerated(true);
       setGenerationProgress(100);
       setGeneratedAlgorithmMethod(result.algorithm);
@@ -1422,6 +1436,7 @@ function RosterPlanningPage() {
     canAutoRegenerate,
     isAlgorithmRunning,
     generateAlgorithmRoster,
+    nurseMetaById,
     showSuccessToast,
     showErrorToast,
   ]);
@@ -1457,7 +1472,19 @@ function RosterPlanningPage() {
       },
     }).then((result) => {
       if (resumeCancelledRef.current) return;
-      setRosterData(result.rosterData);
+      const mergedResumeData = result.rosterData.map((row) => {
+        const meta = nurseMetaById.get(row.nurseId);
+        if (!meta) return row;
+        return {
+          ...row,
+          designation: meta.designation ?? row.designation,
+          staffingRole: meta.staffing_role ?? row.staffingRole ?? null,
+          rosterRank: meta.roster_rank ?? row.rosterRank ?? null,
+          employeeId: meta.employeeId ?? row.employeeId ?? null,
+          joinDate: meta.joinDate ?? meta.join_date ?? row.joinDate ?? null,
+        };
+      });
+      setRosterData(mergedResumeData);
       setIsAlgorithmGenerated(true);
       setGenerationProgress(100);
       setGeneratedAlgorithmMethod(result.algorithm);
@@ -1480,6 +1507,7 @@ function RosterPlanningPage() {
     currentStartDate,
     generateAlgorithmRoster.isPending,
     resumeAlgorithmTask,
+    nurseMetaById,
     showErrorToast,
     showSuccessToast,
   ]);
