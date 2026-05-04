@@ -43,7 +43,7 @@ function HomePage() {
           rounded="lg"
           width={{ base: "100%", md: "50%" }}
         >
-          <NotificationBannerContainer />
+          <NotificationBannerContainer role="nurse" />
         </Stack>
       </Stack>
 
