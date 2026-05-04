@@ -1,7 +1,7 @@
 """add nurse join date
 
-Revision ID: t2u3v4w5x6y7
-Revises: s1t2u3v4w5x6
+Revision ID: u3v4w5x6y7z8
+Revises: t2u3v4w5x6y7
 Create Date: 2026-05-03
 
 """
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "t2u3v4w5x6y7"
-down_revision: Union[str, None] = "s1t2u3v4w5x6"
+revision: str = "u3v4w5x6y7z8"
+down_revision: Union[str, None] = "t2u3v4w5x6y7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
