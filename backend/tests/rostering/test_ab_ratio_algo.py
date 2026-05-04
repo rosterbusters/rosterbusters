@@ -172,7 +172,36 @@ def test_ab_ratio_no_night_nurse_can_still_receive_day_shifts() -> None:
     assert any(shift in {"A", "P"} for shift in no_night_schedule)
 
 
-def test_ab_ratio_class_c_min_nights_follow_backend_night_max() -> None:
+def test_ab_ratio_class_c_min_nights_without_explicit_night_cap() -> None:
+    nurses = [
+        {"id": 1, "name": "HCA One", "rank": "C"},
+        {"id": 2, "name": "HCA Two", "rank": "C"},
+        {"id": 3, "name": "HCA Three", "rank": "C"},
+    ]
+    shifts = [
+        {
+            "AM": {"A": 0, "B": 0, "C": 0},
+            "PM": {"A": 0, "B": 0, "C": 0},
+            "NIGHT": {"A": 0, "B": 0, "C": 0},
+        }
+        for _ in range(14)
+    ]
+
+    result = run_ab_ratio_pipeline(
+        nurses,
+        shifts,
+        milp_config={"ab_ratio_time_limit_s": 5},
+    )
+
+    for nurse in result["nurses"]:
+        night_days = [idx for idx, shift in enumerate(nurse["schedule"]) if shift == "NIGHT"]
+        assert len(night_days) >= 2
+        assert len(night_days) <= 4
+        assert sum(1 for day_idx in night_days if day_idx < 7) <= 2
+        assert sum(1 for day_idx in night_days if day_idx >= 7) <= 2
+
+
+def test_ab_ratio_class_c_explicit_zero_night_cap_blocks_nights() -> None:
     nurses = [
         {"id": 1, "name": "HCA One", "rank": "C"},
         {"id": 2, "name": "HCA Two", "rank": "C"},
@@ -192,15 +221,12 @@ def test_ab_ratio_class_c_min_nights_follow_backend_night_max() -> None:
         shifts,
         milp_config={
             "ab_ratio_time_limit_s": 5,
-            "HCA": {"max_night_per_day": 1},
+            "HCA": {"max_night_per_day": 0},
         },
     )
 
     for nurse in result["nurses"]:
-        assert nurse["schedule"].count("NIGHT") >= 2
-
-    for day_idx in range(14):
-        assert sum(nurse["schedule"][day_idx] == "NIGHT" for nurse in result["nurses"]) <= 1
+        assert nurse["schedule"].count("NIGHT") == 0
 
 
 def test_ab_ratio_allows_four_nights_only_as_two_per_week() -> None:

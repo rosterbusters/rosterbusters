@@ -1190,11 +1190,15 @@ def parse_ab_ratio_inputs(
     )
 
     hca_policy = cfg.get("HCA") if isinstance(cfg.get("HCA"), dict) else {}
-    default_rank_c_night_caps = [demand[day_idx][NIGHT]["C"] for day_idx in range(num_days)]
     raw_rank_c_cap = cfg.get(
         "rank_c_night_cap_per_day",
         cfg.get("c_night_cap_per_day", hca_policy.get("max_night_per_day")),
     )
+    uncapped_rank_c_night_cap = len(working_rank_c) if working_rank_c else 0
+    default_rank_c_night_caps = [
+        demand[day_idx][NIGHT]["C"] if raw_rank_c_cap is not None else uncapped_rank_c_night_cap
+        for day_idx in range(num_days)
+    ]
     rank_c_night_caps = _resolve_daily_targets(raw_rank_c_cap, default_rank_c_night_caps)
     raw_rank_c_allowed_excess = cfg.get(
         "rank_c_night_allowed_excess",

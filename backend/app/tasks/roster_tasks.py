@@ -96,6 +96,7 @@ def _queue_algorithm_notification(
     ward_id: int,
     period_id: int,
     notification_type: NotificationType,
+    send_email_notification: bool = False,
 ) -> None:
     ward = db.get(Ward, ward_id)
     if not ward or not ward.managerid:
@@ -116,7 +117,7 @@ def _queue_algorithm_notification(
     )
     db.commit()
 
-    if not settings.emails_enabled:
+    if not send_email_notification or not settings.emails_enabled:
         return
 
     manager = db.get(NurseManager, ward.managerid)
@@ -317,6 +318,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 ward_id=ward_id,
                 period_id=period_id,
                 notification_type=NotificationType.ALGORITHM_GENERATION,
+                send_email_notification=True,
             )
             release_ward_algorithm_lock(ward_id, self.request.id)
 

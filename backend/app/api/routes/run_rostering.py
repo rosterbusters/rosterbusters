@@ -328,6 +328,7 @@ def _queue_algorithm_notification(
     ward_id: int,
     period_id: int,
     notification_type: NotificationType,
+    send_email_notification: bool = False,
 ) -> None:
     """Queue an algorithm notification (and email) for the ward's nurse manager, if applicable."""
     if not manager_id:
@@ -352,7 +353,7 @@ def _queue_algorithm_notification(
     )
     session.commit()
 
-    if not settings.emails_enabled:
+    if not send_email_notification or not settings.emails_enabled:
         return
 
     manager = session.get(NurseManager, manager_id)

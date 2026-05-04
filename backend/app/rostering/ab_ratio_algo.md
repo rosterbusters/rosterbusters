@@ -161,7 +161,8 @@ Rank B night rules:
 
 Rank C night rules:
 
-- Daily rank C night cap defaults to the rank C night demand for that day.
+- Daily rank C night cap defaults to the explicit configured cap when present.
+- If no class C night cap is configured, the daily cap defaults to the number of working rank C nurses, so no extra class-level cap is imposed.
 - In the normal solve, the rank C night cap is hard.
 - If `_ab_ratio_relax_rank_c_night_cap` is enabled internally, over-cap becomes a soft penalty.
 
