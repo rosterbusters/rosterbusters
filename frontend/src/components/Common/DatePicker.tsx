@@ -1,14 +1,10 @@
 "use client"
 
 import { Button } from "@chakra-ui/react"
-import { addDays, format, isAfter, isBefore, startOfDay } from "date-fns"
+import { format, startOfDay } from "date-fns"
 import { Calendar as CalendarIcon, ChevronDownIcon } from "lucide-react"
 import * as React from "react"
-import {
-  type DateRange,
-  dateMatchModifiers,
-  type Matcher,
-} from "react-day-picker"
+import type { DateRange, Matcher } from "react-day-picker"
 import { Calendar } from "@/components/ui/calendar"
 
 interface BaseDatePickerProps {
@@ -46,52 +42,16 @@ function normalizeDate(date: Date) {
   return startOfDay(date)
 }
 
-function buildRange(first: Date, second: Date): DateRange {
-  return isAfter(first, second)
-    ? { from: normalizeDate(second), to: normalizeDate(first) }
-    : { from: normalizeDate(first), to: normalizeDate(second) }
-}
-
-function rangeContainsDisabled(
-  range: DateRange | undefined,
-  disabled?: Matcher | Matcher[],
-) {
-  if (!range?.from || !range?.to || !disabled) {
-    return false
-  }
-
-  for (
-    let current = normalizeDate(range.from);
-    !isAfter(current, normalizeDate(range.to));
-    current = addDays(current, 1)
-  ) {
-    if (dateMatchModifiers(current, disabled)) {
-      return true
-    }
-  }
-
-  return false
-}
-
 export function DatePickerDemo(props: DatePickerProps) {
   const { placeholder = "Pick a date" } = props
   const [internalDate, setInternalDate] = React.useState<Date>()
   const [internalRange, setInternalRange] = React.useState<DateRange>()
-  const [hoveredDate, setHoveredDate] = React.useState<Date>()
   const [open, setOpen] = React.useState(false)
   const wrapperRef = React.useRef<HTMLDivElement>(null)
 
   const isRange = props.mode === "range"
   const date = !isRange ? (props.selected ?? internalDate) : undefined
   const range = isRange ? (props.selected ?? internalRange) : undefined
-  const previewRange =
-    isRange &&
-    range?.from &&
-    !range.to &&
-    hoveredDate &&
-    !rangeContainsDisabled(buildRange(range.from, hoveredDate), props.disabled)
-      ? buildRange(range.from, hoveredDate)
-      : range
   const displayMonth = isRange
     ? (range?.from ?? new Date())
     : (date ?? new Date())
@@ -106,7 +66,6 @@ export function DatePickerDemo(props: DatePickerProps) {
   React.useEffect(() => {
     if (props.mode === "range") {
       setInternalRange(props.selected)
-      setHoveredDate(undefined)
     }
   }, [props.mode, props.selected])
 
@@ -127,59 +86,21 @@ export function DatePickerDemo(props: DatePickerProps) {
       return
     }
 
-    if (props.onSelect) {
-      props.onSelect(selectedRange)
-    }
-    setInternalRange(selectedRange)
+    const normalizedRange = selectedRange?.from
+      ? {
+          from: normalizeDate(selectedRange.from),
+          to: selectedRange.to ? normalizeDate(selectedRange.to) : undefined,
+        }
+      : undefined
 
-    if (selectedRange?.from && selectedRange?.to) {
+    if (props.onSelect) {
+      props.onSelect(normalizedRange)
+    }
+    setInternalRange(normalizedRange)
+
+    if (normalizedRange?.from && normalizedRange?.to) {
       setOpen(false)
     }
-  }
-
-  const handleRangeDayClick = (
-    day: Date,
-    modifiers: { disabled?: boolean },
-  ) => {
-    if (props.mode !== "range" || modifiers.disabled) {
-      return
-    }
-
-    const clickedDay = normalizeDate(day)
-
-    if (!range?.from || range.to) {
-      handleRangeSelect({ from: clickedDay, to: undefined })
-      return
-    }
-
-    if (isBefore(clickedDay, normalizeDate(range.from))) {
-      handleRangeSelect({ from: clickedDay, to: undefined })
-      return
-    }
-
-    const nextRange = buildRange(range.from, clickedDay)
-    if (rangeContainsDisabled(nextRange, props.disabled)) {
-      return
-    }
-
-    handleRangeSelect(nextRange)
-  }
-
-  const handleRangeDayMouseEnter = (
-    day: Date,
-    modifiers: { disabled?: boolean },
-  ) => {
-    if (
-      props.mode !== "range" ||
-      !range?.from ||
-      range.to ||
-      modifiers.disabled
-    ) {
-      setHoveredDate(undefined)
-      return
-    }
-
-    setHoveredDate(normalizeDate(day))
   }
 
   const handleToggle = () => {
@@ -210,23 +131,16 @@ export function DatePickerDemo(props: DatePickerProps) {
         boxShadow:
           "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)",
       }}
-      onMouseDown={(e) => e.stopPropagation()}
     >
       {isRange ? (
         <Calendar
-          selected={previewRange}
+          mode="range"
+          selected={range}
+          onSelect={handleRangeSelect}
           defaultMonth={displayMonth}
           numberOfMonths={2}
           disabled={props.disabled}
-          onDayClick={handleRangeDayClick}
-          onDayMouseEnter={handleRangeDayMouseEnter}
-          modifiers={{
-            selected: previewRange,
-            range_start: previewRange?.from,
-            range_end: previewRange?.to,
-            range_middle:
-              previewRange?.from && previewRange?.to ? previewRange : undefined,
-          }}
+          excludeDisabled
         />
       ) : (
         <Calendar

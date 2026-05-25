@@ -98,6 +98,7 @@ export interface AdminUserUpdate {
   shift_pattern?: "AM_ONLY" | "PM_ONLY" | null
   password?: string
   is_active?: boolean
+  role?: string
   ward_ids?: number[]
 }
 

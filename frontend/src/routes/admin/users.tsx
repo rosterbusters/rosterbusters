@@ -700,7 +700,7 @@ function UserFormDialog({
 
   const designationOptions = designations.map((d) => d.designation)
 
-  const currentRole = isEdit ? (editUser.roles[0] ?? "") : ""
+  const currentRole = isEdit ? (editUser.roles[0] ?? "Nurse") : "Nurse"
 
   // Multi-ward selection state
   const [selectedWardIds, setSelectedWardIds] = useState<number[]>(
@@ -752,6 +752,9 @@ function UserFormDialog({
   })
 
   const selectedRole = watch("role")
+  const showsStaffFields =
+    selectedRole === "Nurse" || selectedRole === "NurseManager"
+  const showsNurseFields = selectedRole === "Nurse"
 
   const createMutation = useMutation({
     mutationFn: (data: AdminUserCreate) => AdminService.createUser(data),
@@ -800,17 +803,18 @@ function UserFormDialog({
         name: data.name || undefined,
         email: data.email.trim() ? data.email.trim() : null,
         is_active: data.is_active,
+        role: data.role,
       }
-      if (currentRole === "Nurse" || currentRole === "NurseManager") {
+      if (showsStaffFields) {
         payload.employee_id = data.employee_id.trim()
       }
-      if (currentRole === "Nurse") {
+      if (showsNurseFields) {
         payload.join_date = data.join_date || null
         payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
       // Only send ward_ids if this user is a nurse or manager
-      if (currentRole === "Nurse" || currentRole === "NurseManager") {
+      if (showsStaffFields) {
         payload.ward_ids = selectedWardIds
       }
       updateMutation.mutate(payload)
@@ -934,51 +938,21 @@ function UserFormDialog({
               )}
             </div>
 
-            {/* Role (editable on create, read-only on edit) */}
-            {!isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role <span className="text-red-500">*</span>
-                </label>
-                <select
-                  {...register("role")}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Nurse">Nurse</option>
-                  <option value="NurseManager">Nurse Manager</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Role <span className="text-red-500">*</span>
+              </label>
+              <select
+                {...register("role")}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Nurse">Nurse</option>
+                <option value="NurseManager">Nurse Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </div>
 
-            {isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <div className="flex flex-wrap gap-1 py-2">
-                  {editUser!.roles.map((role) => (
-                    <span
-                      key={role}
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        role === "Admin"
-                          ? "bg-orange-100 text-orange-700"
-                          : role === "NurseManager"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {role === "NurseManager" ? "Nurse Manager" : role}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(isEdit
-              ? currentRole === "Nurse" || currentRole === "NurseManager"
-              : selectedRole === "Nurse" ||
-                selectedRole === "NurseManager") && (
+            {showsStaffFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Employee ID
@@ -997,7 +971,7 @@ function UserFormDialog({
               </div>
             )}
 
-            {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
+            {showsNurseFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Join Date
@@ -1015,7 +989,7 @@ function UserFormDialog({
               </div>
             )}
 
-            {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
+            {showsNurseFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Designation <span className="text-red-500">*</span>
@@ -1023,10 +997,7 @@ function UserFormDialog({
                 <select
                   {...register("designation", {
                     validate: (value) => {
-                      const isNurse = isEdit
-                        ? currentRole === "Nurse"
-                        : selectedRole === "Nurse"
-                      if (!isNurse) return true
+                      if (!showsNurseFields) return true
                       if (!value?.trim())
                         return "Designation is required for nurses"
                       return true
@@ -1113,16 +1084,13 @@ function UserFormDialog({
             </div>
 
             {/* Ward assignment — show for Nurse / NurseManager */}
-            {(isEdit
-              ? currentRole === "Nurse" || currentRole === "NurseManager"
-              : selectedRole === "Nurse" ||
-                selectedRole === "NurseManager") && (
+            {showsStaffFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {(isEdit ? currentRole : selectedRole) === "NurseManager"
+                  {selectedRole === "NurseManager"
                     ? "Manages Wards"
                     : "Assigned Wards"}
-                  {(isEdit ? currentRole : selectedRole) === "Nurse" && (
+                  {selectedRole === "Nurse" && (
                     <span className="text-gray-400 text-xs ml-1">
                       (first = primary ward for scheduling)
                     </span>

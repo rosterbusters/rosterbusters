@@ -882,7 +882,7 @@ function NurseManagerHome() {
           rounded="lg"
           width={{ base: "100%", md: "50%" }}
         >
-          <NotificationBannerContainer role="manager" />
+          <NotificationBannerContainer />
         </Stack>
       </Stack>
 

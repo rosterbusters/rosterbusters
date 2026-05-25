@@ -190,7 +190,7 @@ export const EditLeaveRequest = ({
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content tabIndex={-1}>
             <Dialog.Header>
               <Dialog.Title color="primary" fontWeight="bold">
                 Edit Leave Request

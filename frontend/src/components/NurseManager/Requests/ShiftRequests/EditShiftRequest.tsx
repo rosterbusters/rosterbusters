@@ -18,6 +18,7 @@ import type { ShiftCodePublic } from "@/client/types.gen"
 import { DatePickerDemo } from "@/components/Common/DatePicker"
 import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
+import { SearchableNurseCombobox } from "../SearchableNurseCombobox"
 
 const API_BASE = import.meta.env.VITE_API_URL || ""
 
@@ -80,12 +81,16 @@ export const EditShiftRequest = ({
   wardId,
   selectedRequestId,
 }: EditShiftRequestProps) => {
+  const [selectedRequestValue, setSelectedRequestValue] = useState(
+    String(selectedRequestId ?? requests[0]?.requestId ?? ""),
+  )
+
   const active = useMemo(
     () =>
-      (selectedRequestId != null
-        ? requests.find((request) => request.requestId === selectedRequestId)
-        : undefined) ?? requests[0],
-    [requests, selectedRequestId],
+      requests.find(
+        (request) => String(request.requestId) === selectedRequestValue,
+      ) ?? requests[0],
+    [requests, selectedRequestValue],
   )
 
   const [shiftType, setShiftType] = useState<string[]>([
@@ -94,6 +99,24 @@ export const EditShiftRequest = ({
   const [requestDate, setRequestDate] = useState<Date | undefined>(
     parseRequestDate(active?.initialDate),
   )
+
+  const nurseOptions = useMemo(
+    () =>
+      requests.map((request, index) => ({
+        value: String(request.requestId),
+        label: request.nurseName || `Nurse ${index + 1}`,
+        description: request.initialDate,
+      })),
+    [requests],
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    setSelectedRequestValue(
+      String(selectedRequestId ?? requests[0]?.requestId ?? ""),
+    )
+  }, [isOpen, requests, selectedRequestId])
 
   useEffect(() => {
     if (active) {
@@ -210,7 +233,7 @@ export const EditShiftRequest = ({
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content tabIndex={-1}>
             <Dialog.Header>
               <Dialog.Title color={"primary"} fontWeight={"bold"}>
                 Edit Shift Request
@@ -218,10 +241,23 @@ export const EditShiftRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems={"start"} gap={4} maxWidth={"225px"}>
-                <HStack alignItems="start">
-                  <Text fontWeight={"medium"}>Nurse</Text>
-                  <Text>{active.nurseName || "—"}</Text>
-                </HStack>
+                {requests.length > 1 ? (
+                  <SearchableNurseCombobox
+                    items={nurseOptions}
+                    value={[String(active.requestId)]}
+                    onValueChange={(value) => {
+                      if (value[0]) {
+                        setSelectedRequestValue(value[0])
+                      }
+                    }}
+                    placeholder="Search nurse"
+                  />
+                ) : (
+                  <HStack alignItems="start">
+                    <Text fontWeight={"medium"}>Nurse</Text>
+                    <Text>{active.nurseName || "-"}</Text>
+                  </HStack>
+                )}
 
                 <Select.Root
                   collection={shiftCollection}
