@@ -3,11 +3,9 @@ import {
   Box,
   Button,
   CloseButton,
-  createListCollection,
   Dialog,
   HStack,
   Portal,
-  Select,
   Text,
   Textarea,
   VStack,
@@ -22,6 +20,7 @@ import {
   type ShiftCode,
 } from "@/components/NurseManager/RosterTable/types"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
+import { SearchableNurseCombobox } from "../SearchableNurseCombobox"
 import { EditShiftRequest, type ShiftRequestEntry } from "./EditShiftRequest"
 
 const SHIFT_NAME_TO_CODE: Record<string, string> = {
@@ -105,14 +104,12 @@ export const ReviewShiftRequest = ({
 
   const activeRequest = requestOptions[selectedIdx] ?? requestOptions[0]
 
-  const nurseCollection = useMemo(
+  const nurseOptions = useMemo(
     () =>
-      createListCollection({
-        items: requestOptions.map((request, index) => ({
-          value: String(index),
-          label: request.nurseName || `Nurse ${index + 1}`,
-        })),
-      }),
+      requestOptions.map((request, index) => ({
+        value: String(index),
+        label: request.nurseName || `Nurse ${index + 1}`,
+      })),
     [requestOptions],
   )
 
@@ -213,7 +210,7 @@ export const ReviewShiftRequest = ({
         <Portal>
           <Dialog.Backdrop />
           <Dialog.Positioner>
-            <Dialog.Content maxW="520px">
+            <Dialog.Content tabIndex={-1} maxW="520px">
               <Dialog.Header>
                 <Dialog.Title color="primary" fontWeight="bold">
                   Review Shift Request
@@ -223,36 +220,16 @@ export const ReviewShiftRequest = ({
               <Dialog.Body>
                 <VStack align="stretch" gap={3}>
                   {requestOptions.length > 1 ? (
-                    <Select.Root
-                      collection={nurseCollection}
-                      size="sm"
+                    <SearchableNurseCombobox
+                      items={nurseOptions}
                       value={[String(selectedIdx)]}
-                      onValueChange={(event) =>
-                        setSelectedIdx(Number(event.value[0]))
-                      }
-                    >
-                      <Select.Label>Nurse</Select.Label>
-                      <Select.Control>
-                        <Select.Trigger>
-                          <Select.ValueText placeholder="Select nurse" />
-                        </Select.Trigger>
-                        <Select.IndicatorGroup>
-                          <Select.Indicator />
-                        </Select.IndicatorGroup>
-                      </Select.Control>
-                      <Portal>
-                        <Select.Positioner>
-                          <Select.Content>
-                            {nurseCollection.items.map((item) => (
-                              <Select.Item item={item.value} key={item.value}>
-                                {item.label}
-                                <Select.ItemIndicator />
-                              </Select.Item>
-                            ))}
-                          </Select.Content>
-                        </Select.Positioner>
-                      </Portal>
-                    </Select.Root>
+                      onValueChange={(value) => {
+                        if (value[0]) {
+                          setSelectedIdx(Number(value[0]))
+                        }
+                      }}
+                      placeholder="Search nurse"
+                    />
                   ) : null}
 
                   <HStack gap={2}>

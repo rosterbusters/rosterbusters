@@ -1880,7 +1880,7 @@ function RosterPlanningPage() {
           <Portal>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-              <Dialog.Content maxW="380px">
+              <Dialog.Content tabIndex={-1} maxW="380px">
                 <Dialog.Body py={8} px={6}>
                   <VStack gap={6} align="center">
                     <Box position="relative" w="full">
@@ -1944,7 +1944,7 @@ function RosterPlanningPage() {
           <Portal>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-              <Dialog.Content maxW="380px">
+              <Dialog.Content tabIndex={-1} maxW="380px">
                 <Dialog.Body py={8} px={6}>
                   <VStack gap={6} align="center">
                     <Box position="relative" w="full">
@@ -2043,7 +2043,7 @@ function RosterPlanningPage() {
           <Portal>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-              <Dialog.Content>
+              <Dialog.Content tabIndex={-1}>
                 <Dialog.Header>
                   <Dialog.Title>Regenerate Auto Roster</Dialog.Title>
                 </Dialog.Header>
@@ -2107,7 +2107,7 @@ function RosterPlanningPage() {
           <Portal>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-              <Dialog.Content>
+              <Dialog.Content tabIndex={-1}>
                 <Dialog.Header>
                   <Dialog.Title>Publish Roster</Dialog.Title>
                 </Dialog.Header>
@@ -2173,7 +2173,7 @@ function RosterPlanningPage() {
           <Portal>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-              <Dialog.Content maxW="380px">
+              <Dialog.Content tabIndex={-1} maxW="380px">
                 <Dialog.Body py={8} px={6}>
                   <VStack gap={6} align="center">
                     <Box position="relative" w="full">
@@ -2264,7 +2264,7 @@ function RosterPlanningPage() {
         <Portal>
           <Dialog.Backdrop />
           <Dialog.Positioner>
-            <Dialog.Content maxW="420px">
+            <Dialog.Content tabIndex={-1} maxW="420px">
               <Dialog.Header>
                 <Dialog.Title>Nurse Roster Settings</Dialog.Title>
               </Dialog.Header>

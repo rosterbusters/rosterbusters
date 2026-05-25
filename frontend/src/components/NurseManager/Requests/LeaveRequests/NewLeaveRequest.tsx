@@ -20,17 +20,13 @@ import { LeaveRequestsService, ShiftRequestsService } from "@/client"
 import { DatePickerDemo } from "@/components/Common/DatePicker"
 import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
+import { SearchableNurseCombobox } from "../SearchableNurseCombobox"
 
 interface NewLeaveRequestProps {
   isOpen: boolean
   onClose: () => void
   selectedDate?: Date | null
   wardId?: number | null
-  blockedRanges?: Array<{
-    requestId: number
-    startDate: string
-    endDate: string
-  }>
 }
 
 function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
@@ -42,20 +38,11 @@ function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
     : undefined
 }
 
-function toLocalDate(value: string) {
-  const [year, month, day] = value.split("-")
-  if (year && month && day) {
-    return new Date(Number(year), Number(month) - 1, Number(day))
-  }
-  return new Date(value)
-}
-
 export const NewLeaveRequest = ({
   isOpen,
   onClose,
   selectedDate,
   wardId,
-  blockedRanges,
 }: NewLeaveRequestProps) => {
   const [leaveType, setLeaveType] = useState<string[]>([])
   const [selectedNurse, setSelectedNurse] = useState<string[]>([])
@@ -92,27 +79,19 @@ export const NewLeaveRequest = ({
     staleTime: 5 * 60 * 1000,
   })
 
-  const nurseCollection = useMemo(
+  const nurseOptions = useMemo(
     () =>
-      createListCollection({
-        items: (wardNurses ?? []).map((nurse) => ({
-          value: String(nurse.nurseid),
-          label: nurse.name,
-          description: nurse.designation,
-        })),
-      }),
+      (wardNurses ?? []).map((nurse) => ({
+        value: String(nurse.nurseid),
+        label: nurse.name,
+        description: nurse.designation,
+      })),
     [wardNurses],
   )
 
   const disabledDates = useMemo<Matcher[]>(
-    () => [
-      { before: new Date(new Date().setHours(0, 0, 0, 0)) },
-      ...((blockedRanges ?? []).map((range) => ({
-        from: toLocalDate(range.startDate),
-        to: toLocalDate(range.endDate),
-      })) as Matcher[]),
-    ],
-    [blockedRanges],
+    () => [{ before: new Date(new Date().setHours(0, 0, 0, 0)) }],
+    [],
   )
 
   const selectedNurseId =
@@ -208,7 +187,7 @@ export const NewLeaveRequest = ({
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content tabIndex={-1}>
             <Dialog.Header>
               <Dialog.Title color="primary" fontWeight="bold">
                 Create Leave Request
@@ -216,39 +195,12 @@ export const NewLeaveRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems="start" gap={4} maxWidth="320px">
-                <Select.Root
-                  collection={nurseCollection}
-                  size="sm"
+                <SearchableNurseCombobox
+                  items={nurseOptions}
                   value={selectedNurse}
-                  onValueChange={(e) => setSelectedNurse(e.value)}
-                >
-                  <Select.Label>Nurse</Select.Label>
-                  <Select.Control>
-                    <Select.Trigger>
-                      <Select.ValueText placeholder="Select Nurse" />
-                    </Select.Trigger>
-                    <Select.IndicatorGroup>
-                      <Select.Indicator />
-                    </Select.IndicatorGroup>
-                  </Select.Control>
-                  <Portal>
-                    <Select.Positioner>
-                      <Select.Content>
-                        {nurseCollection.items.map((nurse) => (
-                          <Select.Item item={nurse.value} key={nurse.value}>
-                            <VStack alignItems="start" gap={0}>
-                              <Text>{nurse.label}</Text>
-                              <Text fontSize="xs" color="gray.500">
-                                {nurse.description}
-                              </Text>
-                            </VStack>
-                            <Select.ItemIndicator />
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Positioner>
-                  </Portal>
-                </Select.Root>
+                  onValueChange={setSelectedNurse}
+                  placeholder="Search nurse"
+                />
 
                 <Select.Root
                   collection={leaveCollection}

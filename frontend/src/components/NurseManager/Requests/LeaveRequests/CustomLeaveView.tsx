@@ -3,6 +3,7 @@ import moment from "moment"
 import { type JSX, useMemo, useState } from "react"
 import { type DateLocalizer, Navigate } from "react-big-calendar"
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock"
+import type { RosterPeriod } from "@/components/NurseManager/RosterTable/types"
 import type { Event } from "@/models/Event"
 import { NewLeaveRequest } from "./NewLeaveRequest"
 import { NMReviewLeaveRequest } from "./NMReviewLeaveRequest"
@@ -12,6 +13,7 @@ interface CustomMonthViewProps {
   localizer: DateLocalizer
   events: Event[]
   wardId?: number | null
+  upcomingPeriod?: RosterPeriod | null
   [key: string]: unknown
 }
 
@@ -120,13 +122,27 @@ function getBlockedRanges(events: Event[]): BlockedRange[] {
   return Array.from(uniqueRanges.values())
 }
 
+function isDateInPeriod(day: Date, period?: RosterPeriod | null): boolean {
+  return (
+    !!period &&
+    moment(day).isBetween(
+      moment(period.startDate),
+      moment(period.endDate),
+      "day",
+      "[]",
+    )
+  )
+}
+
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const UPCOMING_PERIOD_BORDER_COLOR = "#52add0"
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
   localizer,
   events,
   wardId,
+  upcomingPeriod,
 }: CustomMonthViewProps) {
   const [selectedRequest, setSelectedRequest] = useState<{
     requestId: number
@@ -202,6 +218,22 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
               const isPastDate = moment(day)
                 .startOf("day")
                 .isBefore(moment().startOf("day"))
+              const isUpcomingPeriod = isDateInPeriod(day, upcomingPeriod)
+              const previousDay = moment(day).subtract(1, "day").toDate()
+              const nextDay = moment(day).add(1, "day").toDate()
+              const previousWeek = moment(day).subtract(7, "days").toDate()
+              const nextWeek = moment(day).add(7, "days").toDate()
+              const isUpcomingBlockTop =
+                isUpcomingPeriod &&
+                !isDateInPeriod(previousWeek, upcomingPeriod)
+              const isUpcomingBlockBottom =
+                isUpcomingPeriod && !isDateInPeriod(nextWeek, upcomingPeriod)
+              const isUpcomingBlockLeft =
+                isUpcomingPeriod &&
+                (di === 0 || !isDateInPeriod(previousDay, upcomingPeriod))
+              const isUpcomingBlockRight =
+                isUpcomingPeriod &&
+                (di === 6 || !isDateInPeriod(nextDay, upcomingPeriod))
               const dateKey = moment(day).format("YYYY-MM-DD")
 
               return (
@@ -223,6 +255,28 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                   minH="120px"
                   borderColor="border"
                   borderWidth="1px"
+                  borderTopColor={
+                    isUpcomingBlockTop ? UPCOMING_PERIOD_BORDER_COLOR : "border"
+                  }
+                  borderBottomColor={
+                    isUpcomingBlockBottom
+                      ? UPCOMING_PERIOD_BORDER_COLOR
+                      : "border"
+                  }
+                  borderLeftColor={
+                    isUpcomingBlockLeft
+                      ? UPCOMING_PERIOD_BORDER_COLOR
+                      : "border"
+                  }
+                  borderRightColor={
+                    isUpcomingBlockRight
+                      ? UPCOMING_PERIOD_BORDER_COLOR
+                      : "border"
+                  }
+                  borderTopWidth={isUpcomingBlockTop ? "2px" : "1px"}
+                  borderBottomWidth={isUpcomingBlockBottom ? "2px" : "1px"}
+                  borderLeftWidth={isUpcomingBlockLeft ? "2px" : "1px"}
+                  borderRightWidth={isUpcomingBlockRight ? "2px" : "1px"}
                   cursor={isPastDate ? "default" : "pointer"}
                   opacity={isPastDate ? 0.7 : 1}
                   onClick={() => {
@@ -343,7 +397,6 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
         onClose={() => setNewLeaveDate(null)}
         selectedDate={newLeaveDate}
         wardId={wardId}
-        blockedRanges={blockedRanges}
       />
     </>
   )

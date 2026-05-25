@@ -20,6 +20,7 @@ import { DatePickerDemo } from "@/components/Common/DatePicker"
 import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import { Tooltip } from "@/components/ui/tooltip"
+import { SearchableNurseCombobox } from "../SearchableNurseCombobox"
 
 function parseRequestDate(value: string) {
   const normalized = value.split("–")[0]?.trim() ?? value
@@ -133,14 +134,12 @@ export const NMReviewLeaveRequest = ({
     [leaveCodes],
   )
 
-  const nurseCollection = useMemo(
+  const nurseOptions = useMemo(
     () =>
-      createListCollection({
-        items: requestOptions.map((request, index) => ({
-          value: String(index),
-          label: request.nurseName || `Nurse ${index + 1}`,
-        })),
-      }),
+      requestOptions.map((request, index) => ({
+        value: String(index),
+        label: request.nurseName || `Nurse ${index + 1}`,
+      })),
     [requestOptions],
   )
 
@@ -268,7 +267,7 @@ export const NMReviewLeaveRequest = ({
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content tabIndex={-1}>
             <Dialog.Header>
               <Dialog.Title color="primary" fontWeight="bold">
                 Edit Leave Request
@@ -277,34 +276,16 @@ export const NMReviewLeaveRequest = ({
             <Dialog.Body>
               <VStack alignItems="start" gap={4} maxWidth="225px">
                 {requestOptions.length > 1 && (
-                  <Select.Root
-                    collection={nurseCollection}
-                    size="sm"
+                  <SearchableNurseCombobox
+                    items={nurseOptions}
                     value={[String(selectedIdx)]}
-                    onValueChange={(e) => setSelectedIdx(Number(e.value[0]))}
-                  >
-                    <Select.Label>Nurse</Select.Label>
-                    <Select.Control>
-                      <Select.Trigger>
-                        <Select.ValueText placeholder="Select nurse" />
-                      </Select.Trigger>
-                      <Select.IndicatorGroup>
-                        <Select.Indicator />
-                      </Select.IndicatorGroup>
-                    </Select.Control>
-                    <Portal>
-                      <Select.Positioner>
-                        <Select.Content>
-                          {nurseCollection.items.map((item) => (
-                            <Select.Item item={item.value} key={item.value}>
-                              {item.label}
-                              <Select.ItemIndicator />
-                            </Select.Item>
-                          ))}
-                        </Select.Content>
-                      </Select.Positioner>
-                    </Portal>
-                  </Select.Root>
+                    onValueChange={(value) => {
+                      if (value[0]) {
+                        setSelectedIdx(Number(value[0]))
+                      }
+                    }}
+                    placeholder="Search nurse"
+                  />
                 )}
 
                 <Select.Root
