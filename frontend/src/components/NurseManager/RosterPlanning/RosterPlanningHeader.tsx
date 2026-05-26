@@ -117,8 +117,6 @@ export function RosterPlanningHeader({
   onSeedApr2026PreviewRequests,
   isSeedingRequests = false,
 }: RosterPlanningHeaderProps) {
-  const showAlgorithmControls =
-    !import.meta.env.PROD || import.meta.env.MODE === "staging"
   const normalizedGenerationProgress = Math.min(
     100,
     Math.max(
@@ -317,7 +315,7 @@ export function RosterPlanningHeader({
               </IconButton>
             </MenuTrigger>
             <MenuContent>
-              {showAlgorithmControls && !isAlgorithmGenerated && (
+              {!isAlgorithmGenerated && (
                 <>
                   <MenuItemGroup title="Algorithm">
                     <MenuRadioItemGroup
@@ -615,150 +613,146 @@ export function RosterPlanningHeader({
         </HStack>
 
         {/* Algorithm Generation Buttons */}
-        {showAlgorithmControls && (
-          <>
-            {isGenerating && (
-              <Flex direction="column" align="center" gap={2} w="full">
-                <Box
-                  w="250px"
-                  h="6px"
-                  bg="gray.200"
-                  borderRadius="full"
-                  overflow="hidden"
-                >
-                  <Box
-                    h="full"
-                    bg="#4B8798"
-                    borderRadius="full"
-                    style={{
-                      width: `${normalizedGenerationProgress}%`,
-                      transition: "width 0.4s ease",
-                    }}
-                  />
-                </Box>
-                <Text fontSize="sm" color="#4A4A4A">
-                  {normalizedGenerationProgress}% complete
-                </Text>
-              </Flex>
-            )}
-            {!isAlgorithmGenerated ? (
-              // Generate + Mock Data row
-              <Flex direction="column" align="center" gap={2} w="full">
-                <HStack gap={4} flexWrap="wrap" justify="center">
-                  <Button
-                    size="md"
-                    bg="#4B8798"
-                    color="white"
-                    _hover={{ bg: "#3d6f7d" }}
-                    _active={{ bg: "#2d5a68" }}
-                    onClick={onGenerateAlgorithm}
-                    disabled={isGenerating}
-                    px={6}
-                    py={2}
-                    borderRadius="lg"
-                    fontWeight="semibold"
-                    boxShadow="md"
-                  >
-                    {isGenerating ? (
-                      <HStack gap={2}>
-                        <Spinner size="sm" />
-                        <Text>Generating… {normalizedGenerationProgress}%</Text>
-                      </HStack>
-                    ) : (
-                      <HStack gap={2}>
-                        <Wand2 className="h-5 w-5" />
-                        <Text>Generate Algorithm Roster</Text>
-                      </HStack>
-                    )}
-                  </Button>
-
-                  {/* Mock Data Selector */}
-                  {showMockData && onLoadMockData && (
-                    <HStack gap={2}>
-                      <Text
-                        fontSize="sm"
-                        color="#6B7280"
-                        fontWeight="medium"
-                        whiteSpace="nowrap"
-                      >
-                        Mock data:
-                      </Text>
-                      <select
-                        defaultValue=""
-                        onChange={(e) => {
-                          if (e.target.value) onLoadMockData(e.target.value)
-                          e.target.value = ""
-                        }}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "6px",
-                          border: "1px solid #E6E6E6",
-                          fontSize: "14px",
-                          color: "#4A4A4A",
-                          backgroundColor: "white",
-                          cursor: "pointer",
-                          minWidth: "160px",
-                        }}
-                      >
-                        {MOCK_DATA_OPTIONS.map((opt) => (
-                          <option
-                            key={opt.value}
-                            value={opt.value}
-                            disabled={opt.value === ""}
-                          >
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </HStack>
-                  )}
-                </HStack>
-              </Flex>
-            ) : (
-              // Regenerate / Clear Buttons (after generation)
-              <HStack gap={3}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  borderColor="primary"
-                  color="primary"
-                  _hover={{ bg: "#F0F9FA" }}
-                  onClick={onGenerateAlgorithm}
-                  disabled={isGenerating}
-                  px={4}
-                >
-                  {isGenerating ? (
-                    <HStack gap={2}>
-                      <Spinner size="xs" />
-                      <Text>Regenerating...</Text>
-                    </HStack>
-                  ) : (
-                    <HStack gap={2}>
-                      <RefreshCw className="h-4 w-4" />
-                      <Text>Regenerate Roster</Text>
-                    </HStack>
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant={"outlinegrey" as any}
-                  _hover={{
-                    bg: "#F8FAFC",
-                    borderColor: "#DC2626",
-                    color: "#DC2626",
-                  }}
-                  onClick={onClearRoster}
-                  disabled={isGenerating}
-                  px={4}
-                >
+        {isGenerating && (
+          <Flex direction="column" align="center" gap={2} w="full">
+            <Box
+              w="250px"
+              h="6px"
+              bg="gray.200"
+              borderRadius="full"
+              overflow="hidden"
+            >
+              <Box
+                h="full"
+                bg="#4B8798"
+                borderRadius="full"
+                style={{
+                  width: `${normalizedGenerationProgress}%`,
+                  transition: "width 0.4s ease",
+                }}
+              />
+            </Box>
+            <Text fontSize="sm" color="#4A4A4A">
+              {normalizedGenerationProgress}% complete
+            </Text>
+          </Flex>
+        )}
+        {!isAlgorithmGenerated ? (
+          // Generate + Mock Data row
+          <Flex direction="column" align="center" gap={2} w="full">
+            <HStack gap={4} flexWrap="wrap" justify="center">
+              <Button
+                size="md"
+                bg="#4B8798"
+                color="white"
+                _hover={{ bg: "#3d6f7d" }}
+                _active={{ bg: "#2d5a68" }}
+                onClick={onGenerateAlgorithm}
+                disabled={isGenerating}
+                px={6}
+                py={2}
+                borderRadius="lg"
+                fontWeight="semibold"
+                boxShadow="md"
+              >
+                {isGenerating ? (
                   <HStack gap={2}>
-                    <X className="h-4 w-4" />
-                    <Text>Clear Roster</Text>
+                    <Spinner size="sm" />
+                    <Text>Generating… {normalizedGenerationProgress}%</Text>
                   </HStack>
-                </Button>
+                ) : (
+                  <HStack gap={2}>
+                    <Wand2 className="h-5 w-5" />
+                    <Text>Generate Algorithm Roster</Text>
+                  </HStack>
+                )}
+              </Button>
+
+              {/* Mock Data Selector */}
+              {showMockData && onLoadMockData && (
+                <HStack gap={2}>
+                  <Text
+                    fontSize="sm"
+                    color="#6B7280"
+                    fontWeight="medium"
+                    whiteSpace="nowrap"
+                  >
+                    Mock data:
+                  </Text>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) onLoadMockData(e.target.value)
+                      e.target.value = ""
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #E6E6E6",
+                      fontSize: "14px",
+                      color: "#4A4A4A",
+                      backgroundColor: "white",
+                      cursor: "pointer",
+                      minWidth: "160px",
+                    }}
+                  >
+                    {MOCK_DATA_OPTIONS.map((opt) => (
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        disabled={opt.value === ""}
+                      >
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </HStack>
+              )}
+            </HStack>
+          </Flex>
+        ) : (
+          // Regenerate / Clear Buttons (after generation)
+          <HStack gap={3}>
+            <Button
+              size="sm"
+              variant="outline"
+              borderColor="primary"
+              color="primary"
+              _hover={{ bg: "#F0F9FA" }}
+              onClick={onGenerateAlgorithm}
+              disabled={isGenerating}
+              px={4}
+            >
+              {isGenerating ? (
+                <HStack gap={2}>
+                  <Spinner size="xs" />
+                  <Text>Regenerating...</Text>
+                </HStack>
+              ) : (
+                <HStack gap={2}>
+                  <RefreshCw className="h-4 w-4" />
+                  <Text>Regenerate Roster</Text>
+                </HStack>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant={"outlinegrey" as any}
+              _hover={{
+                bg: "#F8FAFC",
+                borderColor: "#DC2626",
+                color: "#DC2626",
+              }}
+              onClick={onClearRoster}
+              disabled={isGenerating}
+              px={4}
+            >
+              <HStack gap={2}>
+                <X className="h-4 w-4" />
+                <Text>Clear Roster</Text>
               </HStack>
-            )}
-          </>
+            </Button>
+          </HStack>
         )}
       </Flex>
     </Box>
