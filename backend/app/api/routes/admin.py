@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel, func, or_, select
 
@@ -319,8 +319,8 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
 @router.get("/users", response_model=AdminUsersPublic)
 def list_users(
     session: SessionDep,
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, gt=0, le=500),
     search: str = "",
     role: str = "all",
     status: str = "all",

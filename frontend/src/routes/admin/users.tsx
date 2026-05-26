@@ -28,7 +28,7 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import { emailPattern } from "@/utils"
 
 const usersSearchSchema = z.object({
-  page: z.number().catch(1),
+  page: z.number().int().min(1).catch(1),
 })
 
 const PER_PAGE = 10
@@ -1308,6 +1308,7 @@ function AdminUsers() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [search, setSearch] = useState("")
+  const previousSearchRef = useRef(search)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -1530,13 +1531,14 @@ function AdminUsers() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
-      // Reset to page 1 when search changes
-      if (page !== 1) {
+
+      if (previousSearchRef.current !== search) {
+        previousSearchRef.current = search
         navigate({ search: (prev: any) => ({ ...prev, page: 1 }) })
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [search, navigate, page])
+  }, [search, navigate])
 
   const activeFilters: AdminUserFilters = {
     role: roleFilter,
@@ -1545,7 +1547,7 @@ function AdminUsers() {
     wardId: wardFilter === "all" ? undefined : Number(wardFilter),
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: [
       "admin-users",
       { page, search: debouncedSearch, ...activeFilters },
@@ -1575,6 +1577,18 @@ function AdminUsers() {
   const users = data?.data ?? []
   const count = data?.count ?? 0
   const totalPages = Math.ceil(count / PER_PAGE)
+
+  useEffect(() => {
+    if (!data || isPlaceholderData) return
+
+    const lastPage = Math.max(1, totalPages)
+    if (page > lastPage) {
+      navigate({
+        search: (prev: any) => ({ ...prev, page: lastPage }),
+        replace: true,
+      })
+    }
+  }, [data, isPlaceholderData, navigate, page, totalPages])
 
   useEffect(() => {
     if (users.length === 0) return
