@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from typing import Any
 
@@ -6,28 +7,31 @@ from sqlmodel import select
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
+from app.api.routes.notifications import get_email_enabled
+from app.core.config import settings
 from app.models.enums import NotificationType
-from app.models.leave import LeaveRequest, LeaveRequestCreate, LeaveRequestPublic, LeaveRequestUpdate
+from app.models.leave import (
+    LeaveRequest,
+    LeaveRequestCreate,
+    LeaveRequestPublic,
+    LeaveRequestUpdate,
+)
 from app.models.rbac import Nurse, NurseManager, RBACUser, Role, UserRole
-from app.models.roster import Ward
 from app.models.shifts import ShiftCode, ShiftCodePublic
+from app.rbac import get_rbac_user_by_email, user_has_role
 from app.utils import (
     generate_leave_request_manager_email,
     generate_leave_review_nurse_email,
     send_email,
 )
-from app.core.config import settings
-from app.rbac import get_rbac_user_by_email, user_has_role
-from app.api.routes.notifications import get_email_enabled
 
-import logging
 logger = logging.getLogger(__name__)
 
 # tag "leave-requests" generates LeaveRequestsService in the client
 router = APIRouter(prefix="/leave", tags=["leave-requests"])
 
 
-EXCLUDED_LEAVE_CODES = ["DO", "RD"]
+EXCLUDED_LEAVE_CODES = ["DO", "RD", "SD"]
 
 
 def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
@@ -46,7 +50,7 @@ def _get_managed_ward_ids(session: SessionDep, user_id: int) -> set[int]:
 
 @router.get("/leave-codes", response_model=list[ShiftCodePublic])
 def get_leave_codes(session: SessionDep, current_user: CurrentUser) -> Any:
-    """Get non-working leave request codes, excluding only DO and RD."""
+    """Get non-working leave request codes, excluding roster allocation codes."""
     statement = select(ShiftCode).where(
         ShiftCode.isworking == False,  # noqa: E712
         ShiftCode.shiftcode.notin_(EXCLUDED_LEAVE_CODES),  # type: ignore[attr-defined]
