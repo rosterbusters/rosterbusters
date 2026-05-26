@@ -5,18 +5,20 @@ from typing import Any
 from uuid import uuid4
 
 from celery.exceptions import MaxRetriesExceededError
+from sqlalchemy import and_, not_
 from sqlmodel import Session, delete, select
 
-from app.core.db import engine
 from app import crud
+from app.cache import cache_delete
 from app.core.config import settings
+from app.core.db import engine
 from app.models.enums import NotificationType
 from app.models.rbac import NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.rostering.ab_ratio_algo import ABRatioInfeasibilityError
+from app.rostering.algo_scheduler import generate_roster
 from app.rostering.milp_algo import MILPInfeasibilityError
 from app.rostering.twelve_hour_algo import TwelveHourInfeasibilityError
-from app.rostering.algo_scheduler import generate_roster
 from app.services.algorithm_lock_service import (
     acquire_ward_algorithm_lock,
     refresh_ward_algorithm_lock,
@@ -172,6 +174,10 @@ SHIFT_CODE_TO_DB = {
 }
 
 
+def _ward_roster_cache_key(ward_id: int, period_id: int) -> str:
+    return f"ward:roster:{ward_id}:{period_id}"
+
+
 def _json_safe_number(value: float | int | None) -> float | int | None:
     if isinstance(value, float) and not math.isfinite(value):
         return None
@@ -188,27 +194,52 @@ def _save_roster_result(
     if not period:
         raise ValueError(f"Period {period_id} not found")
 
+    locked_entries = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+            Roster.assignmentmethod == "Manual",
+            Roster.status == "Pending",
+        )
+    ).all()
+    locked_keys = {
+        (entry.nurseid, entry.shiftdate)
+        for entry in locked_entries
+        if entry.nurseid is not None
+    }
+
     db.exec(
         delete(Roster).where(
             Roster.wardid == ward_id,
             Roster.periodid == period_id,
+            not_(
+                and_(
+                    Roster.assignmentmethod == "Manual",
+                    Roster.status == "Pending",
+                )
+            ),
         )
     )
 
     start_date = period.startdate
     for nurse_result in roster.get("nurses", []):
         for day_idx, shift_label in enumerate(nurse_result["schedule"]):
+            shift_date = start_date + timedelta(days=day_idx)
+            if (nurse_result["id"], shift_date) in locked_keys:
+                continue
+
             db.add(Roster(
                 nurseid=nurse_result["id"],
                 wardid=ward_id,
                 periodid=period_id,
-                shiftdate=start_date + timedelta(days=day_idx),
+                shiftdate=shift_date,
                 shiftcode=SHIFT_CODE_TO_DB.get(shift_label, shift_label),
                 status="Pending",
                 assignmentmethod=assignment_method,
                 assignedby=None,
             ))
     db.commit()
+    cache_delete(_ward_roster_cache_key(ward_id, period_id))
     return len(roster.get("nurses", []))
 
 

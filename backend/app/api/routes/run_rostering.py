@@ -1815,6 +1815,14 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     shift_label_map = _load_shift_label_map(db)
     hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
     leave_hard = _load_leave_requests(db, ward_id, period, set(nurse_ids), len(shifts_data))
+    locked_roster_slots = _load_locked_roster_slots(
+        db,
+        ward_id,
+        period,
+        set(nurse_ids),
+        len(shifts_data),
+        shift_label_map,
+    )
     logger.warning(
         "[DEBUG] leave_hard_summary ward=%s period=%s total=%s codes=%s sample=%s",
         ward_id,
@@ -1879,12 +1887,20 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
             if item[0] != 0
         ]
 
+    _merge_locked_roster_slots(
+        hard_requests,
+        soft_requests,
+        locked_roster_slots,
+        leave_hard,
+    )
+
     return {
         "nurses": nurses_data,
         "shifts": shifts_data,
         "milp_config": milp_config,
         "hard_requests": hard_requests,
         "soft_requests": soft_requests,
+        "locked_roster_slots": locked_roster_slots,
         "prev_last_shift": prev_last_shift,
         "ward_hour_type": ward.wardhourtype,
         "shift_hours": _load_shift_hours(db, ward.wardhourtype),
@@ -1925,6 +1941,81 @@ def _sample_requests(
     for nurse_id in sorted(requests.keys())[:limit_nurses]:
         sample[nurse_id] = list(requests[nurse_id][:10])
     return sample
+
+
+def _load_locked_roster_slots(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: set[int],
+    num_days: int,
+    shift_label_map: dict[str, str],
+) -> list[dict[str, Any]]:
+    if not nurse_ids:
+        return []
+
+    rows = db.exec(
+        select(Roster)
+        .join(Nurse, Nurse.nurseid == Roster.nurseid)
+        .where(Roster.wardid == ward_id)
+        .where(Roster.periodid == period.periodid)
+        .where(Roster.assignmentmethod == "Manual")
+        .where(Roster.status == "Pending")
+        .where(Nurse.isactive == True)  # noqa: E712
+        .where(Nurse.wardid == ward_id)
+        .where(Roster.nurseid.in_(nurse_ids))  # type: ignore[union-attr]
+    ).all()
+
+    locked_slots: list[dict[str, Any]] = []
+    for row in rows:
+        if row.nurseid is None:
+            continue
+
+        day_idx = (row.shiftdate - period.startdate).days
+        if day_idx < 0 or day_idx >= num_days:
+            continue
+
+        raw_shift_code = str(row.shiftcode).strip().upper()
+        locked_slots.append(
+            {
+                "roster_id": row.rosterid,
+                "nurse_id": row.nurseid,
+                "day_idx": day_idx,
+                "shift_date": row.shiftdate,
+                "shift_code": row.shiftcode,
+                "shift_label": shift_label_map.get(raw_shift_code, raw_shift_code),
+            }
+        )
+
+    return locked_slots
+
+
+def _merge_locked_roster_slots(
+    hard_requests: dict[int, list[tuple[int, str]]],
+    soft_requests: dict[int, list[tuple[int, str] | tuple[int, str, str]]],
+    locked_roster_slots: list[dict[str, Any]],
+    leave_hard: dict[int, list[tuple[int, str]]],
+) -> None:
+    leave_days_by_nurse = {
+        nurse_id: {day_idx for day_idx, _ in days}
+        for nurse_id, days in leave_hard.items()
+    }
+
+    for slot in locked_roster_slots:
+        nurse_id = slot["nurse_id"]
+        day_idx = slot["day_idx"]
+        if day_idx in leave_days_by_nurse.get(nurse_id, set()):
+            continue
+
+        hard_requests[nurse_id] = [
+            item for item in hard_requests.get(nurse_id, []) if item[0] != day_idx
+        ]
+        hard_requests[nurse_id].append((day_idx, slot["shift_label"]))
+
+        if nurse_id in soft_requests:
+            soft_requests[nurse_id] = [
+                item for item in soft_requests[nurse_id] if item[0] != day_idx
+            ]
 
 
 @router.get("/generation-inputs")
@@ -2174,8 +2265,11 @@ def _load_shift_label_map(db: Session) -> dict[str, str]:
     """
     _WORKING = {
         "A": "AM",
+        "AM": "AM",
         "P": "PM",
+        "PM": "PM",
         "N": "NIGHT",
+        "NIGHT": "NIGHT",
         "A-12": "A-12",
         "A12": "A-12",
         "N-12": "N-12",
