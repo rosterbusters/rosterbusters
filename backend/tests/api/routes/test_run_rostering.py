@@ -37,14 +37,18 @@ def _create_period(
 def _ensure_base_shift_codes(db: Session) -> None:
     for shiftcode, description, isworking, hours in (
         ("A", "AM", True, 8.5),
+        ("A-ADD", "AM additional", True, 9.5),
         ("P", "PM", True, 8.5),
         ("N", "Night", True, 11.0),
         ("AM", "AM", True, 8.5),
         ("PM", "PM", True, 8.5),
         ("NIGHT", "Night", True, 11.0),
         ("AL", "Annual Leave", False, None),
+        ("HOL", "Public Holiday", False, None),
         ("ML", "Medical Leave", False, None),
         ("DO", "Day Off", False, None),
+        ("RD", "Rest Day", False, None),
+        ("SD", "Sleeping Day", False, None),
     ):
         existing = db.get(ShiftCode, shiftcode)
         if existing:
@@ -421,6 +425,235 @@ def test_load_generation_inputs_treats_manual_pending_roster_as_locked(
         (nurse_1.nurseid, 0, "AM"),
         (nurse_1.nurseid, 1, "NIGHT"),
     }
+
+    inputs_with_prefilled = run_rostering._load_generation_inputs(
+        db,
+        ward.wardid,
+        period.periodid,
+        [
+            run_rostering.RosterPrefilledSlot(
+                nurse_id=nurse_2.nurseid,
+                shift_date=period.startdate + timedelta(days=2),
+                shift_code="P",
+            ),
+            run_rostering.RosterPrefilledSlot(
+                nurse_id=inactive_nurse.nurseid,
+                shift_date=period.startdate + timedelta(days=4),
+                shift_code="A",
+            ),
+        ],
+    )
+
+    assert (2, "PM") in inputs_with_prefilled["hard_requests"][nurse_2.nurseid]
+    assert inactive_nurse.nurseid not in inputs_with_prefilled["hard_requests"]
+
+
+def test_load_generation_inputs_normalizes_prefilled_slots_for_solver_and_overlay(
+    db: Session,
+) -> None:
+    _ensure_designations(db)
+    _ensure_base_shift_codes(db)
+
+    ward = Ward(
+        wardname="Prefilled Variants Ward",
+        isactive=True,
+        am_rn=1,
+        am_en_na_min=0,
+        am_hca_min=0,
+        pm_rn=0,
+        pm_en_na_min=0,
+        pm_hca_min=0,
+        nd_rn=0,
+        nd_en_na_min=0,
+        nd_hca_min=0,
+    )
+    db.add(ward)
+    db.commit()
+    db.refresh(ward)
+
+    nurse = Nurse(
+        name="Variant Nurse",
+        employeeid=f"VAR-1-{ward.wardid}",
+        designation="RN",
+        email=f"variant-{ward.wardid}@example.com",
+        contactnumber="111",
+        wardid=ward.wardid,
+        employmenttype="FT",
+        isactive=True,
+    )
+    db.add(nurse)
+    db.commit()
+    db.refresh(nurse)
+
+    period = _create_period(
+        db,
+        name="Prefilled Variants Period",
+        startdate=date(2026, 7, 1),
+        enddate=date(2026, 7, 14),
+    )
+
+    inputs = run_rostering._load_generation_inputs(
+        db,
+        ward.wardid,
+        period.periodid,
+        [
+            run_rostering.RosterPrefilledSlot(
+                nurse_id=nurse.nurseid,
+                shift_date=period.startdate,
+                shift_code="A-ADD",
+            ),
+            run_rostering.RosterPrefilledSlot(
+                nurse_id=nurse.nurseid,
+                shift_date=period.startdate + timedelta(days=1),
+                shift_code="RD",
+            ),
+            run_rostering.RosterPrefilledSlot(
+                nurse_id=nurse.nurseid,
+                shift_date=period.startdate + timedelta(days=2),
+                shift_code="HOL",
+            ),
+            run_rostering.RosterPrefilledSlot(
+                nurse_id=nurse.nurseid,
+                shift_date=period.startdate + timedelta(days=3),
+                shift_code="ML",
+            ),
+        ],
+    )
+
+    assert inputs["hard_requests"][nurse.nurseid] == [
+        (0, "AM"),
+        (1, "OFF"),
+        (2, "HOL"),
+        (3, "ML"),
+    ]
+    assert [
+        (slot["day_idx"], slot["shift_code"], slot["shift_label"], slot["is_algorithm_locked"])
+        for slot in inputs["locked_roster_slots"]
+    ] == [
+        (0, "A-ADD", "AM", True),
+        (1, "RD", "OFF", True),
+        (2, "HOL", "HOL", True),
+        (3, "ML", "ML", True),
+    ]
+
+
+def test_locked_roster_overlay_preserves_exact_prefilled_codes() -> None:
+    roster = {
+        "nurses": [
+            {
+                "id": 10,
+                "name": "Alice",
+                "rank": "A",
+                "schedule": ["PM", "AM", "DO", "A"],
+            }
+        ]
+    }
+
+    run_rostering._apply_locked_roster_overlay(
+        roster,
+        [
+            {
+                "nurse_id": 10,
+                "day_idx": 0,
+                "shift_code": "A-ADD",
+                "shift_label": "AM",
+                "is_algorithm_locked": True,
+            },
+            {
+                "nurse_id": 10,
+                "day_idx": 1,
+                "shift_code": "HOL",
+                "shift_label": "HOL",
+                "is_algorithm_locked": True,
+            },
+            {
+                "nurse_id": 10,
+                "day_idx": 3,
+                "shift_code": "ML",
+                "shift_label": "ML",
+                "is_algorithm_locked": True,
+            },
+            {
+                "nurse_id": 10,
+                "day_idx": 2,
+                "shift_code": "N",
+                "shift_label": "NIGHT",
+                "is_algorithm_locked": False,
+            },
+        ],
+    )
+
+    assert roster["nurses"][0]["schedule"] == ["A-ADD", "HOL", "DO", "ML"]
+
+
+def test_save_roster_result_persists_exact_overlaid_prefilled_codes(
+    db: Session,
+) -> None:
+    _ensure_designations(db)
+
+    ward = Ward(
+        wardname="Prefilled Save Ward",
+        isactive=True,
+        am_rn=1,
+        am_en_na_min=0,
+        am_hca_min=0,
+        pm_rn=0,
+        pm_en_na_min=0,
+        pm_hca_min=0,
+        nd_rn=0,
+        nd_en_na_min=0,
+        nd_hca_min=0,
+    )
+    db.add(ward)
+    db.commit()
+    db.refresh(ward)
+
+    nurse = Nurse(
+        name="Prefilled Save Nurse",
+        employeeid=f"PREF-SAVE-1-{ward.wardid}",
+        designation="RN",
+        email=f"pref-save-{ward.wardid}@example.com",
+        contactnumber="111",
+        wardid=ward.wardid,
+        employmenttype="FT",
+        isactive=True,
+    )
+    db.add(nurse)
+    db.commit()
+    db.refresh(nurse)
+
+    period = _create_period(
+        db,
+        name="Prefilled Save Period",
+        startdate=date(2026, 8, 1),
+        enddate=date(2026, 8, 14),
+    )
+
+    roster_tasks._save_roster_result(
+        db,
+        ward.wardid,
+        period.periodid,
+        {
+            "nurses": [
+                {
+                    "id": nurse.nurseid,
+                    "name": nurse.name,
+                    "rank": "A",
+                    "schedule": ["A-ADD", "HOL", "RD"],
+                }
+            ]
+        },
+        "AB-RATIO",
+    )
+
+    rows = db.exec(
+        select(Roster)
+        .where(Roster.wardid == ward.wardid)
+        .where(Roster.periodid == period.periodid)
+        .order_by(Roster.shiftdate)
+    ).all()
+
+    assert [row.shiftcode for row in rows] == ["A-ADD", "HOL", "RD"]
 
 
 def test_save_roster_result_preserves_manual_pending_locked_slots(

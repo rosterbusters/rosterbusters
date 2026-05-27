@@ -300,7 +300,13 @@ def _queue_algorithm_notification(
 
 
 @celery_app.task(bind=True, name="tasks.generate_roster", max_retries=2)
-def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | None = None):
+def generate_roster_task(
+    self,
+    ward_id: int,
+    period_id: int,
+    algorithm: str | None = None,
+    prefilled_slots: list[dict[str, Any]] | None = None,
+):
     """
     Celery task to run the roster generation algorithm.
     Results are stored in Redis and retrievable via task_id.
@@ -316,9 +322,21 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             self.request.retries,
         )
         with Session(engine) as db:
-            from app.api.routes.run_rostering import _load_generation_inputs
+            from app.api.routes.run_rostering import (
+                RosterPrefilledSlot,
+                _apply_locked_roster_overlay,
+                _load_generation_inputs,
+            )
 
-            generation_inputs = _load_generation_inputs(db, ward_id, period_id)
+            generation_inputs = _load_generation_inputs(
+                db,
+                ward_id,
+                period_id,
+                [
+                    RosterPrefilledSlot.model_validate(slot)
+                    for slot in (prefilled_slots or [])
+                ],
+            )
             logger.info(
                 "Loaded generation inputs task_id=%s ward_id=%s period_id=%s nurses=%s shift_days=%s hard_request_nurses=%s soft_request_nurses=%s",
                 self.request.id,
@@ -362,6 +380,10 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             progress_callback=on_progress,
             milp_config=generation_inputs["milp_config"],
             algorithm=algorithm,
+        )
+        _apply_locked_roster_overlay(
+            result["roster"],
+            generation_inputs["locked_roster_slots"],
         )
         logger.info(
             "Roster generation completed task_id=%s ward_id=%s period_id=%s method=%s nurse_count=%s",
@@ -431,7 +453,10 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
     try:
         refresh_ward_algorithm_lock(ward_id, self.request.id)
         with Session(engine) as db:
-            from app.api.routes.run_rostering import _load_generation_inputs
+            from app.api.routes.run_rostering import (
+                _apply_locked_roster_overlay,
+                _load_generation_inputs,
+            )
 
             generation_inputs = _load_generation_inputs(db, ward_id, period_id)
 
@@ -457,6 +482,10 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 non_working_shift_codes=generation_inputs["non_working_shift_codes"],
                 progress_callback=on_progress,
                 milp_config=generation_inputs["milp_config"],
+            )
+            _apply_locked_roster_overlay(
+                result["roster"],
+                generation_inputs["locked_roster_slots"],
             )
 
             nurses_saved = _save_roster_result(

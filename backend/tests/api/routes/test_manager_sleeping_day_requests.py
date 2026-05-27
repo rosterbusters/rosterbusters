@@ -113,6 +113,8 @@ def _setup_request_context(
 
     cache_delete(_shift_codes_cache_key(f"requestable:staff:ward:{ward.wardid}"))
     cache_delete(_shift_codes_cache_key(f"requestable:manager:ward:{ward.wardid}"))
+    cache_delete(_shift_codes_cache_key(f"ward:staff:{ward.wardid}"))
+    cache_delete(_shift_codes_cache_key(f"ward:manager:{ward.wardid}"))
 
     return ward.wardid, nurse["nurseid"], period.periodid, nurse_headers, manager_headers
 
@@ -162,6 +164,32 @@ def test_requestable_shift_codes_are_role_aware_for_sleeping_day(
     manager_codes = {code["shiftcode"] for code in manager_response.json()}
     assert staff_codes == {"A"}
     assert manager_codes == {"A", "SD"}
+
+
+def test_roster_edit_shift_codes_are_role_aware_for_sleeping_day(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    ward_id, _, _, nurse_headers, manager_headers = _setup_request_context(
+        client,
+        superuser_token_headers,
+        db,
+    )
+
+    staff_response = client.get(
+        f"{settings.API_V1_STR}/shift-requests/shift-codes/ward/{ward_id}",
+        headers=nurse_headers,
+    )
+    manager_response = client.get(
+        f"{settings.API_V1_STR}/shift-requests/shift-codes/ward/{ward_id}",
+        headers=manager_headers,
+    )
+
+    assert staff_response.status_code == 200, staff_response.text
+    assert manager_response.status_code == 200, manager_response.text
+    assert "SD" not in {code["shiftcode"] for code in staff_response.json()}
+    assert "SD" in {code["shiftcode"] for code in manager_response.json()}
 
 
 def test_sleeping_day_shift_request_requires_nurse_manager(
