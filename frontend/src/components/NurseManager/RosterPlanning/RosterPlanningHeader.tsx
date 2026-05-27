@@ -52,6 +52,17 @@ const MOCK_DATA_OPTIONS = [
   { value: "milp_ward8_run2", label: "MILP Ward 8 Run 2" },
 ]
 
+function formatPeriodLabel(period: RosterPeriod) {
+  const start = moment(period.startDate)
+  const end = moment(period.endDate)
+
+  if (start.isValid() && end.isValid()) {
+    return `${start.format("MMM DD")} - ${end.format("MMM DD YYYY")}`
+  }
+
+  return period.name
+}
+
 interface RosterPlanningHeaderProps {
   currentStartDate: Date
   viewMode: ViewMode
@@ -172,7 +183,7 @@ export function RosterPlanningHeader({
     const flag = getPeriodFlag(period)
     return (
       <HStack gap={2} minW={0} flexWrap="nowrap">
-        <Text whiteSpace="nowrap">{period.name}</Text>
+        <Text whiteSpace="nowrap">{formatPeriodLabel(period)}</Text>
         {flag ? <Badge variant={"upcomingPeriod" as any}>{flag}</Badge> : null}
       </HStack>
     )
@@ -233,7 +244,8 @@ export function RosterPlanningHeader({
     items: sortedPeriods,
     itemToString: (period: RosterPeriod) => {
       const flag = getPeriodFlag(period)
-      return flag ? `${period.name} ${flag}` : period.name
+      const label = formatPeriodLabel(period)
+      return flag ? `${label} ${flag}` : label
     },
     itemToValue: (period: RosterPeriod) => String(period.periodId),
   })

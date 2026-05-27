@@ -108,6 +108,19 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8000
 
+  celery_worker:
+    restart: "no"
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+      - ./gurobi.lic:/root/gurobi.lic:ro
+
+  celery_beat:
+    restart: "no"
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+
   playwright:
     build:
       context: ./frontend
