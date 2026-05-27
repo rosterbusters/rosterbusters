@@ -916,12 +916,6 @@ function RosterPlanningPage() {
     }
     const startedAt = Date.now()
     try {
-      if (rosterEntries.length > 0 && isRosterPending) {
-        await clearRoster.mutateAsync({
-          wardId: selectedWard.wardId,
-          periodId: effectiveSelectedPeriod.periodId,
-        })
-      }
       setGenerationProgress(0)
       console.info("[Algorithm Debug] Starting roster generation", {
         wardId: selectedWard.wardId,
@@ -976,9 +970,6 @@ function RosterPlanningPage() {
     selectedWard,
     effectiveSelectedPeriod,
     currentStartDate,
-    rosterEntries.length,
-    isRosterPending,
-    clearRoster,
     generateAlgorithmRoster,
     nurseMetaById,
     algorithmType,
@@ -1485,12 +1476,6 @@ function RosterPlanningPage() {
     setIsAutoRegenerateDialogOpen(false)
     const startedAt = Date.now()
     try {
-      if (rosterEntries.length > 0 && isRosterPending) {
-        await clearRoster.mutateAsync({
-          wardId: selectedWard.wardId,
-          periodId: effectiveSelectedPeriod.periodId,
-        })
-      }
       setGenerationProgress(0)
       setAlgorithmType(null)
       const result = await generateAlgorithmRoster.mutateAsync({
@@ -1532,9 +1517,6 @@ function RosterPlanningPage() {
     selectedWard,
     effectiveSelectedPeriod,
     currentStartDate,
-    rosterEntries.length,
-    isRosterPending,
-    clearRoster,
     canAutoRegenerate,
     isAlgorithmRunning,
     generateAlgorithmRoster,
