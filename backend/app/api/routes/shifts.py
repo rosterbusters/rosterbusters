@@ -1,5 +1,5 @@
 import logging
-from datetime import date, time
+from datetime import date, datetime, time, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -690,6 +690,7 @@ def create_shift_request(
         "NurseManager",
     )
     target_nurse_id = rbac_user.nurseid
+    is_manager_created_staff_request = False
     if request_in.nurseid is not None:
         if not is_nurse_manager:
             raise HTTPException(
@@ -702,6 +703,7 @@ def create_shift_request(
         if not target_nurse:
             raise HTTPException(status_code=404, detail="Nurse not found")
         target_nurse_id = request_in.nurseid
+        is_manager_created_staff_request = True
 
     if not target_nurse_id:
         raise HTTPException(status_code=400, detail="User is not linked to a nurse record")
@@ -763,6 +765,11 @@ def create_shift_request(
         preferredshifttype=preferred_shift_code,
         nurseid=target_nurse_id,
         requestnumber=next_number,
+        status="Approved" if is_manager_created_staff_request else "Pending",
+        reviewedby=rbac_user.managerid if is_manager_created_staff_request else None,
+        reviewedat=(
+            datetime.now(timezone.utc) if is_manager_created_staff_request else None
+        ),
     )
     session.add(shift_request)
     session.commit()
