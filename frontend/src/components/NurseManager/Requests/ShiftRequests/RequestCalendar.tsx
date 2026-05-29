@@ -18,6 +18,7 @@ import {
   type View,
 } from "react-big-calendar"
 import { ShiftRequestsService } from "@/client"
+import type { RosterPeriod } from "@/components/NurseManager/RosterTable/types"
 import {
   useRosterPeriods,
   useRosterPeriodWindow,
@@ -86,6 +87,8 @@ export const CustomToolbar: ComponentType<RequestCalendarToolbarProps> = ({
 
 interface RequestCalendarProps {
   wardId: number | null | undefined
+  displayedPeriod?: RosterPeriod | null
+  onDisplayedPeriodChange?: (period: RosterPeriod | null) => void
 }
 
 interface FortnightViewProps {
@@ -106,7 +109,11 @@ interface FortnightViewProps {
  * - The `enabled` guard now cleanly waits for both wardId AND periodId.
  * - Period selection logic is aligned with NewShiftRequest (today-first, then fallback).
  */
-export default function RequestCalendar({ wardId }: RequestCalendarProps) {
+export default function RequestCalendar({
+  wardId,
+  displayedPeriod,
+  onDisplayedPeriodChange,
+}: RequestCalendarProps) {
   const { user } = useAuth()
   const currentNurseId = user?.nurseid
 
@@ -117,6 +124,11 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   const [date, setDate] = useState(() => moment().startOf("isoWeek").toDate())
 
   useEffect(() => {
+    if (displayedPeriod?.startDate) {
+      setDate(moment(displayedPeriod.startDate).startOf("isoWeek").toDate())
+      return
+    }
+
     if (periodWindow?.currentPeriod?.startDate) {
       setDate(
         moment(periodWindow.currentPeriod.startDate)
@@ -124,9 +136,25 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
           .toDate(),
       )
     }
-  }, [periodWindow?.currentPeriod?.startDate])
+  }, [displayedPeriod?.startDate, periodWindow?.currentPeriod?.startDate])
 
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), [])
+  const onNavigate = useCallback(
+    (newDate: Date) => {
+      setDate(newDate)
+      const navigatedPeriod =
+        periods.find((period) =>
+          moment(newDate).isBetween(
+            moment(period.startDate),
+            moment(period.endDate),
+            "day",
+            "[]",
+          ),
+        ) ?? null
+
+      onDisplayedPeriodChange?.(navigatedPeriod)
+    },
+    [onDisplayedPeriodChange, periods],
+  )
 
   const activePeriod = useMemo(
     () =>
@@ -138,9 +166,10 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
           "[]",
         ),
       ) ??
+      displayedPeriod ??
       periodWindow?.currentPeriod ??
       null,
-    [date, periodWindow?.currentPeriod, periods],
+    [date, displayedPeriod, periodWindow?.currentPeriod, periods],
   )
 
   const periodId = activePeriod?.periodId

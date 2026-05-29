@@ -30,10 +30,18 @@ interface NewLeaveRequestProps {
 }
 
 function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
+  const normalizedDate = selectedDate
+    ? new Date(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        selectedDate.getDate(),
+      )
+    : undefined
+
   return selectedDate
     ? {
-        from: selectedDate,
-        to: selectedDate,
+        from: normalizedDate,
+        to: normalizedDate,
       }
     : undefined
 }
@@ -152,10 +160,11 @@ export const NewLeaveRequest = ({
       showErrorToast("Please select a leave type.")
       return
     }
-    if (!requestDateRange?.from || !requestDateRange?.to) {
+    if (!requestDateRange?.from) {
       showErrorToast("Please select a start and end date.")
       return
     }
+    const requestEndDate = requestDateRange.to ?? requestDateRange.from
 
     const toDateStr = (date: Date) =>
       `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
@@ -163,7 +172,7 @@ export const NewLeaveRequest = ({
     mutation.mutate({
       nurseid: selectedNurseId,
       startdate: toDateStr(requestDateRange.from),
-      enddate: toDateStr(requestDateRange.to),
+      enddate: toDateStr(requestEndDate),
       leavetype: leaveType[0],
       reason: localComment.trim() || undefined,
     })
