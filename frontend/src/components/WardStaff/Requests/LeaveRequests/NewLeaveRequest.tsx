@@ -27,10 +27,18 @@ interface NewLeaveRequestProps {
 }
 
 function buildInitialRange(selectedDate?: Date | null): DateRange | undefined {
+  const normalizedDate = selectedDate
+    ? new Date(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        selectedDate.getDate(),
+      )
+    : undefined
+
   return selectedDate
     ? {
-        from: selectedDate,
-        to: selectedDate,
+        from: normalizedDate,
+        to: normalizedDate,
       }
     : undefined
 }
@@ -137,11 +145,12 @@ export const NewLeaveRequest = ({
       showErrorToast("Please select a leave type.")
       return
     }
-    if (!requestDateRange?.from || !requestDateRange?.to) {
+    if (!requestDateRange?.from) {
       showErrorToast("Please select a start and end date.")
       return
     }
-    if (requestDateRange.from < today || requestDateRange.to < today) {
+    const requestEndDate = requestDateRange.to ?? requestDateRange.from
+    if (requestDateRange.from < today || requestEndDate < today) {
       showErrorToast("Leave requests cannot start or end before today.")
       return
     }
@@ -156,7 +165,7 @@ export const NewLeaveRequest = ({
     mutation.mutate({
       nurseid: allowNurseOverride ? Number(selectedNurse[0]) : undefined,
       startdate: toDateStr(requestDateRange.from),
-      enddate: toDateStr(requestDateRange.to),
+      enddate: toDateStr(requestEndDate),
       leavetype: leaveType[0],
     })
   }

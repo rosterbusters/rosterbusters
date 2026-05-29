@@ -127,8 +127,8 @@ export const EditLeaveRequest = ({
         startdate: requestDateRange?.from
           ? toDateStr(requestDateRange.from)
           : undefined,
-        enddate: requestDateRange?.to
-          ? toDateStr(requestDateRange.to)
+        enddate: requestDateRange?.from
+          ? toDateStr(requestDateRange.to ?? requestDateRange.from)
           : undefined,
       }),
     onSuccess: () => {
@@ -163,7 +163,7 @@ export const EditLeaveRequest = ({
       showErrorToast("Please select a leave type.")
       return
     }
-    if (!requestDateRange?.from || !requestDateRange?.to) {
+    if (!requestDateRange?.from) {
       showErrorToast("Please select a start and end date.")
       return
     }

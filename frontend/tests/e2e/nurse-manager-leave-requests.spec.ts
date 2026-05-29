@@ -33,6 +33,27 @@ async function loginToken(
 const formatDateKey = (value: Date) =>
   `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
 
+const getOrdinalSuffix = (day: number) => {
+  if (day >= 11 && day <= 13) return "th"
+  switch (day % 10) {
+    case 1:
+      return "st"
+    case 2:
+      return "nd"
+    case 3:
+      return "rd"
+    default:
+      return "th"
+  }
+}
+
+const formatCalendarButtonName = (value: Date) => {
+  const weekday = value.toLocaleDateString("en-US", { weekday: "long" })
+  const month = value.toLocaleDateString("en-US", { month: "long" })
+  const day = value.getDate()
+  return `${weekday}, ${month} ${day}${getOrdinalSuffix(day)}, ${value.getFullYear()}`
+}
+
 async function navigateLeaveCalendarToDate(page: Page, targetDate: Date) {
   const toolbar = page.locator(".rbc-toolbar").first()
   await expect(toolbar).toBeVisible()
@@ -249,6 +270,9 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     const newRequestDate = new Date()
     newRequestDate.setDate(newRequestDate.getDate() + 9)
     const newRequestDateKey = formatDateKey(newRequestDate)
+    const newRequestEndDate = new Date(newRequestDate)
+    newRequestEndDate.setDate(newRequestEndDate.getDate() + 2)
+    const newRequestEndDateKey = formatDateKey(newRequestEndDate)
 
     const newRequestCell = page.getByTestId(
       `leave-request-calendar-cell-${newRequestDateKey}`,
@@ -278,6 +302,13 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
       createDialog.getByRole("combobox", { name: "Requested Leave Type" }),
     ).not.toContainText("Select Leave Type")
 
+    await createDialog.locator("button[data-empty]").click()
+    await createDialog
+      .getByRole("button", {
+        name: formatCalendarButtonName(newRequestEndDate),
+      })
+      .click()
+
     const [createResponse] = await Promise.all([
       page.waitForResponse(
         (res) =>
@@ -291,7 +322,7 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
       | { startdate?: string; enddate?: string }
       | undefined
     expect(createPayload?.startdate).toBe(newRequestDateKey)
-    expect(createPayload?.enddate).toBe(newRequestDateKey)
+    expect(createPayload?.enddate).toBe(newRequestEndDateKey)
 
     const created = (await createResponse.json()) as { leaveid?: number }
     if (!created.leaveid) {
@@ -300,7 +331,7 @@ test("nurse manager can edit a selected nurse from grouped leave requests and cr
     createdLeaveIds.push(created.leaveid)
 
     await expect(
-      page.getByTestId(`leave-request-${created.leaveid}`),
+      page.getByTestId(`leave-request-${created.leaveid}`).first(),
     ).toBeVisible()
   } finally {
     const cleanupRequest = await playwrightRequest.newContext()

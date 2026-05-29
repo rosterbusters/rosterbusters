@@ -15,12 +15,18 @@ import {
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
+import moment from "moment"
 import { useEffect, useMemo, useState } from "react"
 import { type Ward, WardsService } from "@/client"
 import LeaveRequestCalendar from "@/components/NurseManager/Requests/LeaveRequests/LeaveRequestCalendar"
 import { NewLeaveRequest } from "@/components/NurseManager/Requests/LeaveRequests/NewLeaveRequest"
 import { NewShiftRequest } from "@/components/NurseManager/Requests/ShiftRequests/NewShiftRequest"
 import RequestCalendar from "@/components/NurseManager/Requests/ShiftRequests/RequestCalendar"
+import {
+  type RosterPeriod,
+  useRosterPeriods,
+  useRosterPeriodWindow,
+} from "@/components/NurseManager/RosterTable"
 import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/nurse-manager/request-application")({
@@ -34,12 +40,17 @@ function RouteComponent() {
   const [isShiftRequestOpen, setIsShiftRequestOpen] = useState(false)
   const [isLeaveRequestOpen, setIsLeaveRequestOpen] = useState(false)
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null)
+  const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(
+    null,
+  )
   const { user } = useAuth()
 
   const { data: wards = [] } = useQuery<Ward[]>({
     queryKey: ["wards"],
     queryFn: WardsService.getWards,
   })
+  const { data: periods = [] } = useRosterPeriods()
+  const { data: periodWindow } = useRosterPeriodWindow()
 
   useEffect(() => {
     if (wards.length > 0 && selectedWard === null) {
@@ -57,6 +68,56 @@ function RouteComponent() {
       }),
     [wards],
   )
+
+  const periodCollection = useMemo(
+    () =>
+      createListCollection({
+        items: periods,
+        itemToString: (period) =>
+          `${period.name} (${moment(period.startDate).format("D MMM")} - ${moment(period.endDate).format("D MMM YYYY")})`,
+        itemToValue: (period) => String(period.periodId),
+      }),
+    [periods],
+  )
+
+  useEffect(() => {
+    if (periods.length === 0 || selectedPeriod) return
+
+    const defaultPeriod =
+      periodWindow?.requestOpenPeriod ??
+      periodWindow?.upcomingPeriod ??
+      periodWindow?.currentPeriod ??
+      periods.find((period) =>
+        moment().isBetween(
+          moment(period.startDate),
+          moment(period.endDate),
+          "day",
+          "[]",
+        ),
+      ) ??
+      periods[0]
+
+    setSelectedPeriod(
+      periods.find((period) => period.periodId === defaultPeriod.periodId) ??
+        defaultPeriod,
+    )
+  }, [periodWindow, periods, selectedPeriod])
+
+  useEffect(() => {
+    if (
+      !selectedPeriod ||
+      periods.some((period) => period.periodId === selectedPeriod.periodId)
+    ) {
+      return
+    }
+
+    setSelectedPeriod(periods[0] ?? null)
+  }, [periods, selectedPeriod])
+
+  const handleDisplayedPeriodChange = (period: RosterPeriod | null) => {
+    if (!period || period.periodId === selectedPeriod?.periodId) return
+    setSelectedPeriod(period)
+  }
 
   return (
     <Flex
@@ -86,7 +147,61 @@ function RouteComponent() {
           alignItems="center"
           gap={{ base: 3, md: 0 }}
         >
-          <GridItem display={{ base: "none", md: "block" }} />
+          <GridItem
+            justifySelf={{ base: "stretch", md: "start" }}
+            w={{ base: "full", md: "auto" }}
+          >
+            <Stack
+              direction={{ base: "column", sm: "row" }}
+              gap={2}
+              align={{ base: "stretch", sm: "center" }}
+              w={{ base: "full", sm: "auto" }}
+            >
+              <Text fontSize="sm" color="#6B7280" fontWeight="medium">
+                Period:
+              </Text>
+              <Select.Root
+                collection={periodCollection}
+                size="sm"
+                width={{ base: "100%", sm: "260px" }}
+                color="foreground"
+                value={selectedPeriod ? [String(selectedPeriod.periodId)] : []}
+                onValueChange={(details) => {
+                  const period = periods.find(
+                    (p) => String(p.periodId) === details.value[0],
+                  )
+                  if (period) setSelectedPeriod(period)
+                }}
+              >
+                <Select.HiddenSelect />
+                <Select.Control>
+                  <Select.Trigger>
+                    <Select.ValueText placeholder="Select Period" />
+                  </Select.Trigger>
+                  <Select.IndicatorGroup>
+                    <Select.Indicator />
+                  </Select.IndicatorGroup>
+                </Select.Control>
+                <Portal>
+                  <Select.Positioner zIndex={1500}>
+                    <Select.Content>
+                      {periodCollection.items.map((period) => (
+                        <Select.Item key={period.periodId} item={period}>
+                          <Stack gap={0}>
+                            <Text>{period.name}</Text>
+                            <Text fontSize="xs" color="#6B7280">
+                              {moment(period.startDate).format("D MMM")} -{" "}
+                              {moment(period.endDate).format("D MMM YYYY")}
+                            </Text>
+                          </Stack>
+                        </Select.Item>
+                      ))}
+                    </Select.Content>
+                  </Select.Positioner>
+                </Portal>
+              </Select.Root>
+            </Stack>
+          </GridItem>
           <HStack gap={0} justifySelf="center" w={{ base: "full", md: "auto" }}>
             <Button
               variant={activeTab === "shift" ? "solid" : "outline"}
@@ -200,9 +315,17 @@ function RouteComponent() {
         </Grid>
         <Box h="100%" w="100%">
           {activeTab === "shift" ? (
-            <RequestCalendar wardId={selectedWard?.wardid ?? null} />
+            <RequestCalendar
+              wardId={selectedWard?.wardid ?? null}
+              displayedPeriod={selectedPeriod}
+              onDisplayedPeriodChange={handleDisplayedPeriodChange}
+            />
           ) : (
-            <LeaveRequestCalendar wardId={selectedWard?.wardid ?? null} />
+            <LeaveRequestCalendar
+              wardId={selectedWard?.wardid ?? null}
+              displayedPeriod={selectedPeriod}
+              onDisplayedPeriodChange={handleDisplayedPeriodChange}
+            />
           )}
         </Box>
       </VStack>
