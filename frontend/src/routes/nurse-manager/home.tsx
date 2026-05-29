@@ -848,6 +848,9 @@ function NurseManagerHome() {
     }
   }, [isUserLoading, selectedWard, user?.wardid, wards])
 
+  const managerNotificationBannerProps = { role: "manager" as const }
+  const rosterLayoutMinWidth = "1280px"
+
   return (
     <Flex
       w="full"
@@ -882,68 +885,73 @@ function NurseManagerHome() {
           rounded="lg"
           width={{ base: "100%", md: "50%" }}
         >
-          <NotificationBannerContainer role="manager" />
+          <NotificationBannerContainer {...managerNotificationBannerProps} />
         </Stack>
       </Stack>
 
       {/* Header + Roster Grid + Summary Table */}
-      <Box
-        bgColor="white"
-        rounded="lg"
-        width="100%"
-        overflow="hidden"
-        display="flex"
-        flexDirection="column"
-      >
-        <Box p={4} pb={0}>
-          <RosterHeader
-            currentStartDate={currentStartDate}
-            viewMode={viewMode}
-            selectedWard={selectedWard}
-            selectedPeriod={selectedPeriod}
-            currentPeriod={currentPeriod}
-            upcomingPeriod={upcomingPeriod}
-            wards={wards}
-            periods={visiblePeriods}
-            onDateChange={handleDateChange}
-            onViewModeChange={handleViewModeChange}
-            onWardChange={handleWardChange}
-            onPeriodChange={handlePeriodChange}
-            onExportCSV={handleExportXLSX}
-            onViewEditHistory={handleViewEditHistory}
-          />
-        </Box>
+      <Box bgColor="white" rounded="lg" width="100%" overflow="hidden">
+        <Box
+          width="100%"
+          overflowX="auto"
+          css={{ WebkitOverflowScrolling: "touch" }}
+        >
+          <Box
+            minW={{ base: rosterLayoutMinWidth, xl: "100%" }}
+            display="flex"
+            flexDirection="column"
+          >
+            <Box p={4} pb={0}>
+              <RosterHeader
+                currentStartDate={currentStartDate}
+                viewMode={viewMode}
+                selectedWard={selectedWard}
+                selectedPeriod={selectedPeriod}
+                currentPeriod={currentPeriod}
+                upcomingPeriod={upcomingPeriod}
+                wards={wards}
+                periods={visiblePeriods}
+                onDateChange={handleDateChange}
+                onViewModeChange={handleViewModeChange}
+                onWardChange={handleWardChange}
+                onPeriodChange={handlePeriodChange}
+                onExportCSV={handleExportXLSX}
+                onViewEditHistory={handleViewEditHistory}
+              />
+            </Box>
 
-        {/* Scrollable grid */}
-        <Box flex={1} overflow="auto" p={4} pb={0}>
-          <RosterGrid
-            data={displayRosterData}
-            wardId={selectedWard?.wardid ?? null}
-            viewMode={viewMode}
-            currentStartDate={currentStartDate}
-            onShiftChange={handleShiftChange}
-            onCommentChange={handleCommentChange}
-            isLoading={wardsLoading || rosterLoading}
-            showSummary={false}
-            shiftRequestOverlays={mockOverlays}
-            shiftDurationMap={shiftDurationMap}
-            shiftTimeMap={shiftTimeMap}
-          />
-        </Box>
+            {/* Scrollable grid */}
+            <Box flex={1} p={4} pb={0}>
+              <RosterGrid
+                data={displayRosterData}
+                wardId={selectedWard?.wardid ?? null}
+                viewMode={viewMode}
+                currentStartDate={currentStartDate}
+                onShiftChange={handleShiftChange}
+                onCommentChange={handleCommentChange}
+                isLoading={wardsLoading || rosterLoading}
+                showSummary={false}
+                shiftRequestOverlays={mockOverlays}
+                shiftDurationMap={shiftDurationMap}
+                shiftTimeMap={shiftTimeMap}
+              />
+            </Box>
 
-        {/* Sticky summary table */}
-        <ShiftSummaryTable
-          data={displayRosterData}
-          viewMode={viewMode}
-          currentStartDate={currentStartDate}
-          wardHourType={selectedWard?.wardhourtype}
-          isRosterGenerated={true}
-          guidelines={guidelines}
-          dateOverrides={dateOverrides}
-          originalGuidelines={getWardGuidelines(selectedWard)}
-          onGuidelinesChange={handleGuidelinesChange}
-          onDateOverrideChange={handleDateOverrideChange}
-        />
+            {/* Sticky summary table */}
+            <ShiftSummaryTable
+              data={displayRosterData}
+              viewMode={viewMode}
+              currentStartDate={currentStartDate}
+              wardHourType={selectedWard?.wardhourtype}
+              isRosterGenerated={true}
+              guidelines={guidelines}
+              dateOverrides={dateOverrides}
+              originalGuidelines={getWardGuidelines(selectedWard)}
+              onGuidelinesChange={handleGuidelinesChange}
+              onDateOverrideChange={handleDateOverrideChange}
+            />
+          </Box>
+        </Box>
       </Box>
 
       <EditHistoryDialog
