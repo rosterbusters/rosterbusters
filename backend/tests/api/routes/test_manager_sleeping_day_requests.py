@@ -228,6 +228,7 @@ def test_sleeping_day_shift_request_requires_nurse_manager(
     assert staff_response.json()["detail"] == "Selected shift is not available for this ward"
     assert manager_response.status_code == 200, manager_response.text
     assert manager_response.json()["preferredshifttype"] == "SD"
+    assert manager_response.json()["status"] == "Approved"
 
     cache_delete(_shift_codes_cache_key(f"requestable:staff:ward:{ward_id}"))
     cache_delete(_shift_codes_cache_key(f"requestable:manager:ward:{ward_id}"))
