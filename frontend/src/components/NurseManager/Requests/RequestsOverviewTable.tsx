@@ -2,19 +2,31 @@ import {
   Badge,
   Box,
   Button,
+  CloseButton,
+  Dialog,
   Flex,
   HStack,
+  Portal,
   Spinner,
   Table,
   Text,
+  Textarea,
   VStack,
 } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react"
-import { type ReactNode, useMemo, useState } from "react"
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { ShiftRequestsService } from "@/client"
 import { LeaveRequestsService } from "@/client/LeaveRequestsService"
 import { getShiftColor } from "@/components/NurseManager/RosterTable/types"
+import { Checkbox } from "@/components/ui/checkbox"
+import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import { NMReviewLeaveRequest } from "./LeaveRequests/NMReviewLeaveRequest"
 import type { RequestStatus, UnifiedRequest } from "./RequestReviewModal"
 import { ReviewShiftRequest } from "./ShiftRequests/ReviewShiftRequest"
@@ -29,6 +41,7 @@ const TABS: { id: TabFilter; label: string }[] = [
 ]
 
 const PAGE_SIZE = 30
+const LOCKED_PERIOD_STATUSES = new Set(["Finalized", "Published"])
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(dateStr: string): string {
@@ -38,6 +51,21 @@ function formatDate(dateStr: string): string {
   const month = d.getMonth() + 1
   const year = d.getFullYear()
   return `${day}/${month < 10 ? `0${month}` : month}/${year}`
+}
+
+function parseLocalDate(value?: string | null): Date | null {
+  if (!value) return null
+  const [year, month, day] = value.split("-")
+  if (year && month && day) {
+    return new Date(Number(year), Number(month) - 1, Number(day))
+  }
+
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function requestKey(request: UnifiedRequest): string {
+  return `${request.type}-${request.id}`
 }
 
 // ─── Status cell ─────────────────────────────────────────────────────────────
@@ -213,9 +241,15 @@ export function RequestsOverviewTable({
   wardId,
   wardSelector,
 }: RequestsOverviewTableProps) {
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<TabFilter>("all")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
   const [page, setPage] = useState(1)
+  const [selectedRequestKeys, setSelectedRequestKeys] = useState<Set<string>>(
+    new Set(),
+  )
+  const [isDenyDialogOpen, setIsDenyDialogOpen] = useState(false)
+  const [bulkDenyReason, setBulkDenyReason] = useState("")
   const [selectedShiftRequest, setSelectedShiftRequest] =
     useState<UnifiedRequest | null>(null)
   const [selectedLeaveRequest, setSelectedLeaveRequest] =
@@ -264,15 +298,25 @@ export function RequestsOverviewTable({
     staleTime: 5 * 60_000,
   })
 
+  const { data: rosterPeriods = [] } = useQuery({
+    queryKey: ["roster-periods"],
+    queryFn: () => ShiftRequestsService.getRosterPeriods(),
+    staleTime: 5 * 60_000,
+  })
+
   const shiftCodeMap = useMemo(() => {
     const map = new Map<string, string>()
-    shiftCodes.forEach((sc) => map.set(sc.shiftcode, sc.description))
+    shiftCodes.forEach((sc) => {
+      map.set(sc.shiftcode, sc.description)
+    })
     return map
   }, [shiftCodes])
 
   const nurseMap = useMemo(() => {
     const map = new Map<number, string>()
-    wardNurses.forEach((n) => map.set(n.nurseid, n.name))
+    wardNurses.forEach((n) => {
+      map.set(n.nurseid, n.name)
+    })
     return map
   }, [wardNurses])
 
@@ -282,6 +326,7 @@ export function RequestsOverviewTable({
       ? shiftRequests.map((sr) => ({
           id: sr.requestid,
           type: "ShiftRequest" as const,
+          periodId: sr.periodid,
           requestTypeName:
             shiftCodeMap.get(sr.preferredshifttype) || sr.preferredshifttype,
           shiftCode: sr.preferredshifttype,
@@ -361,6 +406,69 @@ export function RequestsOverviewTable({
     page * PAGE_SIZE,
   )
 
+  const lockedPeriods = useMemo(
+    () =>
+      rosterPeriods.filter((period) =>
+        LOCKED_PERIOD_STATUSES.has(period.status),
+      ),
+    [rosterPeriods],
+  )
+
+  const lockedShiftPeriodIds = useMemo(
+    () =>
+      new Set(
+        lockedPeriods
+          .map((period) => period.periodid)
+          .filter((periodId): periodId is number => periodId != null),
+      ),
+    [lockedPeriods],
+  )
+
+  const isRequestEligible = useCallback(
+    (request: UnifiedRequest) => {
+      if (request.type === "ShiftRequest") {
+        return !(
+          request.periodId != null && lockedShiftPeriodIds.has(request.periodId)
+        )
+      }
+
+      const requestStart = parseLocalDate(request.rawStartDate)
+      const requestEnd = parseLocalDate(
+        request.rawEndDate ?? request.rawStartDate,
+      )
+      if (!requestStart || !requestEnd) return true
+
+      return !lockedPeriods.some((period) => {
+        const periodStart = parseLocalDate(period.startdate)
+        const periodEnd = parseLocalDate(period.enddate)
+        if (!periodStart || !periodEnd) return false
+        return requestStart <= periodEnd && requestEnd >= periodStart
+      })
+    },
+    [lockedPeriods, lockedShiftPeriodIds],
+  )
+
+  const visibleEligibleRequests = currentPageData.filter(isRequestEligible)
+  const selectedRequests = filteredRequests.filter(
+    (request) =>
+      selectedRequestKeys.has(requestKey(request)) &&
+      isRequestEligible(request),
+  )
+  const selectedCount = selectedRequests.length
+  const allVisibleEligibleSelected =
+    visibleEligibleRequests.length > 0 &&
+    visibleEligibleRequests.every((request) =>
+      selectedRequestKeys.has(requestKey(request)),
+    )
+  const someVisibleEligibleSelected = visibleEligibleRequests.some((request) =>
+    selectedRequestKeys.has(requestKey(request)),
+  )
+  const headerSelectionState = allVisibleEligibleSelected
+    ? true
+    : someVisibleEligibleSelected
+      ? "indeterminate"
+      : false
+
   const handleTabChange = (tab: TabFilter) => {
     setActiveTab(tab)
     setPage(1)
@@ -370,6 +478,141 @@ export function RequestsOverviewTable({
     setSortDir((d) => (d === "asc" ? "desc" : "asc"))
     setPage(1)
   }
+
+  const toggleRequestSelection = (request: UnifiedRequest) => {
+    if (!isRequestEligible(request)) return
+
+    setSelectedRequestKeys((prev) => {
+      const next = new Set(prev)
+      const key = requestKey(request)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const toggleVisibleSelection = () => {
+    setSelectedRequestKeys((prev) => {
+      const next = new Set(prev)
+      if (allVisibleEligibleSelected) {
+        visibleEligibleRequests.forEach((request) => {
+          next.delete(requestKey(request))
+        })
+      } else {
+        visibleEligibleRequests.forEach((request) => {
+          next.add(requestKey(request))
+        })
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedRequestKeys(new Set())
+
+  const bulkReviewMutation = useMutation({
+    mutationFn: async ({
+      action,
+      reason,
+    }: {
+      action: "Approved" | "Rejected"
+      reason?: string
+    }) => {
+      const targets = selectedRequests
+      const settled = await Promise.allSettled(
+        targets.map(async (request) => {
+          if (request.type === "ShiftRequest") {
+            await ShiftRequestsService.reviewShiftRequest({
+              requestId: request.id,
+              requestBody: {
+                status: action,
+                rejectionreason:
+                  action === "Rejected" && reason?.trim()
+                    ? reason.trim()
+                    : undefined,
+              },
+            })
+          } else {
+            await LeaveRequestsService.reviewLeaveRequest({
+              leaveId: request.id,
+              status: action,
+            })
+          }
+
+          return requestKey(request)
+        }),
+      )
+
+      const successKeys: string[] = []
+      let failed = 0
+
+      settled.forEach((result) => {
+        if (result.status === "fulfilled") {
+          successKeys.push(result.value)
+        } else {
+          failed += 1
+        }
+      })
+
+      return { action, failed, successKeys, total: targets.length }
+    },
+    onSuccess: ({ action, failed, successKeys, total }) => {
+      setSelectedRequestKeys((prev) => {
+        const next = new Set(prev)
+        successKeys.forEach((key) => {
+          next.delete(key)
+        })
+        return next
+      })
+
+      queryClient.invalidateQueries({ queryKey: ["shift-requests"] })
+      queryClient.invalidateQueries({ queryKey: ["ward-leave-requests"] })
+
+      const actionText = action === "Approved" ? "approved" : "denied"
+      if (failed > 0) {
+        showErrorToast(
+          `${total - failed} request${total - failed === 1 ? "" : "s"} ${actionText}; ${failed} failed.`,
+        )
+      } else {
+        showSuccessToast(
+          `${total} request${total === 1 ? "" : "s"} ${actionText}.`,
+        )
+      }
+    },
+    onError: (error: unknown) => {
+      const detail = (error as { body?: { detail?: string } })?.body?.detail
+      showErrorToast(detail || "Failed to update selected requests")
+    },
+  })
+
+  const handleBulkApprove = () => {
+    if (selectedCount === 0) return
+    bulkReviewMutation.mutate({ action: "Approved" })
+  }
+
+  const handleBulkDeny = () => {
+    if (selectedCount === 0) return
+    bulkReviewMutation.mutate({
+      action: "Rejected",
+      reason: bulkDenyReason,
+    })
+    setIsDenyDialogOpen(false)
+    setBulkDenyReason("")
+  }
+
+  useEffect(() => {
+    void wardId
+    setSelectedRequestKeys(new Set())
+  }, [wardId])
+
+  useEffect(() => {
+    const eligibleKeys = new Set(
+      filteredRequests.filter(isRequestEligible).map(requestKey),
+    )
+    setSelectedRequestKeys((prev) => {
+      const next = new Set([...prev].filter((key) => eligibleKeys.has(key)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [filteredRequests, isRequestEligible])
 
   const handleOpenModal = (request: UnifiedRequest) => {
     if (request.type === "ShiftRequest") {
@@ -478,6 +721,67 @@ export function RequestsOverviewTable({
         </Box>
       </Flex>
 
+      {selectedCount > 0 && (
+        <Flex
+          w="full"
+          align="center"
+          justify="space-between"
+          gap={3}
+          wrap={{ base: "wrap", md: "nowrap" }}
+          bg="#F0F7F9"
+          borderWidth="1px"
+          borderColor="#B7D4DC"
+          rounded="md"
+          px={4}
+          py={3}
+        >
+          <Text fontSize="sm" color="#4A4A4A" fontWeight="medium">
+            {selectedCount} selected
+          </Text>
+          <HStack
+            gap={2}
+            wrap="wrap"
+            justify={{ base: "flex-start", md: "end" }}
+          >
+            <Button
+              size="xs"
+              bg="#4B8798"
+              color="white"
+              _hover={{ bg: "#3d6f7e" }}
+              disabled={bulkReviewMutation.isPending}
+              loading={
+                bulkReviewMutation.isPending &&
+                bulkReviewMutation.variables?.action === "Approved"
+              }
+              onClick={handleBulkApprove}
+              fontWeight="medium"
+            >
+              Approve selected
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              colorPalette="red"
+              disabled={bulkReviewMutation.isPending}
+              onClick={() => setIsDenyDialogOpen(true)}
+              fontWeight="medium"
+            >
+              Deny selected
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              color="#4A4A4A"
+              disabled={bulkReviewMutation.isPending}
+              onClick={clearSelection}
+              fontWeight="medium"
+            >
+              Clear selection
+            </Button>
+          </HStack>
+        </Flex>
+      )}
+
       {/* Table */}
       {isLoading ? (
         <Flex justify="center" py={10}>
@@ -488,6 +792,21 @@ export function RequestsOverviewTable({
           <Table.Root size="sm" w="full">
             <Table.Header>
               <Table.Row bg="gray.50">
+                <Table.ColumnHeader py={3} px={4} w="44px">
+                  <Checkbox
+                    aria-label="Select visible requests"
+                    checked={headerSelectionState}
+                    disabled={visibleEligibleRequests.length === 0}
+                    onCheckedChange={toggleVisibleSelection}
+                    css={{
+                      "&[data-state=checked] [data-part=control], &[data-state=indeterminate] [data-part=control]":
+                        {
+                          backgroundColor: "rgb(75, 135, 152)",
+                          borderColor: "rgb(75, 135, 152)",
+                        },
+                    }}
+                  />
+                </Table.ColumnHeader>
                 <Table.ColumnHeader
                   fontSize="xs"
                   color="gray.500"
@@ -590,7 +909,7 @@ export function RequestsOverviewTable({
               {currentPageData.length === 0 ? (
                 <Table.Row>
                   <Table.Cell
-                    colSpan={8}
+                    colSpan={9}
                     textAlign="center"
                     py={10}
                     color="gray.400"
@@ -599,126 +918,150 @@ export function RequestsOverviewTable({
                   </Table.Cell>
                 </Table.Row>
               ) : (
-                currentPageData.map((req) => (
-                  <Table.Row
-                    key={`${req.type}-${req.id}`}
-                    bg={req.type === "ShiftRequest" ? "#f0f7f9" : "white"}
-                    _hover={{ bg: "#e4f2f5" }}
-                    transition="background 0.1s"
-                  >
-                    {/* Type */}
-                    <Table.Cell py={2} px={4}>
-                      <TypeCell type={req.type} />
-                    </Table.Cell>
-
-                    {/* Ward Staff */}
-                    <Table.Cell py={2} px={4}>
-                      <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
-                        {req.nurseName ?? "–"}
-                      </Text>
-                    </Table.Cell>
-
-                    {/* Request Type badge */}
-                    <Table.Cell py={2} px={4}>
-                      <Flex justify="flex-start">
-                        <RequestTypeBadge
-                          name={req.requestTypeName}
-                          shiftCode={req.shiftCode}
+                currentPageData.map((req) => {
+                  const eligible = isRequestEligible(req)
+                  const key = requestKey(req)
+                  return (
+                    <Table.Row
+                      key={key}
+                      bg={req.type === "ShiftRequest" ? "#f0f7f9" : "white"}
+                      _hover={{ bg: "#e4f2f5" }}
+                      opacity={eligible ? 1 : 0.7}
+                      transition="background 0.1s"
+                    >
+                      <Table.Cell py={2} px={4}>
+                        <Checkbox
+                          aria-label={`Select ${req.type === "ShiftRequest" ? "shift" : "leave"} request`}
+                          checked={selectedRequestKeys.has(key)}
+                          disabled={!eligible || bulkReviewMutation.isPending}
+                          onCheckedChange={() => toggleRequestSelection(req)}
+                          css={{
+                            "&[data-state=checked] [data-part=control]": {
+                              backgroundColor: "rgb(75, 135, 152)",
+                              borderColor: "rgb(75, 135, 152)",
+                            },
+                          }}
                         />
-                      </Flex>
-                    </Table.Cell>
+                      </Table.Cell>
 
-                    {/* Requested Dates */}
-                    <Table.Cell py={2} px={4}>
-                      <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
-                        {req.requestedDates}
-                      </Text>
-                    </Table.Cell>
+                      {/* Type */}
+                      <Table.Cell py={2} px={4}>
+                        <TypeCell type={req.type} />
+                      </Table.Cell>
 
-                    {/* Status */}
-                    <Table.Cell py={2} px={4} textAlign="center">
-                      <StatusCell status={req.status} />
-                    </Table.Cell>
+                      {/* Ward Staff */}
+                      <Table.Cell py={2} px={4}>
+                        <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
+                          {req.nurseName ?? "–"}
+                        </Text>
+                      </Table.Cell>
 
-                    {/* Application Date */}
-                    <Table.Cell py={2} px={4}>
-                      <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
-                        {req.applicationDate}
-                      </Text>
-                    </Table.Cell>
+                      {/* Request Type badge */}
+                      <Table.Cell py={2} px={4}>
+                        <Flex justify="flex-start">
+                          <RequestTypeBadge
+                            name={req.requestTypeName}
+                            shiftCode={req.shiftCode}
+                          />
+                        </Flex>
+                      </Table.Cell>
 
-                    {/* Comments */}
-                    <Table.Cell py={2} px={4} maxW="160px">
-                      {(() => {
-                        const displayComment = req.comments ?? null
-                        return displayComment ? (
-                          <Text
-                            fontSize="sm"
-                            color="#4A4A4A"
-                            cursor="pointer"
-                            whiteSpace={
-                              expandedComments.has(req.id) ? "normal" : "nowrap"
-                            }
-                            overflow={
-                              expandedComments.has(req.id)
-                                ? "visible"
-                                : "hidden"
-                            }
-                            textOverflow={
-                              expandedComments.has(req.id) ? "clip" : "ellipsis"
-                            }
-                            onClick={() => toggleComment(req.id)}
-                            title={
-                              expandedComments.has(req.id)
-                                ? "Click to collapse"
-                                : "Click to expand"
-                            }
-                            _hover={{ color: "#4B8798" }}
+                      {/* Requested Dates */}
+                      <Table.Cell py={2} px={4}>
+                        <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
+                          {req.requestedDates}
+                        </Text>
+                      </Table.Cell>
+
+                      {/* Status */}
+                      <Table.Cell py={2} px={4} textAlign="center">
+                        <StatusCell status={req.status} />
+                      </Table.Cell>
+
+                      {/* Application Date */}
+                      <Table.Cell py={2} px={4}>
+                        <Text fontSize="sm" color="#4A4A4A" whiteSpace="nowrap">
+                          {req.applicationDate}
+                        </Text>
+                      </Table.Cell>
+
+                      {/* Comments */}
+                      <Table.Cell py={2} px={4} maxW="160px">
+                        {(() => {
+                          const displayComment = req.comments ?? null
+                          return displayComment ? (
+                            <Text
+                              fontSize="sm"
+                              color="#4A4A4A"
+                              cursor="pointer"
+                              whiteSpace={
+                                expandedComments.has(req.id)
+                                  ? "normal"
+                                  : "nowrap"
+                              }
+                              overflow={
+                                expandedComments.has(req.id)
+                                  ? "visible"
+                                  : "hidden"
+                              }
+                              textOverflow={
+                                expandedComments.has(req.id)
+                                  ? "clip"
+                                  : "ellipsis"
+                              }
+                              onClick={() => toggleComment(req.id)}
+                              title={
+                                expandedComments.has(req.id)
+                                  ? "Click to collapse"
+                                  : "Click to expand"
+                              }
+                              _hover={{ color: "#4B8798" }}
+                            >
+                              {expandedComments.has(req.id)
+                                ? displayComment
+                                : displayComment.length > 10
+                                  ? `${displayComment.slice(0, 10)}...`
+                                  : displayComment}
+                            </Text>
+                          ) : (
+                            <Text fontSize="sm" color="gray.300">
+                              –
+                            </Text>
+                          )
+                        })()}
+                      </Table.Cell>
+
+                      {/* Action */}
+                      <Table.Cell py={2} px={4}>
+                        {req.status === "Pending" ? (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            borderColor="#4B8798"
+                            color="#4B8798"
+                            _hover={{ bg: "#DDE8EA" }}
+                            onClick={() => handleOpenModal(req)}
+                            fontWeight="medium"
                           >
-                            {expandedComments.has(req.id)
-                              ? displayComment
-                              : displayComment.length > 10
-                                ? `${displayComment.slice(0, 10)}...`
-                                : displayComment}
-                          </Text>
+                            Approve
+                          </Button>
                         ) : (
-                          <Text fontSize="sm" color="gray.300">
-                            –
-                          </Text>
-                        )
-                      })()}
-                    </Table.Cell>
-
-                    {/* Action */}
-                    <Table.Cell py={2} px={4}>
-                      {req.status === "Pending" ? (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          borderColor="#4B8798"
-                          color="#4B8798"
-                          _hover={{ bg: "#DDE8EA" }}
-                          onClick={() => handleOpenModal(req)}
-                          fontWeight="medium"
-                        >
-                          Approve
-                        </Button>
-                      ) : (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          borderColor="gray.300"
-                          color="#4A4A4A"
-                          _hover={{ bg: "gray.50" }}
-                          onClick={() => handleOpenModal(req)}
-                          fontWeight="medium"
-                        >
-                          Edit
-                        </Button>
-                      )}
-                    </Table.Cell>
-                  </Table.Row>
-                ))
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            borderColor="gray.300"
+                            color="#4A4A4A"
+                            _hover={{ bg: "gray.50" }}
+                            onClick={() => handleOpenModal(req)}
+                            fontWeight="medium"
+                          >
+                            Edit
+                          </Button>
+                        )}
+                      </Table.Cell>
+                    </Table.Row>
+                  )
+                })
               )}
             </Table.Body>
           </Table.Root>
@@ -778,6 +1121,74 @@ export function RequestsOverviewTable({
           </HStack>
         </Flex>
       )}
+
+      <Dialog.Root
+        placement="center"
+        motionPreset="slide-in-bottom"
+        lazyMount
+        unmountOnExit
+        open={isDenyDialogOpen}
+        onOpenChange={(e) => !e.open && setIsDenyDialogOpen(false)}
+      >
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content tabIndex={-1} maxW="480px">
+              <Dialog.Header>
+                <Dialog.Title color="primary" fontWeight="bold">
+                  Deny selected requests
+                </Dialog.Title>
+              </Dialog.Header>
+              <Dialog.Body>
+                <VStack align="stretch" gap={3}>
+                  <Text fontSize="sm" color="#4A4A4A">
+                    Deny {selectedCount} selected request
+                    {selectedCount === 1 ? "" : "s"}? You can add an optional
+                    reason for shift requests.
+                  </Text>
+                  <Textarea
+                    value={bulkDenyReason}
+                    onChange={(e) => setBulkDenyReason(e.target.value)}
+                    placeholder="Optional rejection reason"
+                    size="sm"
+                    borderRadius="md"
+                    borderColor="gray.200"
+                    resize="none"
+                    rows={3}
+                    fontSize="sm"
+                  />
+                </VStack>
+              </Dialog.Body>
+              <Dialog.Footer>
+                <HStack gap={2}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsDenyDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    colorPalette="red"
+                    size="sm"
+                    onClick={handleBulkDeny}
+                    loading={
+                      bulkReviewMutation.isPending &&
+                      bulkReviewMutation.variables?.action === "Rejected"
+                    }
+                    disabled={selectedCount === 0}
+                  >
+                    Deny selected
+                  </Button>
+                </HStack>
+              </Dialog.Footer>
+              <Dialog.CloseTrigger asChild>
+                <CloseButton size="sm" />
+              </Dialog.CloseTrigger>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
 
       {/* Shift review dialog */}
       {selectedShiftRequest && (

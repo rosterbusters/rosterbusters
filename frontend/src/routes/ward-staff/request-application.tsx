@@ -257,20 +257,17 @@ function RouteComponent() {
             </Button>
           </HStack>
           {activeTab === "shift" ? (
-            isShiftLocked ? (
-              <GridItem />
-            ) : (
-              <Button
-                variant={"outline"}
-                justifySelf="end"
-                size="sm"
-                w={{ base: "full", sm: "auto" }}
-                onClick={() => setIsShiftRequestOpen(true)}
-              >
-                <Plus />
-                Add Shift Request
-              </Button>
-            )
+            <Button
+              variant={"outline"}
+              justifySelf="end"
+              size="sm"
+              w={{ base: "full", sm: "auto" }}
+              disabled={isShiftLocked}
+              onClick={() => setIsShiftRequestOpen(true)}
+            >
+              <Plus />
+              Add Shift Request
+            </Button>
           ) : (
             <Button
               variant={"outline"}
