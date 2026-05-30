@@ -1,14 +1,23 @@
-import { Box, VStack } from "@chakra-ui/react"
+import { Badge, Box, Grid, Span, VStack } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
+import cx from "clsx"
 import moment from "moment"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { Calendar, momentLocalizer, type View } from "react-big-calendar"
-import { ShiftRequestsService } from "@/client"
-import { LockdownBanner } from "@/components/Common/LockdownBanner"
 import {
-  getRequestTargetPeriod,
-  useRequestPeriodWindow,
-} from "@/hooks/useApplicationLockStatus"
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
+import {
+  Calendar,
+  momentLocalizer,
+  Navigate,
+  type ToolbarProps,
+  type View,
+} from "react-big-calendar"
+import { ShiftRequestsService } from "@/client"
+import type { RosterPeriodPublic } from "@/client/types.gen"
 import useAuth from "@/hooks/useAuth"
 import CustomWeekView from "./CustomRequestView"
 
@@ -24,9 +33,79 @@ interface Event {
 
 interface RequestCalendarProps {
   wardId: number | null | undefined
+  activePeriod?: RosterPeriodPublic
+  periods?: RosterPeriodPublic[]
+  upcomingPeriodId?: number
+  onDisplayedPeriodChange?: (period: RosterPeriodPublic | null) => void
   isLocked?: boolean
   nextWindowStart?: string
   nextWindowEnd?: string
+}
+
+interface RequestCalendarToolbarProps extends ToolbarProps {
+  periodStatus?: "Past" | "Current" | "Upcoming" | "Future"
+}
+
+export const CustomToolbar: ComponentType<RequestCalendarToolbarProps> = ({
+  periodStatus,
+  label,
+  localizer,
+  onNavigate,
+}: RequestCalendarToolbarProps) => {
+  const badgeProps = (() => {
+    switch (periodStatus) {
+      case "Current":
+        return { colorPalette: "blue" }
+      case "Upcoming":
+        return { colorPalette: "green" }
+      case "Future":
+        return { colorPalette: "purple" }
+      case "Past":
+        return { colorPalette: "gray" }
+      default:
+        return undefined
+    }
+  })()
+
+  return (
+    <Grid
+      templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
+      className={cx("rbc-toolbar")}
+      gap={{ base: "2", md: "0" }}
+      position={{ base: "sticky", md: "relative" }}
+    >
+      <Span
+        className={cx("rbc-btn-group")}
+        justifySelf={{ base: "center", md: "start" }}
+      >
+        <button type="button" onClick={() => onNavigate(Navigate.PREVIOUS)}>
+          {localizer.messages.previous}
+        </button>
+      </Span>
+      <Span
+        className={cx("rbc-toolbar-label")}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        gap={2}
+      >
+        {label}
+        {periodStatus && badgeProps ? (
+          <Badge size="sm" variant="subtle" {...badgeProps}>
+            {periodStatus}
+          </Badge>
+        ) : null}
+      </Span>
+      <Span
+        justifySelf={{ base: "center", md: "end" }}
+        className={cx("rbc-btn-group")}
+      >
+        <button type="button" onClick={() => onNavigate(Navigate.NEXT)}>
+          {localizer.messages.next}
+        </button>
+      </Span>
+    </Grid>
+  )
 }
 
 /**
@@ -42,18 +121,16 @@ interface RequestCalendarProps {
  */
 export default function RequestCalendar({
   wardId,
+  activePeriod,
+  periods = [],
+  upcomingPeriodId,
+  onDisplayedPeriodChange,
   isLocked = false,
   nextWindowStart,
   nextWindowEnd,
 }: RequestCalendarProps) {
   const { user } = useAuth()
   const currentNurseId = user?.nurseid
-
-  const { data: periodWindow } = useRequestPeriodWindow()
-  const activePeriod = useMemo(
-    () => getRequestTargetPeriod(periodWindow),
-    [periodWindow],
-  )
 
   const [date, setDate] = useState(() => moment().startOf("isoWeek").toDate())
 
@@ -111,8 +188,11 @@ export default function RequestCalendar({
       <CustomWeekView
         {...props}
         isLocked={isLocked}
+        activePeriod={activePeriod}
         periodStartDate={activePeriod?.startdate}
         periodEndDate={activePeriod?.enddate}
+        nextWindowStart={nextWindowStart}
+        nextWindowEnd={nextWindowEnd}
       />
     )) as typeof CustomWeekView
     FortnightView.range = CustomWeekView.range
@@ -128,19 +208,52 @@ export default function RequestCalendar({
       views: customViews,
       defaultView: "fortnight" as View,
     }
-  }, [activePeriod?.enddate, activePeriod?.startdate, isLocked])
+  }, [activePeriod, isLocked, nextWindowEnd, nextWindowStart])
 
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), [])
+  const periodStatus = useMemo(() => {
+    if (!activePeriod) return undefined
+    if (upcomingPeriodId && activePeriod.periodid === upcomingPeriodId) {
+      return "Upcoming"
+    }
+
+    const today = moment().startOf("day")
+    const start = moment(activePeriod.startdate).startOf("day")
+    const end = moment(activePeriod.enddate).startOf("day")
+
+    if (today.isBefore(start)) return "Future"
+    if (today.isAfter(end)) return "Past"
+    return "Current"
+  }, [activePeriod, upcomingPeriodId])
+
+  const onNavigate = useCallback(
+    (newDate: Date) => {
+      setDate(newDate)
+      const navigatedPeriod =
+        periods.find((period) =>
+          moment(newDate).isBetween(
+            moment(period.startdate),
+            moment(period.enddate),
+            "day",
+            "[]",
+          ),
+        ) ?? null
+
+      onDisplayedPeriodChange?.(navigatedPeriod)
+    },
+    [onDisplayedPeriodChange, periods],
+  )
+
+  const components = useMemo(
+    () => ({
+      toolbar: (toolbarProps: ToolbarProps) => (
+        <CustomToolbar {...toolbarProps} periodStatus={periodStatus} />
+      ),
+    }),
+    [periodStatus],
+  )
 
   return (
     <VStack h="100%" w="100%" gap={0} align="stretch">
-      {isLocked && (
-        <LockdownBanner
-          nextWindowStart={nextWindowStart}
-          nextWindowEnd={nextWindowEnd}
-          title="Shift Request Application Period Closed."
-        />
-      )}
       <Box
         h="100%"
         position="relative"
@@ -150,21 +263,12 @@ export default function RequestCalendar({
         borderRadius={10}
         overflow="hidden"
       >
-        {isLocked && (
-          <Box
-            position="absolute"
-            inset={0}
-            bg="rgba(0, 0, 0, 0.08)"
-            zIndex={1}
-            pointerEvents="none"
-          />
-        )}
         <Calendar
           localizer={localizer}
           startAccessor="start"
           endAccessor="end"
           events={events}
-          toolbar={false}
+          components={components}
           view={defaultView}
           views={views}
           date={date}

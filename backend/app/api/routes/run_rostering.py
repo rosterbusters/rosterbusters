@@ -398,9 +398,7 @@ def _get_existing_roster_entry(
 ) -> Roster | None:
     return session.exec(
         select(Roster).where(
-            Roster.wardid == ward_id,
             Roster.nurseid == nurse_id,
-            Roster.periodid == period_id,
             Roster.shiftdate == shift_date,
         )
     ).first()
@@ -437,6 +435,8 @@ def _upsert_roster_entry(
     )
 
     if entry:
+        entry.wardid = payload.ward_id
+        entry.periodid = payload.period_id
         entry.shiftcode = payload.shift_code
         entry.comment = payload.comment
         entry.status = payload.status
@@ -1208,6 +1208,7 @@ def generate_roster_endpoint(
         _apply_locked_roster_overlay(
             result["roster"],
             generation_inputs["locked_roster_slots"],
+            generation_inputs["nurses"],
         )
         _queue_algorithm_notification(
             db,
@@ -1453,6 +1454,7 @@ def generate_roster_stream(
             _apply_locked_roster_overlay(
                 result["roster"],
                 generation_inputs["locked_roster_slots"],
+                generation_inputs["nurses"],
             )
             q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
             try:
@@ -2136,6 +2138,7 @@ def _locked_slot_solver_label(
 def _apply_locked_roster_overlay(
     roster: dict[str, Any],
     locked_roster_slots: list[dict[str, Any]],
+    nurses_data: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Overlay exact manual codes onto a generated roster after solver processing."""
     nurses = roster.get("nurses")
@@ -2147,10 +2150,17 @@ def _apply_locked_roster_overlay(
         for nurse in nurses
         if isinstance(nurse, dict)
     }
+    nurses_data_by_id = {
+        nurse.get("id"): nurse
+        for nurse in (nurses_data or [])
+        if isinstance(nurse, dict)
+    }
+    relabel_nurse_ids: set[int] = set()
     for slot in locked_roster_slots:
         if slot.get("is_algorithm_locked") is False:
             continue
-        nurse_row = rows_by_nurse_id.get(slot.get("nurse_id"))
+        nurse_id = slot.get("nurse_id")
+        nurse_row = rows_by_nurse_id.get(nurse_id)
         if not isinstance(nurse_row, dict):
             continue
         schedule = nurse_row.get("schedule")
@@ -2164,9 +2174,63 @@ def _apply_locked_roster_overlay(
             or not exact_shift_code
         ):
             continue
-        schedule[day_idx] = str(exact_shift_code).strip().upper()
+        normalized_shift_code = str(exact_shift_code).strip().upper()
+        normalized_shift_label = str(slot.get("shift_label") or "").strip().upper()
+        if normalized_shift_label == "OFF" and normalized_shift_code in {"DO", "RD", "OFF"}:
+            if isinstance(nurse_id, int):
+                relabel_nurse_ids.add(nurse_id)
+            continue
+        schedule[day_idx] = normalized_shift_code
+        if isinstance(nurse_id, int):
+            relabel_nurse_ids.add(nurse_id)
+
+    for nurse_id in relabel_nurse_ids:
+        nurse_row = rows_by_nurse_id.get(nurse_id)
+        if not isinstance(nurse_row, dict):
+            continue
+        _relabel_ordinary_off_days(
+            nurse_row,
+            nurses_data_by_id.get(nurse_id) or nurse_row,
+        )
 
     return roster
+
+
+def _has_permanent_shift_pattern(nurse_info: dict[str, Any] | None) -> bool:
+    if not nurse_info:
+        return False
+    normalized = str(
+        nurse_info.get("shift_pattern", nurse_info.get("shiftpattern", ""))
+    ).strip().upper()
+    return normalized in {"AM_ONLY", "PM_ONLY"}
+
+
+def _relabel_ordinary_off_days(
+    nurse_row: dict[str, Any],
+    nurse_info: dict[str, Any] | None = None,
+) -> None:
+    schedule = nurse_row.get("schedule")
+    if not isinstance(schedule, list):
+        return
+
+    ordinary_off_codes = {"OFF", "DO", "RD"}
+    keep_all_do = _has_permanent_shift_pattern(nurse_info)
+    off_count = 0
+    for index, code in enumerate(schedule):
+        if str(code).strip().upper() not in ordinary_off_codes:
+            continue
+        off_count += 1
+        schedule[index] = (
+            "OFF"
+            if keep_all_do
+            else ("RD" if off_count % 2 == 0 else "DO")
+        )
+
+    stats = nurse_row.get("stats")
+    if isinstance(stats, dict):
+        stats["days_off"] = sum(
+            1 for code in schedule if str(code).strip().upper() in ordinary_off_codes
+        )
 
 
 def _merge_locked_roster_slots(

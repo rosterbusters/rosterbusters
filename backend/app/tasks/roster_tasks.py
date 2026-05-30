@@ -225,19 +225,40 @@ def _save_roster_result(
     for nurse_result in roster.get("nurses", []):
         for day_idx, shift_label in enumerate(nurse_result["schedule"]):
             shift_date = start_date + timedelta(days=day_idx)
-            if (nurse_result["id"], shift_date) in locked_keys:
+            nurse_id = nurse_result["id"]
+            if (nurse_id, shift_date) in locked_keys:
                 continue
 
-            db.add(Roster(
-                nurseid=nurse_result["id"],
-                wardid=ward_id,
-                periodid=period_id,
-                shiftdate=shift_date,
-                shiftcode=SHIFT_CODE_TO_DB.get(shift_label, shift_label),
-                status="Pending",
-                assignmentmethod=assignment_method,
-                assignedby=None,
-            ))
+            shift_code = SHIFT_CODE_TO_DB.get(shift_label, shift_label)
+            existing = db.exec(
+                select(Roster).where(
+                    Roster.nurseid == nurse_id,
+                    Roster.shiftdate == shift_date,
+                )
+            ).first()
+            if existing:
+                existing.wardid = ward_id
+                existing.periodid = period_id
+                existing.shiftcode = shift_code
+                existing.status = "Pending"
+                existing.assignmentmethod = assignment_method
+                existing.assignedby = None
+                existing.comment = None
+                db.add(existing)
+                continue
+
+            db.add(
+                Roster(
+                    nurseid=nurse_id,
+                    wardid=ward_id,
+                    periodid=period_id,
+                    shiftdate=shift_date,
+                    shiftcode=shift_code,
+                    status="Pending",
+                    assignmentmethod=assignment_method,
+                    assignedby=None,
+                )
+            )
     db.commit()
     cache_delete(_ward_roster_cache_key(ward_id, period_id))
     return len(roster.get("nurses", []))
@@ -384,6 +405,7 @@ def generate_roster_task(
         _apply_locked_roster_overlay(
             result["roster"],
             generation_inputs["locked_roster_slots"],
+            generation_inputs["nurses"],
         )
         logger.info(
             "Roster generation completed task_id=%s ward_id=%s period_id=%s method=%s nurse_count=%s",
@@ -486,6 +508,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
             _apply_locked_roster_overlay(
                 result["roster"],
                 generation_inputs["locked_roster_slots"],
+                generation_inputs["nurses"],
             )
 
             nurses_saved = _save_roster_result(

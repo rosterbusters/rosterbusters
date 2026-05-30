@@ -39,6 +39,7 @@ type ShiftOverviewRow = {
   requestedDates: string
   applicationDate: string
   rawDate: string
+  rawApplicationDate: string
   status: RequestStatus
 }
 
@@ -50,6 +51,7 @@ type LeaveOverviewRow = {
   requestedDates: string
   applicationDate: string
   rawDate: string
+  rawApplicationDate: string
   status: RequestStatus
 }
 
@@ -224,8 +226,9 @@ function WardStaffRequestOverviewPage() {
         shiftCodeMap.get(request.preferredshifttype) ??
         request.preferredshifttype,
       requestedDates: formatDate(request.preferreddate),
-      applicationDate: formatDate(request.preferreddate),
+      applicationDate: formatDate(request.timestamp),
       rawDate: request.preferreddate,
+      rawApplicationDate: request.timestamp,
       status: request.status,
     }))
 
@@ -237,6 +240,7 @@ function WardStaffRequestOverviewPage() {
       requestedDates: formatDateRange(request.startdate, request.enddate),
       applicationDate: formatDate(request.requestedat),
       rawDate: request.requestedat,
+      rawApplicationDate: request.requestedat,
       status: request.status,
     }))
 
@@ -262,7 +266,8 @@ function WardStaffRequestOverviewPage() {
       if (statusDiff !== 0) return statusDiff
 
       const timeDiff =
-        new Date(left.rawDate).getTime() - new Date(right.rawDate).getTime()
+        new Date(left.rawApplicationDate).getTime() -
+        new Date(right.rawApplicationDate).getTime()
       return sortDir === "asc" ? timeDiff : -timeDiff
     })
   }, [filteredRequests, sortDir])

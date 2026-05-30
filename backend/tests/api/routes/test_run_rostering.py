@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 from app.api.routes import run_rostering
 from app.models.designation import Designation
 from app.models.leave import LeaveRequest
-from app.models.rbac import Nurse, NurseManager
+from app.models.rbac import Nurse, NurseManager, RBACUser
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.models.shifts import ShiftCode, ShiftRequest
 from app.rostering.cp_sat_algo import parse_inputs as parse_ga_inputs
@@ -544,7 +544,7 @@ def test_locked_roster_overlay_preserves_exact_prefilled_codes() -> None:
                 "id": 10,
                 "name": "Alice",
                 "rank": "A",
-                "schedule": ["PM", "AM", "DO", "A"],
+                "schedule": ["PM", "AM", "RD", "DO", "AM"],
             }
         ]
     }
@@ -568,14 +568,35 @@ def test_locked_roster_overlay_preserves_exact_prefilled_codes() -> None:
             },
             {
                 "nurse_id": 10,
-                "day_idx": 3,
+                "day_idx": 4,
                 "shift_code": "ML",
                 "shift_label": "ML",
                 "is_algorithm_locked": True,
             },
             {
                 "nurse_id": 10,
+                "day_idx": 1,
+                "shift_code": "DO",
+                "shift_label": "OFF",
+                "is_algorithm_locked": True,
+            },
+            {
+                "nurse_id": 10,
                 "day_idx": 2,
+                "shift_code": "RD",
+                "shift_label": "OFF",
+                "is_algorithm_locked": True,
+            },
+            {
+                "nurse_id": 10,
+                "day_idx": 3,
+                "shift_code": "OFF",
+                "shift_label": "OFF",
+                "is_algorithm_locked": True,
+            },
+            {
+                "nurse_id": 10,
+                "day_idx": 3,
                 "shift_code": "N",
                 "shift_label": "NIGHT",
                 "is_algorithm_locked": False,
@@ -583,7 +604,165 @@ def test_locked_roster_overlay_preserves_exact_prefilled_codes() -> None:
         ],
     )
 
-    assert roster["nurses"][0]["schedule"] == ["A-ADD", "HOL", "DO", "ML"]
+    assert roster["nurses"][0]["schedule"] == ["A-ADD", "HOL", "DO", "RD", "ML"]
+
+
+def test_locked_roster_overlay_relabels_prefilled_do_to_alternating_rd() -> None:
+    roster = {
+        "nurses": [
+            {
+                "id": 10,
+                "name": "Alice",
+                "rank": "A",
+                "schedule": ["DO", "DO", "DO"],
+                "stats": {"days_off": 0},
+            }
+        ]
+    }
+
+    run_rostering._apply_locked_roster_overlay(
+        roster,
+        [
+            {
+                "nurse_id": 10,
+                "day_idx": 1,
+                "shift_code": "DO",
+                "shift_label": "OFF",
+                "is_algorithm_locked": True,
+            },
+        ],
+    )
+
+    assert roster["nurses"][0]["schedule"] == ["DO", "RD", "DO"]
+    assert roster["nurses"][0]["stats"]["days_off"] == 3
+
+
+def test_locked_roster_overlay_maps_two_prefilled_do_slots_to_do_rd() -> None:
+    roster = {
+        "nurses": [
+            {
+                "id": 10,
+                "name": "Alice",
+                "rank": "A",
+                "schedule": ["DO", "DO", "A"],
+                "stats": {"days_off": 0},
+            }
+        ]
+    }
+
+    run_rostering._apply_locked_roster_overlay(
+        roster,
+        [
+            {
+                "nurse_id": 10,
+                "day_idx": 0,
+                "shift_code": "DO",
+                "shift_label": "OFF",
+                "is_algorithm_locked": True,
+            },
+            {
+                "nurse_id": 10,
+                "day_idx": 1,
+                "shift_code": "DO",
+                "shift_label": "OFF",
+                "is_algorithm_locked": True,
+            },
+        ],
+    )
+
+    assert roster["nurses"][0]["schedule"] == ["DO", "RD", "A"]
+    assert roster["nurses"][0]["stats"]["days_off"] == 2
+
+
+def test_locked_roster_overlay_reflows_off_pattern_after_special_overlay() -> None:
+    roster = {
+        "nurses": [
+            {
+                "id": 10,
+                "name": "Alice",
+                "rank": "A",
+                "schedule": ["DO", "RD", "DO", "A"],
+                "stats": {"days_off": 3},
+            }
+        ]
+    }
+
+    run_rostering._apply_locked_roster_overlay(
+        roster,
+        [
+            {
+                "nurse_id": 10,
+                "day_idx": 0,
+                "shift_code": "HOL",
+                "shift_label": "HOL",
+                "is_algorithm_locked": True,
+            },
+        ],
+    )
+
+    assert roster["nurses"][0]["schedule"] == ["HOL", "DO", "RD", "A"]
+    assert roster["nurses"][0]["stats"]["days_off"] == 2
+
+
+def test_locked_roster_overlay_keeps_permanent_pattern_off_days_as_off() -> None:
+    roster = {
+        "nurses": [
+            {
+                "id": 10,
+                "name": "Alice",
+                "rank": "A",
+                "schedule": ["DO", "RD", "OFF"],
+                "stats": {"days_off": 3},
+            }
+        ]
+    }
+
+    run_rostering._apply_locked_roster_overlay(
+        roster,
+        [
+            {
+                "nurse_id": 10,
+                "day_idx": 1,
+                "shift_code": "DO",
+                "shift_label": "OFF",
+                "is_algorithm_locked": True,
+            },
+        ],
+        [{"id": 10, "name": "Alice", "shift_pattern": "AM_ONLY"}],
+    )
+
+    assert roster["nurses"][0]["schedule"] == ["OFF", "OFF", "OFF"]
+    assert roster["nurses"][0]["stats"]["days_off"] == 3
+
+
+def test_locked_roster_overlay_does_not_convert_leave_codes_to_do_rd() -> None:
+    roster = {
+        "nurses": [
+            {
+                "id": 10,
+                "name": "Alice",
+                "rank": "A",
+                "schedule": ["AL", "HOL", "ML", "DO", "RD"],
+                "stats": {"days_off": 2},
+            }
+        ]
+    }
+
+    run_rostering._apply_locked_roster_overlay(
+        roster,
+        [
+            {
+                "nurse_id": 10,
+                "day_idx": 2,
+                "shift_code": "ML",
+                "shift_label": "ML",
+                "is_algorithm_locked": True,
+            },
+        ],
+    )
+
+    assert roster["nurses"][0]["schedule"] == ["AL", "HOL", "ML", "DO", "RD"]
+    assert roster["nurses"][0]["stats"]["days_off"] == 2
 
 
 def test_save_roster_result_persists_exact_overlaid_prefilled_codes(
@@ -778,6 +957,213 @@ def test_save_roster_result_preserves_manual_pending_locked_slots(
     assert rows[0].rosterid == locked_roster_id
     assert rows[0].comment == "preserve this"
     assert rows[0].assignedby == manager.managerid
+
+
+def test_manual_roster_upsert_reuses_existing_nurse_date_across_periods(
+    db: Session,
+) -> None:
+    _ensure_designations(db)
+    _ensure_base_shift_codes(db)
+
+    manager = NurseManager(
+        name="Overlap Manager",
+        employeeid="MGR-OVERLAP-UPsert",
+        email="overlap-upsert-manager@example.com",
+        contactnumber="999",
+        isactive=True,
+    )
+    db.add(manager)
+    db.commit()
+    db.refresh(manager)
+
+    ward = Ward(
+        wardname=f"Overlap Upsert Ward {manager.managerid}",
+        managerid=manager.managerid,
+        isactive=True,
+        am_rn=1,
+        am_en_na_min=0,
+        am_hca_min=0,
+        pm_rn=1,
+        pm_en_na_min=0,
+        pm_hca_min=0,
+        nd_rn=1,
+        nd_en_na_min=0,
+        nd_hca_min=0,
+    )
+    db.add(ward)
+    db.commit()
+    db.refresh(ward)
+
+    nurse = Nurse(
+        name="Overlap Upsert Nurse",
+        employeeid=f"OVERLAP-UP-{ward.wardid}",
+        designation="RN",
+        email=f"overlap-up-{ward.wardid}@example.com",
+        contactnumber="111",
+        wardid=ward.wardid,
+        employmenttype="FT",
+        isactive=True,
+    )
+    db.add(nurse)
+    db.commit()
+    db.refresh(nurse)
+
+    old_period = _create_period(
+        db,
+        name=f"Overlap Upsert Old {ward.wardid}",
+        startdate=date(2031, 6, 1),
+        enddate=date(2031, 6, 14),
+    )
+    new_period = _create_period(
+        db,
+        name=f"Overlap Upsert New {ward.wardid}",
+        startdate=date(2031, 6, 1),
+        enddate=date(2031, 6, 14),
+    )
+    shift_date = date(2031, 6, 4)
+
+    existing = Roster(
+        nurseid=nurse.nurseid,
+        wardid=ward.wardid,
+        periodid=old_period.periodid,
+        shiftdate=shift_date,
+        shiftcode="A",
+        status="Pending",
+        assignmentmethod="Manual",
+        assignedby=manager.managerid,
+        comment="old period",
+    )
+    db.add(existing)
+    db.commit()
+    db.refresh(existing)
+
+    saved = run_rostering._upsert_roster_entry(
+        db,
+        run_rostering.RosterUpsertRequest(
+            ward_id=ward.wardid,
+            nurse_id=nurse.nurseid,
+            period_id=new_period.periodid,
+            shift_date=shift_date,
+            shift_code="DO",
+            comment=None,
+        ),
+        RBACUser(
+            userid=999_001,
+            username="overlap-upsert-manager",
+            email=None,
+            passwordhash="unused",
+            managerid=manager.managerid,
+        ),
+    )
+    db.add(saved)
+    db.commit()
+    db.refresh(saved)
+
+    rows = db.exec(
+        select(Roster).where(
+            Roster.nurseid == nurse.nurseid,
+            Roster.shiftdate == shift_date,
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].rosterid == existing.rosterid
+    assert rows[0].periodid == new_period.periodid
+    assert rows[0].shiftcode == "DO"
+    assert rows[0].comment is None
+
+
+def test_save_roster_result_reuses_existing_nurse_date_across_periods(
+    db: Session,
+) -> None:
+    _ensure_designations(db)
+    _ensure_base_shift_codes(db)
+
+    ward = Ward(
+        wardname="Overlap Generated Ward",
+        isactive=True,
+        am_rn=1,
+        am_en_na_min=0,
+        am_hca_min=0,
+        pm_rn=1,
+        pm_en_na_min=0,
+        pm_hca_min=0,
+        nd_rn=1,
+        nd_en_na_min=0,
+        nd_hca_min=0,
+    )
+    db.add(ward)
+    db.commit()
+    db.refresh(ward)
+
+    nurse = Nurse(
+        name="Overlap Generated Nurse",
+        employeeid=f"OVERLAP-GEN-{ward.wardid}",
+        designation="RN",
+        email=f"overlap-gen-{ward.wardid}@example.com",
+        contactnumber="111",
+        wardid=ward.wardid,
+        employmenttype="FT",
+        isactive=True,
+    )
+    db.add(nurse)
+    db.commit()
+    db.refresh(nurse)
+
+    old_period = _create_period(
+        db,
+        name=f"Overlap Generated Old {ward.wardid}",
+        startdate=date(2031, 7, 1),
+        enddate=date(2031, 7, 14),
+    )
+    new_period = _create_period(
+        db,
+        name=f"Overlap Generated New {ward.wardid}",
+        startdate=date(2031, 7, 1),
+        enddate=date(2031, 7, 14),
+    )
+    existing = Roster(
+        nurseid=nurse.nurseid,
+        wardid=ward.wardid,
+        periodid=old_period.periodid,
+        shiftdate=date(2031, 7, 1),
+        shiftcode="A",
+        status="Pending",
+        assignmentmethod="AB-RATIO",
+        comment="replace this",
+    )
+    db.add(existing)
+    db.commit()
+    db.refresh(existing)
+
+    roster_tasks._save_roster_result(
+        db,
+        ward.wardid,
+        new_period.periodid,
+        {
+            "nurses": [
+                {
+                    "id": nurse.nurseid,
+                    "name": nurse.name,
+                    "rank": "A",
+                    "schedule": ["PM"],
+                }
+            ]
+        },
+        "MILP",
+    )
+
+    rows = db.exec(
+        select(Roster).where(
+            Roster.nurseid == nurse.nurseid,
+            Roster.shiftdate == date(2031, 7, 1),
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].rosterid == existing.rosterid
+    assert rows[0].periodid == new_period.periodid
+    assert rows[0].shiftcode == "P"
+    assert rows[0].assignmentmethod == "MILP"
+    assert rows[0].comment is None
 
 
 def test_milp_parse_inputs_separates_hard_soft_and_prev_context() -> None:

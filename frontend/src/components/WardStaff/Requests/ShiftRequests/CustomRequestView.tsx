@@ -1,6 +1,7 @@
-import { Box, Grid, GridItem, VStack } from "@chakra-ui/react"
+import { Box, Grid, GridItem, Text, VStack } from "@chakra-ui/react"
 import { type JSX, useMemo, useState } from "react"
 import { type DateLocalizer, Navigate } from "react-big-calendar"
+import type { RosterPeriodPublic } from "@/client/types.gen"
 import { CalendarRequestBlock } from "@/components/Common/CalendarRequestBlock"
 import useAuth from "@/hooks/useAuth"
 import type { Event } from "@/models/Event"
@@ -11,8 +12,11 @@ interface CustomWeekViewProps {
   date: Date
   localizer: DateLocalizer
   events: Event[]
+  activePeriod?: RosterPeriodPublic
   periodStartDate?: string
   periodEndDate?: string
+  nextWindowStart?: string
+  nextWindowEnd?: string
 
   [key: string]: unknown
 }
@@ -72,11 +76,12 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
   date,
   localizer,
   events,
-  startAccessor,
-  endAccessor,
   isLocked,
+  activePeriod,
   periodStartDate,
   periodEndDate,
+  nextWindowStart,
+  nextWindowEnd,
 }: CustomWeekViewProps) {
   const locked = Boolean(isLocked)
   const { user } = useAuth()
@@ -115,6 +120,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
     setIsEditOpen(false)
     window.setTimeout(() => setSelectedRequest(null), 350)
   }
+  const hasNextWindow = nextWindowStart && nextWindowEnd
 
   return (
     <>
@@ -140,75 +146,105 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
           ))}
         </Grid>
 
-        <Grid
-          width={"full"}
-          minW={"820px"}
-          templateColumns="repeat(7, 1fr)"
-          templateRows="repeat(2, 1fr)"
-        >
-          {currRange.map((day, i) => {
-            const eventsForDay = getEventsForDay(day, events)
-            const dateKey = moment(day).format("YYYY-MM-DD")
+        <Box position="relative" minW={"820px"}>
+          {locked && (
+            <Box
+              position="absolute"
+              top={0}
+              left={0}
+              right={0}
+              zIndex={2}
+              bgColor="primary"
+              py={2.5}
+              textAlign="center"
+              pointerEvents="none"
+            >
+              <Text color="white" fontSize="sm" fontWeight="medium">
+                Shift Request Application Period Closed.
+                {hasNextWindow && (
+                  <>
+                    {" "}
+                    Next Application Window: {nextWindowStart} - {nextWindowEnd}
+                  </>
+                )}
+              </Text>
+            </Box>
+          )}
+          <Grid
+            width={"full"}
+            templateColumns="repeat(7, 1fr)"
+            templateRows="repeat(2, 1fr)"
+          >
+            {currRange.map((day, i) => {
+              const eventsForDay = getEventsForDay(day, events)
+              const dateKey = moment(day).format("YYYY-MM-DD")
 
-            return (
-              <GridItem
-                key={i}
-                data-testid={`request-calendar-cell-${dateKey}`}
-                bg="white"
-                textAlign={"start"}
-                color="foreground"
-                p={2}
-                minH="250px"
-                onClick={locked ? undefined : () => handleDayClicked(day)}
-                cursor={locked ? "default" : "pointer"}
-                borderColor="border"
-                borderWidth="1px"
-                bgColor={
-                  moment(day).isSame(moment(), "day") ? "menuactive" : "white"
-                }
-              >
-                {localizer.format(day, "D")}
-                <Box mt={2}>
-                  {eventsForDay.length > 0 &&
-                    [...eventsForDay]
-                      .sort(
-                        (a, b) =>
-                          (b.resource?.isOwn ? 1 : 0) -
-                          (a.resource?.isOwn ? 1 : 0),
-                      )
-                      .map((ev, idx) => (
-                        <Box
-                          key={idx}
-                          pb={2}
-                          maxW="100%"
-                          data-testid={
-                            ev.resource?.requestId
-                              ? `shift-request-${ev.resource.requestId}`
-                              : undefined
-                          }
-                        >
-                          <CalendarRequestBlock
-                            shift={ev.title}
-                            nurseName={ev.resource?.nurseName}
-                            owned={ev.resource?.isOwn}
-                            onClick={
-                              ev.resource?.isOwn && !locked
-                                ? () =>
-                                    handleOwnRequestClicked({
-                                      requestId: ev.resource.requestId,
-                                      shiftType: ev.resource.shiftType,
-                                      preferredDate: ev.resource.preferredDate,
-                                    })
+              return (
+                <GridItem
+                  key={i}
+                  data-testid={`request-calendar-cell-${dateKey}`}
+                  bg="white"
+                  textAlign={"start"}
+                  color={locked ? "gray.600" : "foreground"}
+                  p={2}
+                  pt={locked && i < 7 ? 12 : 2}
+                  minH="250px"
+                  onClick={locked ? undefined : () => handleDayClicked(day)}
+                  cursor={locked ? "default" : "pointer"}
+                  borderColor="border"
+                  borderWidth="1px"
+                  bgColor={
+                    locked
+                      ? "gray.100"
+                      : moment(day).isSame(moment(), "day")
+                        ? "menuactive"
+                        : "white"
+                  }
+                >
+                  {localizer.format(day, "D")}
+                  <Box mt={2} opacity={locked ? 0.65 : 1}>
+                    {eventsForDay.length > 0 &&
+                      [...eventsForDay]
+                        .sort(
+                          (a, b) =>
+                            (b.resource?.isOwn ? 1 : 0) -
+                            (a.resource?.isOwn ? 1 : 0),
+                        )
+                        .map((ev, idx) => (
+                          <Box
+                            key={idx}
+                            pb={2}
+                            maxW="100%"
+                            data-testid={
+                              ev.resource?.requestId
+                                ? `shift-request-${ev.resource.requestId}`
                                 : undefined
                             }
-                          />
-                        </Box>
-                      ))}
-                </Box>
-              </GridItem>
-            )
-          })}
-        </Grid>
+                          >
+                            <CalendarRequestBlock
+                              shift={ev.title}
+                              nurseName={ev.resource?.nurseName}
+                              owned={ev.resource?.isOwn}
+                              onClick={
+                                ev.resource?.isOwn && !locked
+                                  ? () =>
+                                      handleOwnRequestClicked({
+                                        requestId: ev.resource.requestId,
+                                        shiftType: ev.resource.shiftType,
+                                        preferredDate:
+                                          ev.resource.preferredDate,
+                                      })
+                                  : undefined
+                              }
+                            />
+                          </Box>
+                        ))}
+                  </Box>
+                </GridItem>
+              )
+            })}
+          </Grid>
+        </Box>
       </VStack>
 
       {!locked && (
@@ -219,6 +255,7 @@ const CustomWeekView: CustomWeekViewComponent = function CustomWeekView({
               onClose={handleNewShiftClose}
               selectedDate={selectedDay}
               wardId={(user as any)?.wardid}
+              activePeriod={activePeriod}
             />
           )}
 

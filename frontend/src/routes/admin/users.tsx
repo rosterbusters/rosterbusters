@@ -20,6 +20,7 @@ import {
   type AdminUser,
   type AdminUserCreate,
   type AdminUserFilters,
+  type AdminUsersResponse,
   type AdminUserUpdate,
   type DesignationOption,
   type WardOption,
@@ -1181,19 +1182,47 @@ function DeleteDialog({
   user: AdminUser | null
 }) {
   const queryClient = useQueryClient()
-  const [deleting, setDeleting] = useState(false)
 
   const mutation = useMutation({
     mutationFn: (id: number) => AdminService.deleteUser(id),
+    onMutate: async (id) => {
+      const queryKey = ["admin-users"]
+      await queryClient.cancelQueries({ queryKey })
+      const previousUsers = queryClient.getQueriesData<AdminUsersResponse>({
+        queryKey,
+      })
+
+      queryClient.setQueriesData<AdminUsersResponse>(
+        { queryKey },
+        (current) => {
+          if (!current) return current
+
+          const nextData = current.data.filter((item) => item.userid !== id)
+          const removedFromPage = nextData.length !== current.data.length
+
+          return {
+            ...current,
+            data: nextData,
+            count: removedFromPage
+              ? Math.max(0, current.count - 1)
+              : current.count,
+          }
+        },
+      )
+
+      return { previousUsers }
+    },
     onSuccess: () => {
       showSuccessToast("User deleted successfully.")
       onClose()
     },
-    onError: (err: any) => {
+    onError: (err: any, _id, context) => {
+      context?.previousUsers.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data)
+      })
       showErrorToast(err.body?.detail ?? "Failed to delete user.")
     },
     onSettled: () => {
-      setDeleting(false)
       queryClient.invalidateQueries({ queryKey: ["admin-users"] })
     },
   })
@@ -1215,24 +1244,26 @@ function DeleteDialog({
         </p>
         <div className="flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            disabled={mutation.isPending}
+            className="px-4 py-2 text-sm font-medium text-white bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => {
               if (isAdminUser) {
                 showErrorToast("Admin accounts cannot be deleted.")
                 return
               }
-              setDeleting(true)
               mutation.mutate(user.userid)
             }}
-            disabled={deleting || isAdminUser}
+            disabled={mutation.isPending || isAdminUser}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting
+            {mutation.isPending
               ? "Deleting..."
               : isAdminUser
                 ? "Cannot Delete Admin"
