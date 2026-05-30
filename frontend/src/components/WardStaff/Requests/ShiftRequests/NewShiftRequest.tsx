@@ -13,14 +13,10 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import { type ShiftRequestCreate, ShiftRequestsService } from "@/client"
-import type { ShiftCodePublic } from "@/client/types.gen"
+import type { RosterPeriodPublic, ShiftCodePublic } from "@/client/types.gen"
 import { DatePickerDemo } from "@/components/Common/DatePicker"
 import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
-import {
-  getRequestTargetPeriod,
-  useRequestPeriodWindow,
-} from "@/hooks/useApplicationLockStatus"
 import { AssignableStatus } from "./AssignableStatus"
 
 const API_BASE = import.meta.env.VITE_API_URL || ""
@@ -45,11 +41,17 @@ async function fetchRequestableShiftCodesByWard(
   return response.json()
 }
 
+function parseIsoDateToLocal(date: string): Date {
+  const [year, month, day] = date.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
 interface NewShiftRequestProps {
   isOpen: boolean
   onClose: () => void
   selectedDate?: Date | null
   wardId?: number | null
+  activePeriod?: RosterPeriodPublic
 }
 
 export const NewShiftRequest = ({
@@ -57,6 +59,7 @@ export const NewShiftRequest = ({
   onClose,
   selectedDate,
   wardId,
+  activePeriod,
 }: NewShiftRequestProps) => {
   const [shiftType, setShiftType] = useState<string[]>([])
   const [requestDate, setRequestDate] = useState<Date | undefined>(
@@ -68,8 +71,6 @@ export const NewShiftRequest = ({
     onClose()
     window.setTimeout(cleanupOrphanedDialogState, 350)
   }
-
-  const { data: periodWindow } = useRequestPeriodWindow()
 
   const { data: shiftCodes = [] } = useQuery({
     queryKey: ["shift-codes", "requestable", "ward", wardId],
@@ -105,14 +106,19 @@ export const NewShiftRequest = ({
 
   useEffect(() => {
     if (isOpen) {
-      setRequestDate(selectedDate ?? undefined)
+      setRequestDate(
+        selectedDate ??
+          (activePeriod
+            ? parseIsoDateToLocal(activePeriod.startdate)
+            : undefined),
+      )
       setShiftType([])
       return
     }
 
     const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
     return () => window.clearTimeout(timeoutId)
-  }, [isOpen, selectedDate])
+  }, [activePeriod, isOpen, selectedDate])
 
   useEffect(
     () => () => {
@@ -126,7 +132,6 @@ export const NewShiftRequest = ({
       showErrorToast("No ward is linked to your account.")
       return
     }
-    const activePeriod = getRequestTargetPeriod(periodWindow)
     if (!activePeriod) {
       showErrorToast("There is no roster period available.")
       return
@@ -139,10 +144,18 @@ export const NewShiftRequest = ({
       showErrorToast("Please select a date.")
       return
     }
+    const preferredDate = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`
+    if (
+      preferredDate < activePeriod.startdate ||
+      preferredDate > activePeriod.enddate
+    ) {
+      showErrorToast("Please select a date within the displayed roster period.")
+      return
+    }
 
     mutation.mutate({
       periodid: activePeriod.periodid,
-      preferreddate: `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, "0")}-${String(requestDate.getDate()).padStart(2, "0")}`,
+      preferreddate: preferredDate,
       preferredshifttype: shiftType[0],
     })
   }

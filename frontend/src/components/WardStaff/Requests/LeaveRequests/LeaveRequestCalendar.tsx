@@ -60,7 +60,7 @@ const LeaveToolbar: ComponentType<ToolbarProps> = ({
         className={cx("rbc-btn-group")}
         justifySelf={{ base: "center", md: "start" }}
       >
-        <button onClick={() => onNavigate(Navigate.PREVIOUS)}>
+        <button type="button" onClick={() => onNavigate(Navigate.PREVIOUS)}>
           {localizer.messages.previous}
         </button>
       </Span>
@@ -102,7 +102,7 @@ const LeaveToolbar: ComponentType<ToolbarProps> = ({
         justifySelf={{ base: "center", md: "end" }}
         className={cx("rbc-btn-group")}
       >
-        <button onClick={() => onNavigate(Navigate.NEXT)}>
+        <button type="button" onClick={() => onNavigate(Navigate.NEXT)}>
           {localizer.messages.next}
         </button>
       </Span>
@@ -204,6 +204,7 @@ export default function LeaveRequestCalendar({
         {...props}
         isLocked={isLocked}
         periodStartDate={activePeriod?.startdate}
+        periodEndDate={activePeriod?.enddate}
       />
     )) as typeof CustomMonthView
     MonthView.range = CustomMonthView.range
@@ -214,7 +215,7 @@ export default function LeaveRequestCalendar({
       views: { month: MonthView, week: false, day: false } as any,
       defaultView: "month" as View,
     }
-  }, [activePeriod?.startdate, isLocked])
+  }, [activePeriod?.enddate, activePeriod?.startdate, isLocked])
 
   return (
     <Box

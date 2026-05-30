@@ -12,6 +12,7 @@ interface CustomMonthViewProps {
   localizer: DateLocalizer
   events: Event[]
   periodStartDate?: string
+  periodEndDate?: string
   [key: string]: unknown
 }
 
@@ -41,7 +42,25 @@ function getEventsForDay(day: Date, events: Event[]): Event[] {
   })
 }
 
+function isDateInPeriod(
+  day: Date,
+  periodStartDate?: string,
+  periodEndDate?: string,
+): boolean {
+  return (
+    !!periodStartDate &&
+    !!periodEndDate &&
+    moment(day).isBetween(
+      moment(periodStartDate),
+      moment(periodEndDate),
+      "day",
+      "[]",
+    )
+  )
+}
+
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const PERIOD_BORDER_COLOR = "#52add0"
 
 const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   date,
@@ -49,6 +68,7 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
   events,
   isLocked,
   periodStartDate,
+  periodEndDate,
 }: CustomMonthViewProps) {
   const locked = Boolean(isLocked)
   const [selectedRequests, setSelectedRequests] = useState<
@@ -127,6 +147,29 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                   .startOf("day")
                   .isBefore(moment(periodStartDate).startOf("day"))
               const isBlocked = locked || isBeforePeriodStart
+              const isPeriodDay = isDateInPeriod(
+                day,
+                periodStartDate,
+                periodEndDate,
+              )
+              const previousDay = moment(day).subtract(1, "day").toDate()
+              const nextDay = moment(day).add(1, "day").toDate()
+              const previousWeek = moment(day).subtract(7, "days").toDate()
+              const nextWeek = moment(day).add(7, "days").toDate()
+              const isPeriodBlockTop =
+                isPeriodDay &&
+                !isDateInPeriod(previousWeek, periodStartDate, periodEndDate)
+              const isPeriodBlockBottom =
+                isPeriodDay &&
+                !isDateInPeriod(nextWeek, periodStartDate, periodEndDate)
+              const isPeriodBlockLeft =
+                isPeriodDay &&
+                (di === 0 ||
+                  !isDateInPeriod(previousDay, periodStartDate, periodEndDate))
+              const isPeriodBlockRight =
+                isPeriodDay &&
+                (di === 6 ||
+                  !isDateInPeriod(nextDay, periodStartDate, periodEndDate))
               const dateKey = moment(day).format("YYYY-MM-DD")
 
               return (
@@ -152,6 +195,22 @@ const CustomMonthView: CustomMonthViewComponent = function CustomMonthView({
                   minH="120px"
                   borderColor="border"
                   borderWidth="1px"
+                  borderTopColor={
+                    isPeriodBlockTop ? PERIOD_BORDER_COLOR : "border"
+                  }
+                  borderBottomColor={
+                    isPeriodBlockBottom ? PERIOD_BORDER_COLOR : "border"
+                  }
+                  borderLeftColor={
+                    isPeriodBlockLeft ? PERIOD_BORDER_COLOR : "border"
+                  }
+                  borderRightColor={
+                    isPeriodBlockRight ? PERIOD_BORDER_COLOR : "border"
+                  }
+                  borderTopWidth={isPeriodBlockTop ? "2px" : "1px"}
+                  borderBottomWidth={isPeriodBlockBottom ? "2px" : "1px"}
+                  borderLeftWidth={isPeriodBlockLeft ? "2px" : "1px"}
+                  borderRightWidth={isPeriodBlockRight ? "2px" : "1px"}
                   cursor={isBlocked ? "default" : "pointer"}
                   onClick={
                     isBlocked
