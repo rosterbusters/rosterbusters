@@ -1,5 +1,6 @@
 import {
   Box,
+  Button,
   createListCollection,
   Flex,
   HStack,
@@ -32,7 +33,10 @@ import {
   type NurseManagerStaffUpdate,
   type NurseManagerStaffUser,
 } from "@/client/nurseManagerStaffService"
-import type { ShiftPattern } from "@/components/NurseManager/RosterTable/types"
+import type {
+  ShiftPattern,
+  WardStatisticsResponse,
+} from "@/components/NurseManager/RosterTable/types"
 import {
   useUpdateNurseShiftPattern,
   useWardStatistics,
@@ -454,13 +458,65 @@ function WardStaffDirectoryPage() {
   const deleteStaffMutation = useMutation({
     mutationFn: (userId: number) =>
       NurseManagerStaffService.deleteStaff(userId),
+    onMutate: async (userId) => {
+      const wardId = selectedWard?.wardid
+      const staffQueryKey = ["nurse-manager", "staff-directory", wardId]
+      const statisticsQueryKey = ["roster", "statistics", wardId ?? null]
+      const nurseId = deletingStaff?.nurseId
+
+      await queryClient.cancelQueries({ queryKey: staffQueryKey })
+      await queryClient.cancelQueries({ queryKey: statisticsQueryKey })
+
+      const previousStaff =
+        queryClient.getQueryData<NurseManagerStaffUser[]>(staffQueryKey)
+      const previousStatistics =
+        queryClient.getQueryData<WardStatisticsResponse>(statisticsQueryKey)
+
+      queryClient.setQueryData<NurseManagerStaffUser[]>(
+        staffQueryKey,
+        (current = []) => current.filter((staff) => staff.userid !== userId),
+      )
+
+      if (nurseId != null) {
+        queryClient.setQueryData<WardStatisticsResponse>(
+          statisticsQueryKey,
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  nurses: current.nurses.filter(
+                    (nurse) => nurse.nurseId !== nurseId,
+                  ),
+                }
+              : current,
+        )
+      }
+
+      return {
+        previousStaff,
+        previousStatistics,
+        staffQueryKey,
+        statisticsQueryKey,
+      }
+    },
     onSuccess: () => {
       showSuccessToast("User deleted successfully.")
       setDeletingStaff(null)
-      invalidateDirectoryData()
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, _userId, context) => {
+      if (context?.previousStaff) {
+        queryClient.setQueryData(context.staffQueryKey, context.previousStaff)
+      }
+      if (context?.previousStatistics) {
+        queryClient.setQueryData(
+          context.statisticsQueryKey,
+          context.previousStatistics,
+        )
+      }
       showErrorToast(getErrorMessage(error))
+    },
+    onSettled: () => {
+      invalidateDirectoryData()
     },
   })
 
@@ -527,10 +583,7 @@ function WardStaffDirectoryPage() {
         (nurse) => [nurse.nurseId, nurse] as const,
       ),
     )
-    const nurseIds = new Set<number>([
-      ...staffUsers.map((staff) => staff.nurseid),
-      ...(statistics?.nurses ?? []).map((nurse) => nurse.nurseId),
-    ])
+    const nurseIds = new Set<number>(staffUsers.map((staff) => staff.nurseid))
 
     return Array.from(nurseIds)
       .map((nurseId) => {
@@ -1941,25 +1994,31 @@ function WardStaffDirectoryPage() {
               action cannot be undone.
             </Text>
             <Flex justify="end" gap={3}>
-              <Box
-                as="button"
+              <Button
+                type="button"
                 px={4}
                 py={2}
                 rounded="md"
                 borderWidth="1px"
                 borderColor="gray.200"
-                color="gray.700"
+                color="white"
+                disabled={deleteStaffMutation.isPending}
                 onClick={() => setDeletingStaff(null)}
+                opacity={deleteStaffMutation.isPending ? 0.6 : 1}
+                cursor={
+                  deleteStaffMutation.isPending ? "not-allowed" : "pointer"
+                }
               >
                 Cancel
-              </Box>
-              <Box
-                as="button"
+              </Button>
+              <Button
+                type="button"
                 px={4}
                 py={2}
                 rounded="md"
                 bg="red.600"
                 color="white"
+                disabled={deleteStaffMutation.isPending}
                 onClick={() => {
                   if (deleteStaffMutation.isPending) {
                     return
@@ -1972,14 +2031,13 @@ function WardStaffDirectoryPage() {
                   }
                   deleteStaffMutation.mutate(deletingStaff.userId)
                 }}
-                aria-disabled={deleteStaffMutation.isPending}
                 opacity={deleteStaffMutation.isPending ? 0.6 : 1}
                 cursor={
                   deleteStaffMutation.isPending ? "not-allowed" : "pointer"
                 }
               >
                 {deleteStaffMutation.isPending ? "Deleting..." : "Delete"}
-              </Box>
+              </Button>
             </Flex>
           </Box>
         </Box>

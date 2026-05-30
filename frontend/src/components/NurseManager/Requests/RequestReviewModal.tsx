@@ -12,6 +12,7 @@ export interface UnifiedRequest {
   rawPreferredDate?: string | null
   rawStartDate?: string | null
   rawEndDate?: string | null
+  rawApplicationDate?: string | null
   status: RequestStatus
   applicationDate: string
   comments: string | null

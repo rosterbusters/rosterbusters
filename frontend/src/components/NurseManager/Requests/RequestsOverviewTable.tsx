@@ -288,7 +288,8 @@ export function RequestsOverviewTable({
           requestedDates: formatDate(sr.preferreddate),
           rawPreferredDate: sr.preferreddate,
           status: sr.status as RequestStatus,
-          applicationDate: formatDate(sr.preferreddate),
+          applicationDate: formatDate(sr.timestamp),
+          rawApplicationDate: sr.timestamp,
           comments: sr.reason,
           nurseName: nurseMap.get(sr.nurseid) ?? null,
         }))
@@ -307,6 +308,7 @@ export function RequestsOverviewTable({
           rawEndDate: lr.enddate,
           status: lr.status as RequestStatus,
           applicationDate: formatDate(lr.requestedat),
+          rawApplicationDate: lr.requestedat,
           comments: lr.reason,
           nurseName: nurseMap.get(lr.nurseid) ?? null,
         }))
@@ -345,7 +347,9 @@ export function RequestsOverviewTable({
         }
         return new Date(d).getTime()
       }
-      const diff = parse(a.applicationDate) - parse(b.applicationDate)
+      const leftDate = a.rawApplicationDate ?? a.applicationDate
+      const rightDate = b.rawApplicationDate ?? b.applicationDate
+      const diff = parse(leftDate) - parse(rightDate)
       return sortDir === "asc" ? diff : -diff
     })
   }, [filteredRequests, sortDir])
