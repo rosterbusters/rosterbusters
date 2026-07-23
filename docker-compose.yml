@@ -174,7 +174,10 @@ services:
     build:
       context: ./backend
     restart: always
-    command: uv run celery -A app.worker worker --loglevel=info --pool=solo
+    # Keep at least two prefork slots so algorithms for different wards can
+    # execute at the same time. Ward-scoped Redis locks still prevent two
+    # algorithms from running concurrently for the same ward.
+    command: uv run celery -A app.worker worker --loglevel=info --pool=prefork --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
     depends_on:
       redis:
         condition: service_started

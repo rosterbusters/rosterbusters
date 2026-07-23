@@ -40,6 +40,7 @@ export interface NurseManagerStaffUser {
   shift_pattern: "AM_ONLY" | "PM_ONLY" | null
   isactive: boolean
   must_change_password: boolean
+  role: "Nurse" | "NurseManager"
   ward: NurseManagerWardInfo | null
   generated_password?: string | null
 }
@@ -78,6 +79,7 @@ export interface NurseManagerStaffUpdate {
   password?: string
   is_active?: boolean
   ward_id?: number
+  role?: "Nurse" | "NurseManager"
 }
 
 export const NurseManagerStaffService = {

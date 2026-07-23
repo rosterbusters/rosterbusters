@@ -260,8 +260,9 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     shift_pattern: Optional[str] = None
     name: Optional[str] = None
 
-    # Resolve ward for nurses (single primary ward via nurse.wardid)
-    if user.nurseid:
+    # Resolve the linked record for the user's active role. Inactive linked
+    # records are retained so role changes do not erase staff history.
+    if user.nurseid and "Nurse" in roles:
         nurse = session.get(Nurse, user.nurseid)
         if nurse:
             name = nurse.name
@@ -275,7 +276,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
                     ward_list.append(WardInfo(ward_id=ward.wardid, ward_name=ward.wardname))
 
     # Resolve wards for managers from role assignments so multiple managers can share a ward
-    if user.managerid:
+    if user.managerid and "NurseManager" in roles:
         manager = session.get(NurseManager, user.managerid)
         if manager:
             name = manager.name
@@ -734,16 +735,12 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
                         user.userid,
                     )
                     session.add(ward)
-            user.managerid = None
-            session.add(user)
-            session.delete(manager)
-            manager = None
+            manager.isactive = False
+            session.add(manager)
 
         if nurse and requested_role != "Nurse":
-            user.nurseid = None
-            session.add(user)
-            session.delete(nurse)
-            nurse = None
+            nurse.isactive = False
+            session.add(nurse)
 
         if requested_role == "Nurse" and not user.nurseid:
             source_name = name or previous_name or user.username
@@ -770,6 +767,9 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
             session.refresh(nurse)
             user.nurseid = nurse.nurseid
             session.add(user)
+        elif requested_role == "Nurse" and nurse:
+            nurse.isactive = user.isactive
+            session.add(nurse)
 
         if requested_role == "NurseManager" and not user.managerid:
             source_name = name or previous_name or user.username
@@ -791,6 +791,9 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
             session.refresh(manager)
             user.managerid = manager.managerid
             session.add(user)
+        elif requested_role == "NurseManager" and manager:
+            manager.isactive = user.isactive
+            session.add(manager)
 
         for user_role in session.exec(
             select(UserRole).where(UserRole.userid == user.userid)
@@ -882,7 +885,8 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
                 raise HTTPException(status_code=400, detail=f"Ward {wid} not found.")
 
         # For nurses: set nurse.wardid to first selected ward (primary ward for scheduling)
-        if user.nurseid:
+        effective_roles = get_user_roles_by_userid(session, user.userid)
+        if user.nurseid and "Nurse" in effective_roles:
             nurse = session.get(Nurse, user.nurseid)
             if nurse:
                 nurse.wardid = body.ward_ids[0] if body.ward_ids else None
@@ -890,7 +894,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
                 session.commit()
 
         # For managers: replace ward assignments
-        if user.managerid:
+        if user.managerid and "NurseManager" in effective_roles:
             _sync_manager_ward_assignments(session, user, body.ward_ids)
 
     return _enrich(session, user)
