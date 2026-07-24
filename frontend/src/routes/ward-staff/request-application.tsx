@@ -66,8 +66,13 @@ function RouteComponent() {
   const [isLeaveRequestOpen, setIsLeaveRequestOpen] = useState(false)
   const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null)
   const { user } = useAuth()
-  const { isLocked, nextWindowStart, nextWindowEnd, selectedPeriod } =
-    useApplicationLockStatus()
+  const {
+    isLocked,
+    nextWindowStart,
+    nextWindowEnd,
+    selectedPeriod,
+    isLoading: isPeriodWindowLoading,
+  } = useApplicationLockStatus()
   const { data: periods = [] } = useQuery({
     queryKey: ["roster", "periods"],
     queryFn: () => ShiftRequestsService.getRosterPeriods(),
@@ -80,7 +85,7 @@ function RouteComponent() {
   )
 
   useEffect(() => {
-    if (selectedPeriodId != null) {
+    if (selectedPeriodId != null || isPeriodWindowLoading) {
       return
     }
 
@@ -92,7 +97,12 @@ function RouteComponent() {
     if (defaultPeriod) {
       setSelectedPeriodId(defaultPeriod.periodid)
     }
-  }, [selectedPeriod?.periodid, selectedPeriodId, sortedPeriods])
+  }, [
+    isPeriodWindowLoading,
+    selectedPeriod?.periodid,
+    selectedPeriodId,
+    sortedPeriods,
+  ])
 
   const selectedRequestPeriod = useMemo(
     () =>

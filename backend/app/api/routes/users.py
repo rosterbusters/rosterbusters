@@ -89,6 +89,7 @@ class NurseManagerStaffPublic(SQLModel):
     shift_pattern: Optional[str] = None
     isactive: bool
     must_change_password: bool = False
+    role: str
     ward: Optional[WardInfo] = None
     generated_password: Optional[str] = None
 
@@ -127,6 +128,10 @@ class NurseManagerStaffUpdate(SQLModel):
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
     ward_id: Optional[int] = None
+    role: Optional[str] = Field(
+        default=None,
+        description="Nurse | NurseManager",
+    )
 
 
 def _slugify_username(value: str) -> str:
@@ -185,6 +190,9 @@ def _build_staff_public(
     if user.must_change_password and user.default_password_encrypted:
         generated_password = decrypt_default_password(user.default_password_encrypted)
 
+    roles = get_user_roles_by_userid(session, user.userid)
+    role = "NurseManager" if "NurseManager" in roles else "Nurse"
+
     return NurseManagerStaffPublic(
         userid=user.userid,
         nurseid=nurse.nurseid,
@@ -197,6 +205,7 @@ def _build_staff_public(
         shift_pattern=nurse.shiftpattern,
         isactive=user.isactive,
         must_change_password=user.must_change_password,
+        role=role,
         ward=ward_info,
         generated_password=generated_password,
     )
@@ -206,6 +215,8 @@ def _get_managed_nurse_target(
     session: SessionDep,
     current_user: NurseManagerUser,
     userid: int,
+    *,
+    allow_nurse_manager: bool = False,
 ) -> tuple[RBACUser, Nurse]:
     user = session.get(RBACUser, userid)
     if not user or not user.nurseid:
@@ -216,10 +227,13 @@ def _get_managed_nurse_target(
         raise HTTPException(status_code=404, detail="Nurse record not found")
 
     roles = set(get_user_roles_by_userid(session, user.userid))
-    if "Nurse" not in roles or "Admin" in roles or "NurseManager" in roles:
+    is_allowed_role = "Nurse" in roles or (
+        allow_nurse_manager and "NurseManager" in roles
+    )
+    if not is_allowed_role or "Admin" in roles:
         raise HTTPException(
             status_code=403,
-            detail="Nurse managers can only manage nurse accounts.",
+            detail="Nurse managers can only manage staff accounts.",
         )
 
     if not current_user.managerid:
@@ -270,7 +284,10 @@ def _validate_first_login_employee_id(
                 detail="This employee ID is already assigned to another nurse.",
             )
         dup_manager = session.exec(
-            select(NurseManager).where(NurseManager.employeeid == employee_id)
+            select(NurseManager).where(
+                NurseManager.employeeid == employee_id,
+                NurseManager.managerid != user.managerid,
+            )
         ).first()
         if dup_manager:
             raise HTTPException(
@@ -380,7 +397,7 @@ def list_nurse_manager_staff(
             continue
 
         roles = set(get_user_roles_by_userid(session, user.userid))
-        if "Nurse" not in roles or "Admin" in roles or "NurseManager" in roles:
+        if not roles.intersection({"Nurse", "NurseManager"}) or "Admin" in roles:
             continue
 
         results.append(_build_staff_public(session, user, nurse))
@@ -514,8 +531,19 @@ def update_nurse_manager_staff(
     userid: int,
     body: NurseManagerStaffUpdate,
 ) -> Any:
-    """Update a nurse account."""
-    user, nurse = _get_managed_nurse_target(session, current_user, userid)
+    """Update a staff account, including Nurse/NurseManager role changes."""
+    user, nurse = _get_managed_nurse_target(
+        session,
+        current_user,
+        userid,
+        allow_nurse_manager=True,
+    )
+    requested_role = body.role if "role" in body.model_fields_set else None
+    if requested_role not in {None, "Nurse", "NurseManager"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Role must be Nurse or NurseManager.",
+        )
 
     if body.ward_id is not None:
         ward = session.get(Ward, body.ward_id)
@@ -555,7 +583,10 @@ def update_nurse_manager_staff(
                 detail="This employee ID is already assigned to another nurse.",
             )
         dup_manager = session.exec(
-            select(NurseManager).where(NurseManager.employeeid == employee_id)
+            select(NurseManager).where(
+                NurseManager.employeeid == employee_id,
+                NurseManager.managerid != user.managerid,
+            )
         ).first()
         if dup_manager:
             raise HTTPException(
@@ -598,6 +629,76 @@ def update_nurse_manager_staff(
 
     if body.ward_id is not None:
         nurse.wardid = body.ward_id
+
+    if requested_role is not None:
+        target_role = session.exec(
+            select(Role).where(Role.rolename == requested_role)
+        ).first()
+        if not target_role:
+            raise HTTPException(
+                status_code=500,
+                detail=f"{requested_role} role is not configured.",
+            )
+
+        manager = (
+            session.get(NurseManager, user.managerid)
+            if user.managerid
+            else None
+        )
+        if requested_role == "NurseManager":
+            if manager is None:
+                manager = NurseManager(
+                    name=nurse.name,
+                    employeeid=nurse.employeeid,
+                    email=user.email or "",
+                    contactnumber="",
+                    isactive=user.isactive,
+                )
+                session.add(manager)
+                session.flush()
+                user.managerid = manager.managerid
+            else:
+                manager.name = nurse.name
+                manager.employeeid = nurse.employeeid
+                manager.email = user.email or ""
+                manager.isactive = user.isactive
+            nurse.isactive = False
+            session.add(manager)
+        else:
+            nurse.isactive = user.isactive
+            if manager is not None:
+                manager.isactive = False
+                session.add(manager)
+
+        for user_role in session.exec(
+            select(UserRole).where(UserRole.userid == user.userid)
+        ).all():
+            session.delete(user_role)
+        session.flush()
+        session.add(
+            UserRole(
+                userid=user.userid,
+                roleid=target_role.roleid,
+                wardid=(
+                    (body.ward_id or nurse.wardid)
+                    if requested_role == "NurseManager"
+                    else None
+                ),
+                isactive=True,
+            )
+        )
+
+    manager = (
+        session.get(NurseManager, user.managerid)
+        if user.managerid
+        else None
+    )
+    if manager is not None and requested_role != "Nurse":
+        manager.name = nurse.name
+        manager.employeeid = nurse.employeeid
+        manager.email = user.email or ""
+        manager.isactive = user.isactive
+        session.add(manager)
 
     session.add(user)
     session.add(nurse)
@@ -642,15 +743,41 @@ def delete_nurse_manager_staff(
     current_user: NurseManagerUser,
     userid: int,
 ) -> Any:
-    """Delete a managed nurse account."""
-    user, nurse = _get_managed_nurse_target(session, current_user, userid)
+    """Delete a Nurse or NurseManager staff account."""
+    if current_user.userid == userid:
+        raise HTTPException(
+            status_code=403,
+            detail="You cannot delete your own account.",
+        )
+
+    user, nurse = _get_managed_nurse_target(
+        session,
+        current_user,
+        userid,
+        allow_nurse_manager=True,
+    )
+    manager = (
+        session.get(NurseManager, user.managerid)
+        if user.managerid
+        else None
+    )
 
     user_roles = session.exec(select(UserRole).where(UserRole.userid == user.userid)).all()
     for user_role in user_roles:
         session.delete(user_role)
 
+    if manager is not None:
+        managed_wards = session.exec(
+            select(Ward).where(Ward.managerid == manager.managerid)
+        ).all()
+        for ward in managed_wards:
+            ward.managerid = None
+            session.add(ward)
+
     session.delete(user)
     session.delete(nurse)
+    if manager is not None:
+        session.delete(manager)
     session.commit()
     return Message(message="User deleted successfully")
 
