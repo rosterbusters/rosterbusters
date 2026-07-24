@@ -34,3 +34,42 @@ test("login successfully into admin account", async ({ page }) => {
   await page.getByTestId("admin-navbar-signout").click()
   await expect(page).toHaveURL(/\/login$/)
 })
+
+test("OTP 2FA: nurse manager can log in on first OTP attempt", async ({ page }) => {
+  const email = "lim.weiling@sach.org.sg"
+  const password = "manager123"
+
+  await page.goto("/login")
+  await page.getByTestId("login-username").fill(email)
+  await page.getByTestId("login-password").fill(password)
+  await page.getByRole("button", { name: /log in/i }).click()
+
+  // The 2FA verification screen MUST appear for non-admin users
+  await expect(page.getByRole("heading", { name: /verify login/i })).toBeVisible({ timeout: 8_000 })
+
+  // Complete the OTP flow via mailcatcher — this must succeed on the FIRST attempt
+  await completeLogin2faInUi({ page, recipientEmail: email })
+
+  // Should land on nurse manager home, not stuck on /login
+  await expect(page).toHaveURL(/\/nurse-manager/, { timeout: 10_000 })
+})
+
+test("OTP 2FA: nurse can log in on first OTP attempt", async ({ page }) => {
+  const email = "teo.boonkiat@sach.org.sg"
+  const password = "nurse123"
+
+  await page.goto("/login")
+  await page.getByTestId("login-username").fill(email)
+  await page.getByTestId("login-password").fill(password)
+  await page.getByRole("button", { name: /log in/i }).click()
+
+  // The 2FA verification screen MUST appear for non-admin users
+  await expect(page.getByRole("heading", { name: /verify login/i })).toBeVisible({ timeout: 8_000 })
+
+  // Complete the OTP flow via mailcatcher — this must succeed on the FIRST attempt
+  await completeLogin2faInUi({ page, recipientEmail: email })
+
+  // Should land on ward-staff home, not stuck on /login
+  await expect(page).toHaveURL(/\/ward-staff/, { timeout: 10_000 })
+})
+

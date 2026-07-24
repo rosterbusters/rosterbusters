@@ -209,12 +209,10 @@ function Login() {
             <Box
               as="form"
               onSubmit={(e) => {
-                if (isTwoFactorStep) {
-                  e.preventDefault()
-                  handleVerifyCode()
-                  return
+                e.preventDefault()
+                if (!isTwoFactorStep) {
+                  handleSubmit(onSubmit)(e as any)
                 }
-                handleSubmit(onSubmit)(e)
               }}
             >
               <VStack gap={3} align="stretch">

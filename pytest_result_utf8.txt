@@ -1,0 +1,228 @@
+﻿docker : time="2026-04-02
+T17:56:52+08:00" 
+level=warning msg="The 
+\"GOOGLE_CLIENT_ID\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+At line:1 char:1
++ docker compose exec 
+backend bash 
+scripts/tests-start.sh > 
+pytest_fina ...
++ ~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo       
+       : NotSpecified:   
+  (time="2026-04-0...    
+ blank string.":Strin    
+g) [], RemoteExcepti    
+on
+    + FullyQualifiedErro 
+   rId : NativeCommandE  
+  rror
+ 
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The 
+\"GOOGLE_CLIENT_SECRET\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The \"GOOGLE_OAUTH_A
+LLOWED_DOMAINS\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The 
+\"GOOGLE_CLIENT_ID\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The 
+\"GOOGLE_CLIENT_SECRET\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The \"GOOGLE_OAUTH_A
+LLOWED_DOMAINS\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The \"WLSACCESSID\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The \"WLSSECRET\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The \"LICENSEID\" 
+variable is not set. 
+Defaulting to a blank 
+string."
+time="2026-04-02T17:56:52
++08:00" level=warning 
+msg="The \"CI\" variable 
+is not set. Defaulting 
+to a blank string."
++ uv run python 
+app/tests_pre_start.py
+Bytecode compiled 8034 
+files in 456ms
+/app/app/core/config.py:1
+28: UserWarning: The 
+value of SECRET_KEY is 
+"changethis", for 
+security, please change 
+it, at least for 
+deployments.
+  warnings.warn(message, 
+stacklevel=1)
+/app/app/core/config.py:1
+28: UserWarning: The 
+value of 
+POSTGRES_PASSWORD is 
+"changethis", for 
+security, please change 
+it, at least for 
+deployments.
+  warnings.warn(message, 
+stacklevel=1)
+/app/app/core/config.py:1
+28: UserWarning: The 
+value of 
+FIRST_SUPERUSER_PASSWORD 
+is "changethis", for 
+security, please change 
+it, at least for 
+deployments.
+  warnings.warn(message, 
+stacklevel=1)
+INFO:__main__:Initializin
+g service
+INFO:__main__:Starting 
+call to '__main__.init', 
+this is the 1st time 
+calling it.
+INFO:__main__:Service 
+finished initializing
++ bash scripts/test.sh
++ uv run coverage run -m 
+pytest tests/
+Bytecode compiled 8034 
+files in 470ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-7.4.4, pluggy-1.5.0
+rootdir: /app
+plugins: Faker-40.1.2, anyio-4.6.0
+collected 70 items
+
+tests/api/routes/test_admin_users.py .                                   [  1%]
+tests/api/routes/test_login.py .......                                   [ 11%]
+tests/api/routes/test_roster_periods.py ..........                       [ 25%]
+tests/api/routes/test_run_rostering.py ....                              [ 31%]
+tests/api/routes/test_users.py ......                                    [ 40%]
+tests/api/routes/test_ws_notifications.py .............................. [ 82%]
+.......                                                                  [ 92%]
+tests/scripts/test_backend_pre_start.py .                                [ 94%]
+tests/scripts/test_test_pre_start.py .                                   [ 95%]
+tests/services/test_designation_mapping.py ...                           [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/formparsers.py:12
+  /app/.venv/lib/python3.12/site-packages/starlette/formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+app/core/config.py:128
+  /app/app/core/config.py:128: UserWarning: The value of SECRET_KEY is "changethis", for security, please change it, at least for deployments.
+    warnings.warn(message, stacklevel=1)
+
+app/core/config.py:128
+  /app/app/core/config.py:128: UserWarning: The value of POSTGRES_PASSWORD is "changethis", for security, please change it, at least for deployments.
+    warnings.warn(message, stacklevel=1)
+
+app/core/config.py:128
+  /app/app/core/config.py:128: UserWarning: The value of FIRST_SUPERUSER_PASSWORD is "changethis", for security, please change it, at least for deployments.
+    warnings.warn(message, stacklevel=1)
+
+.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /app/.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 70 passed, 5 warnings in 19.59s ========================
++ uv run coverage report
+Bytecode compiled 8034 
+files in 446ms
+Name                                    Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------
+app/tasks/__init__.py                       0      0   100%
+app/services/__init__.py                    2      0   100%
+app/models/web.py                          14      0   100%
+app/models/shifts.py                       62      0   100%
+app/models/roster.py                      123      0   100%
+app/models/rbac.py                         73      0   100%
+app/models/notification_models.py          27      0   100%
+app/models/leave.py                        46      0   100%
+app/models/enums.py                        25      0   100%
+app/models/designation.py                   6      0   100%
+app/models/__init__.py                     10      0   100%
+app/core/__init__.py                        0      0   100%
+app/api/main.py                            13      0   100%
+app/__init__.py                             0      0   100%
+app/main.py                                23      1    96%   26
+app/core/config.py                         86      5    94%   23-25, 113, 130
+app/rbac.py                                14      1    93%   10
+app/core/security.py                       41      3    93%   49, 62-63
+app/services/roster_period_service.py     212     20    91%   189, 194, 211, 236-237, 276, 281, 298, 323-324, 362, 367, 384, 409-410, 445, 450, 467, 492-493
+app/designation_mapping.py                 59     10    83%   91-92, 98, 117, 128-129, 137, 143-144, 149
+app/crud.py                                27      7    74%   20-24, 29-33, 38
+app/api/routes/utils.py                    14      4    71%   20-26, 31
+app/api/deps.py                            54     16    70%   18-19, 41-42, 48-49, 55, 57, 69, 80-85, 97-103
+app/tests_pre_start.py                     23      7    70%   27-29, 33-35, 39
+app/backend_pre_start.py                   23      7    70%   27-29, 33-35, 39
+app/utils.py                              141     54    62%   42-66, 75, 77, 81, 87-93, 116-128, 174-186, 194-209, 272-283, 292-304, 315-329, 341-357, 367-380
+app/core/db.py                             20      9    55%   34-52
+app/api/routes/login.py                   110     51    54%   42-43, 52-128, 143, 199, 204, 222-223
+app/api/routes/users.py                   104     61    41%   61-166, 182-188, 190-200
+app/api/routes/admin.py                   368    217    41%   106-108, 112-115, 121, 126-134, 158-166, 198-216, 225-228, 237-240, 253, 256, 258, 269, 280, 296, 305, 315, 323, 344, 364-387, 409-583, 589-601, 610-645
+app/api/routes/run_rostering.py           640    395    38%   110-119, 123-127, 132, 150-191, 205, 220-266, 272-281, 301-316, 345-401, 419-441, 452-524, 540-575, 591-597, 607-648, 672-728, 734-749, 755-763, 781, 811-814, 824-843, 856-884, 890-902, 912-915, 925-961, 971-1042, 1052-1065, 1074-1099, 1123-1149, 1199-1228, 1244, 1248, 1260, 1268-1273, 1285-1289, 1308-1314, 1325-1332, 1344, 1357, 1414-1423, 1434, 1442, 1457, 1504, 1506
+app/api/routes/wards.py                    56     36    36%   17-18, 23-26, 36-40, 50-58, 73-82, 91-96
+app/api/routes/shifts.py                  284    197    31%   77-87, 95-108, 114-182, 204-240, 251, 257-258, 268-283, 354-359, 369-434, 445-468, 479-537, 547-564, 579-589, 599-600, 609-615
+app/api/routes/leave.py                   147    114    22%   33-43, 49-53, 61-63, 77-171, 183-195, 206-262, 273-302, 312-332
+app/api/routes/notifications.py           110     90    18%   23-25, 30-32, 46-90, 108-152, 167-191, 202-226, 236-280
+app/rostering/milp_algo.py                446    374    16%   66-77, 88-100, 110-115, 144, 150, 182, 185, 254-261, 266-309, 339-811, 848-902
+app/rostering/ga_algo.py                 1221   1093    10%   75, 79-82, 86-90, 94-103, 109-286, 290, 295-298, 311, 342-391, 442, 467, 472, 476, 505, 507, 535-1888, 1915-1928, 1938-1983
+app/rostering/cp_sat_algo.py              461    425     8%   87-106, 133-221, 243-830, 848-892
+app/rostering/algo_scheduler.py           100     93     7%   7-8, 22-31, 35-38, 136-212, 222-307
+app/worker.py                               4      4     0%   1-12
+app/test_algo.py                          337    337     0%   16-923
+app/tasks/roster_tasks.py                  75     75     0%   1-233
+app/seed_data.py                          507    507     0%   8-1466
+app/seed_core.py                           79     79     0%   15-190
+app/seed_admin.py                          15     15     0%   1-21
+app/initial_data.py                        16     16     0%   1-25
+---------------------------------------------------------------------
+TOTAL                                    6218   4323    30%
++ uv run coverage html 
+--title coverage
+Bytecode compiled 8034 
+files in 449ms
+Wrote HTML report to htmlcov/index.html
+
