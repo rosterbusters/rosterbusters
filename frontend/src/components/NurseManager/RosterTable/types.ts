@@ -7,6 +7,7 @@ export type ShiftCode =
   | "DO"
   | "OFF"
   | "RD"
+  | "SD"
   | "AL"
   | "HOL"
   | "MC"
@@ -74,6 +75,7 @@ export const SHIFT_CODE_MAP: Record<ShiftCode, ShiftCodeInfo> = {
   DO: { code: "DO", description: "Day Off", isWorking: false },
   OFF: { code: "OFF", description: "Day Off", isWorking: false },
   RD: { code: "RD", description: "Rest Day", isWorking: false },
+  SD: { code: "SD", description: "Sleeping Day", isWorking: false },
   AL: { code: "AL", description: "Annual Leave", isWorking: false },
   HOL: { code: "HOL", description: "Public Holiday Leave", isWorking: false },
   MC: { code: "MC", description: "Medical Certificate", isWorking: false },
@@ -221,6 +223,7 @@ export interface ShiftAssignment {
   shiftDate: string
   shiftCode: ShiftCode
   status: "Confirmed" | "Pending" | "Swapped" | "Cancelled"
+  assignmentMethod?: string | null
   startTime?: string
   endTime?: string
   comment?: string

@@ -1,5 +1,6 @@
 import {
   Box,
+  Button,
   createListCollection,
   Flex,
   HStack,
@@ -32,7 +33,10 @@ import {
   type NurseManagerStaffUpdate,
   type NurseManagerStaffUser,
 } from "@/client/nurseManagerStaffService"
-import type { ShiftPattern } from "@/components/NurseManager/RosterTable/types"
+import type {
+  ShiftPattern,
+  WardStatisticsResponse,
+} from "@/components/NurseManager/RosterTable/types"
 import {
   useUpdateNurseShiftPattern,
   useWardStatistics,
@@ -52,6 +56,7 @@ type DirectoryRow = {
   employeeId: string
   joinDate: string
   designation: string
+  role: "Nurse" | "NurseManager"
   email: string
   shiftPattern: "A_ONLY" | "P_ONLY" | null
   isActive: boolean
@@ -64,6 +69,7 @@ type StaffFormState = {
   employeeId: string
   joinDate: string
   designation: string
+  role: "Nurse" | "NurseManager"
   email: string
   password: string
   isActive: boolean
@@ -337,6 +343,7 @@ function WardStaffDirectoryPage() {
     employeeId: "",
     joinDate: "",
     designation: "",
+    role: "Nurse",
     email: "",
     password: "",
     isActive: true,
@@ -411,6 +418,7 @@ function WardStaffDirectoryPage() {
         employeeId: "",
         joinDate: "",
         designation: "",
+        role: "Nurse",
         email: "",
         password: "",
         isActive: true,
@@ -440,6 +448,7 @@ function WardStaffDirectoryPage() {
         employeeId: "",
         joinDate: "",
         designation: "",
+        role: "Nurse",
         email: "",
         password: "",
         isActive: true,
@@ -454,13 +463,65 @@ function WardStaffDirectoryPage() {
   const deleteStaffMutation = useMutation({
     mutationFn: (userId: number) =>
       NurseManagerStaffService.deleteStaff(userId),
+    onMutate: async (userId) => {
+      const wardId = selectedWard?.wardid
+      const staffQueryKey = ["nurse-manager", "staff-directory", wardId]
+      const statisticsQueryKey = ["roster", "statistics", wardId ?? null]
+      const nurseId = deletingStaff?.nurseId
+
+      await queryClient.cancelQueries({ queryKey: staffQueryKey })
+      await queryClient.cancelQueries({ queryKey: statisticsQueryKey })
+
+      const previousStaff =
+        queryClient.getQueryData<NurseManagerStaffUser[]>(staffQueryKey)
+      const previousStatistics =
+        queryClient.getQueryData<WardStatisticsResponse>(statisticsQueryKey)
+
+      queryClient.setQueryData<NurseManagerStaffUser[]>(
+        staffQueryKey,
+        (current = []) => current.filter((staff) => staff.userid !== userId),
+      )
+
+      if (nurseId != null) {
+        queryClient.setQueryData<WardStatisticsResponse>(
+          statisticsQueryKey,
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  nurses: current.nurses.filter(
+                    (nurse) => nurse.nurseId !== nurseId,
+                  ),
+                }
+              : current,
+        )
+      }
+
+      return {
+        previousStaff,
+        previousStatistics,
+        staffQueryKey,
+        statisticsQueryKey,
+      }
+    },
     onSuccess: () => {
       showSuccessToast("User deleted successfully.")
       setDeletingStaff(null)
-      invalidateDirectoryData()
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, _userId, context) => {
+      if (context?.previousStaff) {
+        queryClient.setQueryData(context.staffQueryKey, context.previousStaff)
+      }
+      if (context?.previousStatistics) {
+        queryClient.setQueryData(
+          context.statisticsQueryKey,
+          context.previousStatistics,
+        )
+      }
       showErrorToast(getErrorMessage(error))
+    },
+    onSettled: () => {
+      invalidateDirectoryData()
     },
   })
 
@@ -527,10 +588,7 @@ function WardStaffDirectoryPage() {
         (nurse) => [nurse.nurseId, nurse] as const,
       ),
     )
-    const nurseIds = new Set<number>([
-      ...staffUsers.map((staff) => staff.nurseid),
-      ...(statistics?.nurses ?? []).map((nurse) => nurse.nurseId),
-    ])
+    const nurseIds = new Set<number>(staffUsers.map((staff) => staff.nurseid))
 
     return Array.from(nurseIds)
       .map((nurseId) => {
@@ -566,6 +624,7 @@ function WardStaffDirectoryPage() {
             (nurse as { joinDate?: string | null } | undefined)?.joinDate ??
             "",
           designation: linkedStaff?.designation ?? nurse?.designation ?? "",
+          role: linkedStaff?.role ?? "Nurse",
           email: linkedStaff?.email ?? nurse?.email ?? "",
           mustChangePassword:
             linkedStaff?.must_change_password ?? statisticsMustChangePassword,
@@ -676,6 +735,7 @@ function WardStaffDirectoryPage() {
       employeeId: "",
       joinDate: "",
       designation: "",
+      role: "Nurse",
       email: "",
       password: "",
       isActive: true,
@@ -696,6 +756,7 @@ function WardStaffDirectoryPage() {
       employeeId: row.employeeId,
       joinDate: row.joinDate,
       designation: row.designation,
+      role: row.role,
       email: row.email,
       password: "",
       isActive: row.isActive,
@@ -736,6 +797,7 @@ function WardStaffDirectoryPage() {
         username: staffForm.username.trim(),
         join_date: staffForm.joinDate || null,
         designation: staffForm.designation.trim(),
+        role: staffForm.role,
         email: staffForm.email.trim() || null,
         is_active: staffForm.isActive,
         ward_id: selectedWardId,
@@ -1267,6 +1329,17 @@ function WardStaffDirectoryPage() {
                   </Table.ColumnHeader>
 
                   <Table.ColumnHeader
+                    minW="160px"
+                    py={4}
+                    px={4}
+                    borderBottom="1px solid"
+                    borderColor="blackAlpha.100"
+                    color="foreground"
+                    fontWeight="medium"
+                  >
+                    Role
+                  </Table.ColumnHeader>
+                  <Table.ColumnHeader
                     minW="220px"
                     py={4}
                     px={4}
@@ -1317,7 +1390,7 @@ function WardStaffDirectoryPage() {
                 {!selectedWard ? (
                   <Table.Row>
                     <Table.Cell
-                      colSpan={9}
+                      colSpan={10}
                       textAlign="center"
                       py={12}
                       color="foreground"
@@ -1328,7 +1401,7 @@ function WardStaffDirectoryPage() {
                 ) : filteredRows.length === 0 ? (
                   <Table.Row>
                     <Table.Cell
-                      colSpan={9}
+                      colSpan={10}
                       textAlign="center"
                       py={12}
                       color="foreground"
@@ -1403,6 +1476,35 @@ function WardStaffDirectoryPage() {
                           <Text fontSize="sm" color="black">
                             {row.designation}
                           </Text>
+                        </Table.Cell>
+                        <Table.Cell
+                          py={3}
+                          px={4}
+                          borderBottom="1px solid"
+                          borderColor="blackAlpha.100"
+                        >
+                          <Box
+                            display="inline-flex"
+                            px={2.5}
+                            py={1}
+                            borderRadius="full"
+                            bg={
+                              row.role === "NurseManager"
+                                ? "purple.100"
+                                : "blue.100"
+                            }
+                            color={
+                              row.role === "NurseManager"
+                                ? "purple.700"
+                                : "blue.700"
+                            }
+                            fontSize="xs"
+                            fontWeight="semibold"
+                          >
+                            {row.role === "NurseManager"
+                              ? "Nurse Manager"
+                              : "Nurse"}
+                          </Box>
                         </Table.Cell>
                         <Table.Cell
                           py={3}
@@ -1487,6 +1589,7 @@ function WardStaffDirectoryPage() {
                         >
                           <HStack justify="flex-end" gap={1}>
                             {hasLinkedAccount &&
+                            row.role === "Nurse" &&
                             row.mustChangePassword &&
                             row.email ? (
                               <Box
@@ -1522,30 +1625,32 @@ function WardStaffDirectoryPage() {
                                 <Mail size={14} />
                               </Box>
                             ) : null}
-                            <Box
-                              as="button"
-                              p={2}
-                              rounded="md"
-                              color="gray.500"
-                              opacity={hasLinkedAccount ? 1 : 0.4}
-                              cursor={
-                                hasLinkedAccount ? "pointer" : "not-allowed"
-                              }
-                              _hover={
-                                hasLinkedAccount
-                                  ? { color: "orange.600", bg: "orange.50" }
-                                  : undefined
-                              }
-                              onClick={() => {
-                                if (!hasLinkedAccount) {
-                                  return
+                            {row.role === "Nurse" && (
+                              <Box
+                                as="button"
+                                p={2}
+                                rounded="md"
+                                color="gray.500"
+                                opacity={hasLinkedAccount ? 1 : 0.4}
+                                cursor={
+                                  hasLinkedAccount ? "pointer" : "not-allowed"
                                 }
-                                setResetPasswordStaff(row)
-                              }}
-                              title="Generate temporary password"
-                            >
-                              <KeyRound size={14} />
-                            </Box>
+                                _hover={
+                                  hasLinkedAccount
+                                    ? { color: "orange.600", bg: "orange.50" }
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  if (!hasLinkedAccount) {
+                                    return
+                                  }
+                                  setResetPasswordStaff(row)
+                                }}
+                                title="Generate temporary password"
+                              >
+                                <KeyRound size={14} />
+                              </Box>
+                            )}
                             <Box
                               as="button"
                               p={2}
@@ -1742,6 +1847,28 @@ function WardStaffDirectoryPage() {
                       )}
                   </select>
                 </Box>
+                {editingStaff && (
+                  <Box flex="1">
+                    <Text fontSize="sm" mb={1} color="gray.700">
+                      Role
+                    </Text>
+                    <select
+                      value={staffForm.role}
+                      onChange={(event) =>
+                        setStaffForm((prev) => ({
+                          ...prev,
+                          role: event.target.value as
+                            | "Nurse"
+                            | "NurseManager",
+                        }))
+                      }
+                      className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 focus:border-[#4B8798] focus:shadow-[0_0_0_1px_#4B8798] focus:outline-none"
+                    >
+                      <option value="Nurse">Nurse</option>
+                      <option value="NurseManager">Nurse Manager</option>
+                    </select>
+                  </Box>
+                )}
               </HStack>
 
               <Box>
@@ -1941,25 +2068,31 @@ function WardStaffDirectoryPage() {
               action cannot be undone.
             </Text>
             <Flex justify="end" gap={3}>
-              <Box
-                as="button"
+              <Button
+                type="button"
                 px={4}
                 py={2}
                 rounded="md"
                 borderWidth="1px"
                 borderColor="gray.200"
-                color="gray.700"
+                color="white"
+                disabled={deleteStaffMutation.isPending}
                 onClick={() => setDeletingStaff(null)}
+                opacity={deleteStaffMutation.isPending ? 0.6 : 1}
+                cursor={
+                  deleteStaffMutation.isPending ? "not-allowed" : "pointer"
+                }
               >
                 Cancel
-              </Box>
-              <Box
-                as="button"
+              </Button>
+              <Button
+                type="button"
                 px={4}
                 py={2}
                 rounded="md"
                 bg="red.600"
                 color="white"
+                disabled={deleteStaffMutation.isPending}
                 onClick={() => {
                   if (deleteStaffMutation.isPending) {
                     return
@@ -1972,14 +2105,13 @@ function WardStaffDirectoryPage() {
                   }
                   deleteStaffMutation.mutate(deletingStaff.userId)
                 }}
-                aria-disabled={deleteStaffMutation.isPending}
                 opacity={deleteStaffMutation.isPending ? 0.6 : 1}
                 cursor={
                   deleteStaffMutation.isPending ? "not-allowed" : "pointer"
                 }
               >
                 {deleteStaffMutation.isPending ? "Deleting..." : "Delete"}
-              </Box>
+              </Button>
             </Flex>
           </Box>
         </Box>

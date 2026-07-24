@@ -5,18 +5,20 @@ from typing import Any
 from uuid import uuid4
 
 from celery.exceptions import MaxRetriesExceededError
+from sqlalchemy import and_, not_
 from sqlmodel import Session, delete, select
 
-from app.core.db import engine
 from app import crud
+from app.cache import cache_delete
 from app.core.config import settings
+from app.core.db import engine
 from app.models.enums import NotificationType
 from app.models.rbac import NurseManager
 from app.models.roster import Roster, RosterPeriod, Ward
 from app.rostering.ab_ratio_algo import ABRatioInfeasibilityError
+from app.rostering.algo_scheduler import generate_roster
 from app.rostering.milp_algo import MILPInfeasibilityError
 from app.rostering.twelve_hour_algo import TwelveHourInfeasibilityError
-from app.rostering.algo_scheduler import generate_roster
 from app.services.algorithm_lock_service import (
     acquire_ward_algorithm_lock,
     refresh_ward_algorithm_lock,
@@ -172,6 +174,10 @@ SHIFT_CODE_TO_DB = {
 }
 
 
+def _ward_roster_cache_key(ward_id: int, period_id: int) -> str:
+    return f"ward:roster:{ward_id}:{period_id}"
+
+
 def _json_safe_number(value: float | int | None) -> float | int | None:
     if isinstance(value, float) and not math.isfinite(value):
         return None
@@ -188,27 +194,73 @@ def _save_roster_result(
     if not period:
         raise ValueError(f"Period {period_id} not found")
 
+    locked_entries = db.exec(
+        select(Roster).where(
+            Roster.wardid == ward_id,
+            Roster.periodid == period_id,
+            Roster.assignmentmethod == "Manual",
+            Roster.status == "Pending",
+        )
+    ).all()
+    locked_keys = {
+        (entry.nurseid, entry.shiftdate)
+        for entry in locked_entries
+        if entry.nurseid is not None
+    }
+
     db.exec(
         delete(Roster).where(
             Roster.wardid == ward_id,
             Roster.periodid == period_id,
+            not_(
+                and_(
+                    Roster.assignmentmethod == "Manual",
+                    Roster.status == "Pending",
+                )
+            ),
         )
     )
 
     start_date = period.startdate
     for nurse_result in roster.get("nurses", []):
         for day_idx, shift_label in enumerate(nurse_result["schedule"]):
-            db.add(Roster(
-                nurseid=nurse_result["id"],
-                wardid=ward_id,
-                periodid=period_id,
-                shiftdate=start_date + timedelta(days=day_idx),
-                shiftcode=SHIFT_CODE_TO_DB.get(shift_label, shift_label),
-                status="Pending",
-                assignmentmethod=assignment_method,
-                assignedby=None,
-            ))
+            shift_date = start_date + timedelta(days=day_idx)
+            nurse_id = nurse_result["id"]
+            if (nurse_id, shift_date) in locked_keys:
+                continue
+
+            shift_code = SHIFT_CODE_TO_DB.get(shift_label, shift_label)
+            existing = db.exec(
+                select(Roster).where(
+                    Roster.nurseid == nurse_id,
+                    Roster.shiftdate == shift_date,
+                )
+            ).first()
+            if existing:
+                existing.wardid = ward_id
+                existing.periodid = period_id
+                existing.shiftcode = shift_code
+                existing.status = "Pending"
+                existing.assignmentmethod = assignment_method
+                existing.assignedby = None
+                existing.comment = None
+                db.add(existing)
+                continue
+
+            db.add(
+                Roster(
+                    nurseid=nurse_id,
+                    wardid=ward_id,
+                    periodid=period_id,
+                    shiftdate=shift_date,
+                    shiftcode=shift_code,
+                    status="Pending",
+                    assignmentmethod=assignment_method,
+                    assignedby=None,
+                )
+            )
     db.commit()
+    cache_delete(_ward_roster_cache_key(ward_id, period_id))
     return len(roster.get("nurses", []))
 
 
@@ -269,7 +321,13 @@ def _queue_algorithm_notification(
 
 
 @celery_app.task(bind=True, name="tasks.generate_roster", max_retries=2)
-def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | None = None):
+def generate_roster_task(
+    self,
+    ward_id: int,
+    period_id: int,
+    algorithm: str | None = None,
+    prefilled_slots: list[dict[str, Any]] | None = None,
+):
     """
     Celery task to run the roster generation algorithm.
     Results are stored in Redis and retrievable via task_id.
@@ -285,9 +343,21 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             self.request.retries,
         )
         with Session(engine) as db:
-            from app.api.routes.run_rostering import _load_generation_inputs
+            from app.api.routes.run_rostering import (
+                RosterPrefilledSlot,
+                _apply_locked_roster_overlay,
+                _load_generation_inputs,
+            )
 
-            generation_inputs = _load_generation_inputs(db, ward_id, period_id)
+            generation_inputs = _load_generation_inputs(
+                db,
+                ward_id,
+                period_id,
+                [
+                    RosterPrefilledSlot.model_validate(slot)
+                    for slot in (prefilled_slots or [])
+                ],
+            )
             logger.info(
                 "Loaded generation inputs task_id=%s ward_id=%s period_id=%s nurses=%s shift_days=%s hard_request_nurses=%s soft_request_nurses=%s",
                 self.request.id,
@@ -331,6 +401,11 @@ def generate_roster_task(self, ward_id: int, period_id: int, algorithm: str | No
             progress_callback=on_progress,
             milp_config=generation_inputs["milp_config"],
             algorithm=algorithm,
+        )
+        _apply_locked_roster_overlay(
+            result["roster"],
+            generation_inputs["locked_roster_slots"],
+            generation_inputs["nurses"],
         )
         logger.info(
             "Roster generation completed task_id=%s ward_id=%s period_id=%s method=%s nurse_count=%s",
@@ -400,7 +475,10 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
     try:
         refresh_ward_algorithm_lock(ward_id, self.request.id)
         with Session(engine) as db:
-            from app.api.routes.run_rostering import _load_generation_inputs
+            from app.api.routes.run_rostering import (
+                _apply_locked_roster_overlay,
+                _load_generation_inputs,
+            )
 
             generation_inputs = _load_generation_inputs(db, ward_id, period_id)
 
@@ -426,6 +504,11 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 non_working_shift_codes=generation_inputs["non_working_shift_codes"],
                 progress_callback=on_progress,
                 milp_config=generation_inputs["milp_config"],
+            )
+            _apply_locked_roster_overlay(
+                result["roster"],
+                generation_inputs["locked_roster_slots"],
+                generation_inputs["nurses"],
             )
 
             nurses_saved = _save_roster_result(

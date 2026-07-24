@@ -1,14 +1,12 @@
 "use client"
 
 import { Button } from "@chakra-ui/react"
-import { addDays, format, isAfter, isBefore, startOfDay } from "date-fns"
+import { useQuery } from "@tanstack/react-query"
+import { format, startOfDay, startOfMonth } from "date-fns"
 import { Calendar as CalendarIcon, ChevronDownIcon } from "lucide-react"
 import * as React from "react"
-import {
-  type DateRange,
-  dateMatchModifiers,
-  type Matcher,
-} from "react-day-picker"
+import type { DateRange, Matcher } from "react-day-picker"
+import { type RosterPeriodPublic, ShiftRequestsService } from "@/client"
 import { Calendar } from "@/components/ui/calendar"
 
 interface BaseDatePickerProps {
@@ -46,56 +44,98 @@ function normalizeDate(date: Date) {
   return startOfDay(date)
 }
 
-function buildRange(first: Date, second: Date): DateRange {
-  return isAfter(first, second)
-    ? { from: normalizeDate(second), to: normalizeDate(first) }
-    : { from: normalizeDate(first), to: normalizeDate(second) }
+function isSameDate(left: Date, right: Date) {
+  return normalizeDate(left).getTime() === normalizeDate(right).getTime()
 }
 
-function rangeContainsDisabled(
-  range: DateRange | undefined,
-  disabled?: Matcher | Matcher[],
-) {
-  if (!range?.from || !range?.to || !disabled) {
-    return false
-  }
+function getRangeState(range?: DateRange) {
+  if (!range?.from) return "empty"
+  if (!range.to) return "incomplete"
+  return isSameDate(range.from, range.to) ? "single" : "multi"
+}
 
-  for (
-    let current = normalizeDate(range.from);
-    !isAfter(current, normalizeDate(range.to));
-    current = addDays(current, 1)
-  ) {
-    if (dateMatchModifiers(current, disabled)) {
-      return true
+function parseDateOnly(value: string | undefined) {
+  if (!value) return undefined
+
+  const [year, month, day] = value.split("-").map(Number)
+  if (!year || !month || !day) return undefined
+
+  return new Date(year, month - 1, day)
+}
+
+function getRosterPeriodBounds(periods: RosterPeriodPublic[]) {
+  const bounds = periods.reduce<{
+    startMonth?: Date
+    endMonth?: Date
+  }>((acc, period) => {
+    const startDate = parseDateOnly(period.startdate)
+    const endDate = parseDateOnly(period.enddate)
+
+    if (startDate && (!acc.startMonth || startDate < acc.startMonth)) {
+      acc.startMonth = startOfMonth(startDate)
     }
-  }
 
-  return false
+    if (endDate && (!acc.endMonth || endDate > acc.endMonth)) {
+      acc.endMonth = startOfMonth(endDate)
+    }
+
+    return acc
+  }, {})
+
+  return bounds
+}
+
+function clampMonth(month: Date, startMonth?: Date, endMonth?: Date) {
+  if (startMonth && month < startMonth) return startMonth
+  if (endMonth && month > endMonth) return endMonth
+  return month
 }
 
 export function DatePickerDemo(props: DatePickerProps) {
   const { placeholder = "Pick a date" } = props
   const [internalDate, setInternalDate] = React.useState<Date>()
   const [internalRange, setInternalRange] = React.useState<DateRange>()
-  const [hoveredDate, setHoveredDate] = React.useState<Date>()
   const [open, setOpen] = React.useState(false)
+  const [visibleMonth, setVisibleMonth] = React.useState(() =>
+    startOfMonth(new Date()),
+  )
   const wrapperRef = React.useRef<HTMLDivElement>(null)
+
+  const { data: rosterPeriods = [] } = useQuery({
+    queryKey: ["date-picker", "roster-periods"],
+    queryFn: () => ShiftRequestsService.getRosterPeriods(),
+    staleTime: 10 * 60 * 1000,
+  })
 
   const isRange = props.mode === "range"
   const date = !isRange ? (props.selected ?? internalDate) : undefined
   const range = isRange ? (props.selected ?? internalRange) : undefined
-  const previewRange =
-    isRange &&
-    range?.from &&
-    !range.to &&
-    hoveredDate &&
-    !rangeContainsDisabled(buildRange(range.from, hoveredDate), props.disabled)
-      ? buildRange(range.from, hoveredDate)
+  const rangeState = getRangeState(range)
+  const calendarRange =
+    open && rangeState === "single" && range?.from
+      ? { from: range.from, to: undefined }
       : range
+  const { startMonth, endMonth } = React.useMemo(
+    () => getRosterPeriodBounds(rosterPeriods),
+    [rosterPeriods],
+  )
   const displayMonth = isRange
     ? (range?.from ?? new Date())
     : (date ?? new Date())
   const isEmpty = isRange ? !range?.from : !date
+  const displayYear = displayMonth.getFullYear()
+  const displayMonthIndex = displayMonth.getMonth()
+  const calendarMonth = React.useMemo(
+    () =>
+      clampMonth(
+        startOfMonth(new Date(displayYear, displayMonthIndex)),
+        startMonth,
+        endMonth,
+      ),
+    [displayMonthIndex, displayYear, endMonth, startMonth],
+  )
+  const navigationStartMonth = startMonth ?? calendarMonth
+  const navigationEndMonth = endMonth ?? calendarMonth
 
   React.useEffect(() => {
     if (props.mode !== "range") {
@@ -106,9 +146,18 @@ export function DatePickerDemo(props: DatePickerProps) {
   React.useEffect(() => {
     if (props.mode === "range") {
       setInternalRange(props.selected)
-      setHoveredDate(undefined)
     }
   }, [props.mode, props.selected])
+
+  React.useEffect(() => {
+    if (!open) {
+      setVisibleMonth(calendarMonth)
+    }
+  }, [calendarMonth, open])
+
+  React.useEffect(() => {
+    setVisibleMonth((month) => clampMonth(month, startMonth, endMonth))
+  }, [endMonth, startMonth])
 
   const handleSingleSelect = (selectedDate: Date | undefined) => {
     if (props.mode === "range") {
@@ -122,64 +171,50 @@ export function DatePickerDemo(props: DatePickerProps) {
     setOpen(false)
   }
 
-  const handleRangeSelect = (selectedRange: DateRange | undefined) => {
+  const handleRangeSelect = (
+    selectedRange: DateRange | undefined,
+    triggerDate: Date,
+  ) => {
     if (props.mode !== "range") {
       return
     }
 
-    if (props.onSelect) {
-      props.onSelect(selectedRange)
-    }
-    setInternalRange(selectedRange)
+    const previousRangeState = getRangeState(range)
+    const normalizedTriggerDate = normalizeDate(triggerDate)
+    let normalizedRange = selectedRange?.from
+      ? {
+          from: normalizeDate(selectedRange.from),
+          to: selectedRange.to ? normalizeDate(selectedRange.to) : undefined,
+        }
+      : undefined
 
-    if (selectedRange?.from && selectedRange?.to) {
+    if (
+      previousRangeState === "empty" &&
+      getRangeState(normalizedRange) === "single" &&
+      normalizedRange?.from
+    ) {
+      normalizedRange = { from: normalizedRange.from, to: undefined }
+    }
+
+    if (previousRangeState === "multi") {
+      normalizedRange = {
+        from: normalizedTriggerDate,
+        to: normalizedTriggerDate,
+      }
+    }
+
+    if (props.onSelect) {
+      props.onSelect(normalizedRange)
+    }
+    setInternalRange(normalizedRange)
+
+    const nextRangeState = getRangeState(normalizedRange)
+    if (
+      nextRangeState === "multi" ||
+      (nextRangeState === "single" && previousRangeState === "incomplete")
+    ) {
       setOpen(false)
     }
-  }
-
-  const handleRangeDayClick = (
-    day: Date,
-    modifiers: { disabled?: boolean },
-  ) => {
-    if (props.mode !== "range" || modifiers.disabled) {
-      return
-    }
-
-    const clickedDay = normalizeDate(day)
-
-    if (!range?.from || range.to) {
-      handleRangeSelect({ from: clickedDay, to: undefined })
-      return
-    }
-
-    if (isBefore(clickedDay, normalizeDate(range.from))) {
-      handleRangeSelect({ from: clickedDay, to: undefined })
-      return
-    }
-
-    const nextRange = buildRange(range.from, clickedDay)
-    if (rangeContainsDisabled(nextRange, props.disabled)) {
-      return
-    }
-
-    handleRangeSelect(nextRange)
-  }
-
-  const handleRangeDayMouseEnter = (
-    day: Date,
-    modifiers: { disabled?: boolean },
-  ) => {
-    if (
-      props.mode !== "range" ||
-      !range?.from ||
-      range.to ||
-      modifiers.disabled
-    ) {
-      setHoveredDate(undefined)
-      return
-    }
-
-    setHoveredDate(normalizeDate(day))
   }
 
   const handleToggle = () => {
@@ -210,30 +245,31 @@ export function DatePickerDemo(props: DatePickerProps) {
         boxShadow:
           "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)",
       }}
-      onMouseDown={(e) => e.stopPropagation()}
     >
       {isRange ? (
         <Calendar
-          selected={previewRange}
-          defaultMonth={displayMonth}
+          mode="range"
+          selected={calendarRange}
+          onSelect={handleRangeSelect}
+          month={visibleMonth}
+          onMonthChange={setVisibleMonth}
           numberOfMonths={2}
+          captionLayout="dropdown"
+          startMonth={navigationStartMonth}
+          endMonth={navigationEndMonth}
           disabled={props.disabled}
-          onDayClick={handleRangeDayClick}
-          onDayMouseEnter={handleRangeDayMouseEnter}
-          modifiers={{
-            selected: previewRange,
-            range_start: previewRange?.from,
-            range_end: previewRange?.to,
-            range_middle:
-              previewRange?.from && previewRange?.to ? previewRange : undefined,
-          }}
+          excludeDisabled
         />
       ) : (
         <Calendar
           mode="single"
           selected={date}
           onSelect={handleSingleSelect}
-          defaultMonth={displayMonth}
+          month={visibleMonth}
+          onMonthChange={setVisibleMonth}
+          captionLayout="dropdown"
+          startMonth={navigationStartMonth}
+          endMonth={navigationEndMonth}
           disabled={props.disabled}
         />
       )}

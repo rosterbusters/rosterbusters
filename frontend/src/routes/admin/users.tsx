@@ -20,6 +20,7 @@ import {
   type AdminUser,
   type AdminUserCreate,
   type AdminUserFilters,
+  type AdminUsersResponse,
   type AdminUserUpdate,
   type DesignationOption,
   type WardOption,
@@ -28,7 +29,7 @@ import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
 import { emailPattern } from "@/utils"
 
 const usersSearchSchema = z.object({
-  page: z.number().catch(1),
+  page: z.number().int().min(1).catch(1),
 })
 
 const PER_PAGE = 10
@@ -700,7 +701,7 @@ function UserFormDialog({
 
   const designationOptions = designations.map((d) => d.designation)
 
-  const currentRole = isEdit ? (editUser.roles[0] ?? "") : ""
+  const currentRole = isEdit ? (editUser.roles[0] ?? "Nurse") : "Nurse"
 
   // Multi-ward selection state
   const [selectedWardIds, setSelectedWardIds] = useState<number[]>(
@@ -752,6 +753,9 @@ function UserFormDialog({
   })
 
   const selectedRole = watch("role")
+  const showsStaffFields =
+    selectedRole === "Nurse" || selectedRole === "NurseManager"
+  const showsNurseFields = selectedRole === "Nurse"
 
   const createMutation = useMutation({
     mutationFn: (data: AdminUserCreate) => AdminService.createUser(data),
@@ -800,17 +804,18 @@ function UserFormDialog({
         name: data.name || undefined,
         email: data.email.trim() ? data.email.trim() : null,
         is_active: data.is_active,
+        role: data.role,
       }
-      if (currentRole === "Nurse" || currentRole === "NurseManager") {
+      if (showsStaffFields) {
         payload.employee_id = data.employee_id.trim()
       }
-      if (currentRole === "Nurse") {
+      if (showsNurseFields) {
         payload.join_date = data.join_date || null
         payload.designation = data.designation.trim()
       }
       if (data.password) payload.password = data.password
       // Only send ward_ids if this user is a nurse or manager
-      if (currentRole === "Nurse" || currentRole === "NurseManager") {
+      if (showsStaffFields) {
         payload.ward_ids = selectedWardIds
       }
       updateMutation.mutate(payload)
@@ -934,51 +939,21 @@ function UserFormDialog({
               )}
             </div>
 
-            {/* Role (editable on create, read-only on edit) */}
-            {!isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role <span className="text-red-500">*</span>
-                </label>
-                <select
-                  {...register("role")}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Nurse">Nurse</option>
-                  <option value="NurseManager">Nurse Manager</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Role <span className="text-red-500">*</span>
+              </label>
+              <select
+                {...register("role")}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Nurse">Nurse</option>
+                <option value="NurseManager">Nurse Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </div>
 
-            {isEdit && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <div className="flex flex-wrap gap-1 py-2">
-                  {editUser!.roles.map((role) => (
-                    <span
-                      key={role}
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        role === "Admin"
-                          ? "bg-orange-100 text-orange-700"
-                          : role === "NurseManager"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {role === "NurseManager" ? "Nurse Manager" : role}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(isEdit
-              ? currentRole === "Nurse" || currentRole === "NurseManager"
-              : selectedRole === "Nurse" ||
-                selectedRole === "NurseManager") && (
+            {showsStaffFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Employee ID
@@ -997,7 +972,7 @@ function UserFormDialog({
               </div>
             )}
 
-            {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
+            {showsNurseFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Join Date
@@ -1015,7 +990,7 @@ function UserFormDialog({
               </div>
             )}
 
-            {(isEdit ? currentRole === "Nurse" : selectedRole === "Nurse") && (
+            {showsNurseFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Designation <span className="text-red-500">*</span>
@@ -1023,10 +998,7 @@ function UserFormDialog({
                 <select
                   {...register("designation", {
                     validate: (value) => {
-                      const isNurse = isEdit
-                        ? currentRole === "Nurse"
-                        : selectedRole === "Nurse"
-                      if (!isNurse) return true
+                      if (!showsNurseFields) return true
                       if (!value?.trim())
                         return "Designation is required for nurses"
                       return true
@@ -1113,16 +1085,13 @@ function UserFormDialog({
             </div>
 
             {/* Ward assignment — show for Nurse / NurseManager */}
-            {(isEdit
-              ? currentRole === "Nurse" || currentRole === "NurseManager"
-              : selectedRole === "Nurse" ||
-                selectedRole === "NurseManager") && (
+            {showsStaffFields && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {(isEdit ? currentRole : selectedRole) === "NurseManager"
+                  {selectedRole === "NurseManager"
                     ? "Manages Wards"
                     : "Assigned Wards"}
-                  {(isEdit ? currentRole : selectedRole) === "Nurse" && (
+                  {selectedRole === "Nurse" && (
                     <span className="text-gray-400 text-xs ml-1">
                       (first = primary ward for scheduling)
                     </span>
@@ -1213,19 +1182,47 @@ function DeleteDialog({
   user: AdminUser | null
 }) {
   const queryClient = useQueryClient()
-  const [deleting, setDeleting] = useState(false)
 
   const mutation = useMutation({
     mutationFn: (id: number) => AdminService.deleteUser(id),
+    onMutate: async (id) => {
+      const queryKey = ["admin-users"]
+      await queryClient.cancelQueries({ queryKey })
+      const previousUsers = queryClient.getQueriesData<AdminUsersResponse>({
+        queryKey,
+      })
+
+      queryClient.setQueriesData<AdminUsersResponse>(
+        { queryKey },
+        (current) => {
+          if (!current) return current
+
+          const nextData = current.data.filter((item) => item.userid !== id)
+          const removedFromPage = nextData.length !== current.data.length
+
+          return {
+            ...current,
+            data: nextData,
+            count: removedFromPage
+              ? Math.max(0, current.count - 1)
+              : current.count,
+          }
+        },
+      )
+
+      return { previousUsers }
+    },
     onSuccess: () => {
       showSuccessToast("User deleted successfully.")
       onClose()
     },
-    onError: (err: any) => {
+    onError: (err: any, _id, context) => {
+      context?.previousUsers.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data)
+      })
       showErrorToast(err.body?.detail ?? "Failed to delete user.")
     },
     onSettled: () => {
-      setDeleting(false)
       queryClient.invalidateQueries({ queryKey: ["admin-users"] })
     },
   })
@@ -1247,24 +1244,26 @@ function DeleteDialog({
         </p>
         <div className="flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            disabled={mutation.isPending}
+            className="px-4 py-2 text-sm font-medium text-white bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => {
               if (isAdminUser) {
                 showErrorToast("Admin accounts cannot be deleted.")
                 return
               }
-              setDeleting(true)
               mutation.mutate(user.userid)
             }}
-            disabled={deleting || isAdminUser}
+            disabled={mutation.isPending || isAdminUser}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting
+            {mutation.isPending
               ? "Deleting..."
               : isAdminUser
                 ? "Cannot Delete Admin"
@@ -1340,6 +1339,7 @@ function AdminUsers() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [search, setSearch] = useState("")
+  const previousSearchRef = useRef(search)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -1562,13 +1562,14 @@ function AdminUsers() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
-      // Reset to page 1 when search changes
-      if (page !== 1) {
+
+      if (previousSearchRef.current !== search) {
+        previousSearchRef.current = search
         navigate({ search: (prev: any) => ({ ...prev, page: 1 }) })
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [search, navigate, page])
+  }, [search, navigate])
 
   const activeFilters: AdminUserFilters = {
     role: roleFilter,
@@ -1577,7 +1578,7 @@ function AdminUsers() {
     wardId: wardFilter === "all" ? undefined : Number(wardFilter),
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: [
       "admin-users",
       { page, search: debouncedSearch, ...activeFilters },
@@ -1607,6 +1608,18 @@ function AdminUsers() {
   const users = data?.data ?? []
   const count = data?.count ?? 0
   const totalPages = Math.ceil(count / PER_PAGE)
+
+  useEffect(() => {
+    if (!data || isPlaceholderData) return
+
+    const lastPage = Math.max(1, totalPages)
+    if (page > lastPage) {
+      navigate({
+        search: (prev: any) => ({ ...prev, page: lastPage }),
+        replace: true,
+      })
+    }
+  }, [data, isPlaceholderData, navigate, page, totalPages])
 
   useEffect(() => {
     if (users.length === 0) return

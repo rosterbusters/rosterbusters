@@ -6,12 +6,14 @@ export type RequestType = "ShiftRequest" | "LeaveRequest"
 export interface UnifiedRequest {
   id: number
   type: RequestType
+  periodId?: number | null
   requestTypeName: string
   shiftCode?: string | null
   requestedDates: string
   rawPreferredDate?: string | null
   rawStartDate?: string | null
   rawEndDate?: string | null
+  rawApplicationDate?: string | null
   status: RequestStatus
   applicationDate: string
   comments: string | null

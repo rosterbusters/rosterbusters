@@ -396,6 +396,7 @@ export function transformRosterData(
       shiftDate: entry.shift_date,
       shiftCode: normalizeShiftCode(entry.shift_code),
       status: entry.status as ShiftAssignment["status"],
+      assignmentMethod: entry.assignment_method ?? null,
       comment: entry.comment ?? undefined,
     })
   }
@@ -894,6 +895,7 @@ async function pollAlgorithmTask(
         shiftDate: dateKey,
         shiftCode: uiShiftCode,
         status: "Pending",
+        assignmentMethod: algorithmResult.method,
       }
     })
 
@@ -955,12 +957,18 @@ export function useGenerateAlgorithmRoster() {
       periodId,
       startDate,
       algorithm,
+      prefilledSlots,
       onProgress,
     }: {
       wardId: number
       periodId: number
       startDate: Date
       algorithm?: "MILP" | "AB-RATIO" | "V2"
+      prefilledSlots?: Array<{
+        nurseId: number
+        shiftDate: string
+        shiftCode: ShiftCode
+      }>
       onProgress?: (
         percent: number,
         generation: number,
@@ -981,6 +989,11 @@ export function useGenerateAlgorithmRoster() {
             ward_id: wardId,
             period_id: periodId,
             algorithm: algorithm ?? null,
+            prefilled_slots: (prefilledSlots ?? []).map((slot) => ({
+              nurse_id: slot.nurseId,
+              shift_date: slot.shiftDate,
+              shift_code: slot.shiftCode,
+            })),
           }),
         })
       logAlgorithmDebug(

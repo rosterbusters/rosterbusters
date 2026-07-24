@@ -2,7 +2,13 @@ import { Box, Grid, HStack, Span } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
 import cx from "clsx"
 import moment from "moment"
-import { type ComponentType, useCallback, useMemo, useState } from "react"
+import {
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import {
   Calendar,
   type DateLocalizer,
@@ -12,6 +18,11 @@ import {
   type View,
 } from "react-big-calendar"
 import { LeaveRequestsService, ShiftRequestsService } from "@/client"
+import type { RosterPeriod } from "@/components/NurseManager/RosterTable/types"
+import {
+  useRosterPeriods,
+  useRosterPeriodWindow,
+} from "@/components/NurseManager/RosterTable/useRosterData"
 import CustomMonthView from "./CustomLeaveView"
 
 const localizer = momentLocalizer(moment)
@@ -50,7 +61,7 @@ const LeaveToolbar: ComponentType<ToolbarProps> = ({
         className={cx("rbc-btn-group")}
         justifySelf={{ base: "center", md: "start" }}
       >
-        <button onClick={() => onNavigate(Navigate.PREVIOUS)}>
+        <button type="button" onClick={() => onNavigate(Navigate.PREVIOUS)}>
           {localizer.messages.previous}
         </button>
       </Span>
@@ -92,7 +103,7 @@ const LeaveToolbar: ComponentType<ToolbarProps> = ({
         justifySelf={{ base: "center", md: "end" }}
         className={cx("rbc-btn-group")}
       >
-        <button onClick={() => onNavigate(Navigate.NEXT)}>
+        <button type="button" onClick={() => onNavigate(Navigate.NEXT)}>
           {localizer.messages.next}
         </button>
       </Span>
@@ -128,6 +139,8 @@ interface GroupedLeaveRequestResource {
 
 interface LeaveRequestCalendarProps {
   wardId: number | null | undefined
+  displayedPeriod?: RosterPeriod | null
+  onDisplayedPeriodChange?: (period: RosterPeriod | null) => void
 }
 
 interface MonthViewProps {
@@ -139,14 +152,49 @@ interface MonthViewProps {
 
 export default function LeaveRequestCalendar({
   wardId,
+  displayedPeriod,
+  onDisplayedPeriodChange,
 }: LeaveRequestCalendarProps) {
   const [date, setDate] = useState(() => moment().startOf("month").toDate())
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), [])
+  const { data: periodWindow } = useRosterPeriodWindow()
+  const { data: periods = [] } = useRosterPeriods()
+
+  useEffect(() => {
+    if (displayedPeriod?.startDate) {
+      setDate(moment(displayedPeriod.startDate).startOf("month").toDate())
+    }
+  }, [displayedPeriod?.startDate])
+
+  const onNavigate = useCallback(
+    (newDate: Date) => {
+      setDate(newDate)
+      const navigatedPeriod =
+        periods.find((period) =>
+          moment(newDate).isBetween(
+            moment(period.startDate),
+            moment(period.endDate),
+            "day",
+            "[]",
+          ),
+        ) ?? null
+
+      onDisplayedPeriodChange?.(navigatedPeriod)
+    },
+    [onDisplayedPeriodChange, periods],
+  )
 
   const { data: leaveRequests } = useQuery({
-    queryKey: ["ward-leave-requests", wardId],
+    queryKey: [
+      "ward-leave-requests",
+      wardId,
+      displayedPeriod?.periodId ?? null,
+    ],
     queryFn: () =>
-      LeaveRequestsService.getWardLeaveRequests({ wardId: wardId! }),
+      LeaveRequestsService.getWardLeaveRequests({
+        wardId: wardId!,
+        startDate: displayedPeriod?.startDate,
+        endDate: displayedPeriod?.endDate,
+      }),
     enabled: !!wardId,
     staleTime: 0,
   })
@@ -219,7 +267,11 @@ export default function LeaveRequestCalendar({
 
   const { views, defaultView } = useMemo(() => {
     const MonthView = (props: MonthViewProps) => (
-      <CustomMonthView {...props} wardId={wardId} />
+      <CustomMonthView
+        {...props}
+        wardId={wardId}
+        upcomingPeriod={periodWindow?.upcomingPeriod ?? null}
+      />
     )
     MonthView.range = CustomMonthView.range
     MonthView.navigate = CustomMonthView.navigate
@@ -229,7 +281,7 @@ export default function LeaveRequestCalendar({
       views: { month: MonthView, week: false, day: false } as any,
       defaultView: "month" as View,
     }
-  }, [wardId])
+  }, [periodWindow?.upcomingPeriod, wardId])
 
   return (
     <Box

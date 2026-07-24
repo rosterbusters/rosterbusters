@@ -582,17 +582,31 @@ function DeleteWardDialog({
   ward: Ward | null
 }) {
   const queryClient = useQueryClient()
-  const [deleting, setDeleting] = useState(false)
 
   const mutation = useMutation({
     mutationFn: (id: number) => WardsService.deleteWard({ wardId: id }),
+    onMutate: async (id) => {
+      const queryKey = ["wards"]
+      await queryClient.cancelQueries({ queryKey })
+      const previousWards = queryClient.getQueryData<Ward[]>(queryKey)
+
+      queryClient.setQueryData<Ward[]>(queryKey, (current = []) =>
+        current.filter((item) => item.wardid !== id),
+      )
+
+      return { previousWards, queryKey }
+    },
     onSuccess: () => {
       showSuccessToast("Ward deleted successfully.")
       onClose()
     },
-    onError: () => showErrorToast("Failed to delete ward."),
+    onError: (_error, _id, context) => {
+      if (context?.previousWards) {
+        queryClient.setQueryData(context.queryKey, context.previousWards)
+      }
+      showErrorToast("Failed to delete ward.")
+    },
     onSettled: () => {
-      setDeleting(false)
       queryClient.invalidateQueries({ queryKey: ["wards"] })
     },
   })
@@ -611,20 +625,22 @@ function DeleteWardDialog({
         </p>
         <div className="flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
+            disabled={mutation.isPending}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => {
-              setDeleting(true)
               mutation.mutate(ward.wardid!)
             }}
-            disabled={deleting}
+            disabled={mutation.isPending}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting ? "Deleting..." : "Delete"}
+            {mutation.isPending ? "Deleting..." : "Delete"}
           </button>
         </div>
       </div>

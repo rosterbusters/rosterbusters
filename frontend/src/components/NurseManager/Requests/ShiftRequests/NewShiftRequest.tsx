@@ -19,11 +19,13 @@ import { useEffect, useMemo, useState } from "react"
 import { type ShiftRequestCreate, ShiftRequestsService } from "@/client"
 import type { NursePublic, ShiftCodePublic } from "@/client/types.gen"
 import { DatePickerDemo } from "@/components/Common/DatePicker"
+import { cleanupOrphanedDialogState } from "@/components/Common/dialogCleanup"
 import {
   useRosterPeriods,
   useRosterPeriodWindow,
 } from "@/components/NurseManager/RosterTable/useRosterData"
 import { showErrorToast, showSuccessToast } from "@/components/ui/toast"
+import { SearchableNurseCombobox } from "../SearchableNurseCombobox"
 
 const MAX_REQUESTS = 3
 const API_BASE = import.meta.env.VITE_API_URL || ""
@@ -68,6 +70,11 @@ export const NewShiftRequest = ({
     selectedDate ?? undefined,
   )
   const queryClient = useQueryClient()
+
+  const handleClose = () => {
+    onClose()
+    window.setTimeout(cleanupOrphanedDialogState, 350)
+  }
 
   const { data: periodWindow } = useRosterPeriodWindow()
   const { data: periods = [] } = useRosterPeriods()
@@ -140,15 +147,13 @@ export const NewShiftRequest = ({
     [requestableShiftCodes],
   )
 
-  const nurseCollection = useMemo(
+  const nurseOptions = useMemo(
     () =>
-      createListCollection({
-        items: wardNurses.map((nurse) => ({
-          value: String(nurse.nurseid),
-          label: nurse.name,
-          description: nurse.designation,
-        })),
-      }),
+      wardNurses.map((nurse) => ({
+        value: String(nurse.nurseid),
+        label: nurse.name,
+        description: nurse.designation,
+      })),
     [wardNurses],
   )
 
@@ -192,7 +197,7 @@ export const NewShiftRequest = ({
           queryKey: ["shift-requests", "ward", wardId],
         }),
       ])
-      onClose()
+      handleClose()
     },
     onError: (error: unknown) => {
       const detail = (error as any)?.body?.detail
@@ -206,8 +211,19 @@ export const NewShiftRequest = ({
       setShiftType([])
       setSelectedNurse([])
       setLocalComment("")
+      return
     }
+
+    const timeoutId = window.setTimeout(cleanupOrphanedDialogState, 350)
+    return () => window.clearTimeout(timeoutId)
   }, [isOpen, selectedDate])
+
+  useEffect(
+    () => () => {
+      window.setTimeout(cleanupOrphanedDialogState, 0)
+    },
+    [],
+  )
 
   const handleSubmit = () => {
     if (wardId == null) {
@@ -244,13 +260,21 @@ export const NewShiftRequest = ({
     <Dialog.Root
       placement={"center"}
       motionPreset="slide-in-bottom"
+      lazyMount
+      unmountOnExit
       open={isOpen}
-      onOpenChange={(e) => !e.open && onClose()}
+      onOpenChange={(e) => !e.open && handleClose()}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement | null
+        if (target?.closest("[data-datepicker-popup='true']")) {
+          event.preventDefault()
+        }
+      }}
     >
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content tabIndex={-1}>
             <Dialog.Header>
               <Dialog.Title color={"primary"} fontWeight={"bold"}>
                 Create Shift Request
@@ -258,39 +282,12 @@ export const NewShiftRequest = ({
             </Dialog.Header>
             <Dialog.Body>
               <VStack alignItems={"start"} gap={4} maxWidth={"320px"}>
-                <Select.Root
-                  collection={nurseCollection}
-                  size="sm"
+                <SearchableNurseCombobox
+                  items={nurseOptions}
                   value={selectedNurse}
-                  onValueChange={(e) => setSelectedNurse(e.value)}
-                >
-                  <Select.Label>Nurse</Select.Label>
-                  <Select.Control>
-                    <Select.Trigger>
-                      <Select.ValueText placeholder="Select Nurse" />
-                    </Select.Trigger>
-                    <Select.IndicatorGroup>
-                      <Select.Indicator />
-                    </Select.IndicatorGroup>
-                  </Select.Control>
-                  <Portal>
-                    <Select.Positioner>
-                      <Select.Content>
-                        {nurseCollection.items.map((nurse) => (
-                          <Select.Item item={nurse.value} key={nurse.value}>
-                            <VStack alignItems="start" gap={0}>
-                              <Text>{nurse.label}</Text>
-                              <Text fontSize="xs" color="gray.500">
-                                {nurse.description}
-                              </Text>
-                            </VStack>
-                            <Select.ItemIndicator />
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Positioner>
-                  </Portal>
-                </Select.Root>
+                  onValueChange={setSelectedNurse}
+                  placeholder="Search nurse"
+                />
 
                 {selectedNurseRecord ? (
                   <HStack gap={2}>
@@ -390,7 +387,7 @@ export const NewShiftRequest = ({
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
-              <Button variant="outline" onClick={onClose}>
+              <Button variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
               <Button onClick={handleSubmit} loading={mutation.isPending}>

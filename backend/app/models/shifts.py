@@ -66,6 +66,7 @@ class ShiftRequestPublic(SQLModel):
     requestnumber: int
     reason: str | None
     priority: int
+    timestamp: datetime
     status: str
 
 class ShiftRequestUpdate(SQLModel):

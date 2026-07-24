@@ -360,13 +360,18 @@ export const ShiftRequestPublicSchema = {
             type: 'integer',
             title: 'Priority'
         },
+        timestamp: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Timestamp'
+        },
         status: {
             type: 'string',
             title: 'Status'
         }
     },
     type: 'object',
-    required: ['requestid', 'nurseid', 'periodid', 'preferreddate', 'preferredshifttype', 'requestnumber', 'reason', 'priority', 'status'],
+    required: ['requestid', 'nurseid', 'periodid', 'preferreddate', 'preferredshifttype', 'requestnumber', 'reason', 'priority', 'timestamp', 'status'],
     title: 'ShiftRequestPublic'
 } as const;
 

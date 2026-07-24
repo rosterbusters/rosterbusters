@@ -209,6 +209,7 @@ test("generation inputs classify shift requests", async ({ request }) => {
   const createdRequestIds: number[] = []
 
   let managerToken = ""
+  let nurseToken = ""
   const wardId = ward.wardid
 
   try {
@@ -240,6 +241,12 @@ test("generation inputs classify shift requests", async ({ request }) => {
     }
 
     managerToken = await loginToken(request, nmUsername, nmPassword)
+    nurseToken = await loginToken(
+      request,
+      nurseUsername,
+      nursePassword,
+      `e2e.nurse.${suffix}@example.com`,
+    )
 
     const periodRes = await request.get(
       `${API_BASE_URL}/api/v1/shift-requests/periods/current-upcoming`,
@@ -280,8 +287,7 @@ test("generation inputs classify shift requests", async ({ request }) => {
       "Approved",
     )
 
-    const pendingReq = await createShiftRequest(request, managerToken, {
-      nurseid: nurseUser.nurseid,
+    const pendingReq = await createShiftRequest(request, nurseToken, {
       periodid: period.periodid,
       preferreddate: addDays(period.startdate, 1),
       preferredshifttype: "A",

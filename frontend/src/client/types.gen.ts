@@ -89,6 +89,7 @@ export type ShiftRequestPublic = {
     requestnumber: number;
     reason: (string | null);
     priority: number;
+    timestamp: string;
     status: string;
 };
 

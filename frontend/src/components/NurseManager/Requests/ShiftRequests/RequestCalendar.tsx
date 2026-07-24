@@ -1,4 +1,4 @@
-import { Box, Grid, Span } from "@chakra-ui/react"
+import { Badge, Box, Grid, Span } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
 import cx from "clsx"
 import moment from "moment"
@@ -18,6 +18,7 @@ import {
   type View,
 } from "react-big-calendar"
 import { ShiftRequestsService } from "@/client"
+import type { RosterPeriod } from "@/components/NurseManager/RosterTable/types"
 import {
   useRosterPeriods,
   useRosterPeriodWindow,
@@ -35,12 +36,16 @@ interface Event {
   resource?: any
 }
 
-export const CustomToolbar: ComponentType<ToolbarProps> = ({
-  date,
+interface RequestCalendarToolbarProps extends ToolbarProps {
+  isUpcomingPeriod?: boolean
+}
+
+export const CustomToolbar: ComponentType<RequestCalendarToolbarProps> = ({
+  isUpcomingPeriod = false,
   label,
   localizer,
   onNavigate,
-}: ToolbarProps) => {
+}: RequestCalendarToolbarProps) => {
   return (
     <Grid
       templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
@@ -52,16 +57,27 @@ export const CustomToolbar: ComponentType<ToolbarProps> = ({
         className={cx("rbc-btn-group")}
         justifySelf={{ base: "center", md: "start" }}
       >
-        <button onClick={() => onNavigate(Navigate.PREVIOUS)}>
+        <button type="button" onClick={() => onNavigate(Navigate.PREVIOUS)}>
           {localizer.messages.previous}
         </button>
       </Span>
-      <Span className={cx("rbc-toolbar-label")}>{label}</Span>
+      <Span
+        className={cx("rbc-toolbar-label")}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        gap={2}
+      >
+        {label}
+        {isUpcomingPeriod ? (
+          <Badge variant={"upcomingPeriod" as any}>Upcoming</Badge>
+        ) : null}
+      </Span>
       <Span
         justifySelf={{ base: "center", md: "end" }}
         className={cx("rbc-btn-group")}
       >
-        <button onClick={() => onNavigate(Navigate.NEXT)}>
+        <button type="button" onClick={() => onNavigate(Navigate.NEXT)}>
           {localizer.messages.next}
         </button>
       </Span>
@@ -71,6 +87,8 @@ export const CustomToolbar: ComponentType<ToolbarProps> = ({
 
 interface RequestCalendarProps {
   wardId: number | null | undefined
+  displayedPeriod?: RosterPeriod | null
+  onDisplayedPeriodChange?: (period: RosterPeriod | null) => void
 }
 
 interface FortnightViewProps {
@@ -91,7 +109,11 @@ interface FortnightViewProps {
  * - The `enabled` guard now cleanly waits for both wardId AND periodId.
  * - Period selection logic is aligned with NewShiftRequest (today-first, then fallback).
  */
-export default function RequestCalendar({ wardId }: RequestCalendarProps) {
+export default function RequestCalendar({
+  wardId,
+  displayedPeriod,
+  onDisplayedPeriodChange,
+}: RequestCalendarProps) {
   const { user } = useAuth()
   const currentNurseId = user?.nurseid
 
@@ -102,6 +124,11 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
   const [date, setDate] = useState(() => moment().startOf("isoWeek").toDate())
 
   useEffect(() => {
+    if (displayedPeriod?.startDate) {
+      setDate(moment(displayedPeriod.startDate).startOf("isoWeek").toDate())
+      return
+    }
+
     if (periodWindow?.currentPeriod?.startDate) {
       setDate(
         moment(periodWindow.currentPeriod.startDate)
@@ -109,9 +136,25 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
           .toDate(),
       )
     }
-  }, [periodWindow?.currentPeriod?.startDate])
+  }, [displayedPeriod?.startDate, periodWindow?.currentPeriod?.startDate])
 
-  const onNavigate = useCallback((newDate: Date) => setDate(newDate), [])
+  const onNavigate = useCallback(
+    (newDate: Date) => {
+      setDate(newDate)
+      const navigatedPeriod =
+        periods.find((period) =>
+          moment(newDate).isBetween(
+            moment(period.startDate),
+            moment(period.endDate),
+            "day",
+            "[]",
+          ),
+        ) ?? null
+
+      onDisplayedPeriodChange?.(navigatedPeriod)
+    },
+    [onDisplayedPeriodChange, periods],
+  )
 
   const activePeriod = useMemo(
     () =>
@@ -123,12 +166,17 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
           "[]",
         ),
       ) ??
+      displayedPeriod ??
       periodWindow?.currentPeriod ??
       null,
-    [date, periodWindow?.currentPeriod, periods],
+    [date, displayedPeriod, periodWindow?.currentPeriod, periods],
   )
 
   const periodId = activePeriod?.periodId
+  const isViewingUpcomingPeriod =
+    activePeriod?.periodId != null &&
+    periodWindow?.upcomingPeriod?.periodId != null &&
+    activePeriod.periodId === periodWindow.upcomingPeriod.periodId
 
   // ─── Shift requests for entire ward ──────────────────────────────────────
   const { data: shiftRequests } = useQuery({
@@ -198,6 +246,18 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
     }
   }, [wardId])
 
+  const components = useMemo(
+    () => ({
+      toolbar: (toolbarProps: ToolbarProps) => (
+        <CustomToolbar
+          {...toolbarProps}
+          isUpcomingPeriod={isViewingUpcomingPeriod}
+        />
+      ),
+    }),
+    [isViewingUpcomingPeriod],
+  )
+
   return (
     <Box
       h="100%"
@@ -211,9 +271,7 @@ export default function RequestCalendar({ wardId }: RequestCalendarProps) {
         startAccessor="start"
         endAccessor="end"
         events={events}
-        components={{
-          toolbar: CustomToolbar,
-        }}
+        components={components}
         view={defaultView}
         views={views}
         date={date}

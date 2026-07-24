@@ -12,7 +12,7 @@ from uuid import uuid4
 import xlwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import MetaData, Table
 from sqlalchemy import inspect as sa_inspect
 from sqlmodel import Session, delete, select
@@ -84,10 +84,17 @@ class RosterCommentUpdate(BaseModel):
     comment: Optional[str] = None
 
 
+class RosterPrefilledSlot(BaseModel):
+    nurse_id: int
+    shift_date: date
+    shift_code: str
+
+
 class RosterGenerationRequest(BaseModel):
     ward_id: int
     period_id: int
     algorithm: Optional[str] = None  # "MILP" | "AB-RATIO" | None (auto)
+    prefilled_slots: list[RosterPrefilledSlot] = Field(default_factory=list)
 
 
 class RosterExportRow(BaseModel):
@@ -391,9 +398,7 @@ def _get_existing_roster_entry(
 ) -> Roster | None:
     return session.exec(
         select(Roster).where(
-            Roster.wardid == ward_id,
             Roster.nurseid == nurse_id,
-            Roster.periodid == period_id,
             Roster.shiftdate == shift_date,
         )
     ).first()
@@ -430,6 +435,8 @@ def _upsert_roster_entry(
     )
 
     if entry:
+        entry.wardid = payload.ward_id
+        entry.periodid = payload.period_id
         entry.shiftcode = payload.shift_code
         entry.comment = payload.comment
         entry.status = payload.status
@@ -1173,7 +1180,12 @@ def generate_roster_endpoint(
     if not _can_generate_roster(db, current_user):
         raise HTTPException(status_code=403, detail="Nurse manager access required")
     try:
-        generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
+        generation_inputs = _load_generation_inputs(
+            db,
+            request_data.ward_id,
+            request_data.period_id,
+            request_data.prefilled_slots,
+        )
         _queue_algorithm_notification(
             db,
             manager_id=current_user.managerid,
@@ -1192,6 +1204,11 @@ def generate_roster_endpoint(
             non_working_shift_codes=generation_inputs["non_working_shift_codes"],
             milp_config=generation_inputs["milp_config"],
             algorithm=request_data.algorithm,
+        )
+        _apply_locked_roster_overlay(
+            result["roster"],
+            generation_inputs["locked_roster_slots"],
+            generation_inputs["nurses"],
         )
         _queue_algorithm_notification(
             db,
@@ -1240,7 +1257,13 @@ def generate_roster_async(
         task = _get_celery_app().send_task(
             "tasks.generate_roster",
             args=[request_data.ward_id, request_data.period_id],
-            kwargs={"algorithm": request_data.algorithm},
+            kwargs={
+                "algorithm": request_data.algorithm,
+                "prefilled_slots": [
+                    slot.model_dump(mode="json")
+                    for slot in request_data.prefilled_slots
+                ],
+            },
             task_id=task_id,
         )
     except Exception:
@@ -1387,7 +1410,12 @@ def generate_roster_stream(
     if not _can_generate_roster(db, current_user):
         raise HTTPException(status_code=403, detail="Nurse manager access required")
     # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
-    generation_inputs = _load_generation_inputs(db, request_data.ward_id, request_data.period_id)
+    generation_inputs = _load_generation_inputs(
+        db,
+        request_data.ward_id,
+        request_data.period_id,
+        request_data.prefilled_slots,
+    )
     _queue_algorithm_notification(
         db,
         manager_id=current_user.managerid,
@@ -1422,6 +1450,11 @@ def generate_roster_stream(
                 progress_callback=on_progress,
                 milp_config=generation_inputs["milp_config"],
                 algorithm=request_data.algorithm,
+            )
+            _apply_locked_roster_overlay(
+                result["roster"],
+                generation_inputs["locked_roster_slots"],
+                generation_inputs["nurses"],
             )
             q.put({"type": "complete", "method": result["method"], "roster": result["roster"]})
             try:
@@ -1773,7 +1806,12 @@ def _staffing_to_algo_inputs(ward: Ward, rank_map: dict[str, str] | None = None)
     )
 
 
-def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[str, Any]:
+def _load_generation_inputs(
+    db: Session,
+    ward_id: int,
+    period_id: int,
+    prefilled_slots: list[RosterPrefilledSlot] | None = None,
+) -> dict[str, Any]:
     ward = db.get(Ward, ward_id)
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
@@ -1813,8 +1851,28 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
 
     nurse_ids = [n["id"] for n in nurses_data]
     shift_label_map = _load_shift_label_map(db)
+    non_working_shift_codes = _load_non_working_shift_codes(db)
     hard_requests, soft_requests = _load_shift_requests(db, ward_id, period, nurse_ids, len(shifts_data), shift_label_map)
     leave_hard = _load_leave_requests(db, ward_id, period, set(nurse_ids), len(shifts_data))
+    locked_roster_slots = _load_locked_roster_slots(
+        db,
+        ward_id,
+        period,
+        set(nurse_ids),
+        len(shifts_data),
+        shift_label_map,
+        non_working_shift_codes,
+    )
+    locked_roster_slots.extend(
+        _normalize_prefilled_roster_slots(
+            prefilled_slots or [],
+            period,
+            set(nurse_ids),
+            len(shifts_data),
+            shift_label_map,
+            non_working_shift_codes,
+        )
+    )
     logger.warning(
         "[DEBUG] leave_hard_summary ward=%s period=%s total=%s codes=%s sample=%s",
         ward_id,
@@ -1870,14 +1928,30 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
     for nurse_id, shift_name in prev_last_shift.items():
         if str(shift_name).strip().upper() not in {"NIGHT", "N", "N-12", "N12", "N_12"}:
             continue
-        hard_requests[nurse_id] = [
+        next_hard_requests = [
             item for item in hard_requests.get(nurse_id, [])
             if item[0] != 0
         ]
-        soft_requests[nurse_id] = [
+        if next_hard_requests:
+            hard_requests[nurse_id] = next_hard_requests
+        else:
+            hard_requests.pop(nurse_id, None)
+
+        next_soft_requests = [
             item for item in soft_requests.get(nurse_id, [])
             if item[0] != 0
         ]
+        if next_soft_requests:
+            soft_requests[nurse_id] = next_soft_requests
+        else:
+            soft_requests.pop(nurse_id, None)
+
+    _merge_locked_roster_slots(
+        hard_requests,
+        soft_requests,
+        locked_roster_slots,
+        leave_hard,
+    )
 
     return {
         "nurses": nurses_data,
@@ -1885,10 +1959,11 @@ def _load_generation_inputs(db: Session, ward_id: int, period_id: int) -> dict[s
         "milp_config": milp_config,
         "hard_requests": hard_requests,
         "soft_requests": soft_requests,
+        "locked_roster_slots": locked_roster_slots,
         "prev_last_shift": prev_last_shift,
         "ward_hour_type": ward.wardhourtype,
         "shift_hours": _load_shift_hours(db, ward.wardhourtype),
-        "non_working_shift_codes": _load_non_working_shift_codes(db),
+        "non_working_shift_codes": non_working_shift_codes,
         "period_constraints": period_constraints,
     }
 
@@ -1925,6 +2000,267 @@ def _sample_requests(
     for nurse_id in sorted(requests.keys())[:limit_nurses]:
         sample[nurse_id] = list(requests[nurse_id][:10])
     return sample
+
+
+def _load_locked_roster_slots(
+    db: Session,
+    ward_id: int,
+    period: RosterPeriod,
+    nurse_ids: set[int],
+    num_days: int,
+    shift_label_map: dict[str, str],
+    non_working_shift_codes: set[str],
+) -> list[dict[str, Any]]:
+    if not nurse_ids:
+        return []
+
+    rows = db.exec(
+        select(Roster)
+        .join(Nurse, Nurse.nurseid == Roster.nurseid)
+        .where(Roster.wardid == ward_id)
+        .where(Roster.periodid == period.periodid)
+        .where(Roster.assignmentmethod == "Manual")
+        .where(Roster.status == "Pending")
+        .where(Nurse.isactive == True)  # noqa: E712
+        .where(Nurse.wardid == ward_id)
+        .where(Roster.nurseid.in_(nurse_ids))  # type: ignore[union-attr]
+    ).all()
+
+    locked_slots: list[dict[str, Any]] = []
+    for row in rows:
+        if row.nurseid is None:
+            continue
+
+        day_idx = (row.shiftdate - period.startdate).days
+        if day_idx < 0 or day_idx >= num_days:
+            continue
+
+        raw_shift_code = str(row.shiftcode).strip().upper()
+        shift_label = _locked_slot_solver_label(
+            raw_shift_code,
+            shift_label_map,
+            non_working_shift_codes,
+        )
+        if not shift_label:
+            continue
+
+        locked_slots.append(
+            {
+                "roster_id": row.rosterid,
+                "nurse_id": row.nurseid,
+                "day_idx": day_idx,
+                "shift_date": row.shiftdate,
+                "shift_code": raw_shift_code,
+                "shift_label": shift_label,
+            }
+        )
+
+    return locked_slots
+
+
+def _normalize_prefilled_roster_slots(
+    prefilled_slots: list[RosterPrefilledSlot],
+    period: RosterPeriod,
+    nurse_ids: set[int],
+    num_days: int,
+    shift_label_map: dict[str, str],
+    non_working_shift_codes: set[str],
+) -> list[dict[str, Any]]:
+    locked_slots: list[dict[str, Any]] = []
+    seen: set[tuple[int, int]] = set()
+
+    for slot in prefilled_slots:
+        if slot.nurse_id not in nurse_ids:
+            continue
+
+        day_idx = (slot.shift_date - period.startdate).days
+        if day_idx < 0 or day_idx >= num_days:
+            continue
+
+        key = (slot.nurse_id, day_idx)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        raw_shift_code = str(slot.shift_code).strip().upper()
+        if not raw_shift_code:
+            continue
+        shift_label = _locked_slot_solver_label(
+            raw_shift_code,
+            shift_label_map,
+            non_working_shift_codes,
+        )
+        if not shift_label:
+            continue
+
+        locked_slots.append(
+            {
+                "roster_id": None,
+                "nurse_id": slot.nurse_id,
+                "day_idx": day_idx,
+                "shift_date": slot.shift_date,
+                "shift_code": raw_shift_code,
+                "shift_label": shift_label,
+            }
+        )
+
+    return locked_slots
+
+
+def _locked_slot_solver_label(
+    shift_code: str,
+    shift_label_map: dict[str, str],
+    non_working_shift_codes: set[str],
+) -> str | None:
+    """Map an exact roster code to the solver label while preserving the original separately."""
+    normalized = str(shift_code).strip().upper()
+    if not normalized:
+        return None
+
+    if normalized in {"A-12", "A12", "A_12"}:
+        return "A-12"
+    if normalized in {"N-12", "N12", "N_12"}:
+        return "N-12"
+    if normalized in {"DO", "RD", "SD", "OFF"}:
+        return "OFF"
+    if normalized in {"DO-A", "RD-A", "A", "AM", "D"} or normalized.startswith("A-"):
+        return "AM"
+    if normalized in {"DO-P", "RD-P", "P", "PM"} or normalized.startswith("P-"):
+        return "PM"
+    if normalized in {"DO-N", "RD-N", "N", "NIGHT"} or normalized.startswith("N-"):
+        return "NIGHT"
+    if normalized in non_working_shift_codes:
+        return normalized
+
+    return shift_label_map.get(normalized, normalized)
+
+
+def _apply_locked_roster_overlay(
+    roster: dict[str, Any],
+    locked_roster_slots: list[dict[str, Any]],
+    nurses_data: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Overlay exact manual codes onto a generated roster after solver processing."""
+    nurses = roster.get("nurses")
+    if not isinstance(nurses, list):
+        return roster
+
+    rows_by_nurse_id = {
+        nurse.get("id"): nurse
+        for nurse in nurses
+        if isinstance(nurse, dict)
+    }
+    nurses_data_by_id = {
+        nurse.get("id"): nurse
+        for nurse in (nurses_data or [])
+        if isinstance(nurse, dict)
+    }
+    relabel_nurse_ids: set[int] = set()
+    for slot in locked_roster_slots:
+        if slot.get("is_algorithm_locked") is False:
+            continue
+        nurse_id = slot.get("nurse_id")
+        nurse_row = rows_by_nurse_id.get(nurse_id)
+        if not isinstance(nurse_row, dict):
+            continue
+        schedule = nurse_row.get("schedule")
+        day_idx = slot.get("day_idx")
+        exact_shift_code = slot.get("shift_code")
+        if (
+            not isinstance(schedule, list)
+            or not isinstance(day_idx, int)
+            or day_idx < 0
+            or day_idx >= len(schedule)
+            or not exact_shift_code
+        ):
+            continue
+        normalized_shift_code = str(exact_shift_code).strip().upper()
+        normalized_shift_label = str(slot.get("shift_label") or "").strip().upper()
+        if normalized_shift_label == "OFF" and normalized_shift_code in {"DO", "RD", "OFF"}:
+            if isinstance(nurse_id, int):
+                relabel_nurse_ids.add(nurse_id)
+            continue
+        schedule[day_idx] = normalized_shift_code
+        if isinstance(nurse_id, int):
+            relabel_nurse_ids.add(nurse_id)
+
+    for nurse_id in relabel_nurse_ids:
+        nurse_row = rows_by_nurse_id.get(nurse_id)
+        if not isinstance(nurse_row, dict):
+            continue
+        _relabel_ordinary_off_days(
+            nurse_row,
+            nurses_data_by_id.get(nurse_id) or nurse_row,
+        )
+
+    return roster
+
+
+def _has_permanent_shift_pattern(nurse_info: dict[str, Any] | None) -> bool:
+    if not nurse_info:
+        return False
+    normalized = str(
+        nurse_info.get("shift_pattern", nurse_info.get("shiftpattern", ""))
+    ).strip().upper()
+    return normalized in {"AM_ONLY", "PM_ONLY"}
+
+
+def _relabel_ordinary_off_days(
+    nurse_row: dict[str, Any],
+    nurse_info: dict[str, Any] | None = None,
+) -> None:
+    schedule = nurse_row.get("schedule")
+    if not isinstance(schedule, list):
+        return
+
+    ordinary_off_codes = {"OFF", "DO", "RD"}
+    keep_all_do = _has_permanent_shift_pattern(nurse_info)
+    off_count = 0
+    for index, code in enumerate(schedule):
+        if str(code).strip().upper() not in ordinary_off_codes:
+            continue
+        off_count += 1
+        schedule[index] = (
+            "OFF"
+            if keep_all_do
+            else ("RD" if off_count % 2 == 0 else "DO")
+        )
+
+    stats = nurse_row.get("stats")
+    if isinstance(stats, dict):
+        stats["days_off"] = sum(
+            1 for code in schedule if str(code).strip().upper() in ordinary_off_codes
+        )
+
+
+def _merge_locked_roster_slots(
+    hard_requests: dict[int, list[tuple[int, str]]],
+    soft_requests: dict[int, list[tuple[int, str] | tuple[int, str, str]]],
+    locked_roster_slots: list[dict[str, Any]],
+    leave_hard: dict[int, list[tuple[int, str]]],
+) -> None:
+    leave_days_by_nurse = {
+        nurse_id: {day_idx for day_idx, _ in days}
+        for nurse_id, days in leave_hard.items()
+    }
+
+    for slot in locked_roster_slots:
+        nurse_id = slot["nurse_id"]
+        day_idx = slot["day_idx"]
+        if day_idx in leave_days_by_nurse.get(nurse_id, set()):
+            slot["is_algorithm_locked"] = False
+            continue
+
+        hard_requests[nurse_id] = [
+            item for item in hard_requests.get(nurse_id, []) if item[0] != day_idx
+        ]
+        hard_requests[nurse_id].append((day_idx, slot["shift_label"]))
+        slot["is_algorithm_locked"] = True
+
+        if nurse_id in soft_requests:
+            soft_requests[nurse_id] = [
+                item for item in soft_requests[nurse_id] if item[0] != day_idx
+            ]
 
 
 @router.get("/generation-inputs")
@@ -2174,8 +2510,11 @@ def _load_shift_label_map(db: Session) -> dict[str, str]:
     """
     _WORKING = {
         "A": "AM",
+        "AM": "AM",
         "P": "PM",
+        "PM": "PM",
         "N": "NIGHT",
+        "NIGHT": "NIGHT",
         "A-12": "A-12",
         "A12": "A-12",
         "N-12": "N-12",

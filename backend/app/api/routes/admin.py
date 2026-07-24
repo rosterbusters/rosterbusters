@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel, func, or_, select
 
@@ -105,6 +105,7 @@ class AdminUserUpdate(SQLModel):
     shift_pattern: Optional[str] = Field(default=None, max_length=20)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     is_active: Optional[bool] = None
+    role: Optional[str] = Field(default=None, description="Nurse | NurseManager | Admin")
     ward_ids: Optional[list[int]] = None
 
 
@@ -259,8 +260,9 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
     shift_pattern: Optional[str] = None
     name: Optional[str] = None
 
-    # Resolve ward for nurses (single primary ward via nurse.wardid)
-    if user.nurseid:
+    # Resolve the linked record for the user's active role. Inactive linked
+    # records are retained so role changes do not erase staff history.
+    if user.nurseid and "Nurse" in roles:
         nurse = session.get(Nurse, user.nurseid)
         if nurse:
             name = nurse.name
@@ -274,7 +276,7 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
                     ward_list.append(WardInfo(ward_id=ward.wardid, ward_name=ward.wardname))
 
     # Resolve wards for managers from role assignments so multiple managers can share a ward
-    if user.managerid:
+    if user.managerid and "NurseManager" in roles:
         manager = session.get(NurseManager, user.managerid)
         if manager:
             name = manager.name
@@ -318,8 +320,8 @@ def _enrich(session, user: RBACUser) -> AdminUserPublic:
 @router.get("/users", response_model=AdminUsersPublic)
 def list_users(
     session: SessionDep,
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, gt=0, le=500),
     search: str = "",
     role: str = "all",
     status: str = "all",
@@ -617,8 +619,15 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     designation = body.designation.strip() if body.designation else None
     join_date_provided = "join_date" in body.model_fields_set
     shift_pattern = body.shift_pattern.strip().upper() if body.shift_pattern else None
-    if body.shift_pattern is not None and shift_pattern not in {None, "AM_ONLY", "PM_ONLY"}:
-        raise HTTPException(status_code=400, detail="shift_pattern must be AM_ONLY, PM_ONLY, or null")
+    if body.shift_pattern is not None and shift_pattern not in {
+        None,
+        "AM_ONLY",
+        "PM_ONLY",
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail="shift_pattern must be AM_ONLY, PM_ONLY, or null",
+        )
     rank_map = load_designation_rank_map(session)
 
     def _normalize_designation(raw: str | None) -> str | None:
@@ -648,57 +657,48 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
         if dup:
             raise HTTPException(status_code=409, detail="Username already in use.")
 
+    requested_role = body.role if "role" in body.model_fields_set else None
+    if requested_role is not None:
+        role = session.exec(
+            select(Role).where(Role.rolename == requested_role)
+        ).first()
+        if not role:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown role: {requested_role}. Must be Nurse, NurseManager, or Admin.",
+            )
+
     nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
     manager = session.get(NurseManager, user.managerid) if user.managerid else None
-    manager_ward_ids = _get_manager_ward_ids(session, user.userid) if manager else []
+    current_roles = get_user_roles_by_userid(session, user.userid)
 
     if body.designation is not None and designation is None:
         raise HTTPException(status_code=400, detail="Designation cannot be empty.")
 
     if body.employee_id is not None:
-        if nurse:
-            if employee_id:
-                dup_nurse = session.exec(
-                    select(Nurse).where(
-                        Nurse.employeeid == employee_id,
-                        Nurse.nurseid != user.nurseid,
-                    )
-                ).first()
-                if dup_nurse:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="This employee ID is already assigned to another nurse.",
-                    )
-                dup_manager = session.exec(
-                    select(NurseManager).where(NurseManager.employeeid == employee_id)
-                ).first()
-                if dup_manager:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="This employee ID is already assigned to a nurse manager.",
-                    )
-
-        if manager:
-            if employee_id:
-                dup_manager = session.exec(
-                    select(NurseManager).where(
-                        NurseManager.employeeid == employee_id,
-                        NurseManager.managerid != user.managerid,
-                    )
-                ).first()
-                if dup_manager:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="This employee ID is already assigned to another nurse manager.",
-                    )
-                dup_nurse = session.exec(
-                    select(Nurse).where(Nurse.employeeid == employee_id)
-                ).first()
-                if dup_nurse:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="This employee ID is already assigned to a nurse.",
-                    )
+        if employee_id:
+            dup_nurse = session.exec(
+                select(Nurse).where(
+                    Nurse.employeeid == employee_id,
+                    Nurse.nurseid != user.nurseid,
+                )
+            ).first()
+            if dup_nurse:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This employee ID is already assigned to another nurse.",
+                )
+            dup_manager = session.exec(
+                select(NurseManager).where(
+                    NurseManager.employeeid == employee_id,
+                    NurseManager.managerid != user.managerid,
+                )
+            ).first()
+            if dup_manager:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This employee ID is already assigned to another nurse manager.",
+                )
 
     if body.username is not None:
         user.username = body.username
@@ -715,6 +715,112 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    if requested_role is not None and requested_role not in current_roles:
+        previous_name = (nurse.name if nurse else None) or (
+            manager.name if manager else None
+        )
+        previous_employee_id = (
+            (nurse.employeeid if nurse else None)
+            or (manager.employeeid if manager else None)
+        )
+
+        if manager and requested_role != "NurseManager":
+            for ward_id in _get_manager_ward_ids(session, user.userid):
+                ward = session.get(Ward, ward_id)
+                if ward and ward.managerid == manager.managerid:
+                    ward.managerid = _find_replacement_manager_id(
+                        session,
+                        ward_id,
+                        user.userid,
+                    )
+                    session.add(ward)
+            manager.isactive = False
+            session.add(manager)
+
+        if nurse and requested_role != "Nurse":
+            nurse.isactive = False
+            session.add(nurse)
+
+        if requested_role == "Nurse" and not user.nurseid:
+            source_name = name or previous_name or user.username
+            source_employee_id = (
+                employee_id
+                if body.employee_id is not None
+                else previous_employee_id
+            )
+            source_designation = designation or "SN"
+            nurse = Nurse(
+                name=source_name,
+                employeeid=source_employee_id,
+                join_date=body.join_date if join_date_provided else None,
+                designation=_normalize_designation(source_designation) or "SN",
+                email=user.email or "",
+                contactnumber="",
+                wardid=body.ward_ids[0] if body.ward_ids else None,
+                employmenttype="Full-time",
+                shiftpattern=shift_pattern,
+                isactive=True,
+            )
+            session.add(nurse)
+            session.commit()
+            session.refresh(nurse)
+            user.nurseid = nurse.nurseid
+            session.add(user)
+        elif requested_role == "Nurse" and nurse:
+            nurse.isactive = user.isactive
+            session.add(nurse)
+
+        if requested_role == "NurseManager" and not user.managerid:
+            source_name = name or previous_name or user.username
+            source_employee_id = (
+                employee_id
+                if body.employee_id is not None
+                else previous_employee_id
+            )
+            manager = NurseManager(
+                name=source_name,
+                employeeid=source_employee_id,
+                email=user.email or "",
+                contactnumber="",
+                isactive=True,
+                createdat=datetime.now(timezone.utc),
+            )
+            session.add(manager)
+            session.commit()
+            session.refresh(manager)
+            user.managerid = manager.managerid
+            session.add(user)
+        elif requested_role == "NurseManager" and manager:
+            manager.isactive = user.isactive
+            session.add(manager)
+
+        for user_role in session.exec(
+            select(UserRole).where(UserRole.userid == user.userid)
+        ).all():
+            session.delete(user_role)
+        session.flush()
+
+        if requested_role == "NurseManager":
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            _sync_manager_ward_assignments(session, user, body.ward_ids or [])
+        else:
+            role = _get_role_by_name(session, requested_role)
+            session.add(
+                UserRole(
+                    userid=user.userid,
+                    roleid=role.roleid,
+                    isactive=True,
+                    assignedat=datetime.now(timezone.utc),
+                )
+            )
+            session.commit()
+            session.refresh(user)
+
+        nurse = session.get(Nurse, user.nurseid) if user.nurseid else None
+        manager = session.get(NurseManager, user.managerid) if user.managerid else None
 
     if body.employee_id is not None:
         if nurse:
@@ -779,7 +885,8 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
                 raise HTTPException(status_code=400, detail=f"Ward {wid} not found.")
 
         # For nurses: set nurse.wardid to first selected ward (primary ward for scheduling)
-        if user.nurseid:
+        effective_roles = get_user_roles_by_userid(session, user.userid)
+        if user.nurseid and "Nurse" in effective_roles:
             nurse = session.get(Nurse, user.nurseid)
             if nurse:
                 nurse.wardid = body.ward_ids[0] if body.ward_ids else None
@@ -787,7 +894,7 @@ def update_user(session: SessionDep, userid: int, body: AdminUserUpdate) -> Any:
                 session.commit()
 
         # For managers: replace ward assignments
-        if user.managerid:
+        if user.managerid and "NurseManager" in effective_roles:
             _sync_manager_ward_assignments(session, user, body.ward_ids)
 
     return _enrich(session, user)

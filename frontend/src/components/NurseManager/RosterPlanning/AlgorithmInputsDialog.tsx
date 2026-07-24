@@ -213,7 +213,7 @@ export function AlgorithmInputsDialog({
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content maxW="820px">
+          <Dialog.Content tabIndex={-1} maxW="820px">
             <Dialog.Header>
               <Dialog.Title>Algorithm Inputs</Dialog.Title>
             </Dialog.Header>
