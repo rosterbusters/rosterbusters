@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.models import RBACUser, Role, UserRole
 from app.models.rbac import Nurse
 from app.models.roster import Ward
+from tests.utils.user import user_authentication_headers
 
 
 def test_create_nurse_user_stores_employee_id(
@@ -79,6 +80,48 @@ def test_create_nurse_user_stores_join_date(
     ).first()
     assert nurse is not None
     assert str(nurse.join_date) == "2026-04-15"
+
+
+def test_create_admin_user_can_log_in_and_access_admin_routes(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    password = "AdminCreated123!"
+    response = client.post(
+        f"{settings.API_V1_STR}/admin/users",
+        headers=superuser_token_headers,
+        json={
+            "username": "created.admin",
+            "name": "Created Admin",
+            "password": password,
+            "role": "Admin",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["username"] == "created.admin"
+    assert payload["email"] is None
+    assert payload["roles"] == ["Admin"]
+
+    created_admin_headers = user_authentication_headers(
+        client=client,
+        email="created.admin",
+        password=password,
+    )
+    admin_response = client.get(
+        f"{settings.API_V1_STR}/admin/users",
+        headers=created_admin_headers,
+    )
+    assert admin_response.status_code == 200, admin_response.text
+
+    created_admin = db.exec(
+        select(RBACUser).where(RBACUser.userid == payload["userid"])
+    ).first()
+    assert created_admin is not None
+    assert created_admin.nurseid is None
+    assert created_admin.managerid is None
 
 
 def test_update_nurse_user_updates_and_clears_join_date(

@@ -10,8 +10,8 @@ from sqlmodel import Session
 from app.core import security
 from app.core.config import settings
 from app.core.db import engine
-from app.models import TokenPayload, RBACUser
-from app.rbac import get_user_roles, user_has_role
+from app.models import RBACUser, TokenPayload
+from app.rbac import get_user_roles, user_has_role, user_has_role_by_userid
 
 try:
     from jwt.exceptions import InvalidTokenError
@@ -70,7 +70,9 @@ def get_current_active_superuser(
     session: SessionDep, current_user: CurrentUser
 ) -> RBACUser:
     """Only allow users with the Admin role."""
-    if not user_has_role(session, current_user.email, "Admin"):
+    if current_user.userid is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user_has_role_by_userid(session, current_user.userid, "Admin"):
         raise HTTPException(
             status_code=403, detail="The user doesn't have enough privileges"
         )

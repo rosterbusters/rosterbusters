@@ -86,6 +86,7 @@ interface RosterPlanningHeaderProps {
   onDownloadRoster: () => void
   onViewEditHistory: () => void
   onGenerateAlgorithm?: () => void
+  onGenerateAllWards?: () => void
   onAutoRegenerate?: () => void
   showAutoRegenerate?: boolean
   onClearRoster?: () => void
@@ -119,6 +120,7 @@ export function RosterPlanningHeader({
   onDownloadRoster,
   onViewEditHistory,
   onGenerateAlgorithm,
+  onGenerateAllWards,
   onAutoRegenerate,
   showAutoRegenerate = false,
   onClearRoster,
@@ -416,6 +418,20 @@ export function RosterPlanningHeader({
                         ? "Regenerating..."
                         : "Regenerate Roster (Auto)"}
                     </Text>
+                  </HStack>
+                </MenuItem>
+              )}
+              {onGenerateAllWards && (
+                <MenuItem
+                  value="generate-all-wards"
+                  onClick={onGenerateAllWards}
+                  disabled={isGenerating}
+                  cursor={isGenerating ? "not-allowed" : "pointer"}
+                  _hover={{ bg: "#F0F9FA" }}
+                >
+                  <HStack gap={2}>
+                    <Wand2 className="h-4 w-4" />
+                    <Text>Generate All Wards</Text>
                   </HStack>
                 </MenuItem>
               )}

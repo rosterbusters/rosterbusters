@@ -126,7 +126,6 @@ def generate_first_login_setup_email(email_to: str, username: str, token: str) -
             "project_name": settings.PROJECT_NAME,
             "username": username,
             "email": email_to,
-            "valid_hours": settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS,
             "link": link,
         },
     )
@@ -175,11 +174,11 @@ def verify_password_reset_token(token: str) -> str | None:
 
 
 def generate_first_login_setup_token(user_id: int) -> str:
-    delta = timedelta(hours=settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS)
-    return security.create_access_token(
-        subject=str(user_id),
-        expires_delta=delta,
-        token_use="first_login_setup",
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": str(user_id), "token_use": "first_login_setup", "iat": now, "nbf": now},
+        settings.SECRET_KEY,
+        algorithm=security.ALGORITHM,
     )
 
 

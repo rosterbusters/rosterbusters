@@ -1047,6 +1047,54 @@ export function useGenerateAlgorithmRoster() {
   })
 }
 
+export type BulkAlgorithmRosterResponse = {
+  triggered: Array<{
+    ward_id: number
+    period_id: number
+    task_id: string
+  }>
+  skipped: Array<{
+    ward_id: number
+    period_id: number
+    reason: string
+  }>
+}
+
+export function useGenerateMultipleWardAlgorithmRosters() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      wardIds,
+      periodId,
+      algorithm,
+    }: {
+      wardIds: number[]
+      periodId: number
+      algorithm?: "MILP" | "AB-RATIO" | null
+    }) => {
+      return (await fetchWithAuth(
+        "/api/v1/roster/generate-algorithm-bulk-async",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ward_ids: wardIds,
+            period_id: periodId,
+            algorithm: algorithm ?? null,
+          }),
+        },
+      )) as BulkAlgorithmRosterResponse
+    },
+    onSuccess: (data) => {
+      for (const item of data.triggered) {
+        queryClient.invalidateQueries({
+          queryKey: ["roster", "ward", item.ward_id, item.period_id],
+        })
+      }
+    },
+  })
+}
+
 export function useResumeAlgorithmTask() {
   const queryClient = useQueryClient()
 

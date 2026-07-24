@@ -1,5 +1,6 @@
 import logging
 import math
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -27,6 +28,68 @@ from app.services.algorithm_lock_service import (
 from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
+
+ALGORITHM_LOCK_REFRESH_INTERVAL_SECONDS = 60 * 5
+
+
+class AlgorithmLockLostError(RuntimeError):
+    pass
+
+
+def _ensure_ward_algorithm_lock(ward_id: int, owner_id: str) -> None:
+    if not refresh_ward_algorithm_lock(ward_id, owner_id):
+        raise AlgorithmLockLostError(
+            f"Algorithm generation lock is no longer owned by task {owner_id}."
+        )
+
+
+def _start_algorithm_lock_heartbeat(
+    ward_id: int,
+    owner_id: str,
+) -> tuple[threading.Event, threading.Event, threading.Thread]:
+    stop_event = threading.Event()
+    lost_event = threading.Event()
+
+    def _heartbeat() -> None:
+        while not stop_event.wait(ALGORITHM_LOCK_REFRESH_INTERVAL_SECONDS):
+            if not refresh_ward_algorithm_lock(ward_id, owner_id):
+                lost_event.set()
+                logger.warning(
+                    "Lost roster generation lock task_id=%s ward_id=%s",
+                    owner_id,
+                    ward_id,
+                )
+                return
+
+    thread = threading.Thread(
+        target=_heartbeat,
+        name=f"roster-lock-heartbeat-{owner_id}",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, lost_event, thread
+
+
+def _stop_algorithm_lock_heartbeat(
+    stop_event: threading.Event | None,
+    thread: threading.Thread | None,
+) -> None:
+    if stop_event is None or thread is None:
+        return
+    stop_event.set()
+    thread.join(timeout=1)
+
+
+def _raise_if_algorithm_lock_lost(
+    lost_event: threading.Event | None,
+    ward_id: int,
+    owner_id: str,
+) -> None:
+    if lost_event is not None and lost_event.is_set():
+        raise AlgorithmLockLostError(
+            f"Algorithm generation lock was lost for ward {ward_id}."
+        )
+    _ensure_ward_algorithm_lock(ward_id, owner_id)
 
 @celery_app.task(name="tasks.check_roster_period_notifications")
 def check_roster_period_notifications_task() -> None:
@@ -332,8 +395,15 @@ def generate_roster_task(
     Celery task to run the roster generation algorithm.
     Results are stored in Redis and retrievable via task_id.
     """
+    lock_stop_event = None
+    lock_lost_event = None
+    lock_thread = None
     try:
-        refresh_ward_algorithm_lock(ward_id, self.request.id)
+        _ensure_ward_algorithm_lock(ward_id, self.request.id)
+        lock_stop_event, lock_lost_event, lock_thread = _start_algorithm_lock_heartbeat(
+            ward_id,
+            self.request.id,
+        )
         logger.info(
             "Starting roster generation task task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
             self.request.id,
@@ -370,6 +440,7 @@ def generate_roster_task(
             )
 
         def on_progress(gen: int, total_gens: int, best_score: float) -> None:
+            _raise_if_algorithm_lock_lost(lock_lost_event, ward_id, self.request.id)
             self.update_state(
                 state="PROGRESS",
                 meta={
@@ -402,6 +473,7 @@ def generate_roster_task(
             milp_config=generation_inputs["milp_config"],
             algorithm=algorithm,
         )
+        _raise_if_algorithm_lock_lost(lock_lost_event, ward_id, self.request.id)
         _apply_locked_roster_overlay(
             result["roster"],
             generation_inputs["locked_roster_slots"],
@@ -450,6 +522,22 @@ def generate_roster_task(
             "error": str(exc),
         }
 
+    except AlgorithmLockLostError as exc:
+        logger.warning(
+            "Roster generation task stopped after losing lock task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s error=%s",
+            self.request.id,
+            ward_id,
+            period_id,
+            algorithm,
+            self.request.retries,
+            exc,
+        )
+        return {
+            "task_id": self.request.id,
+            "status": "failed",
+            "error": str(exc),
+        }
+
     except Exception as exc:
         logger.exception(
             "Roster generation task failed task_id=%s ward_id=%s period_id=%s algorithm=%s retry=%s",
@@ -464,6 +552,8 @@ def generate_roster_task(
         except MaxRetriesExceededError:
             release_ward_algorithm_lock(ward_id, self.request.id)
             raise
+    finally:
+        _stop_algorithm_lock_heartbeat(lock_stop_event, lock_thread)
 
 
 @celery_app.task(bind=True, name="tasks.generate_and_save_roster", max_retries=2)
@@ -472,8 +562,15 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
     Scheduled variant: runs the algorithm AND saves results to DB.
     Deletes existing Roster entries for the ward+period before saving (overwrite).
     """
+    lock_stop_event = None
+    lock_lost_event = None
+    lock_thread = None
     try:
-        refresh_ward_algorithm_lock(ward_id, self.request.id)
+        _ensure_ward_algorithm_lock(ward_id, self.request.id)
+        lock_stop_event, lock_lost_event, lock_thread = _start_algorithm_lock_heartbeat(
+            ward_id,
+            self.request.id,
+        )
         with Session(engine) as db:
             from app.api.routes.run_rostering import (
                 _apply_locked_roster_overlay,
@@ -483,6 +580,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
             generation_inputs = _load_generation_inputs(db, ward_id, period_id)
 
             def on_progress(gen: int, total_gens: int, best_score: float) -> None:
+                _raise_if_algorithm_lock_lost(lock_lost_event, ward_id, self.request.id)
                 self.update_state(
                     state="PROGRESS",
                     meta={
@@ -505,6 +603,7 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 progress_callback=on_progress,
                 milp_config=generation_inputs["milp_config"],
             )
+            _raise_if_algorithm_lock_lost(lock_lost_event, ward_id, self.request.id)
             _apply_locked_roster_overlay(
                 result["roster"],
                 generation_inputs["locked_roster_slots"],
@@ -534,6 +633,20 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
                 "nurses_saved": nurses_saved,
             }
 
+    except AlgorithmLockLostError as exc:
+        logger.warning(
+            "Scheduled roster generation stopped after losing lock task_id=%s ward_id=%s period_id=%s error=%s",
+            self.request.id,
+            ward_id,
+            period_id,
+            exc,
+        )
+        return {
+            "task_id": self.request.id,
+            "status": "failed",
+            "error": str(exc),
+        }
+
     except Exception as exc:
         logger.error(f"Scheduled roster generation failed for ward {ward_id}: {exc}")
         try:
@@ -541,3 +654,5 @@ def generate_and_save_roster_task(self, ward_id: int, period_id: int):
         except MaxRetriesExceededError:
             release_ward_algorithm_lock(ward_id, self.request.id)
             raise
+    finally:
+        _stop_algorithm_lock_heartbeat(lock_stop_event, lock_thread)

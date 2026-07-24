@@ -35,6 +35,7 @@ export {
   useCreateChangelog,
   useDeletePeriodConstraint,
   useGenerateAlgorithmRoster,
+  useGenerateMultipleWardAlgorithmRosters,
   useGenerationInputs,
   usePeriodConstraints,
   usePublishRoster,

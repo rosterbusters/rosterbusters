@@ -45,6 +45,7 @@ import {
   useCreateChangelog,
   useDeletePeriodConstraint,
   useGenerateAlgorithmRoster,
+  useGenerateMultipleWardAlgorithmRosters,
   useGenerationInputs,
   usePeriodConstraints,
   usePublishRoster,
@@ -244,12 +245,16 @@ function RosterPlanningPage() {
   const publishRoster = usePublishRoster()
   const clearRoster = useClearRoster()
   const generateAlgorithmRoster = useGenerateAlgorithmRoster()
+  const generateMultipleWardAlgorithmRosters =
+    useGenerateMultipleWardAlgorithmRosters()
   const resumeAlgorithmTask = useResumeAlgorithmTask()
   const autoReviewShiftRequests = useAutoReviewShiftRequests()
   const hasResumedTaskRef = useRef(false)
   const resumeCancelledRef = useRef(false)
   const isAlgorithmRunning =
-    generateAlgorithmRoster.isPending || isResumingAlgorithm
+    generateAlgorithmRoster.isPending ||
+    generateMultipleWardAlgorithmRosters.isPending ||
+    isResumingAlgorithm
 
   // Generate mock wards if API wards are empty
   const displayWards = useMemo(
@@ -1005,6 +1010,53 @@ function RosterPlanningPage() {
     nurseMetaById,
     algorithmType,
     rosterData,
+  ])
+
+  const handleGenerateAllWards = useCallback(async () => {
+    if (!effectiveSelectedPeriod) {
+      showErrorToast("Please select a period first")
+      return
+    }
+
+    const wardIds = displayWards.map((ward) => ward.wardId)
+    if (wardIds.length === 0) {
+      showErrorToast("No wards are available for roster generation")
+      return
+    }
+
+    try {
+      const result = await generateMultipleWardAlgorithmRosters.mutateAsync({
+        wardIds,
+        periodId: effectiveSelectedPeriod.periodId,
+        algorithm: algorithmType,
+      })
+      const triggeredCount = result.triggered.length
+      const skippedCount = result.skipped.length
+      if (triggeredCount === 0) {
+        showErrorToast(
+          skippedCount > 0
+            ? "No ward rosters were queued. Some wards may already be generating."
+            : "No ward rosters were queued.",
+        )
+        return
+      }
+      showSuccessToast(
+        skippedCount > 0
+          ? `Queued ${triggeredCount} ward roster${triggeredCount === 1 ? "" : "s"}; ${skippedCount} skipped.`
+          : `Queued ${triggeredCount} ward roster${triggeredCount === 1 ? "" : "s"}.`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to queue ward roster generation."
+      showErrorToast(message)
+    }
+  }, [
+    algorithmType,
+    displayWards,
+    effectiveSelectedPeriod,
+    generateMultipleWardAlgorithmRosters,
   ])
 
   // Clear roster and return to manual mode — ward nurses repopulate via the wardStatistics effect
@@ -1784,6 +1836,7 @@ function RosterPlanningPage() {
             algorithmType={algorithmType}
             onAlgorithmTypeChange={(t) => setAlgorithmType(t)}
             onGenerateAlgorithm={handleGenerateAlgorithm}
+            onGenerateAllWards={handleGenerateAllWards}
             showAutoRegenerate={
               showAlgorithmGeneratedState && canAutoRegenerate
             }

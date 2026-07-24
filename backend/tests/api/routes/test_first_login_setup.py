@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import jwt
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -56,6 +57,8 @@ def test_admin_create_user_with_email_sends_first_login_email(
     assert sent_emails[0]["email_to"] == "email.setup@example.com"
     assert "Set up your account" in sent_emails[0]["subject"]
     assert "https://sachduby.com/first-login-setup?token=" in sent_emails[0]["html_content"]
+    assert "This link will remain available until your account setup is completed." in sent_emails[0]["html_content"]
+    assert "This link will expire" not in sent_emails[0]["html_content"]
 
 
 def test_admin_create_user_without_email_does_not_send_first_login_email(
@@ -151,6 +154,8 @@ def test_public_first_login_context_and_completion_flow(
     db.refresh(user)
 
     token = generate_first_login_setup_token(user.userid)
+    token_payload = jwt.decode(token, options={"verify_signature": False})
+    assert "exp" not in token_payload
 
     context_response = client.get(
         f"{settings.API_V1_STR}/users/first-login-setup",

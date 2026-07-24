@@ -39,8 +39,13 @@ function StatCard({
 
 function AdminDashboard() {
   const { data: usersData, isLoading: usersLoading } = useQuery({
-    queryKey: ["admin-users", { page: 1 }],
-    queryFn: () => AdminService.listUsers(0, 1000),
+    queryKey: ["admin-users", "count"],
+    queryFn: () => AdminService.listUsers(0, 1),
+  })
+
+  const { data: adminsData, isLoading: adminsLoading } = useQuery({
+    queryKey: ["admin-users", "count", { role: "Admin" }],
+    queryFn: () => AdminService.listUsers(0, 1, "", { role: "Admin" }),
   })
 
   const { data: wardsData, isLoading: wardsLoading } = useQuery({
@@ -51,8 +56,7 @@ function AdminDashboard() {
   const totalUsers = usersData?.count ?? 0
   const activeWards = wardsData?.filter((w) => w.isactive !== false).length ?? 0
   const totalWards = wardsData?.length ?? 0
-  const admins =
-    usersData?.data.filter((u) => u.roles.includes("Admin")).length ?? 0
+  const admins = adminsData?.count ?? 0
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -85,7 +89,7 @@ function AdminDashboard() {
         />
         <StatCard
           title="Admins"
-          value={usersLoading ? "..." : admins}
+          value={adminsLoading ? "..." : admins}
           icon={ShieldCheck}
           color="bg-orange-500"
         />

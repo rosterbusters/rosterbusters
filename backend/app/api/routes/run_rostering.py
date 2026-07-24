@@ -47,6 +47,7 @@ from app.rbac import user_has_role
 from app.rostering.algo_scheduler import generate_roster
 from app.services.algorithm_lock_service import (
     acquire_ward_algorithm_lock,
+    refresh_ward_algorithm_lock,
     release_ward_algorithm_lock,
 )
 from app.utils import (
@@ -56,6 +57,10 @@ from app.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+ALGORITHM_LOCK_CONFLICT_DETAIL = (
+    "Another algorithm generation is already in progress for this ward."
+)
 
 
 def _json_safe_value(value: Any) -> Any:
@@ -95,6 +100,12 @@ class RosterGenerationRequest(BaseModel):
     period_id: int
     algorithm: Optional[str] = None  # "MILP" | "AB-RATIO" | None (auto)
     prefilled_slots: list[RosterPrefilledSlot] = Field(default_factory=list)
+
+
+class BulkRosterGenerationRequest(BaseModel):
+    ward_ids: list[int] = Field(min_length=1)
+    period_id: int
+    algorithm: Optional[str] = None  # "MILP" | "AB-RATIO" | None (auto)
 
 
 class RosterExportRow(BaseModel):
@@ -274,6 +285,24 @@ def _can_generate_roster(session: Session, current_user: CurrentUser) -> bool:
     return user_has_role(session, current_user.email, "NurseManager") or user_has_role(
         session, current_user.email, "Admin"
     )
+
+
+def _acquire_algorithm_generation_lock(ward_id: int) -> str:
+    owner_id = str(uuid4())
+    if not acquire_ward_algorithm_lock(ward_id, owner_id):
+        raise HTTPException(
+            status_code=409,
+            detail=ALGORITHM_LOCK_CONFLICT_DETAIL,
+        )
+    return owner_id
+
+
+def _refresh_or_release_algorithm_generation_lock(ward_id: int, owner_id: str) -> None:
+    if not refresh_ward_algorithm_lock(ward_id, owner_id):
+        raise HTTPException(
+            status_code=409,
+            detail=ALGORITHM_LOCK_CONFLICT_DETAIL,
+        )
 
 
 def _designation_export_role(designation: str | None) -> str:
@@ -1179,6 +1208,7 @@ def generate_roster_endpoint(
     """Run the MILP/GA rostering algorithm for a ward and roster period."""
     if not _can_generate_roster(db, current_user):
         raise HTTPException(status_code=403, detail="Nurse manager access required")
+    lock_owner_id = _acquire_algorithm_generation_lock(request_data.ward_id)
     try:
         generation_inputs = _load_generation_inputs(
             db,
@@ -1205,6 +1235,10 @@ def generate_roster_endpoint(
             milp_config=generation_inputs["milp_config"],
             algorithm=request_data.algorithm,
         )
+        _refresh_or_release_algorithm_generation_lock(
+            request_data.ward_id,
+            lock_owner_id,
+        )
         _apply_locked_roster_overlay(
             result["roster"],
             generation_inputs["locked_roster_slots"],
@@ -1223,6 +1257,8 @@ def generate_roster_endpoint(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        release_ward_algorithm_lock(request_data.ward_id, lock_owner_id)
 
 
 @router.post("/generate-algorithm-async")
@@ -1250,7 +1286,7 @@ def generate_roster_async(
     if not acquire_ward_algorithm_lock(request_data.ward_id, task_id):
         raise HTTPException(
             status_code=409,
-            detail="Another algorithm generation is already in progress for this ward.",
+            detail=ALGORITHM_LOCK_CONFLICT_DETAIL,
         )
 
     try:
@@ -1285,6 +1321,107 @@ def generate_roster_async(
         request_data.algorithm,
     )
     return {"task_id": task.id, "status": "queued"}
+
+
+@router.post("/generate-algorithm-bulk-async", response_model=ScheduledGenerationResponse)
+def generate_rosters_bulk_async(
+    request_data: BulkRosterGenerationRequest,
+    db: SessionDep,
+    current_user: CurrentUser,
+):
+    """Queue roster generation for multiple wards in the same period."""
+    if not _can_generate_roster(db, current_user):
+        raise HTTPException(status_code=403, detail="Nurse manager access required")
+
+    period = db.get(RosterPeriod, request_data.period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Roster period not found")
+
+    triggered: list[TriggeredItem] = []
+    skipped: list[SkippedItem] = []
+    seen_ward_ids: set[int] = set()
+
+    for ward_id in request_data.ward_ids:
+        if ward_id in seen_ward_ids:
+            skipped.append(
+                SkippedItem(
+                    ward_id=ward_id,
+                    period_id=request_data.period_id,
+                    reason="duplicate_ward",
+                )
+            )
+            continue
+        seen_ward_ids.add(ward_id)
+
+        ward = db.get(Ward, ward_id)
+        if not ward:
+            skipped.append(
+                SkippedItem(
+                    ward_id=ward_id,
+                    period_id=request_data.period_id,
+                    reason="ward_not_found",
+                )
+            )
+            continue
+        if not ward.isactive:
+            skipped.append(
+                SkippedItem(
+                    ward_id=ward_id,
+                    period_id=request_data.period_id,
+                    reason="ward_inactive",
+                )
+            )
+            continue
+
+        task_id = str(uuid4())
+        if not acquire_ward_algorithm_lock(ward_id, task_id):
+            skipped.append(
+                SkippedItem(
+                    ward_id=ward_id,
+                    period_id=request_data.period_id,
+                    reason="algorithm_generation_in_progress",
+                )
+            )
+            continue
+
+        try:
+            task = _get_celery_app().send_task(
+                "tasks.generate_roster",
+                args=[ward_id, request_data.period_id],
+                kwargs={
+                    "algorithm": request_data.algorithm,
+                    "prefilled_slots": [],
+                },
+                task_id=task_id,
+            )
+        except Exception:
+            release_ward_algorithm_lock(ward_id, task_id)
+            raise
+
+        _queue_algorithm_notification(
+            db,
+            manager_id=current_user.managerid,
+            ward_id=ward_id,
+            period_id=request_data.period_id,
+            notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+        )
+        triggered.append(
+            TriggeredItem(
+                ward_id=ward_id,
+                period_id=request_data.period_id,
+                task_id=task.id,
+            )
+        )
+
+    logger.info(
+        "Queued bulk roster generation period_id=%s algorithm=%s triggered=%s skipped=%s user_id=%s",
+        request_data.period_id,
+        request_data.algorithm,
+        len(triggered),
+        len(skipped),
+        getattr(current_user, "userid", None),
+    )
+    return ScheduledGenerationResponse(triggered=triggered, skipped=skipped)
 
 
 @router.post("/trigger-scheduled-generation", response_model=ScheduledGenerationResponse)
@@ -1409,20 +1546,25 @@ def generate_roster_stream(
     """Run the MILP/GA rostering algorithm and stream SSE progress events."""
     if not _can_generate_roster(db, current_user):
         raise HTTPException(status_code=403, detail="Nurse manager access required")
-    # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
-    generation_inputs = _load_generation_inputs(
-        db,
-        request_data.ward_id,
-        request_data.period_id,
-        request_data.prefilled_slots,
-    )
-    _queue_algorithm_notification(
-        db,
-        manager_id=current_user.managerid,
-        ward_id=request_data.ward_id,
-        period_id=request_data.period_id,
-        notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
-    )
+    lock_owner_id = _acquire_algorithm_generation_lock(request_data.ward_id)
+    try:
+        # Fetch all DB data before spawning the thread (SQLAlchemy sessions are not thread-safe)
+        generation_inputs = _load_generation_inputs(
+            db,
+            request_data.ward_id,
+            request_data.period_id,
+            request_data.prefilled_slots,
+        )
+        _queue_algorithm_notification(
+            db,
+            manager_id=current_user.managerid,
+            ward_id=request_data.ward_id,
+            period_id=request_data.period_id,
+            notification_type=NotificationType.ALGORITHM_IN_PROGRESS,
+        )
+    except Exception:
+        release_ward_algorithm_lock(request_data.ward_id, lock_owner_id)
+        raise
 
     q: queue.Queue = queue.Queue()
     manager_id = current_user.managerid
@@ -1430,6 +1572,8 @@ def generate_roster_stream(
     def _run():
         try:
             def on_progress(gen: int, total_gens: int, best_score: float) -> None:
+                if not refresh_ward_algorithm_lock(request_data.ward_id, lock_owner_id):
+                    raise RuntimeError(ALGORITHM_LOCK_CONFLICT_DETAIL)
                 q.put({
                     "type": "progress",
                     "generation": gen,
@@ -1451,6 +1595,8 @@ def generate_roster_stream(
                 milp_config=generation_inputs["milp_config"],
                 algorithm=request_data.algorithm,
             )
+            if not refresh_ward_algorithm_lock(request_data.ward_id, lock_owner_id):
+                raise RuntimeError(ALGORITHM_LOCK_CONFLICT_DETAIL)
             _apply_locked_roster_overlay(
                 result["roster"],
                 generation_inputs["locked_roster_slots"],
@@ -1475,6 +1621,8 @@ def generate_roster_stream(
                 )
         except Exception as exc:
             q.put({"type": "error", "message": str(exc)})
+        finally:
+            release_ward_algorithm_lock(request_data.ward_id, lock_owner_id)
 
     threading.Thread(target=_run, daemon=True).start()
 
